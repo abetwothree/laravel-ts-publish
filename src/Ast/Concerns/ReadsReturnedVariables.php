@@ -255,7 +255,7 @@ trait ReadsReturnedVariables
      *
      * The bodies of an `if` chain and of a `foreach`, `for` or `while` join as branches. Assignments inside a `try`
      * body, a `catch`, a `case`, or a `do` body after its first `break` or `continue`, are marked as optional. A
-     * whole-array write that analyzes as nothing leaves the variable not read completely, since its keys are unknown.
+     * whole-array write that analyzes as nothing, or a key write the walk cannot name, leaves unread keys.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  TAnalysis  $into
@@ -287,6 +287,7 @@ trait ReadsReturnedVariables
 
             if ($this->writesUnreadKey($stmt, $varName, $into)) {
                 $into->readsCompletely = false;
+                $into->holdsUnreadKeys = true;
 
                 continue;
             }
@@ -311,6 +312,7 @@ trait ReadsReturnedVariables
 
                 if ($baseAnalysis === null) {
                     $into->readsCompletely = false;
+                    $into->holdsUnreadKeys = true;
 
                     continue;
                 }
@@ -336,6 +338,7 @@ trait ReadsReturnedVariables
 
                 if ($addedAnalysis === null) {
                     $into->readsCompletely = false;
+                    $into->holdsUnreadKeys = true;
 
                     continue;
                 }

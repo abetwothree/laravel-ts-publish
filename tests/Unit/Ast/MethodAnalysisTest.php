@@ -251,7 +251,22 @@ it('rewrites each property\'s type, body type and fill, except a key a cast hold
     ]);
 });
 
-it('takes over every field of another analysis, the read-completely flag included', function () {
+it('holds unread keys after a merge where either side holds them', function (bool $target, bool $source, bool $merged) {
+    $into = new MethodAnalysis;
+    $into->holdsUnreadKeys = $target;
+    $from = new MethodAnalysis;
+    $from->holdsUnreadKeys = $source;
+
+    $into->merge($from);
+
+    expect($into->holdsUnreadKeys)->toBe($merged);
+})->with([
+    'neither' => [false, false, false],
+    'the target' => [true, false, true],
+    'the source' => [false, true, true],
+]);
+
+it('takes over every field of another analysis, both flags included', function () {
     $source = new MethodAnalysis(
         properties: [['name' => 'a', 'type' => 'A', 'optional' => true, 'description' => 'd']],
         enumResources: ['a' => 'App\\E'],
@@ -271,6 +286,7 @@ it('takes over every field of another analysis, the read-completely flag include
         flatTypeAliasFqcn: 'App\\M',
     );
     $source->readsCompletely = false;
+    $source->holdsUnreadKeys = true;
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);

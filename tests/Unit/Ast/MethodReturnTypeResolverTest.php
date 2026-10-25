@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
@@ -251,7 +253,7 @@ test('a returned parameter the body only writes keys into publishes an open shap
     'a static method' => ['decorateStatic', '{ seen: boolean; [key: string]: unknown }'],
     'an untyped parameter' => ['untyped', '{ seen: boolean; [key: string]: unknown }'],
     'a whole write replacing the parameter first' => ['rebuilt', '{ id: number; seen: boolean }'],
-    'no key write' => ['passThrough', 'unknown[]'],
+    'no key write' => ['passThrough', 'Record<string, unknown>'],
     'a += of the parameter' => ['merged', '{ seen: boolean }'],
     'a precise @return' => ['declared', '{ seen: boolean }'],
 ]);
@@ -284,4 +286,29 @@ test('lets a seeded shape win over a vague @return array<string, mixed>', functi
     expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'declared'))
         ->toBe(['type' => '{ id: number; name: string; extra: boolean }', 'optional' => false])
         ->and(json_encode(new GuardedLinkPayload()->values()['declared']))->toBe('{"id":1,"name":"x","extra":true}');
+});
+
+it('publishes a value-read shape open when its base is unread', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class))->toBe([
+        'unread_local' => '{ x: number; [key: string]: unknown }',
+        'untouched' => 'Record<string, unknown>',
+    ])->and(json_encode($payload->toArray()))->toBe('{"unread_local":{"a":1,"x":1},"untouched":{"k":1}}');
+});
+
+test('keeps a seeded parameter open where the body writes a key the walk cannot name', function () {
+    $payload = new UnreadBasePayload(Request::create('/'));
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['extended'])
+        ->toBe('{ id: number; seen: boolean; [key: string]: unknown }')
+        ->and(json_encode($payload->values()['extended']))->toBe('{"id":1,"k":true,"seen":true}');
+});
+
+test('publishes a value-read shape open where a += adds an array the walk cannot read', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['topped_up'])
+        ->toBe('{ x: number; [key: string]: unknown }')
+        ->and(json_encode($payload->values()['topped_up']))->toBe('{"x":1,"a":1}');
 });

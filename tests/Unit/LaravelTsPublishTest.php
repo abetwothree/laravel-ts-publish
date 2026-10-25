@@ -959,6 +959,22 @@ describe('vague signature types defer to docblock shapes', function () {
 
         expect($info['type'])->toBe('number[] | null');
     });
+
+    test('prefers a vague docblock record over the native array\'s list', function (string $method, string $type) {
+        $info = app(LaravelTsPublish::class)->methodOrDocblockReturnTypes(
+            new ReflectionClass(DocblockReturnClass::class), $method,
+        );
+
+        expect($info['type'])->toBe($type);
+    })->with([
+        ': array, @return array<string, mixed>' => ['stringKeyedArray', 'Record<string, unknown>'],
+        ': array, @return mixed[]' => ['bareArray', 'unknown[]'],
+        ': ?array, @return array<string, mixed>|null' => ['nullableStringKeyedArray', 'Record<string, unknown> | null'],
+        ': array|string, @return array<string, mixed[]>|string' => ['stringKeyedListsOrString', 'Record<string, unknown[]> | string'],
+        'a docblock that admits a list too' => ['anyKeyedArray', 'unknown[]'],
+        'a docblock without the native null' => ['narrowedNullableArray', 'unknown[] | null'],
+        'a docblock that only reorders the arms' => ['reorderedNullableArray', 'unknown[] | null'],
+    ]);
 });
 
 describe('nativePhpFunctionReturnedTypes', function () {
@@ -2964,6 +2980,48 @@ class DocblockReturnClass
      * @return ?string
      */
     public function nullableShorthand()
+    {
+        return null;
+    }
+
+    /** @return array<string, mixed> */
+    public function stringKeyedArray(): array
+    {
+        return ['a' => 1];
+    }
+
+    /** @return mixed[] */
+    public function bareArray(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function nullableStringKeyedArray(): ?array
+    {
+        return null;
+    }
+
+    /** @return array<string, mixed[]>|string */
+    public function stringKeyedListsOrString(): array|string
+    {
+        return '';
+    }
+
+    /** @return array<array-key, mixed> */
+    public function anyKeyedArray(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function narrowedNullableArray(): ?array
+    {
+        return ['a' => 1];
+    }
+
+    /** @return null|mixed[] */
+    public function reorderedNullableArray(): ?array
     {
         return null;
     }

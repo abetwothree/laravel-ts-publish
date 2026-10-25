@@ -463,6 +463,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
         $merged->readsCompletely = $channels->readsCompletely;
+        $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->queueSplitClasses($analyses);
 
         return $merged;

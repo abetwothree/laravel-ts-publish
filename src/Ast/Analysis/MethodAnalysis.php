@@ -60,6 +60,12 @@ class MethodAnalysis
     public bool $readsCompletely = true;
 
     /**
+     * Whether keys these hold reach the return unread, from a whole write's value the walk could not read or a key
+     * write it could not name; merge() ORs it, and the body fallback publishes such a shape open.
+     */
+    public bool $holdsUnreadKeys = false;
+
+    /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
@@ -183,6 +189,7 @@ class MethodAnalysis
     {
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
+        $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
@@ -232,6 +239,7 @@ class MethodAnalysis
     {
         $this->properties = $source->properties;
         $this->readsCompletely = $source->readsCompletely;
+        $this->holdsUnreadKeys = $source->holdsUnreadKeys;
         $this->enumResources = $source->enumResources;
         $this->nestedResources = $source->nestedResources;
         $this->customImports = $source->customImports;

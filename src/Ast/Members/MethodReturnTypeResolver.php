@@ -138,8 +138,9 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The inline object a method's literal return body spells, beside every non-array arm its declaration names; null
-     * when a return the shape does not describe is left over, or the shape spells nothing importable.
+     * The inline object a method's literal return body spells, beside every non-array arm its declaration names, open
+     * where it holds keys the analysis never read; null when a return the shape does not describe is left over, or
+     * the shape spells nothing importable.
      *
      * The cycle guard stays per method, whatever the call passes, so a recursion passing a new value each time still
      * stops at its first repeat.
@@ -195,8 +196,10 @@ final class MethodReturnTypeResolver
         $subject = new ReflectionClass($class);
         $method = new ReflectionMethod($class, $methodName);
 
-        // A caller's keys reach a returned parameter the body only writes keys into unseen, so the shape stays open.
-        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection, $method, $passed)) {
+        // Keys the walk never read reach the return, as a caller's do in a returned parameter the body only writes keys
+        // into, so the shape stays open.
+        if ($analysis->holdsUnreadKeys
+            || $this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection, $method, $passed)) {
             $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
 
             if ($signature === false) {

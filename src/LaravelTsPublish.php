@@ -633,7 +633,7 @@ class LaravelTsPublish
 
     /**
      * Like `methodReturnedTypes`, but falls back to the `@return` docblock
-     * when the method has no signature return type.
+     * when the method has no signature return type, or a vague one the docblock spells more closely.
      *
      * @template T of object
      *
@@ -660,6 +660,10 @@ class LaravelTsPublish
         $docblockInfo = $this->docblockReturnTypes($reflectionMethod);
 
         if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
+            return $docblockInfo;
+        }
+
+        if ($this->spellsListAsRecord($signatureInfo['type'], $docblockInfo['type'])) {
             return $docblockInfo;
         }
 
@@ -1823,6 +1827,26 @@ class LaravelTsPublish
         $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
 
         return $serialized['type'] === 'unknown' ? null : $serialized;
+    }
+
+    /**
+     * Whether a vague docblock type is a vague signature's arms with an `unknown[]` spelled as a `Record<…>`: a
+     * string-keyed array encodes as an object, never as the list a native `array` publishes.
+     */
+    protected function spellsListAsRecord(string $signature, string $docblock): bool
+    {
+        $arms = TsTypeString::splitTopLevelUnion($docblock);
+        $listed = array_map(
+            fn (string $arm): string => TsTypeShape::recordArguments($arm) === null ? $arm : 'unknown[]',
+            $arms,
+        );
+        $spellsRecord = $listed !== $arms;
+        $signatureArms = TsTypeString::splitTopLevelUnion($signature);
+
+        sort($listed);
+        sort($signatureArms);
+
+        return $spellsRecord && $listed === $signatureArms;
     }
 
     /**
