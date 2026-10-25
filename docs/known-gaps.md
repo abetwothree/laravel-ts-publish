@@ -127,9 +127,10 @@ A helper that returns a parameter it writes keys into joins its writes onto the 
 a declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a
 value and alone where its result is the method's own return, when the argument is not one object literal (a `Record`,
 a list, a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an
-`EnumResource` wrap or two same-named enums a level apart, or, for a helper read as a value, any model, resource or
-enum. A top-level `unset()`, destructuring, `foreach` target or by-reference call of the parameter, a key-keeping sort
-such as `ksort()` aside, leaves only the helper's own writes. Declare `@return array{…}` on the helper to publish the
+`EnumResource` wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less
+read cannot import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or
+by-reference call of the parameter leaves only the helper's own writes; a `??=`, a key-keeping sort such as `ksort()`,
+`array_push()` and `array_unshift()` keep the argument's keys. Declare `@return array{…}` on the helper to publish the
 exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as

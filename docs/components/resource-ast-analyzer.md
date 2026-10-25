@@ -82,9 +82,10 @@ every profile, the order handlers run in decides which one answers; see
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
-  written in a branch publishing optional. The walk starts at the last top-level whole write it reads. A parameter that
-  no top-level write replaces, whether an assignment, destructuring, a `foreach` target, `unset()` or a by-reference
-  call other than a key-keeping sort, starts from the keys of the object its bound value spells (`parameterSeed()`),
+  written in a branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=`
+  included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
+  destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
+  object its bound value spells (`parameterSeed()`),
   unless `ObjectMembers::seed()` finds a member would lose its text. A local written once reads as its value
   (`writtenLocal()`), and the walk names a key such a local holds (`literalLocal()`); an `unset()` removes each key it
   names, and only one it cannot name leaves the variable not read completely. A merge closure's body is seeded as

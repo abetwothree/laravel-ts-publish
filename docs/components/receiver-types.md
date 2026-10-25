@@ -354,16 +354,17 @@ When a declared return is too vague to publish, such as a bare `: array`, `Metho
 body once per set of bindings its calls' arguments make. The shape spelled by its literal return, or by a returned
 variable the walk reads, replaces the declaration's array arms, so `PriceQuoteService::quote()`, which declares only
 `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it
-too, so it publishes what the bare `$this->m()` does. Where the body spells no shape the declaration stands, a vague
-`@return array<string, …>` winning over the native `array` in `methodOrDocblockReturnTypes()`: a string-keyed array
-encodes as a `Record`, never as an `unknown[]` list.
+too, so it publishes what the bare `$this->m()` does. A vague `@return array<string, …>` wins over the native `array` in
+`methodOrDocblockReturnTypes()`, and over a body value that is only that `unknown[]`, as a parameter returned untouched
+can be: a string-keyed array encodes as a `Record`, never as a list (`TsTypeString::spellsListAsRecord()`).
 
 A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
 from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the
 body never sees them, so `returnsKeyWrittenParameter()` adds `[key: string]: unknown` to the shape.
 `DecoratedPayloadResource` pins that through a container instance, a static call and a resource's own helper. A walk
-that holds keys it never read, from a whole write it cannot read or a key write it cannot name
-(`MethodAnalysis::$holdsUnreadKeys`), opens the shape the same way, as `UnreadBasePayload` pins.
+that holds keys it never read, from a whole write, helper or spread it cannot read, a key write it cannot name or an
+appending by-reference call (`MethodAnalysis::$holdsUnreadKeys`), opens the shape the same way, as `UnreadBasePayload`
+pins.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
