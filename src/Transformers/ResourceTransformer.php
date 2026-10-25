@@ -850,7 +850,7 @@ class ResourceTransformer extends CoreTransformer
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
      * @param  list<string>  $extra  the extends clauses, and for resources the type alias
      * @param  (Closure(TFqcn): list<string>)|null  $namesOf  every name a class's tokens are spelled with; null for
-     *                                                     its unaliased name alone
+     *                                                        its unaliased name alone
      * @return array<TFqcn, string>
      */
     protected function keepSpelled(array $map, array $attributed, array $extra, ?Closure $namesOf = null): array
