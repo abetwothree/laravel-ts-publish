@@ -291,9 +291,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $toArrayMethod->stmts, $this->passed);
         }
 
+        $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
         if ($branchAnalysis !== null) {
+            $branchAnalysis->holdsUnreadKeys = $branchAnalysis->holdsUnreadKeys || $passesKeys;
+
             return $this->ownMethodShaped($branchAnalysis);
         }
 
@@ -317,6 +320,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         };
 
         $analysis ??= ResourceAnalysis::unreadAnalysis();
+        $analysis->holdsUnreadKeys = $analysis->holdsUnreadKeys || $passesKeys;
 
         // The fallback reads one return of several, so the others are unread.
         if (count($returns) > 1) {

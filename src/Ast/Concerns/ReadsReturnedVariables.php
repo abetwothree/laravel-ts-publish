@@ -36,6 +36,7 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
@@ -254,6 +255,53 @@ trait ReadsReturnedVariables
         }
 
         return $assigned || $this->entrySeed($stmts, $varName) !== null;
+    }
+
+    /**
+     * Whether a method returns a parameter its body writes only by key and the walk starts with no seed, so the keys
+     * its caller passed reach the return unread.
+     */
+    protected function returnsUnseededParameter(ClassMethod $method): bool
+    {
+        if ($method->params === []) {
+            return false;
+        }
+
+        $stmts = $method->stmts ?? [];
+        $parameters = [];
+        $returned = [];
+
+        foreach ($method->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $parameters[] = $param->var->name;
+            }
+        }
+
+        foreach ($this->collectReturnExpressions($stmts) as $expr) {
+            if ($expr instanceof Variable && is_string($expr->name) && in_array($expr->name, $parameters, true)
+                && $this->entrySeed($stmts, $expr->name) === null) {
+                $returned[$expr->name] = false;
+            }
+        }
+
+        $writes = $returned === []
+            ? []
+            : VariableWrites::of($stmts, $this->subjectReflection(), $this->analysisScope()->declaringFileClass);
+
+        foreach ($writes as [$name, , $target]) {
+            if (! isset($returned[$name])) {
+                continue;
+            }
+
+            if (! $target instanceof ArrayDimFetch) {
+                // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
+                unset($returned[$name]);
+            } elseif (VariableWrites::rootVariable($target) === $name) {
+                $returned[$name] = true;
+            }
+        }
+
+        return in_array(true, $returned, true);
     }
 
     /**

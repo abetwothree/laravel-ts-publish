@@ -162,20 +162,6 @@ final class ParameterBinder
     }
 
     /**
-     * The value a body read binds a parameter to: its declared value, else what its call passes, as bindCall() binds.
-     *
-     * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
-     * @return ValueExpressionResult|null
-     */
-    public function boundValue(ReflectionMethod $method, string $name, array $passed): ?array
-    {
-        $scope = new AnalysisScope($method->getDeclaringClass());
-        $this->bindCall($method, $passed, $scope);
-
-        return $scope->varValueBindings[$name] ?? null;
-    }
-
-    /**
      * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call.
      */
     public function takesPassedValues(ReflectionMethod $method): bool

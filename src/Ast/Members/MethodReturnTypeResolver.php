@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
@@ -13,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -23,16 +21,13 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ConstFetch;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Declare_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
@@ -209,13 +204,8 @@ final class MethodReturnTypeResolver
             }
         }
 
-        $subject = new ReflectionClass($class);
-        $method = new ReflectionMethod($class, $methodName);
-
-        // Keys the walk never read reach the return, as a caller's do in a returned parameter the body only writes keys
-        // into, so the shape stays open.
-        if ($analysis->holdsUnreadKeys
-            || $this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection, $method, $passed)) {
+        // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.
+        if ($analysis->holdsUnreadKeys) {
             $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
 
             if ($signature === false) {
@@ -319,62 +309,6 @@ final class MethodReturnTypeResolver
         }
 
         return $readsAny;
-    }
-
-    /**
-     * Whether the method returns a parameter its body writes only through its keys, so whatever the caller passed in it
-     * reaches the return without the body seeing it; the import-less body read starts one bound to an object literal
-     * from its keys.
-     *
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration
-     * @param  array<string, PassedBinding>  $passed
-     */
-    private function returnsKeyWrittenParameter(
-        ClassMethod $method,
-        ReflectionClass $subject,
-        ReflectionClass $declaration,
-        ReflectionMethod $reflection,
-        array $passed,
-    ): bool {
-        $stmts = $method->stmts ?? [];
-        $parameters = [];
-        $returned = [];
-
-        foreach ($method->params as $param) {
-            if ($param->var instanceof Variable && is_string($param->var->name)) {
-                $parameters[] = $param->var->name;
-            }
-        }
-
-        foreach ($this->ownReturns($stmts) ?? [] as [$return]) {
-            if ($return->expr instanceof Variable && in_array($return->expr->name, $parameters, true)) {
-                $returned[$return->expr->name] = false;
-            }
-        }
-
-        foreach (array_keys($returned) as $name) {
-            $bound = resolve(ParameterBinder::class)->boundValue($reflection, $name, $passed);
-
-            if ($bound !== null && ObjectMembers::seed($bound, carriesImports: false) !== null) {
-                unset($returned[$name]);
-            }
-        }
-
-        foreach ($returned === [] ? [] : VariableWrites::of($stmts, $subject, $declaration) as [$name, , $target]) {
-            if (! isset($returned[$name])) {
-                continue;
-            }
-
-            if (! $target instanceof ArrayDimFetch) {
-                // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
-                unset($returned[$name]);
-            } elseif (VariableWrites::rootVariable($target) === $name) {
-                $returned[$name] = true;
-            }
-        }
-
-        return in_array(true, $returned, true);
     }
 
     /**
