@@ -12,7 +12,8 @@ use Workbench\App\Enums\Visibility;
 
 /**
  * Fixture: every kind of enum whose `->value` and `->name` a payload reads: string- and int-backed, pure, one whose
- * cases #[TsCase] renames and revalues, one #[TsExclude] keeps out of publishing, and a list mapped to its values.
+ * cases #[TsCase] renames and revalues, one #[TsExclude] keeps out of publishing, a list mapped to its values, and a
+ * case name read inside a nested array.
  */
 final class EnumValuesPayload
 {
@@ -46,6 +47,7 @@ final class EnumValuesPayload
             'excluded' => $this->excluded->value,
             'excluded_name' => $this->excluded->name,
             'grade_list' => collect($this->grades)->map(fn (Grade $g) => $g->value)->all(),
+            'meta' => ['grade_name' => $this->fallbackGrade->name],
         ];
     }
 }

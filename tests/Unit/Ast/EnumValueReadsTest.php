@@ -36,6 +36,7 @@ it('types a backed enum value read as the published alias or the literal union',
         'excluded' => "'foo' | 'bar'",
         'excluded_name' => "'Foo' | 'Bar'",
         'grade_list' => 'GradeType[]',
+        'meta' => '{ grade_name: GradeKind }',
     ])->and(analyzedImportNames(EnumValuesPayload::class))
         ->toBe(['GradeKind', 'GradeType', 'PriorityKind', 'PriorityType', 'VisibilityType']);
 });
@@ -44,7 +45,7 @@ it('sends values the published types admit', function () {
     expect(json_encode(new EnumValuesPayload()->toArray()))->toBe(
         '{"grade":null,"fallback_grade":"pass","grade_name":"Pass","priority":0,"priority_name":"Low",'
         .'"visibility":"Public","color":"amber","color_name":"Amber","excluded":"foo","excluded_name":"Foo",'
-        .'"grade_list":["pass"]}',
+        .'"grade_list":["pass"],"meta":{"grade_name":"Pass"}}',
     );
 });
 

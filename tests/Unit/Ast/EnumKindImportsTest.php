@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumNamesController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapOrNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineEnumKindResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSameNamedKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumNamePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumNameMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumNamesMetadataProvider;
@@ -78,6 +80,32 @@ it('keeps both arms of a ternary that wraps an enum or reads its name, each with
         ->and(array_column($analysis->properties, 'type', 'name'))->toBe(['status' => 'AsEnum<typeof Status> | StatusKind'])
         ->and(array_merge(...array_values($analysis->typeImports)))->toBe(['StatusKind'])
         ->and(array_merge(...array_values($analysis->valueImports)))->toBe(['Status']);
+});
+
+it('imports the Kind a nested array\'s member spells, its enum\'s only token', function () {
+    $resource = (new ResourceTransformer(InlineEnumKindResource::class))->data();
+    $analysis = resolve(AstEngine::class)->analyze(InlineEnumKindResource::class, 'toArray', Post::class);
+
+    expect($resource->properties['meta']['type'])->toBe('{ name: StatusKind }')
+        ->and(array_merge(...array_values($resource->typeImports)))->toBe(['StatusKind'])
+        ->and(array_column($analysis->properties, 'type', 'name'))->toBe(['meta' => '{ name: StatusKind }'])
+        ->and(array_merge(...array_values($analysis->typeImports)))->toBe(['StatusKind'])
+        ->and(new InlineEnumKindResource((new Post)->forceFill(['status' => 0]))->resolve(request()))
+        ->toBe(['meta' => ['name' => 'Draft']]);
+});
+
+it('aliases two same-named enums\' Kind names inside one nested array', function () {
+    $resource = (new ResourceTransformer(InlineSameNamedKindsResource::class))->data();
+    $aliased = ['StatusKind as CrmStatusKind', 'StatusKind as WorkbenchStatusKind'];
+
+    expect(analyzedKeyTypes(SameNamedKindsPayload::class, 'inner'))
+        ->toBe(['inner' => '{ a: WorkbenchStatusKind; b: CrmStatusKind }'])
+        ->and(analyzedImportNames(SameNamedKindsPayload::class, 'inner'))->toBe($aliased)
+        ->and($resource->properties['inner']['type'])->toBe('{ a: WorkbenchStatusKind; b: CrmStatusKind }')
+        ->and(array_merge(...array_values($resource->typeImports)))->toEqualCanonicalizing($aliased)
+        ->and(json_encode(new SameNamedKindsPayload()->inner()))->toBe('{"inner":{"a":"Draft","b":"Lead"}}')
+        ->and(new InlineSameNamedKindsResource((new Post)->forceFill(['status' => 0]))->resolve(request()))
+        ->toBe(['inner' => ['a' => 'Draft', 'b' => 'Lead']]);
 });
 
 it('sends the wrap or the case name the ternary types admit', function () {

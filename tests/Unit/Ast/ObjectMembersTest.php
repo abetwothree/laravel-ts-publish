@@ -71,6 +71,16 @@ it('round-trips every channel it reads, a quoted key and a nested object that ke
         ->and(new InlineObjectResult()->of(ObjectMembers::analysis($value)))->toEqual($value);
 });
 
+it('round-trips a member that spells only its enum\'s Kind, with the enum behind it', function () {
+    $value = new InlineObjectResult()->of(analysisOf([
+        'name' => ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class],
+    ]));
+
+    expect($value['embeddedEnumFqcns'] ?? [])->toBe([Status::class])
+        ->and(ObjectMembers::analysis($value)->directEnumFqcns)->toBe(['name' => Status::class])
+        ->and(new InlineObjectResult()->of(ObjectMembers::analysis($value)))->toEqual($value);
+});
+
 it('hands two same-named classes out member by member, a nested object\'s on its embedded queue', function () {
     $analysis = ObjectMembers::analysis([
         'type' => '{ a: User; b: { c: User | null }; d: UserResource[]; e: UserResource }',

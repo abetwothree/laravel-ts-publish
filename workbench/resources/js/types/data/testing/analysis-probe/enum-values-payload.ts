@@ -15,4 +15,5 @@ export interface EnumValuesPayloadProbe
     excluded: 'foo' | 'bar';
     excluded_name: 'Foo' | 'Bar';
     grade_list: GradeType[];
+    meta: { grade_name: GradeKind };
 }

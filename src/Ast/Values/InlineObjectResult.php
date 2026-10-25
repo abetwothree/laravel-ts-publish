@@ -160,13 +160,13 @@ final class InlineObjectResult
             ),
         ];
 
-        // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
-        // wrapped one) must not claim an import the transformer would then emit unused.
+        // An enum none of whose names occurs in the final type (its arm was substituted by a wrapped
+        // one) must not claim an import the transformer would then emit unused; a `…Kind` is one of them.
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
-            fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
-                LaravelTsPublish::toTsType($fqcn)['type'],
-                $result['type'],
+            fn (string $fqcn): bool => array_any(
+                [LaravelTsPublish::toTsType($fqcn)['type'], ...ValueResult::enumSiblingNames($fqcn)],
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $result['type']),
             ),
         ));
 
