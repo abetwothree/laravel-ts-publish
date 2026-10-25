@@ -325,16 +325,17 @@ test('publishes a string-keyed parameter returned untouched as a record where it
     $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
     $filled = new UnreadBasePayload(Request::create('/'));
     $filled->extra = ['b' => 2];
+    $filled->either = ['a' => 1];
 
     expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
         'request_untouched' => 'Record<string, unknown>',
         'maybe_untouched' => 'Record<string, unknown> | null',
-        // Only a value that is the vague list alone gives way.
-        'either_untouched' => 'unknown[] | string',
+        'either_untouched' => 'Record<string, unknown> | string',
     ])->and(json_encode($payload->values()['request_untouched']))->toBe('{"a":1}')
         ->and(json_encode($payload->values()['maybe_untouched']))->toBe('null')
         ->and(json_encode($filled->values()['maybe_untouched']))->toBe('{"b":2}')
-        ->and(json_encode($payload->values()['either_untouched']))->toBe('"none"');
+        ->and(json_encode($payload->values()['either_untouched']))->toBe('"none"')
+        ->and(json_encode($filled->values()['either_untouched']))->toBe('{"a":1}');
 });
 
 test('publishes a value-read shape open where a += adds an array the walk cannot read', function () {

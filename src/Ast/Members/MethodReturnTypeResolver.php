@@ -139,8 +139,8 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * A body value, or the declaration where that value is only the vague `unknown[]`, `null` aside, and the
-     * declaration spells it as a `Record`: a string-keyed array encodes as an object.
+     * A body value, or the declaration where it spells that value's vague list as a `Record`, as
+     * LaravelTsPublish::methodOrDocblockReturnTypes() prefers it: a string-keyed array encodes as an object.
      *
      * @param  ValueExpressionResult|null  $value
      * @param  ValueExpressionResult|null  $reflected
@@ -148,10 +148,7 @@ final class MethodReturnTypeResolver
      */
     private function declaredOverVagueList(?array $value, ?array $reflected): ?array
     {
-        $listsOnly = $value !== null
-            && array_values(array_diff(TsTypeString::splitTopLevelUnion($value['type']), ['null'])) === ['unknown[]'];
-
-        return $listsOnly && $reflected !== null && TsTypeString::spellsListAsRecord($value['type'], $reflected['type'])
+        return $value !== null && $reflected !== null && TsTypeString::spellsListAsRecord($value['type'], $reflected['type'])
             ? $reflected
             : $value;
     }
