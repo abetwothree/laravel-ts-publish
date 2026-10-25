@@ -618,8 +618,8 @@ What `'summary' => new Summary` sends depends on who serializes it when `Summary
 broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). The same holds for a
 `Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
 sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
-model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`,
-such as `stdClass`, publish `unknown` too. Type such a key with `#[TsCasts]`.
+model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
+publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
@@ -679,7 +679,9 @@ Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
 `['week' => $this->schedule(), 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`,
 `[1 => $this->schedule()]` publishes `string[][]`, `$c ? $this->schedule() : [1 => 'a']` publishes `string[]` and
 `['o' => [...collect([$this->schedule()])]]` publishes `{ o: string[][] }`, though Laravel sends the object with its
-keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the key with `#[TsCasts]`.
+keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. An `(object) [...]` cast is such an
+object: `['week' => (object) [1 => 'mon'], 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`.
+Type the key with `#[TsCasts]`.
 
 ### A model's `toArray()` keeps the numeric keys of an `Arrayable` value whose class the package cannot name
 
