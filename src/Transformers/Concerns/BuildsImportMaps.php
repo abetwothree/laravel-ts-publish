@@ -7,15 +7,23 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use Illuminate\Support\Str;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  */
 trait BuildsImportMaps
 {
+    /**
+     * @var SiblingImportNames each sibling name an FQCN is imported under, such as an enum's `…Kind`; declared as
+     *                         ResolvesImportConflicts declares it, so a class using both holds one property
+     */
+    protected array $siblingImportNames = [];
+
     /**
      * The import name a sibling name, such as an enum's `…Kind`, takes under its local name.
      */

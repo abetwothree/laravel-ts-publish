@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use Illuminate\Support\Facades\Config;
 
@@ -20,7 +19,6 @@ use Illuminate\Support\Facades\Config;
  * runs Support\ImportNameRegistry over the result itself.
  *
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  *
  * @internal
  */
@@ -33,9 +31,6 @@ final class AnalysisImports
 
     /** The importing file's namespace path; BuildsImportMaps computes relative paths from it. */
     protected string $namespacePath = '';
-
-    /** @var SiblingImportNames each `…Kind` an enum is imported under, unaliased */
-    protected array $siblingImportNames = [];
 
     /**
      * Build the type and value import maps for one analysis.
