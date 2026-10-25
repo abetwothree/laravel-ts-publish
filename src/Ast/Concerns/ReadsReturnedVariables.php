@@ -8,8 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -22,6 +25,7 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Plus;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
@@ -599,16 +603,56 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The keys a parameter holds where the walk over a body starts; null where a top-level assignment replaces it,
-     * whether the walk reads that value or not, or the host seeds it with none.
+     * The keys a parameter holds where the walk over a body starts; null where a top-level write replaces it, an
+     * assignment whether the walk reads its value or not, or the host seeds it with none.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     private function entrySeed(array $stmts, string $varName): ?MethodAnalysis
     {
-        $replaced = array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null);
+        if (array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null)) {
+            return null;
+        }
 
-        return $replaced ? null : $this->parameterSeed($varName);
+        $seed = $this->parameterSeed($varName);
+
+        // Only a seed pays for the write scan, which reflects the callee of each call passed the variable.
+        return $seed === null || $this->rewritesWhole($stmts, $varName) ? null : $seed;
+    }
+
+    /**
+     * Whether a top-level statement writes the whole variable other than by `=` or `+=`, as destructuring, a
+     * by-reference argument, a `foreach` target or unset() does, so the walk cannot tell which keys it still holds. A
+     * write inside a block the statement holds may not run.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function rewritesWhole(array $stmts, string $varName): bool
+    {
+        foreach ($stmts as $stmt) {
+            $blocks = array_merge(...StatementBlocks::inner($stmt));
+
+            foreach (VariableWrites::of([$stmt], $this->subjectReflection()) as [$written, $node, $target]) {
+                if ($written !== $varName || $target instanceof ArrayDimFetch
+                    || (($node instanceof Assign || $node instanceof Plus) && $target instanceof Variable)
+                    || array_any($blocks, fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $node))) {
+                    continue;
+                }
+
+                // A sort that keeps each key, as ksort() does, leaves every key the seed holds.
+                $keepsKeys = $node instanceof CallLike && in_array(
+                    resolve(ByReferenceArguments::class)->effect($node, $target),
+                    [ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject],
+                    true,
+                );
+
+                if (! $keepsKeys) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -8,10 +8,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SeededRows;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
 
 it('joins a helper\'s writes onto the shape of the array it is passed', function () {
+    $flagged = new GuardedLinkPayload;
+    $flagged->flag = true;
+
     expect(analyzedKeyTypes(GuardedLinkPayload::class))->toBe([
         'id' => 'number', 'name' => 'string', 'url' => 'string | null', 'disabled' => 'boolean',
     ])->and(json_encode(new GuardedLinkPayload()->toArray()))
-        ->toBe('{"id":1,"name":"x","url":"https:\/\/example.com","disabled":false}');
+        ->toBe('{"id":1,"name":"x","url":"https:\/\/example.com","disabled":false}')
+        ->and(json_encode($flagged->toArray()))->toBe('{"id":1,"name":"x","url":null,"disabled":true}');
 });
 
 it('seeds a parameter read as a value, a += and a declared shape', function () {
@@ -33,6 +37,34 @@ it('starts from the helper\'s own whole write, not the argument', function () {
 it('seeds nothing past a top-level whole write the walk cannot read', function () {
     expect(analyzedKeyTypes(ReplacedParameter::class))->toBe(['x' => 'number'])
         ->and(json_encode(new ReplacedParameter()->toArray()))->toBe('{"k":1,"x":1}');
+});
+
+it('seeds nothing past a top-level unset() of the parameter', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'values')['cleared'])->toBe('{ x: number }')
+        ->and(json_encode(new ReplacedParameter()->values()['cleared']))->toBe('{"x":1}');
+});
+
+// Each leaves keys the walk cannot read, a known gap, but never the argument's `id`.
+it('seeds nothing past a top-level whole write the walk does not read as an assignment', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'values'))->toMatchArray([
+        'destructured' => '{ x: number }',
+        'sorted' => '{ x: number }',
+        'matched' => '{ x: number }',
+        'looped' => '{ x: number }',
+    ])->and(json_encode(array_diff_key(new ReplacedParameter()->values(), ['cleared' => true])))->toBe(
+        '{"destructured":{"k":1,"x":1},"sorted":{"0":1,"x":1},"matched":{"0":"a","k":"a","1":"a","x":1},'
+        .'"looped":{"k":1,"x":1}}',
+    );
+});
+
+// The walk still keeps `id` required past the unset() that may not run, though it removes the key where it runs.
+it('keeps the seed past a key-keeping sort, an unset() of one key and an unset() that may not run', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'kept'))->toBe([
+        'ksorted' => '{ id: number; x: number }',
+        'trimmed' => '{ id: number; x: number }',
+        'maybeCleared' => '{ id: number; x: number }',
+    ])->and(json_encode(new ReplacedParameter()->kept()))
+        ->toBe('{"ksorted":{"id":1,"x":1},"trimmed":{"id":1,"x":1},"maybeCleared":{"id":1,"x":1}}');
 });
 
 it('seeds a map callback\'s parameter from its element', function () {
