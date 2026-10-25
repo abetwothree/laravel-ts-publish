@@ -280,8 +280,7 @@ trait ReadsReturnedVariables
         }
 
         foreach ($this->collectReturnExpressions($stmts) as $expr) {
-            if ($expr instanceof Variable && is_string($expr->name) && in_array($expr->name, $parameters, true)
-                && $this->entrySeed($stmts, $expr->name, $this->parameterSeed($expr->name)) === null) {
+            if ($expr instanceof Variable && is_string($expr->name) && in_array($expr->name, $parameters, true)) {
                 $returned[$expr->name] = false;
             }
         }
@@ -303,7 +302,11 @@ trait ReadsReturnedVariables
             }
         }
 
-        return in_array(true, $returned, true);
+        // Written only by key, a parameter starts from its host seed itself, as entrySeed() would start it.
+        return array_any(
+            array_keys(array_filter($returned)),
+            fn (string $name): bool => $this->parameterSeed($name) === null,
+        );
     }
 
     /**
