@@ -205,8 +205,9 @@ metadata companion that would import both throws at publish time ("imports [Stat
 because its inferred imports (`ModelMetadataAnalyzer::inferredTypeImports()`) skip the alias resolver its cast imports
 use. A route file with two such page props ships two `import type { StatusType }` lines, TS2300 in the consumer's
 build, since `RouteTransformer::resolvePageTypeImports()` has no alias resolver or collision guard, and no workbench
-route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. The
-fix, carrying the FQCN beside the rendered name, changes the import channel.
+route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. A
+`->name` read does not: it falls back there to its literal case-name union rather than collide. The fix, carrying the
+FQCN beside the rendered name, changes the import channel.
 
 Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. In a companion you can instead
 cast one key to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' =>
