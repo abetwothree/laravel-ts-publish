@@ -13,15 +13,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
-use ReflectionEnum;
 
 /**
  * Property chains rooted at `$this` — `$this->user?->name`, `$this->resource->value`,
@@ -200,19 +201,17 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->resource->subProp` where `$this->resource` holds a wrapped enum.
-     *
-     * PHP enum universals: `->name` is always string, `->value` follows the enum's backing type.
+     * Analyze `$this->resource->subProp` where `$this->resource` holds a wrapped enum, whose `->name` and `->value`
+     * publish as EnumValueTypes says.
      *
      * @return ValueExpressionResult
      */
     private function analyzeWrappedEnumResourceProperty(PropertyFetch $expr, AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
-            return $result; // @codeCoverageIgnore
+            return ValueResult::unknown(); // @codeCoverageIgnore
         }
 
         // Guarded on the wrapped type actually being an enum: without it, a model-backed
@@ -220,24 +219,18 @@ final class PropertyChainHandler implements ExpressionHandler
         $wrappedClass = $this->resolveWrappedClass($scope);
 
         if ($wrappedClass === null || ! enum_exists($wrappedClass)) {
-            return $result;
+            return ValueResult::unknown();
         }
 
-        if ($innerProp === 'name') {
-            return [
-                ...$result,
-                'type' => 'string',
-            ];
-        }
+        $result = match ($innerProp) {
+            'name' => EnumValueTypes::name($wrappedClass, $scope->carriesImports),
+            // A pure enum declares no value; its read publishes as any backed enum's rather than declining to unknown.
+            'value' => EnumValueTypes::value($wrappedClass, $scope->carriesImports)
+                ?? EnumValueTypes::value(BackedEnum::class, $scope->carriesImports),
+            default => null,
+        };
 
-        if ($innerProp === 'value') {
-            return [
-                ...$result,
-                'type' => $this->resolveEnumValueBackingType($scope),
-            ];
-        }
-
-        return $result;
+        return $result ?? ValueResult::unknown();
     }
 
     /**
@@ -268,24 +261,5 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         return $result; // @codeCoverageIgnore
-    }
-
-    /**
-     * Determine the TypeScript type for a backed enum's `->value` property from its backing type.
-     */
-    private function resolveEnumValueBackingType(AnalysisScope $scope): string
-    {
-        $wrappedClass = $this->resolveWrappedClass($scope);
-
-        if ($wrappedClass !== null && enum_exists($wrappedClass)) {
-            $r = new ReflectionEnum($wrappedClass);
-            $backingType = $r->getBackingType();
-
-            if ($backingType !== null) {
-                return $backingType->getName() === 'string' ? 'string' : 'number';
-            }
-        }
-
-        return 'string | number';
     }
 }

@@ -3424,7 +3424,7 @@ declare global {
             limits: { daily: number; codes: string[] };
             tags: (string | number)[];
             notes: never[];
-            stage_name?: string;
+            stage_name?: 'Draft' | 'Published';
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {
@@ -3520,7 +3520,7 @@ declare global {
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
-            value: string;
+            value: app.enums.MediaTypeType;
         }
         /**
          * Resource with non-conventional name — tests #[UseResource] attribute model resolution.
@@ -3990,8 +3990,8 @@ declare global {
             unflagged_rows: { id: number }[];
         }
         export interface MediaTypeInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            value?: app.enums.MediaTypeType;
             meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
@@ -4000,14 +4000,14 @@ declare global {
          * to exercise additional coverage paths.
          */
         export interface MediaTypePositiveInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            value?: app.enums.MediaTypeType;
             meta?: { label?: string };
             empty?: never[];
         }
         export interface MediaTypeResource {
-            name: string;
-            value: string;
+            name: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            value: app.enums.MediaTypeType;
             meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
@@ -4566,10 +4566,10 @@ declare global {
             headline_id: number;
             headline: string;
             maybe: { maybe_title: string | null };
-            status_label: { label: string; value: number };
-            status_payload: { payload_status: unknown; payload_name: string };
+            status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
+            status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
             payload_status: app.enums.StatusType;
-            payload_name: string;
+            payload_name: 'Draft' | 'Published';
         }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
@@ -5680,7 +5680,7 @@ declare global {
          * Also accesses an unknown property to test the unknown enum property path.
          */
         export interface UnitEnumResource {
-            name: string;
+            name: app.enums.VisibilityType;
             value: string | number;
             custom: unknown;
         }

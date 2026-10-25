@@ -27,6 +27,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Role;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
@@ -140,8 +141,8 @@ it('resolves $this->resource->name / ->value on an enum-wrapped resource', funct
     $name = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine());
     $value = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'value'), $scope, chainHandlersThrowingEngine());
 
-    expect($name)->toBe(['type' => 'string', 'optional' => false])
-        ->and($value)->toBe(['type' => 'string', 'optional' => false]);
+    expect($name)->toBe(['type' => "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'", 'optional' => false])
+        ->and($value)->toBe(['type' => 'MediaTypeType', 'optional' => false, 'directEnumFqcn' => MediaType::class]);
 });
 
 // Guard-order pin: the wrapped-ENUM branch must run before the wrapped-MODEL branch, and BOTH must

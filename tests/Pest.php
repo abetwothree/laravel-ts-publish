@@ -63,3 +63,34 @@ function publishedResourceKeyTypes(string $resource, string $model): array
 
     return $keys;
 }
+
+/**
+ * The keys analyze() returns, each suffixed `?` when optional, mapped to its type.
+ *
+ * @param  class-string  $class
+ * @return array<string, string>
+ */
+function analyzedKeyTypes(string $class, string $method = 'toArray'): array
+{
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze($class, $method)->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+/**
+ * Every type name analyze()'s typeImports import, sorted.
+ *
+ * @param  class-string  $class
+ * @return list<string>
+ */
+function analyzedImportNames(string $class, string $method = 'toArray'): array
+{
+    $names = array_merge(...array_values(resolve(AstEngine::class)->analyze($class, $method)->typeImports));
+    sort($names);
+
+    return $names;
+}

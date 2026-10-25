@@ -1841,8 +1841,8 @@ describe('the resource proxy', function () {
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
         ['$this->resource', 'MediaTypeType | null'],
-        ['$this->resource->name', 'string'],
-        ['$this->resource->value', 'string'],
+        ['$this->resource->name', "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'"],
+        ['$this->resource->value', 'MediaTypeType'],
         // MediaType::extensions() declares only array, so its match of string lists types it.
         ['$this->resource->extensions()', 'string[]'],
     ]);

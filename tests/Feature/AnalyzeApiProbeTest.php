@@ -16,6 +16,7 @@ use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\EnumValuesPayload;
 
 /**
  * Renders `AstEngine::analyze()`'s three fields into real `.ts` modules, mechanically — no
@@ -53,6 +54,8 @@ function analysisProbeCases(): array
         'UserModel' => [User::class, 'toArray', User::class],
         // A form request, whose published interface is NOT an engine product — see the docs.
         'StorePostRequest' => [StorePostRequest::class, 'rules', null],
+        // Enum `->value` and `->name` reads, each the published alias with its import or the literal union.
+        'EnumValuesPayload' => [EnumValuesPayload::class, 'toArray', null],
     ];
 }
 

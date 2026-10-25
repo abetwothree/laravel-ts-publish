@@ -936,8 +936,8 @@ it('reads a parameter bound to an enum case default as that enum', function (str
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
         ->toBe($type);
 })->with([
-    '->value' => ['->value', 'number'],
-    '->name' => ['->name', 'string'],
+    '->value' => ['->value', 'StatusType'],
+    '->name' => ['->name', "'Draft' | 'Published'"],
     'a method' => ['->icon()', 'string'],
 ]);
 

@@ -2005,8 +2005,8 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe('string');
-        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['name']['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
             ->toEndWith(' }')
@@ -2020,10 +2020,10 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         expect($data->modelClass)->toBeNull();
     });
 
-    test('enum-backed resource has no type imports', function () {
+    test('enum-backed resource imports only its enum\'s value type', function () {
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
-        expect($data->typeImports)->toBeEmpty();
+        expect($data->typeImports)->toBe(['../../enums' => ['MediaTypeType']]);
     });
 });
 
@@ -2032,8 +2032,8 @@ describe('ResourceTransformer with MediaTypeInstanceOfResource (instanceof guard
         $data = (new ResourceTransformer(MediaTypeInstanceOfResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe('string');
-        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['name']['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
             ->toEndWith(' }')
@@ -3465,7 +3465,7 @@ it('types the resource\'s own untyped properties from their defaults, over a sam
         'limits' => '{ daily: number; codes: string[] }',
         'tags' => '(string | number)[]',
         'notes' => 'never[]',
-        'stage_name' => 'string',
+        'stage_name' => "'Draft' | 'Published'",
     ])
         ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusType \\} from '[^']+';$/m");
 });

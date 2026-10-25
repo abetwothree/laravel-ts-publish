@@ -95,10 +95,10 @@ test('a helper body reads its typed parameters through every reading of it', fun
         'headline_id' => 'number',
         'headline' => 'string',
         'maybe' => '{ maybe_title: string | null }',
-        'status_label' => '{ label: string; value: number }',
-        'status_payload' => '{ payload_status: unknown; payload_name: string }',
+        'status_label' => "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
+        'status_payload' => "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
         'payload_status' => 'StatusType',
-        'payload_name' => 'string',
+        'payload_name' => "'Draft' | 'Published'",
     ]);
 });
 

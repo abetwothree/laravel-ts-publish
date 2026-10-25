@@ -32,7 +32,7 @@ it('reads a receiver bound to a default, a whenNotNull() closure and a collectio
         'default_author?' => 'string | null',
         'default_key?' => 'number | null',
         'not_null_author' => 'string | null',
-        'not_null_status' => 'string',
+        'not_null_status' => "'Draft' | 'Published'",
         'not_null_rating' => 'string | null',
         'not_null_callable' => 'string | null',
         'callable_first?' => '{ first: string | null }',

@@ -13471,7 +13471,7 @@
                 },
                 {
                     "name": "stage_name",
-                    "type": "string",
+                    "type": "'Draft' | 'Published'",
                     "optional": true
                 }
             ]
@@ -13820,7 +13820,7 @@
             "properties": [
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 }
             ]
@@ -15500,12 +15500,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15520,12 +15520,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15545,12 +15545,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
                     "optional": false
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 },
                 {
@@ -17293,12 +17293,12 @@
                 },
                 {
                     "name": "status_label",
-                    "type": "{ label: string; value: number }",
+                    "type": "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
                     "optional": false
                 },
                 {
                     "name": "status_payload",
-                    "type": "{ payload_status: unknown; payload_name: string }",
+                    "type": "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
                     "optional": false
                 },
                 {
@@ -17308,7 +17308,7 @@
                 },
                 {
                     "name": "payload_name",
-                    "type": "string",
+                    "type": "'Draft' | 'Published'",
                     "optional": false
                 }
             ]
@@ -20975,7 +20975,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "VisibilityType",
                     "optional": false
                 },
                 {

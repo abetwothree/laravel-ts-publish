@@ -14,5 +14,5 @@ export interface DepotDefaultsResource
     limits: { daily: number; codes: string[] };
     tags: (string | number)[];
     notes: never[];
-    stage_name?: string;
+    stage_name?: 'Draft' | 'Published';
 }
