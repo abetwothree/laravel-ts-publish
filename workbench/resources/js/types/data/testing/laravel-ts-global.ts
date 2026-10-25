@@ -2629,6 +2629,14 @@ declare global {
             id: number;
             slug: string;
         }
+        /**
+         * Fixture: a model-less resource whose `toArray()` calls and spreads helpers NoticeResource overrides, and spreads
+         * the `with()` it leaves to JsonResource.
+         */
+        export interface BaseNoticeResource {
+            headline: string | number;
+            base_only: number;
+        }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
         }
@@ -4273,6 +4281,14 @@ declare global {
          */
         export interface NonThisReceiverSpreadResource {
             id: number;
+        }
+        /**
+         * Fixture: the runtime class of BaseNoticeResource's `toArray()`, overriding the helper it calls, the helper it
+         * spreads and the `with()` it spreads.
+         */
+        export interface NoticeResource {
+            headline: string | number;
+            base_only: number;
         }
         /**
          * only() away from a relation receiver: a top-level spread that names a withCount() virtual the schema

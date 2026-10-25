@@ -10819,6 +10819,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BaseNoticeResource": {
+            "name": "BaseNoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BaseSharedResource": {
             "name": "BaseSharedResource",
             "properties": []
@@ -16335,6 +16350,21 @@
             "properties": [
                 {
                     "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NoticeResource": {
+            "name": "NoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
                     "type": "number",
                     "optional": false
                 }
