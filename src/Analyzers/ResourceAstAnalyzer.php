@@ -173,7 +173,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
         private readonly array $passed = [],
-        private readonly ?ReflectionClass $runtimeClass = null,
+        ?ReflectionClass $runtimeClass = null,
         private readonly bool $readsCall = false,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
@@ -184,6 +184,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
         }
+
+        $this->scope->runtimeReflection = $runtimeClass ?? $this->scope->subjectReflection;
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
         $this->scope->seedCollectionFacts($this->runtimeClass());
@@ -866,7 +868,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null; // @codeCoverageIgnore
         }
 
-        if (isset($this->scope->visitedSpreadMethods[$methodName])) {
+        $method = $this->scope->subjectReflection->getMethod($methodName);
+
+        if (isset($this->scope->visitedSpreadMethods[$method->getName()])) {
             return null;
         }
 
@@ -874,7 +878,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $this->frameworkMethodAnalysis($methodName);
         }
 
-        $method = $this->scope->subjectReflection->getMethod($methodName);
         $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
         $targetMethod = $context?->method;
 
@@ -888,8 +891,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $stmts = $targetMethod->stmts;
         $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
-        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($methodName, $method, $proofs, $rewritten, $stmts, $passed): void {
-            $scope->enterSubjectMethod($methodName, LaravelTsPublish::methodDeclaringFileClass($method), $proofs, $rewritten);
+        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $proofs, $rewritten, $stmts, $passed): void {
+            $scope->enterSubjectMethod($method, $proofs, $rewritten);
             // The helper's body is seeded with its own locals, whatever local read the caller is in.
             $scope->readingLocals = [];
             $this->seedVarBindings($method, $stmts, $passed);
@@ -1179,7 +1182,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function runtimeClass(): ReflectionClass
     {
-        return $this->runtimeClass ?? $this->scope->subjectReflection;
+        return $this->scope->runtimeReflection;
     }
 
     /**
@@ -1207,6 +1210,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $method = $subject->getMethod($this->methodName);
+        // A parent declared in the subject's file is located too, and its body's `self` names it.
+        $this->scope->declaringClass = $method->getDeclaringClass();
 
         if ($method->getFileName() !== $subject->getFileName()) {
             $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);

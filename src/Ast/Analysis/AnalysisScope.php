@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -39,6 +40,7 @@ use PhpParser\Node\Scalar\MagicConst\Line;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * The mutable state threaded through one ResourceAstAnalyzer::analyze() call: the subject under
@@ -107,6 +109,7 @@ use ReflectionClass;
  *      modelClass: class-string<Model>|null,
  *      forwardsUndeclaredMembersTo: class-string|null,
  *      declaringFileClass: ReflectionClass<object>,
+ *      declaringClass: ReflectionClass<object>,
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
@@ -388,7 +391,7 @@ final class AnalysisScope
     public array $readingLocals = [];
 
     /**
-     * Spread methods currently on the analysis stack, so a method that spreads itself — directly or
+     * Spread methods currently on the analysis stack, by declared name, so a method that spreads itself — directly or
      * through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
      *
      * @var array<string, true>
@@ -422,6 +425,22 @@ final class AnalysisScope
     public ReflectionClass $declaringFileClass;
 
     /**
+     * The class `self` names in the body under analysis: its method's declaring class, which PHP reports as the using
+     * class for a trait's method. The subject, unless the body is an ancestor's.
+     *
+     * @var ReflectionClass<object>
+     */
+    public ReflectionClass $declaringClass;
+
+    /**
+     * The runtime class: the class `$this` and `static` are when the body runs. The subject, unless ResourceAstAnalyzer
+     * reads an ancestor's body for a subclass; set by the constructor, rebase() and ResourceAstAnalyzer only.
+     *
+     * @var ReflectionClass<object>
+     */
+    public ReflectionClass $runtimeReflection;
+
+    /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
      * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped, not fixed:
      *                                                TernaryHandler narrows it for an `instanceof` true arm and
@@ -432,6 +451,8 @@ final class AnalysisScope
         public ?string $modelClass = null,
     ) {
         $this->declaringFileClass = $subjectReflection;
+        $this->declaringClass = $subjectReflection;
+        $this->runtimeReflection = $subjectReflection;
 
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
@@ -476,6 +497,9 @@ final class AnalysisScope
     public function rebase(ReflectionClass $subject, ?string $modelClass): void
     {
         $this->subjectReflection = $subject;
+        $this->runtimeReflection = $subject;
+        // Macroable binds a closure with the subject as its scope class, so `self` names it there.
+        $this->declaringClass = $subject;
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -515,6 +539,27 @@ final class AnalysisScope
     public function hasResourceProxy(): bool
     {
         return $this->subjectReflection->isSubclassOf(JsonResource::class);
+    }
+
+    /**
+     * The class whose declaration `$this->$member` reaches from the body under analysis: the declaring class when it
+     * declares that member private, since PHP binds a private member to the calling scope, else the runtime class.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function thisMemberClass(string $member, bool $isMethod): ReflectionClass
+    {
+        $declaring = $this->declaringClass;
+        $declared = match (true) {
+            $isMethod => $declaring->hasMethod($member) ? $declaring->getMethod($member) : null,
+            default => $declaring->hasProperty($member) ? $declaring->getProperty($member) : null,
+        };
+
+        // Reflection lists an ancestor's private method on its subclasses too, though no subclass body can call it.
+        $ownPrivate = $declared !== null && $declared->isPrivate()
+            && $declared->getDeclaringClass()->getName() === $declaring->getName();
+
+        return $ownPrivate ? $declaring : $this->runtimeReflection;
     }
 
     /**
@@ -841,11 +886,10 @@ final class AnalysisScope
      * Set the caller's state aside to read the subject's own method $method, as within()'s $enter: no caller name
      * reaches its body, which reads `$this` as the subject from its own file, and only $proofs of `$this` reads hold.
      *
-     * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
      */
-    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, array $rewritten = []): void
+    public function enterSubjectMethod(ReflectionMethod $method, array $proofs, array $rewritten = []): void
     {
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
@@ -855,11 +899,12 @@ final class AnalysisScope
             fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
         ));
 
-        $this->visitedSpreadMethods[$method] = true;
+        $this->visitedSpreadMethods[$method->getName()] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        $this->declaringFileClass = $declaringFileClass;
+        $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        $this->declaringClass = $method->getDeclaringClass();
     }
 
     /**
@@ -1262,6 +1307,7 @@ final class AnalysisScope
             'modelClass' => $this->modelClass,
             'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
             'declaringFileClass' => $this->declaringFileClass,
+            'declaringClass' => $this->declaringClass,
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
@@ -1284,6 +1330,7 @@ final class AnalysisScope
         $this->modelClass = $state['modelClass'];
         $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];
         $this->declaringFileClass = $state['declaringFileClass'];
+        $this->declaringClass = $state['declaringClass'];
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];

@@ -170,6 +170,7 @@ final class AstEngine
         if ($context->reflection->hasMethod($methodName)) {
             $method = $context->reflection->getMethod($methodName);
             $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+            $scope->declaringClass = $method->getDeclaringClass();
 
             resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
         }

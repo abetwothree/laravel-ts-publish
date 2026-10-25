@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -56,11 +55,16 @@ final class SubjectHelperReturnResolver
         $name = $call->name->toString();
         $subject = $scope->subjectReflection;
 
-        if (! $subject->hasMethod($name) || isset($scope->visitedSpreadMethods[$name])) {
+        if (! $subject->hasMethod($name)) {
             return null;
         }
 
         $method = $subject->getMethod($name);
+
+        if (isset($scope->visitedSpreadMethods[$method->getName()])) {
+            return null;
+        }
+
         $declaration = resolve(MethodLocator::class)->locate($subject->getName(), $name)?->method;
         $stmts = $declaration->stmts ?? [];
         $returns = $this->collectReturnExpressions($stmts);
@@ -78,8 +82,8 @@ final class SubjectHelperReturnResolver
         $proofs = $this->proofsAcrossCall($scope, $call);
         $rewritten = $this->rewrittenThisPaths($stmts, $scope);
 
-        $result = $scope->within(function () use ($scope, $name, $method, $proofs, $rewritten, $passed, $stmts): void {
-            $scope->enterSubjectMethod($name, LaravelTsPublish::methodDeclaringFileClass($method), $proofs, $rewritten);
+        $result = $scope->within(function () use ($scope, $method, $proofs, $rewritten, $passed, $stmts): void {
+            $scope->enterSubjectMethod($method, $proofs, $rewritten);
             resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
             $this->seedBody($stmts, $scope);
         }, fn (): array => ValueResult::analyzeClosureUnion($returns, $engine, $scope));
