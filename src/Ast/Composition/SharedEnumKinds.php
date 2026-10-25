@@ -74,15 +74,11 @@ final class SharedEnumKinds
      */
     private static function tokens(MethodAnalysis $analysis, int|string $property): ClassTokenQueue
     {
-        return new ClassTokenQueue(
-            [
-                ...(isset($analysis->enumResources[$property]) ? [$analysis->enumResources[$property]] : []),
-                ...(isset($analysis->directEnumFqcns[$property]) ? [$analysis->directEnumFqcns[$property]] : []),
-                ...($analysis->inlineEnumFqcns[$property] ?? []),
-            ],
-            ValueResult::enumTypeName(...),
-            ValueResult::enumSiblingNames(...),
-        );
+        return ValueResult::enumTokens([
+            ...(isset($analysis->enumResources[$property]) ? [$analysis->enumResources[$property]] : []),
+            ...(isset($analysis->directEnumFqcns[$property]) ? [$analysis->directEnumFqcns[$property]] : []),
+            ...($analysis->inlineEnumFqcns[$property] ?? []),
+        ]);
     }
 
     /**

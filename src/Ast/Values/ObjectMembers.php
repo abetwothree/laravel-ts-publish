@@ -6,9 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
@@ -51,20 +49,7 @@ final class ObjectMembers
             return null;
         }
 
-        $models = new ClassTokenQueue(
-            self::channelFqcns($value['modelFqcn'] ?? null, $value['embeddedModelFqcns'] ?? []),
-            class_basename(...),
-        );
-        $resources = new ClassTokenQueue(
-            self::channelFqcns($value['resourceFqcn'] ?? null, $value['embeddedResourceFqcns'] ?? []),
-            static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
-        );
-        $enums = new ClassTokenQueue(
-            self::channelFqcns($value['directEnumFqcn'] ?? null, $value['embeddedEnumFqcns'] ?? []),
-            ValueResult::enumTypeName(...),
-            ValueResult::enumSiblingNames(...),
-        );
-
+        [$models, $resources, $enums] = ValueResult::tokenQueues($value);
         $analysis = new MethodAnalysis;
 
         foreach ($members as [$key, $type]) {
@@ -110,18 +95,6 @@ final class ObjectMembers
             || (! $carriesImports && TsTypeString::shapeValueHasUnimportableToken($value['type']));
 
         return $losesText ? null : self::analysis($value);
-    }
-
-    /**
-     * A value's classes of one kind: its single-entry channel's class, then its embedded queue.
-     *
-     * @param  class-string|null  $single
-     * @param  list<class-string>  $embedded
-     * @return list<class-string>
-     */
-    private static function channelFqcns(?string $single, array $embedded): array
-    {
-        return [...($single !== null ? [$single] : []), ...$embedded];
     }
 
     /**

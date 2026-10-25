@@ -428,6 +428,34 @@ final class ValueResult
     }
 
     /**
+     * The classes behind a result's tokens, one queue per kind: its models, its resources and its enums read directly.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return array{ClassTokenQueue, ClassTokenQueue, ClassTokenQueue}
+     */
+    public static function tokenQueues(array $result): array
+    {
+        return [
+            new ClassTokenQueue(self::modelChannelFqcns($result), class_basename(...)),
+            new ClassTokenQueue(
+                self::resourceChannelFqcns($result),
+                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
+            ),
+            self::enumTokens(self::directEnumChannelFqcns($result)),
+        ];
+    }
+
+    /**
+     * A queue of enum classes, each read by every name its tokens spell.
+     *
+     * @param  list<class-string>  $enums
+     */
+    public static function enumTokens(array $enums): ClassTokenQueue
+    {
+        return new ClassTokenQueue($enums, self::enumTypeName(...), self::enumSiblingNames(...));
+    }
+
+    /**
      * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
      */
     private static function withoutEmptyListBesideList(string $type): string
@@ -715,16 +743,8 @@ final class ValueResult
         $wraps = self::wrapsAnEnum($arms);
 
         foreach ($arms as $arm) {
-            $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
-            $resources = new ClassTokenQueue(
-                self::resourceChannelFqcns($arm),
-                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
-            );
-            $enums = new ClassTokenQueue(
-                $wraps ? [] : self::directEnumChannelFqcns($arm),
-                self::enumTypeName(...),
-                self::enumSiblingNames(...),
-            );
+            [$models, $resources, $enums] = self::tokenQueues($arm);
+            $enums = $wraps ? self::enumTokens([]) : $enums;
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
                 if ($member === 'null') {

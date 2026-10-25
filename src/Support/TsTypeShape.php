@@ -52,10 +52,10 @@ final class TsTypeShape
     public static function memberType(string $type, string $key): ?string
     {
         foreach (self::arms($type) as $arm) {
-            if (str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')) {
-                $arguments = self::splitTopLevel(substr($arm, 7, -1), [',']);
+            $record = self::recordArguments($arm);
 
-                return $arguments[1] ?? null;
+            if ($record !== null) {
+                return $record[1];
             }
 
             if (self::isWrapped($arm, '[', ']')) {

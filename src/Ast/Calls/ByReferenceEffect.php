@@ -145,16 +145,14 @@ enum ByReferenceEffect
             );
         }
 
-        if (str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')) {
-            $arguments = TsTypeShape::splitTopLevel(substr($arm, 7, -1), [',']);
+        $record = TsTypeShape::recordArguments($arm);
 
-            return count($arguments) === 2
-                ? [[$arguments[1], match ($arguments[0]) {
-                    'number' => 'number',
-                    'string' => 'string',
-                    default => 'string | number',
-                }]]
-                : null;
+        if ($record !== null) {
+            return [[$record[1], match ($record[0]) {
+                'number' => 'number',
+                'string' => 'string',
+                default => 'string | number',
+            }]];
         }
 
         $members = TsTypeShape::members($arm);
@@ -212,14 +210,12 @@ enum ByReferenceEffect
         $arms = [];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $arm) {
-            $arguments = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
-                ? TsTypeShape::splitTopLevel(substr($arm, 7, -1), [','])
-                : [];
+            $record = TsTypeShape::recordArguments($arm);
 
-            if (count($arguments) === 2) {
+            if ($record !== null) {
                 $found = true;
-                $arms[] = 'Record<'.$arguments[0].', '.implode(' | ', array_values(array_unique([
-                    ...TsTypeShape::splitTopLevel($arguments[1], ['|']),
+                $arms[] = 'Record<'.$record[0].', '.implode(' | ', array_values(array_unique([
+                    ...TsTypeShape::splitTopLevel($record[1], ['|']),
                     $member,
                 ]))).'>';
 
