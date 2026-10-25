@@ -557,8 +557,8 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The inline object a variable's walk over a body reads, from the keys $bound gives a parameter on entry; null where
-     * the walk reads it only partly, or reads no key.
+     * The inline object a variable's walk over a body reads, from the keys $bound gives a parameter on entry; null
+     * where the walk reads it only partly, or reads no key.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return ValueExpressionResult|null
