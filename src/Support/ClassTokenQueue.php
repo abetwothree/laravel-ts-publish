@@ -127,20 +127,46 @@ final class ClassTokenQueue
      */
     public function take(string $text): array
     {
+        return array_column($this->spellings($text), 0);
+    }
+
+    /**
+     * The class behind each of this arm's tokens in the text, in order, beside the name the token spells. Reads the
+     * queue as take() does.
+     *
+     * @return list<array{class-string, string}>
+     */
+    public function spellings(string $text): array
+    {
         if ($this->pattern === null || preg_match_all($this->pattern, $text, $matches) === 0) {
             return [];
         }
 
-        $taken = [];
+        return array_map(fn (string $spelled): array => [$this->classFor($spelled), $spelled], $matches[0]);
+    }
 
-        foreach ($matches[0] as $spelled) {
-            $name = $this->queueOf[$spelled];
-            $occurrence = $this->seen[$name] ?? 0;
-            $this->seen[$name] = $occurrence + 1;
-            $taken[] = $this->queues[$name][TsTypeString::queuePosition($occurrence, count($this->queues[$name]))];
+    /**
+     * The text with each of this arm's tokens respelled by `$spell`, given the class behind it, the name it spells and
+     * the character right after it. Reads the queue as take() does.
+     *
+     * @param  Closure(class-string, string, string): string  $spell
+     */
+    public function rewrite(string $text, Closure $spell): string
+    {
+        if ($this->pattern === null || preg_match_all($this->pattern, $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
+            return $text;
         }
 
-        return $taken;
+        $rewritten = '';
+        $from = 0;
+
+        foreach ($matches[0] as [$spelled, $at]) {
+            $end = $at + strlen($spelled);
+            $rewritten .= substr($text, $from, $at - $from).$spell($this->classFor($spelled), $spelled, substr($text, $end, 1));
+            $from = $end;
+        }
+
+        return $rewritten.substr($text, $from);
     }
 
     /**
@@ -154,5 +180,19 @@ final class ClassTokenQueue
             fn (int $read, string $name): bool => $read < count($this->queues[$name])
                 && count(array_unique($this->queues[$name])) > 1,
         );
+    }
+
+    /**
+     * The class behind the next token that spells the name, counting it as read.
+     *
+     * @return class-string
+     */
+    private function classFor(string $spelled): string
+    {
+        $name = $this->queueOf[$spelled];
+        $occurrence = $this->seen[$name] ?? 0;
+        $this->seen[$name] = $occurrence + 1;
+
+        return $this->queues[$name][TsTypeString::queuePosition($occurrence, count($this->queues[$name]))];
     }
 }

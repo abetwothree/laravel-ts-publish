@@ -11,9 +11,11 @@ use Illuminate\Support\Str;
  * Assigns collision-free local TypeScript names to imported FQCNs.
  *
  * resolve() returns a deterministic FQCN => local-name map, extending each alias by namespace
- * segment until unique (numeric suffix as final tiebreak). resolveSiblings() names each FQCN's sibling names after it.
+ * segment until unique (numeric suffix as final tiebreak). resolveSiblings() names each FQCN's sibling names after it,
+ * as SiblingImportNames: FQCN => sibling name => its local name.
  *
  * @phpstan-type RegistryEntry array{fqcn: string, typeName: string, preferredAlias: string|null}
+ * @phpstan-type SiblingImportNames array<string, array<string, string>>
  */
 class ImportNameRegistry
 {
@@ -128,7 +130,7 @@ class ImportNameRegistry
      * `StatusType as CrmStatusType`. A sibling name another import already holds takes a numeric tiebreak.
      *
      * @param  array<string, string>  $resolved  FQCN => local name, as resolve() returned it
-     * @return array<string, array<string, string>> FQCN => sibling name => local name
+     * @return SiblingImportNames
      */
     public function resolveSiblings(array $resolved): array
     {

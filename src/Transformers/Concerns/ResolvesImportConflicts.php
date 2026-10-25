@@ -11,6 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 
 /**
  * Shared import conflict resolution helpers for transformers.
+ *
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ *
+ * @phpstan-type TypedEntry array{type: string}
  */
 trait ResolvesImportConflicts
 {
@@ -20,7 +24,7 @@ trait ResolvesImportConflicts
     /** @var array<string, string> FQCN => aliased TypeScript const name (only for conflicting imports) */
     protected array $constImportAliases = [];
 
-    /** @var array<string, array<string, string>> FQCN => each sibling name it is imported under => its local name */
+    /** @var SiblingImportNames each sibling name an FQCN is imported under, such as an enum's `…Kind` */
     protected array $siblingImportNames = [];
 
     /**
@@ -127,7 +131,7 @@ trait ResolvesImportConflicts
      * the registry names the two alike and no `…Kind` the file never spells claims a name.
      *
      * @param  array<string, string>  $enumFqcnMap  FQCN => unaliased enum type name
-     * @param  array<array-key, array{type: string}>  $entries  key => the entry, its type unaliased
+     * @param  array<array-key, TypedEntry>  $entries  key => the entry, its type unaliased
      * @param  array<array-key, list<string>>  $queues  key => the FQCNs its import channels carry
      */
     protected function registerEnumKinds(ImportNameRegistry $registry, array $enumFqcnMap, array $entries, array $queues): void
@@ -184,7 +188,7 @@ trait ResolvesImportConflicts
      * @param  array<string, string>  $resolved  FQCN => final local type name
      * @param  array<string, string>  $typeNames  FQCN => unaliased TypeScript type name
      * @param  array<string, string>  $constNames  FQCN => final local const name (empty when the caller has no const imports)
-     * @param  array<string, array<string, string>>  $siblings  FQCN => sibling name => final local name
+     * @param  SiblingImportNames  $siblings  each sibling name's final local name
      */
     protected function applyResolvedImportNames(
         array $resolved,

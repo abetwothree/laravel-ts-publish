@@ -6,12 +6,19 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumNamesController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapOrNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumNamePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumNameMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumNamesMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Routing\Router;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\PostStatusBroadcast;
@@ -106,4 +113,48 @@ it('imports the Kind a metadata provider key reads', function () {
     expect($data->properties)->toBe(['status' => 0, 'status_name' => 'Draft'])
         ->and($data->propertyTypes)->toBe(['status' => 'StatusType', 'status_name' => 'StatusKind'])
         ->and($data->typeImports)->toBe(['../enums' => ['StatusKind', 'StatusType']]);
+});
+
+it('imports the Kind a model accessor reads beside the Type', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = new ModelTransformer(EnumNamePost::class);
+    $post = (new EnumNamePost)->forceFill(['is_pinned' => false, 'status' => 0]);
+
+    expect($transformer->appends['status_name']['type'])->toBe('StatusKind')
+        ->and($transformer->appends['status_both']['type'])->toBe('StatusType | StatusKind')
+        ->and(new ModelWriter(new Filesystem)->write($transformer))
+        ->toMatch("/^import type \\{ [^}]*\\bStatusKind, StatusType\\b[^}]* \\} from '[^']+';$/m")
+        ->and([$post->status_name, $post->status_both])->toBe(['Draft', 'Draft']);
+});
+
+it('spells two same-named enums\' case names as literals in a route file, which aliases no import', function () {
+    $router = app(Router::class);
+    $router->get('/same-named/both', [SameNamedEnumNamesController::class, 'both']);
+    $router->get('/same-named/app', [SameNamedEnumNamesController::class, 'app']);
+    $router->get('/same-named/crm', [SameNamedEnumNamesController::class, 'crm']);
+
+    $transformer = new RouteTransformer(SameNamedEnumNamesController::class);
+    $pageTypes = array_column($transformer->actions, 'pageType', 'methodName');
+    $crmNames = "'Lead' | 'Prospect' | 'Active' | 'Churned'";
+
+    expect($pageTypes)->toBe([
+        'both' => "Inertia.SharedData & { app_name: 'Draft' | 'Published', crm_name: {$crmNames}, priority_name: PriorityKind }",
+        'app' => "Inertia.SharedData & { name: 'Draft' | 'Published' }",
+        'crm' => "Inertia.SharedData & { name: {$crmNames} }",
+    ])->and(array_merge(...array_values($transformer->typeImports)))->toBe(['PriorityKind']);
+});
+
+it('spells two same-named enums\' case names as literals in a metadata companion, which aliases no import', function () {
+    config()->set('ts-publish.model_metadata.provider_class', SameNamedEnumNamesMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['app_names' => ['Draft'], 'crm_name' => 'Lead', 'priority_name' => 'Low'])
+        ->and($data->propertyTypes)->toBe([
+            'app_names' => "('Draft' | 'Published')[]",
+            'crm_name' => "'Lead' | 'Prospect' | 'Active' | 'Churned'",
+            'priority_name' => 'PriorityKind',
+        ])
+        ->and($data->typeImports)->toBe(['../enums' => ['PriorityKind']]);
 });

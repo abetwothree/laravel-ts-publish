@@ -8,6 +8,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
  * top-level unions, null hoisting, same-basename aliasing, enum substitution, global qualification.
  *
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ *
  * @internal
  */
 class TsTypeString
@@ -140,8 +142,7 @@ class TsTypeString
      *                                   aliasPropertyType() consumes only the matching prefix, in order
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
-     * @param  array<string, array<string, string>>  $siblings  FQCN => each sibling name it is imported under, such as
-     *                                                          an enum's `…Kind` => the local name the file gives it
+     * @param  SiblingImportNames  $siblings  each sibling name an FQCN is imported under, such as an enum's `…Kind`
      */
     public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases, array $siblings = []): string
     {
@@ -380,7 +381,7 @@ class TsTypeString
      * @param  list<string>  $itemFqcns
      * @param  array<string, string>  $nameMap  FQCN => unaliased name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
-     * @param  array<string, array<string, string>>  $siblings  FQCN => sibling name => its local name
+     * @param  SiblingImportNames  $siblings
      */
     protected function aliasInQueueOrder(
         string $type,

@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -76,6 +77,8 @@ use UnitEnum;
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
+ *
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -1616,10 +1619,11 @@ class LaravelTsPublish
      *                                   aliasPropertyType() consumes only the matching prefix, in order
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  SiblingImportNames  $siblings  each sibling name an FQCN is imported under, such as an enum's `…Kind`
      */
-    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
+    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases, array $siblings = []): string
     {
-        return TsTypeString::aliasPropertyType($type, $itemFqcns, $nameMap, $aliases);
+        return TsTypeString::aliasPropertyType($type, $itemFqcns, $nameMap, $aliases, $siblings);
     }
 
     /**

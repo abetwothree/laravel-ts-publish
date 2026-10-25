@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
@@ -52,6 +53,7 @@ use Throwable;
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
+ *     pageKinds?: list<array<string, class-string>>,
  *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
@@ -365,6 +367,8 @@ class InertiaPageAnalyzer
         $allFqcns = [];
         /** @var list<class-string> $constFqcns */
         $constFqcns = [];
+        /** @var list<array<string, class-string>> $pageKinds per page type, each `…Kind` it spells => its enum */
+        $pageKinds = [];
         /** @var array<string, list<string>> $externalImports */
         $externalImports = [];
 
@@ -388,6 +392,7 @@ class InertiaPageAnalyzer
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
 
             $this->forgetOverriddenChannels($analysis, $casts);
+            $pageKinds[] = SharedEnumKinds::spellApart($analysis);
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $renumbered = $this->renumberTopLevel($props, $casts, $subject);
@@ -426,6 +431,7 @@ class InertiaPageAnalyzer
             'component' => count($components) === 1 ? $components[0] : $components,
             'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
+            'pageKinds' => $pageKinds,
             'enumConstFqcns' => $constFqcns,
             'externalImports' => $externalImports,
         ];

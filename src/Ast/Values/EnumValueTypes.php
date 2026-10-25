@@ -83,13 +83,23 @@ final class EnumValueTypes
         // A pure enum publishes its names as its values, so its `…Type` is the name union; a backed one has a `…Kind`.
         $backed = $reflection->isBacked();
 
-        if (self::aliasUsable($reflection, $carriesImports, fromNames: $backed)) {
-            return self::alias($reflection, kind: $backed);
+        return self::aliasUsable($reflection, $carriesImports, fromNames: $backed)
+            ? self::alias($reflection, kind: $backed)
+            : self::typed(self::caseNames($reflection));
+    }
+
+    /**
+     * The literal union of the enum's case names, in case order: what its `->name` sends, spelled with no import.
+     */
+    public static function nameUnion(string $enum): string
+    {
+        $reflection = self::casedEnum($enum);
+
+        if ($reflection === null) {
+            return 'string'; // @codeCoverageIgnore
         }
 
-        return self::typed(self::literals(
-            self::caseScalars($reflection, fn (ReflectionEnumUnitCase $case): string => $case->getName()),
-        ));
+        return self::caseNames($reflection);
     }
 
     /**
@@ -110,7 +120,8 @@ final class EnumValueTypes
 
     /**
      * Whether the enum's alias spells what PHP sends: the reader carries imports, `ts:publish` writes the enum, and no
-     * case's #[TsCase] replaces the scalar the alias is built from, its published name `$fromNames`, else its value.
+     * case's #[TsCase] replaces the scalar the alias is built from, with `$fromNames` its published name, else its
+     * value.
      *
      * @param  ReflectionEnum<UnitEnum>  $reflection
      */
@@ -136,6 +147,16 @@ final class EnumValueTypes
         $enum = $reflection->getName();
 
         return [...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)), 'directEnumFqcn' => $enum];
+    }
+
+    /**
+     * The enum's case names as a union of TypeScript literals, in case order.
+     *
+     * @param  ReflectionEnum<UnitEnum>  $reflection
+     */
+    private static function caseNames(ReflectionEnum $reflection): string
+    {
+        return self::literals(self::caseScalars($reflection, fn (ReflectionEnumUnitCase $case): string => $case->getName()));
     }
 
     /**

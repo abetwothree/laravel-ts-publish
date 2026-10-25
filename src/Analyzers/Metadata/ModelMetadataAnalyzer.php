@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -48,6 +49,11 @@ class ModelMetadataAnalyzer
         $declared = $this->parseDeclaredTypes($method);
         $casts = $this->parseTsCasts($method);
         $analysis = $this->safeAnalyzeBody($method);
+
+        if ($analysis !== null) {
+            SharedEnumKinds::spellApart($analysis);
+        }
+
         $inferred = $analysis === null ? [] : $this->inferTypes($analysis, $payloadKeys);
         $result = $this->mergeTypes($inferred, $declared, $casts);
 
