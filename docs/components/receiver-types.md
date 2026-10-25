@@ -102,9 +102,9 @@ PHP binds `self` and `parent` to the class that declares the method body, and th
 under a child subject. `AnalysisScope::$declaringFileClass` cannot stand in for that class, because it tracks files for
 inline `@var` imports. It names a trait for a trait's method, and `analyze()` sets it from the located method. So
 `new self`, `new parent`, `self::m()` and `parent::m()` resolve only when the subject's parent is absent or under
-`Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` always names the subject,
-since late static binding follows the object. `$this->m()` reads the runtime class's `m`, or the declaring class's own
-private one, through `AnalysisScope::thisMemberClass()`.
+`Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` names the runtime class,
+since late static binding follows the object (`InspectsAstNodes::scopeClassName()`). `$this->m()` and `$this->prop`
+read the runtime class's member, or the declaring class's own private one, through `AnalysisScope::thisMemberClass()`.
 
 ### Visibility
 
