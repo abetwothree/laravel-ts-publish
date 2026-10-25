@@ -630,8 +630,9 @@ Three answers are possible, and only the last is right. Do not change it to the 
 | `unknown` | The floor. True, but it tells the frontend nothing. |
 | `{ id: number }`, the method body | Right. `FluentSelfResource::summary(): array` returns `['id' => $this->id]`. |
 
-Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyze only methods of
-`$scope->subjectReflection`. A foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown`
+Only a class the body builds as itself is in scope: `spreadAnalysis()` reads the method on that class, with `$this` as
+it, the subject for `new self` and the runtime class for `new static` and `static::make()`. A foreign receiver such as
+`new CategoryResource($x)->summary()` keeps the `unknown`
 floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
 exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
 `SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.

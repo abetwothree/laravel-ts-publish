@@ -780,11 +780,10 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 
 ### An untyped property's default ignores writes the scan cannot see
 
-An untyped property publishes its default's type while nothing in the class, its ancestors or its traits writes it. A
-subclass's write, including a child's that inherits `toArray()` and so publishes its parent's types, a by-reference
-parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class
-all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
-it a `@var` docblock.
+An untyped property publishes its default's type joined with each literal or constant its class, an ancestor, a trait
+or the published subclass writes it, and `unknown` for any other write. A by-reference parameter on a receiver the scan
+cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel
+sends while the published type stays the default's. Declare the property's type, or give it a `@var` docblock.
 
 ### A column a body writes publishes its declared type, not the value written
 

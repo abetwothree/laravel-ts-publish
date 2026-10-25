@@ -167,10 +167,11 @@ docblocks say what each binding table holds. These eight facts span other classe
 
 - **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
   runtime class, the one `$this` and `static` are, which differs from the subject when `ResourceAstAnalyzer` reads an
-  ancestor's body for a subclass; `declaringClass` is the declaring class, the one `self` names, which is the using
-  class for a trait's method, where `declaringFileClass` names the trait. A `$this->m()` call reads `m` on
-  `thisMemberClass()`: the declaring class when it declares that member private, else the runtime class. A
-  static-syntax call reads `staticCallClass()`, which applies no private rule.
+  ancestor's body for a subclass, or a method of an instance the body builds; `declaringClass` is the declaring class,
+  the one `self` names, which is the using class for a trait's method, where `declaringFileClass` names the trait. A
+  `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()`: the declaring class when it
+  declares that member private, else the runtime class. A static-syntax call reads `staticCallClass()`, which applies
+  no private rule, and `InspectsAstNodes::scopeClassName()` reads `static` as the runtime class.
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -489,12 +490,13 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 `AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
 an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A
 non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
-the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
-trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
-by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan shares), such
-as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. The check
-cannot see a subclass's write, including a child's that inherits `toArray()` and so publishes its parent's analysis
-(#79), a by-reference parameter on a receiver it cannot resolve, or a write from outside the class.
+the class fills it. The default joins the type of each value a method the class runs assigns the property whole as a
+literal or a constant expression, an ancestor's, a trait's or, through the runtime class, a subclass's included. Any
+other write declines: another value, a compound or element write, `unset()`, a computed `$this->{$name}` write in
+application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
+which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
+`next()`, `prev()` and `reset()`. The check cannot see a by-reference parameter on a receiver it cannot resolve, or a
+write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
