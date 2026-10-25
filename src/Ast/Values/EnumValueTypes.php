@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
-use Closure;
 use ReflectionEnum;
 use ReflectionEnumUnitCase;
 use UnitEnum;
@@ -21,12 +20,24 @@ use UnitEnum;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type EnumCases = array{
+ *     enum: class-string,
+ *     backed: bool,
+ *     names: list<string>,
+ *     values: list<int|string>,
+ *     renamed: bool,
+ *     revalued: bool,
+ * }
+ *
  * @internal
  */
 final class EnumValueTypes
 {
     /** Past this magnitude JavaScript reads an integer literal as a neighbouring number. */
     private const int MAX_SAFE_INTEGER = 9_007_199_254_740_991;
+
+    /** @var array<string, EnumCases|null> enum => what its cases spell, read once per process; null with no case */
+    private static array $cases = [];
 
     /**
      * What reading `->value` on the enum publishes, or null when it holds none: a pure enum, or one with no case.
@@ -41,24 +52,19 @@ final class EnumValueTypes
             return self::typed('string | number');
         }
 
-        $reflection = self::casedEnum($enum);
+        $cases = self::cases($enum);
 
-        if ($reflection === null || ! $reflection->isBacked()) {
+        if ($cases === null || ! $cases['backed']) {
             return null;
         }
 
-        $values = self::caseScalars(
-            $reflection,
-            fn (ReflectionEnumUnitCase $case): int|string => JsEmitter::enumScalar($case->getValue()),
-        );
-
-        if (array_any($values, fn (int|string $value): bool => is_int($value) && abs($value) > self::MAX_SAFE_INTEGER)) {
+        if (array_any($cases['values'], fn (int|string $value): bool => is_int($value) && abs($value) > self::MAX_SAFE_INTEGER)) {
             return self::typed('number');
         }
 
-        return self::aliasUsable($reflection, $carriesImports, fromNames: false)
-            ? self::alias($reflection, kind: false)
-            : self::typed(self::literals($values));
+        return self::aliasUsable($cases, $carriesImports, fromNames: false)
+            ? self::alias($cases['enum'], kind: false)
+            : self::typed(self::literals($cases['values']));
     }
 
     /**
@@ -74,18 +80,16 @@ final class EnumValueTypes
             return self::typed('string');
         }
 
-        $reflection = self::casedEnum($enum);
+        $cases = self::cases($enum);
 
-        if ($reflection === null) {
+        if ($cases === null) {
             return null;
         }
 
         // A pure enum publishes its names as its values, so its `…Type` is the name union; a backed one has a `…Kind`.
-        $backed = $reflection->isBacked();
-
-        return self::aliasUsable($reflection, $carriesImports, fromNames: $backed)
-            ? self::alias($reflection, kind: $backed)
-            : self::typed(self::caseNames($reflection));
+        return self::aliasUsable($cases, $carriesImports, fromNames: $cases['backed'])
+            ? self::alias($cases['enum'], kind: $cases['backed'])
+            : self::typed(self::literals($cases['names']));
     }
 
     /**
@@ -93,29 +97,70 @@ final class EnumValueTypes
      */
     public static function nameUnion(string $enum): string
     {
-        $reflection = self::casedEnum($enum);
+        $cases = self::cases($enum);
 
-        if ($reflection === null) {
+        if ($cases === null) {
             return 'string'; // @codeCoverageIgnore
         }
 
-        return self::caseNames($reflection);
+        return self::literals($cases['names']);
     }
 
     /**
-     * The enum's reflection, or null when the class is no enum or declares no case.
+     * What the enum's cases spell, read once per process: a class's cases never change while it runs. Null when the
+     * class is no enum or declares no case.
      *
-     * @return ReflectionEnum<UnitEnum>|null
+     * @return EnumCases|null
      */
-    private static function casedEnum(string $enum): ?ReflectionEnum
+    private static function cases(string $enum): ?array
+    {
+        if (! array_key_exists($enum, self::$cases)) {
+            self::$cases[$enum] = self::readCases($enum);
+        }
+
+        return self::$cases[$enum];
+    }
+
+    /**
+     * Read the enum's case names, its case scalars when it is backed, and whether a case's #[TsCase] replaces either.
+     *
+     * @return EnumCases|null
+     */
+    private static function readCases(string $enum): ?array
     {
         if (! enum_exists($enum)) {
             return null;
         }
 
         $reflection = new ReflectionEnum($enum);
+        $cases = $reflection->getCases();
 
-        return $reflection->getCases() === [] ? null : $reflection;
+        if ($cases === []) {
+            return null;
+        }
+
+        $renamed = false;
+        $revalued = false;
+
+        foreach ($cases as $case) {
+            $tsCase = ($case->getAttributes(TsCase::class)[0] ?? null)?->newInstance();
+            $renamed = $renamed || ($tsCase !== null && $tsCase->name !== '');
+            $revalued = $revalued || ($tsCase !== null && $tsCase->value !== '');
+        }
+
+        return [
+            'enum' => $reflection->getName(),
+            'backed' => $reflection->isBacked(),
+            'names' => array_values(array_map(fn (ReflectionEnumUnitCase $case): string => $case->getName(), $cases)),
+            'values' => $reflection->isBacked()
+                ? array_values(array_map(
+                    fn (ReflectionEnumUnitCase $case): int|string => JsEmitter::enumScalar($case->getValue()),
+                    $cases,
+                ))
+                : [],
+            'renamed' => $renamed,
+            'revalued' => $revalued,
+        ];
     }
 
     /**
@@ -123,52 +168,24 @@ final class EnumValueTypes
      * case's #[TsCase] replaces the scalar the alias is built from, with `$fromNames` its published name, else its
      * value.
      *
-     * @param  ReflectionEnum<UnitEnum>  $reflection
+     * @param  EnumCases  $cases
      */
-    private static function aliasUsable(ReflectionEnum $reflection, bool $carriesImports, bool $fromNames): bool
+    private static function aliasUsable(array $cases, bool $carriesImports, bool $fromNames): bool
     {
         return $carriesImports
-            && PublishedEnums::includes($reflection->getName())
-            && ! array_any($reflection->getCases(), function (ReflectionEnumUnitCase $case) use ($fromNames): bool {
-                $tsCase = ($case->getAttributes(TsCase::class)[0] ?? null)?->newInstance();
-
-                return $tsCase !== null && ($fromNames ? $tsCase->name : $tsCase->value) !== '';
-            });
+            && PublishedEnums::includes($cases['enum'])
+            && ! ($fromNames ? $cases['renamed'] : $cases['revalued']);
     }
 
     /**
      * The enum's published `…Type` alias, or with `$kind` its `…Kind`, carrying the enum so its file imports it.
      *
-     * @param  ReflectionEnum<UnitEnum>  $reflection
+     * @param  class-string  $enum
      * @return ValueExpressionResult
      */
-    private static function alias(ReflectionEnum $reflection, bool $kind): array
+    private static function alias(string $enum, bool $kind): array
     {
-        $enum = $reflection->getName();
-
         return [...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)), 'directEnumFqcn' => $enum];
-    }
-
-    /**
-     * The enum's case names as a union of TypeScript literals, in case order.
-     *
-     * @param  ReflectionEnum<UnitEnum>  $reflection
-     */
-    private static function caseNames(ReflectionEnum $reflection): string
-    {
-        return self::literals(self::caseScalars($reflection, fn (ReflectionEnumUnitCase $case): string => $case->getName()));
-    }
-
-    /**
-     * One scalar read off each of the enum's cases, in case order.
-     *
-     * @param  ReflectionEnum<UnitEnum>  $reflection
-     * @param  Closure(ReflectionEnumUnitCase): (int|string)  $read
-     * @return list<int|string>
-     */
-    private static function caseScalars(ReflectionEnum $reflection, Closure $read): array
-    {
-        return array_values(array_map($read, $reflection->getCases()));
     }
 
     /**

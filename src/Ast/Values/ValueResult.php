@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -41,6 +42,9 @@ use ReflectionClass;
  */
 final class ValueResult
 {
+    /** @var array<string, array{string, string}> enum FQCN => its type name and its const name, read once per run */
+    private static array $enumSpellings = [];
+
     /**
      * The fallback result for an expression that resolves to no useful type.
      *
@@ -394,7 +398,7 @@ final class ValueResult
      */
     public static function enumTypeName(string $fqcn): string
     {
-        return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+        return self::enumSpelling($fqcn)[0];
     }
 
     /**
@@ -402,7 +406,7 @@ final class ValueResult
      */
     public static function enumKindName(string $fqcn): string
     {
-        return (LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn)).'Kind';
+        return self::enumSpelling($fqcn)[1].'Kind';
     }
 
     /**
@@ -453,6 +457,36 @@ final class ValueResult
     public static function enumTokens(array $enums): ClassTokenQueue
     {
         return new ClassTokenQueue($enums, self::enumTypeName(...), self::enumSiblingNames(...));
+    }
+
+    /**
+     * Forget each enum's spelling, so a run reads its enums and `custom_ts_mappings` afresh.
+     */
+    public static function forgetEnumSpellings(): void
+    {
+        self::$enumSpellings = [];
+    }
+
+    /**
+     * An enum's type name and const name, as toTsType() spells them, read once per run.
+     *
+     * @return array{string, string}
+     */
+    private static function enumSpelling(string $fqcn): array
+    {
+        if (! isset(self::$enumSpellings[$fqcn])) {
+            $info = LaravelTsPublish::toTsType($fqcn);
+
+            return self::$enumSpellings[$fqcn] = [
+                $info['enumTypes'][0] ?? class_basename($fqcn).'Type',
+                $info['enums'][0] ?? class_basename($fqcn),
+            ];
+        }
+
+        // toTsType() records the enum's files as it reads them, so a spelling read again records them too.
+        DependencyRecorder::recordClass($fqcn);
+
+        return self::$enumSpellings[$fqcn];
     }
 
     /**

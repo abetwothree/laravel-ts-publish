@@ -403,13 +403,13 @@ test('a returned variable is a branch only when the walk reads every whole write
     $analyzer = new class(new ReflectionClass(ReturnedHelperVariableResource::class), Tag::class) extends ResourceAstAnalyzer
     {
         /**
-         * Whether the branch gate reads `$d` in a body.
+         * Whether the branch gate reads `$d` in a body that seeds it with nothing.
          *
          * @param  array<Node>  $stmts
          */
         public function readsD(array $stmts): bool
         {
-            return $this->readsVariableArray($stmts, 'd');
+            return $this->readsVariableArray($stmts, 'd', null);
         }
     };
 

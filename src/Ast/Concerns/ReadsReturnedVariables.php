@@ -172,11 +172,12 @@ trait ReadsReturnedVariables
             return $result;
         }
 
-        // A parameter's binding is what it held on entry, which misses each write the body makes to it after.
-        $walks = $result['type'] === 'unknown'
-            || ($this->parameterSeed($returned->name) !== null && $this->writesVariable($stmts, $returned->name));
+        $bound = $this->parameterSeed($returned->name);
 
-        return $walks ? $this->walkedValue($stmts, $returned->name) ?? $result : $result;
+        // A parameter's binding is what it held on entry, which misses each write the body makes to it after.
+        $walks = $result['type'] === 'unknown' || ($bound !== null && $this->writesVariable($stmts, $returned->name));
+
+        return $walks ? $this->walkedValue($stmts, $returned->name, $bound) ?? $result : $result;
     }
 
     /**
@@ -201,7 +202,7 @@ trait ReadsReturnedVariables
             return null;
         }
 
-        return $this->walkedValue($before, $name);
+        return $this->walkedValue($before, $name, $this->parameterSeed($name));
     }
 
     /**
@@ -215,8 +216,9 @@ trait ReadsReturnedVariables
      */
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): MethodAnalysis
     {
-        $reads = $this->readsVariableArray($stmts, $varName);
-        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
+        $seed = $this->entrySeed($stmts, $varName, $this->parameterSeed($varName));
+        $reads = $this->readsVariableArray($stmts, $varName, $seed);
+        $analysis = $this->walkVariable($stmts, $varName, $topLevel, $seed);
         $analysis->readsCompletely = $analysis->readsCompletely && $reads;
 
         return $analysis;
@@ -224,12 +226,12 @@ trait ReadsReturnedVariables
 
     /**
      * Whether every whole write to a variable has a form the walk reads: each assignment of the variable is an array
-     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it or the walk starts from a seed. A key write
+     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it or the walk starts from $seed. A key write
      * never counts against.
      *
      * @param  array<Node\Stmt>  $stmts
      */
-    protected function readsVariableArray(array $stmts, string $varName): bool
+    protected function readsVariableArray(array $stmts, string $varName, ?MethodAnalysis $seed): bool
     {
         $assigned = false;
 
@@ -254,7 +256,7 @@ trait ReadsReturnedVariables
             $assigned = $assigned || $node instanceof Assign;
         }
 
-        return $assigned || $this->entrySeed($stmts, $varName) !== null;
+        return $assigned || $seed !== null;
     }
 
     /**
@@ -279,7 +281,7 @@ trait ReadsReturnedVariables
 
         foreach ($this->collectReturnExpressions($stmts) as $expr) {
             if ($expr instanceof Variable && is_string($expr->name) && in_array($expr->name, $parameters, true)
-                && $this->entrySeed($stmts, $expr->name) === null) {
+                && $this->entrySeed($stmts, $expr->name, $this->parameterSeed($expr->name)) === null) {
                 $returned[$expr->name] = false;
             }
         }
@@ -555,16 +557,17 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The inline object a variable's walk over a body reads; null where the walk reads it only partly, or reads no key.
+     * The inline object a variable's walk over a body reads, from the keys $bound gives a parameter on entry; null where
+     * the walk reads it only partly, or reads no key.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return ValueExpressionResult|null
      */
-    private function walkedValue(array $stmts, string $varName): ?array
+    private function walkedValue(array $stmts, string $varName, ?MethodAnalysis $bound): ?array
     {
-        $branch = $this->variableBranch($stmts, $varName, topLevel: false);
+        $branch = $this->readFrom($stmts, $varName, false, $bound);
 
-        if ($branch === null || $branch->properties === []) {
+        if ($branch === null || ! $branch->readsCompletely || $branch->properties === []) {
             return null;
         }
 
@@ -595,20 +598,35 @@ trait ReadsReturnedVariables
      */
     private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
-        return $this->readsVariableArray($stmts, $varName) ? $this->walkVariable($stmts, $varName, $topLevel) : null;
+        return $this->readFrom($stmts, $varName, $topLevel, $this->parameterSeed($varName));
+    }
+
+    /**
+     * A returned variable's walk from the keys $bound gives a parameter on entry, or null when the gate rejects a whole
+     * write; the gate and the walk share the one seed.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return TAnalysis|null
+     */
+    private function readFrom(array $stmts, string $varName, bool $topLevel, ?MethodAnalysis $bound): ?MethodAnalysis
+    {
+        $seed = $this->entrySeed($stmts, $varName, $bound);
+
+        return $this->readsVariableArray($stmts, $varName, $seed)
+            ? $this->walkVariable($stmts, $varName, $topLevel, $seed)
+            : null;
     }
 
     /**
      * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis; with none at the
-     * top level, from the keys a parameter holds on entry.
+     * top level, from $seed, the keys a parameter holds on entry.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis
      */
-    private function walkVariable(array $stmts, string $varName, bool $topLevel): MethodAnalysis
+    private function walkVariable(array $stmts, string $varName, bool $topLevel, ?MethodAnalysis $seed): MethodAnalysis
     {
         $analysis = $this->newVariableAnalysis();
-        $seed = $this->entrySeed($stmts, $varName);
 
         if ($seed !== null) {
             $analysis->merge($seed);
@@ -654,21 +672,20 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The keys a parameter holds where the walk over a body starts; null where a top-level write replaces it, an
-     * assignment whether the walk reads its value or not, or the host seeds it with none.
+     * The keys a parameter whose host seed is $bound holds where the walk over a body starts; null where a top-level
+     * write replaces it, an assignment whether the walk reads its value or not, or the host seeds it with none.
      *
      * @param  array<Node\Stmt>  $stmts
      */
-    private function entrySeed(array $stmts, string $varName): ?MethodAnalysis
+    private function entrySeed(array $stmts, string $varName, ?MethodAnalysis $bound): ?MethodAnalysis
     {
-        if (array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null)) {
+        // Only a seed pays for the write scan, which reflects the callee of each call passed the variable.
+        if ($bound === null
+            || array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null)) {
             return null;
         }
 
-        $seed = $this->parameterSeed($varName);
-
-        // Only a seed pays for the write scan, which reflects the callee of each call passed the variable.
-        return $seed === null || $this->rewritesWhole($stmts, $varName) ? null : $seed;
+        return $this->rewritesWhole($stmts, $varName) ? null : $bound;
     }
 
     /**
