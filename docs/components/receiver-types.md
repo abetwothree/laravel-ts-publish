@@ -356,9 +356,10 @@ variable the walk reads, replaces the declaration's array arms, so `PriceQuoteSe
 `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it
 too, so it publishes what the bare `$this->m()` does.
 
-A returned parameter that the body writes only through its keys still holds every key its caller passed, which the body
-never sees, so `returnsKeyWrittenParameter()` adds `[key: string]: unknown` to the shape. `DecoratedPayloadResource`
-pins it through a container instance, a static call and a resource's own helper.
+A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
+from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the
+body never sees them, so `returnsKeyWrittenParameter()` adds `[key: string]: unknown` to the shape.
+`DecoratedPayloadResource` pins that through a container instance, a static call and a resource's own helper.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis

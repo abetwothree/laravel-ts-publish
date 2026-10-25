@@ -122,10 +122,12 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
-A method read as a value that returns a parameter it only writes keys into publishes those keys plus
-`[key: string]: unknown`, for the keys its caller passed. A closed array the call passes, or a declared `array{…}`
-parameter, therefore loses its own keys to that signature, and a `+=` on the parameter still publishes only the keys it
-adds. Declare `@return array{…}` on the method to publish the exact shape.
+A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of
+a declared `array{…}`. A parameter bound to nothing typed, such as an array `json_decode()` returns, publishes only the
+keys the helper writes: beside `[key: string]: unknown` where the helper is read as a value, and alone where its result
+is the method's own return. It falls back the same way where the argument holds an `EnumResource` wrap or two
+same-named enums, one a level below the other, and, for a helper read as a value, any model, resource or enum. Declare
+`@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
