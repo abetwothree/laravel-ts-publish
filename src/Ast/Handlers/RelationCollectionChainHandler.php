@@ -96,8 +96,10 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name instanceof Identifier
             && $expr->name instanceof Identifier
         ) {
-            return $this->heldPropertyMethodReturn($expr->var->name->toString(), $expr->name->toString(), $scope)
-                ?? $this->subjectPropertyMethodReturn($expr, $expr->name->toString(), $scope, $engine);
+            $property = $expr->var->name->toString();
+
+            return $this->heldPropertyMethodReturn($property, $expr->name->toString(), $scope)
+                ?? $this->subjectPropertyMethodReturn($expr, $property, $expr->name->toString(), $scope, $engine);
         }
 
         // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
@@ -341,13 +343,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function subjectPropertyMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
+    private function subjectPropertyMethodReturn(
+        MethodCall $call,
+        string $property,
+        string $methodName,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
         if ($scope->modelClass !== null || $this->resolveWrappedClass($scope) !== null) {
             return null;
         }
 
-        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->subjectReflection, $call->var);
+        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->thisMemberClass($property, false), $call->var);
 
         if ($propertyClass === null
             || (is_a($propertyClass, Model::class, true) && $this->callsAttributeFilter($call))

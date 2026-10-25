@@ -549,7 +549,7 @@ final class ValueResolver
                 : $parentReflection->getName();
         }
 
-        return $this->subjectClassName($class, $scope->subjectReflection);
+        return $this->scopeClassName($class, $scope);
     }
 
     /**

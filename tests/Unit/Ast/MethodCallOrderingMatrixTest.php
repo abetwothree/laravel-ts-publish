@@ -157,7 +157,7 @@ function inertEngine(): ExpressionEngine
             throw new RuntimeException('the matrix never resolves through make()');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('the matrix never resolves through make()');
         }

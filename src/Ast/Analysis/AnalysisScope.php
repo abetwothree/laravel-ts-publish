@@ -110,6 +110,7 @@ use ReflectionMethod;
  *      forwardsUndeclaredMembersTo: class-string|null,
  *      declaringFileClass: ReflectionClass<object>,
  *      declaringClass: ReflectionClass<object>,
+ *      runtimeReflection: ReflectionClass<object>,
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
@@ -434,7 +435,7 @@ final class AnalysisScope
 
     /**
      * The runtime class: the class `$this` and `static` are when the body runs. The subject, unless ResourceAstAnalyzer
-     * reads an ancestor's body for a subclass; set by the constructor, rebase() and ResourceAstAnalyzer only.
+     * reads an ancestor's body for a subclass, or a method of an instance the body builds, which within() puts back.
      *
      * @var ReflectionClass<object>
      */
@@ -1323,6 +1324,7 @@ final class AnalysisScope
             'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
             'declaringFileClass' => $this->declaringFileClass,
             'declaringClass' => $this->declaringClass,
+            'runtimeReflection' => $this->runtimeReflection,
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
@@ -1346,6 +1348,7 @@ final class AnalysisScope
         $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];
         $this->declaringFileClass = $state['declaringFileClass'];
         $this->declaringClass = $state['declaringClass'];
+        $this->runtimeReflection = $state['runtimeReflection'];
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];

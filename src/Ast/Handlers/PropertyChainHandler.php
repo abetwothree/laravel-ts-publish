@@ -97,10 +97,12 @@ final class PropertyChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        // A chain rooted at a property the subject declares is not a model walk. Declining hands it to
+        $root = $chain[0]['name'];
+
+        // A chain rooted at a property `$this` declares is not a model walk. Declining hands it to
         // ReceiverPropertyFetchHandler, which resolves it from that property's own class.
         if ($scope->modelClass !== null
-            && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $chain[0]['name'])
+            && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->thisMemberClass($root, false), $root)
         ) {
             return ValueResult::unknown();
         }
@@ -111,7 +113,7 @@ final class PropertyChainHandler implements ExpressionHandler
         // Subject mode: no backing model, so the chain's first segment must be the subject's own
         // property, and the relation/attribute walk below starts from the model it is typed as.
         if ($currentModel === null) {
-            $currentModel = $this->resolveSubjectRootModel($chain[0]['name'], $scope);
+            $currentModel = $this->resolveSubjectRootModel($root, $scope);
 
             if ($currentModel === null) {
                 return ValueResult::unknown();
@@ -194,7 +196,7 @@ final class PropertyChainHandler implements ExpressionHandler
      */
     private function resolveSubjectRootModel(string $name, AnalysisScope $scope): ?string
     {
-        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $name);
+        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->thisMemberClass($name, false), $name);
         $modelFqcn = $result['modelFqcn'] ?? null;
 
         return $modelFqcn !== null && is_a($modelFqcn, Model::class, true) ? $modelFqcn : null;

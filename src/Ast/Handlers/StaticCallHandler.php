@@ -179,9 +179,9 @@ final class StaticCallHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        // `self`/`static` read as the subject, so those calls are treated identically to ClassName::*() calls.
+        // `self`/`static` read as the class they name in the body, so those calls are treated as ClassName::*() calls.
         if ($call->class instanceof Name) {
-            $className = $this->subjectClassName($call->class, $scope->subjectReflection);
+            $className = $this->scopeClassName($call->class, $scope);
         }
 
         // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
@@ -284,14 +284,20 @@ final class StaticCallHandler implements ExpressionHandler
         $method = new ReflectionMethod($resourceFqcn, $methodName);
 
         // Not self-returning: the expression is the method's payload, not the resource. Resolving it
-        // needs the receiver's own analyzer, so only the analyzer's own class is in scope — a foreign
+        // needs the receiver's own analyzer, so only the subject or the runtime class is in scope — a foreign
         // resource class returns null and keeps the `unknown` floor rather than claiming its keys.
         if (! $this->methodPreservesReceiverType($method, $resourceFqcn)) {
-            if ($resourceFqcn !== $scope->subjectReflection->getName()) {
+            $built = match ($resourceFqcn) {
+                $scope->subjectReflection->getName() => $scope->subjectReflection,
+                $scope->runtimeReflection->getName() => $scope->runtimeReflection,
+                default => null,
+            };
+
+            if ($built === null) {
                 return null;
             }
 
-            $analysis = $engine->spreadAnalysis($methodName);
+            $analysis = $engine->spreadAnalysis($methodName, $built);
 
             if ($analysis === null || $analysis->properties === []) {
                 return null;
@@ -360,7 +366,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function resolvedBody(New_ $new, array $receiver, string $resourceFqcn, AnalysisScope $scope): array
     {
-        $class = $new->class instanceof Name ? $this->subjectClassName($new->class, $scope->subjectReflection) : null;
+        $class = $new->class instanceof Name ? $this->scopeClassName($new->class, $scope) : null;
         $nested = $class !== null && is_a($class, ResourceCollection::class, true)
             ? resolve(ResourceCollectionBody::class)->nestedValue($class)
             : null;
@@ -386,11 +392,11 @@ final class StaticCallHandler implements ExpressionHandler
 
         return match (true) {
             $receiver instanceof New_ => $receiver->class instanceof Name
-                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+                && $this->scopeClassName($receiver->class, $scope) === $resourceFqcn,
             $receiver instanceof StaticCall => $receiver->class instanceof Name
                 && $receiver->name instanceof Identifier
                 && $receiver->name->toString() === 'make'
-                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+                && $this->scopeClassName($receiver->class, $scope) === $resourceFqcn,
             $receiver instanceof MethodCall => ($receiver->name instanceof Identifier && $receiver->name->toString() === 'toResource')
                 || $this->holdsOneResource($receiver->var, $type, $resourceFqcn, $scope),
             default => false,

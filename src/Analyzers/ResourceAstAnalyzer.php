@@ -321,13 +321,20 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Spread-analyze a named method on the subject under analysis. ExpressionEngine entry point
-     * for a handler that resolves a self-returning chain onto a non-preserving method body, whose
-     * result becomes one value's inline type — never the flatten target, so not top-level.
+     * Spread-analyze a named method of an instance the body builds, read with `$this` as that instance. The
+     * ExpressionEngine entry point for a handler that resolves a self-returning chain onto a non-preserving method
+     * body, whose result becomes one value's inline type — never the flatten target, so not top-level.
+     *
+     * @param  ReflectionClass<object>  $built  the class the chain builds
      */
-    public function spreadAnalysis(string $methodName): ?ResourceAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $this->scope->subjectReflection);
+        return $this->scope->within(
+            function (AnalysisScope $scope) use ($built): void {
+                $scope->runtimeReflection = $built;
+            },
+            fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $built),
+        );
     }
 
     /**
@@ -533,7 +540,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $expr instanceof Array_
                 || $this->readParentCall($expr) !== null
                 || ($expr instanceof FuncCall
-                    && $this->mergedArrayLiteral($expr, $this->scope->subjectReflection, $this->methodName) !== null);
+                    && $this->mergedArrayLiteral($expr, $this->scope, $this->methodName) !== null);
         }
 
         if (! $expr->name instanceof Identifier) {
@@ -669,7 +676,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
     {
-        $merged = $this->mergedArrayLiteral($call, $this->scope->subjectReflection, $this->methodName);
+        $merged = $this->mergedArrayLiteral($call, $this->scope, $this->methodName);
 
         return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
     }
@@ -885,7 +892,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        if ($this->thisRunsFrameworkBody($methodName)) {
+        if ($this->runsFrameworkBody($class, $methodName)) {
             return $this->frameworkMethodAnalysis($methodName);
         }
 
@@ -1504,7 +1511,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $keyName = $this->resolveKeyName($item->key, $this->scope->subjectReflection);
+            $keyName = $this->resolveKeyName($item->key, $this->scope);
 
             if ($keyName === null) {
                 continue;
@@ -1729,7 +1736,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function mergedArrayAnalysis(Array_ $array): ResourceAnalysis
     {
         return (new ThisPropertyHandler)
-            ->extractPropertiesFromArray($array, $this, $this->scope->subjectReflection, optional: false);
+            ->extractPropertiesFromArray($array, $this, $this->scope, optional: false);
     }
 
     /**
@@ -1796,16 +1803,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $expr->name->toString();
 
-        return $this->thisRunsFrameworkBody($method) ? $method : null;
+        return $this->runsFrameworkBody($this->runtimeClass(), $method) ? $method : null;
     }
 
     /**
-     * Whether `$this->$method()` runs Laravel's own body for one of FRAMEWORK_READS; `$this` is the runtime class, so
-     * its declaration decides.
+     * Whether a call reaching `$class` runs Laravel's own body for one of FRAMEWORK_READS: that class's declaration
+     * decides, the runtime class's for `$this->`.
+     *
+     * @param  ReflectionClass<object>  $class
      */
-    private function thisRunsFrameworkBody(string $method): bool
+    private function runsFrameworkBody(ReflectionClass $class, string $method): bool
     {
-        return in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($this->runtimeClass(), $method);
+        return in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($class, $method);
     }
 
     /**

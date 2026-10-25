@@ -10828,6 +10828,16 @@
                     "optional": false
                 },
                 {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
                     "name": "base_only",
                     "type": "number",
                     "optional": false
@@ -16361,6 +16371,16 @@
                 {
                     "name": "headline",
                     "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "number",
                     "optional": false
                 },
                 {

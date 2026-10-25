@@ -64,7 +64,7 @@ function throwingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -100,7 +100,7 @@ final class SpyExpressionEngine implements ExpressionEngine
         return $this->result;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -138,7 +138,7 @@ it('resolves a first-class callable as the call it stands for where the caller i
             return ['type' => $expr instanceof MethodCall && $expr->args === [] ? 'string' : 'wrong', 'optional' => false];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             return null;
         }

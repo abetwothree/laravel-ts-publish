@@ -101,23 +101,23 @@ final class MacroCallResolver
 
     /**
      * What the macro a call runs returns: its native return, else its `@return`, else, for a closure, its body read
-     * with `$this` bound to the subject, as `Macroable::__call()` binds it. Memoized per subject, name and model.
+     * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class, name and model.
      *
      * @return ValueExpressionResult|null
      */
     public function resolve(AnalysisScope $scope, string $method): ?array
     {
-        $subject = $scope->subjectReflection;
+        $runtime = $scope->runtimeReflection;
         $modelClass = $scope->modelClass;
 
         return resolve(AnalysisMemo::class)->remember(
-            'macro:'.$subject->getName().'@'.$method.'@'.($modelClass ?? ''),
-            function () use ($subject, $method, $modelClass): ?array {
-                $function = $this->reflect($this->macroFor($subject, $method));
+            'macro:'.$runtime->getName().'@'.$method.'@'.($modelClass ?? ''),
+            function () use ($runtime, $method, $modelClass): ?array {
+                $function = $this->reflect($this->macroFor($runtime, $method));
                 $result = match (true) {
                     $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)
                         ->resolve($function->getDeclaringClass()->getName(), $function->getName()),
-                    $function instanceof ReflectionFunction => $this->functionType($function, $subject->getName(), $modelClass),
+                    $function instanceof ReflectionFunction => $this->functionType($function, $runtime->getName(), $modelClass),
                     default => null,
                 };
 

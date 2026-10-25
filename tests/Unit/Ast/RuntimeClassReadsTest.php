@@ -5,10 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderBaseDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderChildDto;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
@@ -90,4 +94,46 @@ it('reads a `static::` call in an inherited body on the runtime class', function
         ->toHaveKey('late', 'string')
         ->not->toHaveKey('base_late')
         ->and(staticSyntaxResponse())->toHaveKey('child_late', true)->toHaveKey('late', 'child')->not->toHaveKey('base_late');
+});
+
+it('reads static:: and an untyped default in an inherited body as the runtime class', function () {
+    expect(analyzedKeyTypes(PanelPayload::class))->toMatchArray([
+        'label' => 'number', 'tier' => 'number', 'secret' => 'string', 'late' => 'string',
+    ])->and(analyzedKeyTypes(NoticeResource::class))->toMatchArray(['label' => 'number', 'tier' => 'number'])
+        ->and(json_encode(new PanelPayload()->toArray()))->toContain('"label":7,"tier":3,"secret":"x"');
+});
+
+it('reads static:: and $this->prop in an inherited resource body as the runtime class sends them', function () {
+    expect((new NoticeResource(null))->resolve(request()))->toMatchArray(['label' => 7, 'tier' => 3]);
+});
+
+it('reads a method on an instance an inherited body builds with $this as the class it builds', function () {
+    expect(publishedResourceKeyTypes(BuiltInstanceResource::class, Post::class))->toMatchArray([
+        'built' => '{ base_part: number }',
+        'late_built' => '{ child_part: boolean }',
+        'late_made' => '{ child_part: boolean }',
+    ])->and((new BuiltInstanceResource(new Post))->resolve(request()))->toMatchArray([
+        'built' => ['base_part' => 1],
+        'late_built' => ['child_part' => true],
+        'late_made' => ['child_part' => true],
+    ]);
+});
+
+it('reads a static:: key and a declared property of a model-backed inherited body on the runtime class', function () {
+    expect(publishedResourceKeyTypes(LateReadsResource::class, Post::class))
+        ->toBe(['child_key' => 'number', 'tier' => 'number', 'secret' => 'string'])
+        ->and((new LateReadsResource(new Post))->resolve(request()))->toBe(['child_key' => 1, 'tier' => 3, 'secret' => 'x']);
+});
+
+it('types `new static` and a `$this->prop` receiver in an inherited body as the runtime class declares them', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverHolderBaseDto::class));
+    $scope->runtimeReflection = new ReflectionClass(ReceiverHolderChildDto::class);
+    $resolver = resolve(ReceiverClassResolver::class);
+
+    expect($resolver->resolve(runtimeClassCall('new static'), $scope)?->classes)->toBe([ReceiverHolderChildDto::class])
+        ->and($resolver->resolve(runtimeClassCall('$this->held'), $scope)?->classes)->toBe([ReceiverChildDto::class])
+        ->and($resolver->resolve(runtimeClassCall('$this->own'), $scope)?->classes)->toBe([ReceiverBaseDto::class])
+        ->and(new ReceiverHolderChildDto()->fresh())->toBeInstanceOf(ReceiverHolderChildDto::class)
+        ->and(new ReceiverHolderChildDto()->heldClass())->toBe(ReceiverChildDto::class)
+        ->and(new ReceiverHolderChildDto()->ownClass())->toBe(ReceiverBaseDto::class);
 });

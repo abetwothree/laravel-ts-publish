@@ -23,7 +23,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
-use ReflectionClass;
 
 /**
  * `$this->property` — resolved against the backing model, attributes before relations, matching
@@ -63,9 +62,9 @@ final class ThisPropertyHandler implements ExpressionHandler
      * Public: the analyzer's own mergedArrayAnalysis() (merge()/mergeWhen() resolution) calls this
      * directly — the array machinery moved here while that caller stayed on the analyzer.
      *
-     * @param  ReflectionClass<object>  $subject  the analyzed subject, which decides whether a numeric key survives
+     * @param  AnalysisScope  $scope  the scope a constant key's `self`, `static` and `parent` are read in
      */
-    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, ReflectionClass $subject, bool $optional = false): ResourceAnalysis
+    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, AnalysisScope $scope, bool $optional = false): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 
@@ -74,7 +73,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $keyName = $this->resolveKeyName($item->key, $subject);
+            $keyName = $this->resolveKeyName($item->key, $scope);
 
             if ($keyName === null) {
                 continue;
@@ -131,9 +130,11 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
         }
 
+        $owner = $scope->thisMemberClass($propName, false);
+
         // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
-        if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $propName)) {
-            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+        if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($owner, $propName)) {
+            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName);
 
             // An abstract or framework model would be emitted as a token nothing imports.
             return $own !== null && ValueResult::namesOnlyPublishedModels($own) ? $own : $result;
@@ -164,9 +165,9 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $result;
         }
 
-        // Subject mode: with no backing model, `$this->prop` can only mean the subject's own property.
+        // Subject mode: with no backing model, `$this->prop` can only mean a property `$this` declares.
         if ($scope->modelClass === null) {
-            return resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName) ?? $result;
+            return resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName) ?? $result;
         }
 
         return $result;

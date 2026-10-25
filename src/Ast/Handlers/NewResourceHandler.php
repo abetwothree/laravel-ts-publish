@@ -64,7 +64,7 @@ final class NewResourceHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        $className = $this->subjectClassName($expr->class, $scope->subjectReflection);
+        $className = $this->scopeClassName($expr->class, $scope);
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {

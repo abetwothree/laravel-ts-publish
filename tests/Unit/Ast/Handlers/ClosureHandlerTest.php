@@ -47,7 +47,7 @@ function closureHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -86,7 +86,7 @@ final class ClosureHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('Unexpected expression passed to ClosureHandlerArmStubEngine');
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -125,7 +125,7 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         return $this->result;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -162,7 +162,7 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
     }
 
     /** Fails the test: no method is spread in this case. */
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -193,7 +193,7 @@ function closureHandlerBlowingUpEngine(): ExpressionEngine
             throw new RuntimeException('body resolution exploded');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('body resolution exploded');
         }
@@ -376,7 +376,7 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
     }
 
     /** Fails the test: no method is spread in this case. */
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }

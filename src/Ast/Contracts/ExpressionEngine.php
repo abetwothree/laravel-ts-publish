@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use ReflectionClass;
 
 /**
  * Full expression resolution, for handlers to call back into on sub-expressions they don't own.
@@ -26,10 +27,13 @@ interface ExpressionEngine
     public function resolve(Expr $expr): array;
 
     /**
-     * Spread-analyze a named method on the subject under analysis, for a handler that resolves a
-     * self-returning chain onto a non-preserving method body instead of degrading to `unknown`.
+     * Spread-analyze a named method of an instance the body builds, the subject or the runtime class, with `$this` as
+     * that instance, for a handler that resolves a self-returning chain onto a non-preserving method body instead of
+     * degrading to `unknown`.
+     *
+     * @param  ReflectionClass<object>  $built  the class the chain builds
      */
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis;
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis;
 
     /**
      * Analyze an array literal's items into properties, spreads, and FQCN maps — the same

@@ -1239,7 +1239,7 @@ trait ReadsReturnedVariables
     {
         $key = $dim instanceof Variable ? $this->literalLocal($dim) : $dim;
 
-        return $key === null ? null : $this->resolveKeyName($key, $this->subjectReflection());
+        return $key === null ? null : $this->resolveKeyName($key, $this->analysisScope());
     }
 
     /**

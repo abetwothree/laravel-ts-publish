@@ -106,7 +106,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return null;
         }
 
-        $className = $this->subjectClassName($expr->class, $scope->subjectReflection);
+        $className = $this->scopeClassName($expr->class, $scope);
 
         if (is_a($className, ResourceCollection::class, true)) {
             return $this->namedCollection($expr, $className, $engine);

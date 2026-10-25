@@ -422,8 +422,7 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 function analysisScopeSetOnceFields(): array
 {
     return [
-        'subjectReflection', 'runtimeReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys',
-        'collectedElement',
+        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement',
     ];
 }
 
@@ -469,8 +468,8 @@ it('within() restores every name table and ambient field after a read, a throw i
     $setOnce = analysisScopeSetOnceFields();
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
-        'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof',
-        'filtersNestedResources', 'mapResultArrayed',
+        'runtimeReflection', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(

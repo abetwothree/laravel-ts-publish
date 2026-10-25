@@ -4,11 +4,11 @@ export interface PanelPayloadProbe
 {
     title: string;
     child_only: boolean;
-    label: string;
-    tier: string;
+    label: number;
+    tier: number;
     secret: string;
     weight: number;
     own: string | number;
     root: unknown;
-    late: string | number;
+    late: string;
 }

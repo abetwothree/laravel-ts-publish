@@ -26,7 +26,7 @@ function chainHandlersThrowingEngine(): ExpressionEngine
         }
 
         /** Fails the test: no method is spread in this case. */
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }

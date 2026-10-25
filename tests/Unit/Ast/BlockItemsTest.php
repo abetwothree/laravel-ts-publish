@@ -112,7 +112,7 @@ function blockItemsOffsetRead(string $holder, string $read): ?string
         }
 
         /** Spreads nothing. */
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             return null;
         }
