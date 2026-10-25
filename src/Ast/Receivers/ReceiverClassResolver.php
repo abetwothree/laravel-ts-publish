@@ -198,7 +198,7 @@ final class ReceiverClassResolver
         $method = $call->name->toString();
 
         if ($this->sendsToSubjectCall($call, $scope)) {
-            return $this->fromThisMethodCall($method, $scope);
+            return $this->fromThisMethodCall($method, $scope, $scope->staticCallClass($call));
         }
 
         $receiver = $this->resolveStaticReceiver($call, $scope);
@@ -934,13 +934,16 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve `$this->m()`: the runtime class's method, or the declaring class's private one, else that of what
-     * `$this->resource` holds, since JsonResource forwards `__call()` there, else, where forwardedThisReceiver() leaves
-     * the call to a macro, what it returns.
+     * Resolve `$this->m()`: the method of the class the call reaches, else that of what `$this->resource` holds, since
+     * JsonResource forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it
+     * returns.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`, which reaches
+     *                                            AnalysisScope::thisMemberClass()
      */
-    private function fromThisMethodCall(string $method, AnalysisScope $scope): ?ReceiverType
+    private function fromThisMethodCall(string $method, AnalysisScope $scope, ?ReflectionClass $on = null): ?ReceiverType
     {
-        $owner = $scope->thisMemberClass($method, true);
+        $owner = $on ?? $scope->thisMemberClass($method, true);
 
         if ($owner->hasMethod($method)) {
             return $this->memberMethod($owner->getName(), $method, true);

@@ -563,6 +563,22 @@ final class AnalysisScope
     }
 
     /**
+     * The class a static-syntax call on the subject reaches from the body under analysis: `$this::` and `static::`
+     * the runtime class, since PHP looks such a call up there with no private rule; `self::` or a name the subject.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function staticCallClass(StaticCall $call): ReflectionClass
+    {
+        $class = $call->class;
+        $late = $class instanceof Variable
+            ? $class->name === 'this'
+            : $class instanceof Name && $class->toLowerString() === 'static';
+
+        return $late ? $this->runtimeReflection : $this->subjectReflection;
+    }
+
+    /**
      * What `$this->resource` holds as a receiver: the proxy target, or a ResourceCollection's items, which Laravel
      * keeps in a Support\Collection or the paginator it was given, so each concrete class it builds is one arm.
      */

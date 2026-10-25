@@ -112,7 +112,8 @@ final class StaticCallHandler implements ExpressionHandler
         ) {
             $site = new CallSite($expr, $scope, $engine);
 
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site);
+            return resolve(SubjectMethodTypeResolver::class)
+                ->resolve($scope, $expr->name->toString(), $site, $scope->staticCallClass($expr));
         }
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
@@ -185,7 +186,8 @@ final class StaticCallHandler implements ExpressionHandler
 
         // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
         if (resolve(ReceiverClassResolver::class)->sendsToSubjectCall($call, $scope)) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $methodName, new CallSite($call, $scope, $engine));
+            return resolve(SubjectMethodTypeResolver::class)
+                ->resolve($scope, $methodName, new CallSite($call, $scope, $engine), $scope->staticCallClass($call));
         }
 
         // EnumResource::make($this->prop)

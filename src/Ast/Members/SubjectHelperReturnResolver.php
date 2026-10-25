@@ -24,7 +24,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * The value a subject's own `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
+ * The value a `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
  * `null`: no declared return type names the enum a wrap holds, so the helper's body is read in its own bindings.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -53,19 +53,19 @@ final class SubjectHelperReturnResolver
         }
 
         $name = $call->name->toString();
-        $subject = $scope->subjectReflection;
+        $class = $scope->thisMemberClass($name, true);
 
-        if (! $subject->hasMethod($name)) {
+        if (! $class->hasMethod($name)) {
             return null;
         }
 
-        $method = $subject->getMethod($name);
+        $method = $class->getMethod($name);
 
         if (isset($scope->visitedSpreadMethods[$method->getName()])) {
             return null;
         }
 
-        $declaration = resolve(MethodLocator::class)->locate($subject->getName(), $name)?->method;
+        $declaration = resolve(MethodLocator::class)->locate($class->getName(), $name)?->method;
         $stmts = $declaration->stmts ?? [];
         $returns = $this->collectReturnExpressions($stmts);
 

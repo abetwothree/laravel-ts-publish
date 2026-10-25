@@ -325,7 +325,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     public function spreadAnalysis(string $methodName): ?ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName, topLevel: false);
+        return $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $this->scope->subjectReflection);
     }
 
     /**
@@ -861,10 +861,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
      * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. The
      * caller's state it sets aside is put back by AnalysisScope::within(), a throw included.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`, which reaches
+     *                                            AnalysisScope::thisMemberClass()
      */
-    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
-    {
-        $class = $this->scope->thisMemberClass($methodName, true);
+    protected function analyzeThisMethodSpread(
+        string $methodName,
+        bool $topLevel = true,
+        ?Expr $call = null,
+        ?ReflectionClass $on = null,
+    ): ?ResourceAnalysis {
+        $class = $on ?? $this->scope->thisMemberClass($methodName, true);
 
         if (! $class->hasMethod($methodName)) {
             return null; // @codeCoverageIgnore
@@ -1326,10 +1333,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * What a spread of the subject's own method adds to the array around it: its analysis, or an unread one where the
      * analyzer cannot read the method.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`
      */
-    private function ownMethodSpread(string $methodName, bool $topLevel, Expr $call): ResourceAnalysis
+    private function ownMethodSpread(string $methodName, bool $topLevel, Expr $call, ?ReflectionClass $on = null): ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName, $topLevel, $call) ?? ResourceAnalysis::unreadAnalysis();
+        return $this->analyzeThisMethodSpread($methodName, $topLevel, $call, $on) ?? ResourceAnalysis::unreadAnalysis();
     }
 
     /**
@@ -1437,15 +1446,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            // ...self::helper() or ...static::helper() spreads the subject's own method, as ...$this->helper() does.
+            // ...self::helper() or ...static::helper() spreads the method the call reaches, as ...$this->helper() does.
             if ($item->key === null && $item->unpack
                 && $item->value instanceof StaticCall
                 && $item->value->class instanceof Name
                 && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
                 && $item->value->name instanceof Identifier
-                && $this->scope->subjectReflection->hasMethod($item->value->name->toString())
+                && $this->scope->staticCallClass($item->value)->hasMethod($item->value->name->toString())
             ) {
-                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value));
+                $on = $this->scope->staticCallClass($item->value);
+                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value, $on));
 
                 continue;
             }
@@ -1459,7 +1469,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $funcName = $funcCallName->getLast();
 
                     if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value));
+                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->subjectReflection));
                     }
                 }
 

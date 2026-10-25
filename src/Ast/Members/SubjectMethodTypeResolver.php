@@ -16,9 +16,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the runtime class's
- * declaration, or the declaring class's private one, else a macro registered under the name, else the declaration of
- * the first class `$this->resource` holds that declares it, as `__call` forwards it there.
+ * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the declaration of the class
+ * the call reaches, else a macro registered under the name, else the declaration of the first class `$this->resource`
+ * holds that declares it, as `__call` forwards it there.
  *
  * Shared because more than one guard reflects a subject method the same way: StaticCallHandler's
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
@@ -33,14 +33,16 @@ final class SubjectMethodTypeResolver
      * Resolve a subject method call by its declaration, else its body read with what the call passes.
      *
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`, which reaches
+     *                                            AnalysisScope::thisMemberClass()
      * @return ValueExpressionResult|null null when nothing in scope declares the method, or the declaration PHP runs
      *                                    types nothing, so the handler declines and dispatch reaches the next claimant
      */
-    public function resolve(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
+    public function resolve(AnalysisScope $scope, string $methodName, ?CallSite $site = null, ?ReflectionClass $on = null): ?array
     {
-        $class = $scope->thisMemberClass($methodName, true);
+        $class = $on ?? $scope->thisMemberClass($methodName, true);
 
-        // PHP runs the runtime class's own declaration, so a namesake it shadows never answers for it.
+        // PHP runs that class's own declaration, so a namesake it shadows never answers for it.
         if ($class->hasMethod($methodName)) {
             // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
             $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;

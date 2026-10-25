@@ -5,11 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
+use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PanelPayload;
 
 /** Parse one `$this->m()` call written as a statement. */
@@ -19,6 +22,16 @@ function runtimeClassCall(string $php): Expr
     assert($statement instanceof Expression);
 
     return $statement->expr;
+}
+
+/**
+ * What StaticSyntaxResource sends over a fresh Post, its inherited `toArray()` run as PHP runs it.
+ *
+ * @return array<string, mixed>
+ */
+function staticSyntaxResponse(): array
+{
+    return (new StaticSyntaxResource(new Post))->resolve(request());
 }
 
 it('reads a method an inherited body calls on the runtime class', function () {
@@ -49,4 +62,32 @@ it('types the receiver an inherited body\'s $this->m() returns as the runtime cl
         ->and($resolver->resolve(runtimeClassCall('$this->copy()'), $scope)?->classes)->toBe([ReceiverBaseDto::class])
         ->and(new ReceiverChildDto()->fresh())->toBeInstanceOf(ReceiverChildDto::class)
         ->and(new ReceiverChildDto()->copy())->not->toBeInstanceOf(ReceiverChildDto::class);
+});
+
+it('spreads the helper a `self::` call in an inherited body names, not the runtime class\'s override', function () {
+    expect(publishedResourceKeyTypes(StaticSyntaxResource::class, Post::class))->toHaveKey('base_helper', 'number')
+        ->not->toHaveKey('child_helper')
+        ->and(staticSyntaxResponse())->toHaveKey('base_helper', 1)->not->toHaveKey('child_helper');
+});
+
+it('reads a method on the `new self` an inherited body builds, not on the runtime class', function () {
+    expect(publishedResourceKeyTypes(StaticSyntaxResource::class, Post::class))->toHaveKey('built', '{ base_label: number }')
+        ->and(staticSyntaxResponse()['built'])->toBe(['base_label' => 1]);
+});
+
+it('forwards a `self::` call the declaring class lacks to the model, though the runtime class declares it', function () {
+    expect(publishedResourceKeyTypes(StaticSyntaxResource::class, Post::class))->toHaveKey('forwarded', 'boolean')
+        ->and(staticSyntaxResponse()['forwarded'])->toBeFalse();
+});
+
+it('reads a `$this::` call on the runtime class, where no private member of the declaring class answers', function () {
+    expect(analyzedKeyTypes(StaticSyntaxPayload::class))->toBe(['static_syntax' => 'string', 'arrow' => 'number'])
+        ->and(new StaticSyntaxPayload()->toArray())->toBe(['static_syntax' => 'x', 'arrow' => 1]);
+});
+
+it('reads a `static::` call in an inherited body on the runtime class', function () {
+    expect(publishedResourceKeyTypes(StaticSyntaxResource::class, Post::class))->toHaveKey('child_late', 'boolean')
+        ->toHaveKey('late', 'string')
+        ->not->toHaveKey('base_late')
+        ->and(staticSyntaxResponse())->toHaveKey('child_late', true)->toHaveKey('late', 'child')->not->toHaveKey('base_late');
 });
