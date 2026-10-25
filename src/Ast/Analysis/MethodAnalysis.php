@@ -60,8 +60,9 @@ class MethodAnalysis
     public bool $readsCompletely = true;
 
     /**
-     * Whether keys these hold reach the return unread, from a whole write's value the walk could not read or a key
-     * write it could not name; the body fallback publishes such a shape open.
+     * Whether keys these hold reach the return unread: from a whole write, helper or spread the walk cannot read, a key
+     * write it cannot name, an appending by-reference call, or a returned parameter it starts with no seed. Set through
+     * holdUnreadKeys(); the body fallback publishes such a shape open.
      */
     public bool $holdsUnreadKeys = false;
 
@@ -164,6 +165,15 @@ class MethodAnalysis
         }
 
         $this->carry($result['carriedFqcns'] ?? []);
+    }
+
+    /**
+     * Mark that keys these hold reach the return unread, so the read behind them is not complete either.
+     */
+    public function holdUnreadKeys(): void
+    {
+        $this->readsCompletely = false;
+        $this->holdsUnreadKeys = true;
     }
 
     /**

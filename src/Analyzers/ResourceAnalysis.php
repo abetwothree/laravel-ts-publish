@@ -20,8 +20,7 @@ class ResourceAnalysis extends MethodAnalysis
     public static function unreadAnalysis(): self
     {
         $analysis = new self;
-        $analysis->readsCompletely = false;
-        $analysis->holdsUnreadKeys = true;
+        $analysis->holdUnreadKeys();
 
         return $analysis;
     }

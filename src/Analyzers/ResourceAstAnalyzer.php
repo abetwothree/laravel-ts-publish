@@ -295,7 +295,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
         if ($branchAnalysis !== null) {
-            $branchAnalysis->holdsUnreadKeys = $branchAnalysis->holdsUnreadKeys || $passesKeys;
+            if ($passesKeys) {
+                $branchAnalysis->holdUnreadKeys();
+            }
 
             return $this->ownMethodShaped($branchAnalysis);
         }
@@ -320,7 +322,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         };
 
         $analysis ??= ResourceAnalysis::unreadAnalysis();
-        $analysis->holdsUnreadKeys = $analysis->holdsUnreadKeys || $passesKeys;
+
+        if ($passesKeys) {
+            $analysis->holdUnreadKeys();
+        }
 
         // The fallback reads one return of several, so the others are unread.
         if (count($returns) > 1) {
@@ -1597,6 +1602,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;
+        $analysis->holdsUnreadKeys = false;
 
         // resolve() runs the spread resource's own filter.
         self::reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));

@@ -340,16 +340,14 @@ trait ReadsReturnedVariables
             }
 
             if ($this->writesUnreadKey($stmt, $varName, $into)) {
-                $into->readsCompletely = false;
-                $into->holdsUnreadKeys = true;
+                $into->holdUnreadKeys();
 
                 continue;
             }
 
             // The statement's own writes still land beside what the append adds.
             if ($this->appendsByReference($stmt, $varName)) {
-                $into->readsCompletely = false;
-                $into->holdsUnreadKeys = true;
+                $into->holdUnreadKeys();
             }
 
             if ($stmt instanceof Unset_) {
@@ -370,8 +368,7 @@ trait ReadsReturnedVariables
                 $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
 
                 if ($baseAnalysis === null) {
-                    $into->readsCompletely = false;
-                    $into->holdsUnreadKeys = true;
+                    $into->holdUnreadKeys();
 
                     continue;
                 }
@@ -396,8 +393,7 @@ trait ReadsReturnedVariables
                 $addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($addedAnalysis === null) {
-                    $into->readsCompletely = false;
-                    $into->holdsUnreadKeys = true;
+                    $into->holdUnreadKeys();
 
                     continue;
                 }
