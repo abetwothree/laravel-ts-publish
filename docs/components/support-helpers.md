@@ -49,6 +49,9 @@ Ask what the helper's input domain is, not what calls it:
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
+| Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
+| What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
+| What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
@@ -101,8 +104,9 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()` and `IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to
-lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()` and `IndexSignatureKey::PATTERN`. That one-way
+dependency is what made the class safe to lift out. A new member that wants `toTsType()` is not a type-string helper,
+and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which

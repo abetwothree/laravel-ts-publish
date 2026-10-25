@@ -213,7 +213,7 @@ use. A route file with two such page props ships two `import type { StatusType }
 build, since `RouteTransformer::resolvePageTypeImports()` has no alias resolver or collision guard, and no workbench
 route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. A
 `->name` read does not: it falls back there to its literal case-name union rather than collide. The fix, carrying the
-FQCN beside the rendered name, changes the import channel.
+FQCN beside the rendered name, changes the import channel, and retires that fallback (`SharedEnumKinds`).
 
 Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. In a companion you can instead
 cast one key to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' =>

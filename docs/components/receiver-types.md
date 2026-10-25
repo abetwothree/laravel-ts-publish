@@ -355,16 +355,18 @@ body once per set of bindings its calls' arguments make. The shape spelled by it
 variable the walk reads, replaces the declaration's array arms, so `PriceQuoteService::quote()`, which declares only
 `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it
 too, so it publishes what the bare `$this->m()` does. A vague `@return array<string, …>` wins over the native `array` in
-`methodOrDocblockReturnTypes()`, and over a body value that is only that `unknown[]`, as a parameter returned untouched
-can be: a string-keyed array encodes as a `Record`, never as a list (`TsTypeString::spellsListAsRecord()`).
+`methodOrDocblockReturnTypes()`, and by the same rule over a body value whose arms it spells with a `Record` for the
+`unknown[]`, as a parameter returned untouched can be: a string-keyed array encodes as a `Record`, never as a list
+(`TsTypeString::spellsListAsRecord()`).
 
 A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
 from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the
-body never sees them, so `returnsKeyWrittenParameter()` adds `[key: string]: unknown` to the shape.
+body never sees them, so the analyzer marks the analysis as holding unread keys
+(`ReadsReturnedVariables::returnsUnseededParameter()`) and the shape gains `[key: string]: unknown`.
 `DecoratedPayloadResource` pins that through a container instance, a static call and a resource's own helper. A walk
 that holds keys it never read, from a whole write, helper or spread it cannot read, a key write it cannot name or an
-appending by-reference call (`MethodAnalysis::$holdsUnreadKeys`), opens the shape the same way, as `UnreadBasePayload`
-pins.
+appending by-reference call anywhere in a statement (`MethodAnalysis::$holdsUnreadKeys`), opens the shape the same way,
+as `UnreadBasePayload` pins.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
@@ -449,13 +451,13 @@ Each class types the property one of two ways:
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
 
-An enum's `value` or `name`, read on an enum or on `BackedEnum` or `UnitEnum`, comes from [`EnumValueTypes`] first,
-and what it declines falls to the reflected property. `->value` publishes the enum's `…Type` alias with its import, as
-does a pure enum's `->name`, since its values are its names. The alias needs a
+An enum's `value` or `name`, read on an enum or on `BackedEnum` or `UnitEnum`, comes from [`EnumValueTypes`] first, and
+what it declines falls to the reflected property. `->value` publishes the enum's `…Type` alias with its import, and
+`->name` a backed enum's `…Kind` alias, or a pure enum's `…Type`, since its values are its names. An alias needs a
 [reader that carries imports][reader-no-import], an enum [`PublishedEnums`] says `ts:publish` writes, and no case whose
-`#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends, which a backed
-enum's `->name` always is. A case past ±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number`
-and `string`. `PropertyChainHandler`'s wrapped-enum arm asks the same class.
+`#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends. A case past
+±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number` and `string`. `PropertyChainHandler`'s
+wrapped-enum arm asks the same class.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains

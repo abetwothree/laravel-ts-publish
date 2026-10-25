@@ -85,14 +85,13 @@ every profile, the order handlers run in decides which one answers; see
   written in a branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=`
   included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
-  object its bound value spells (`parameterSeed()`),
-  unless `ObjectMembers::seed()` finds a member would lose its text. A local written once reads as its value
-  (`writtenLocal()`), and the walk names a key such a local holds (`literalLocal()`); an `unset()` removes each key it
-  names, and only one it cannot name leaves the variable not read completely. A merge closure's body is seeded as
-  `ClosureHandler` seeds a closure's, so a local it assigns shadows the method's of its name. A closure's returns and a
-  method's read as a value share the walk through `ResolvesReturnedValues::resolveReturned()`, which walks a seeded
-  parameter the body writes rather than reading its binding; a value read of a local built by keys shares it through
-  `walkedLocal()`.
+  object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
+  A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
+  (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
+  completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
+  method's of its name. A closure's returns and a method's read as a value share the walk through
+  `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
+  binding; a value read of a local built by keys shares it through `walkedLocal()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`

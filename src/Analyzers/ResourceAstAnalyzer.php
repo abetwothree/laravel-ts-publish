@@ -958,7 +958,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $analysis = ResourceAnalysis::unreadAnalysis();
             }
         } else {
-            // A scalar, `null` or a constant holds no key; any other value holds keys nothing here read.
+            // A scalar, `null` or a constant holds no key; any other value holds keys nothing here reads.
             $holdsNoKey = $returned === null || $returned instanceof Scalar || $returned instanceof ConstFetch;
             $analysis = $holdsNoKey ? new ResourceAnalysis : ResourceAnalysis::unreadAnalysis();
         }
