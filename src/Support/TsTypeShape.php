@@ -25,6 +25,16 @@ final class TsTypeShape
     }
 
     /**
+     * Whether one union arm is a JSON scalar: a number, string or boolean, or a literal of one.
+     */
+    public static function isScalar(string $arm): bool
+    {
+        return in_array($arm, ['number', 'string', 'boolean', 'true', 'false'], true)
+            || is_numeric($arm)
+            || (strlen($arm) >= 2 && in_array($arm[0], ['"', "'"], true) && $arm[-1] === $arm[0]);
+    }
+
+    /**
      * Whether an object literal or a `Record<number, …>` sits anywhere in the type, outside quotes.
      *
      * A template literal's `${…}` reads as an object, so an unsure answer is yes.
@@ -147,6 +157,22 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * The key and value types of a type that is one `Record<K, V>`, or null for any other type.
+     *
+     * @return array{string, string}|null
+     */
+    public static function recordArguments(string $type): ?array
+    {
+        if (! str_starts_with($type, 'Record<') || ! self::isWrapped(substr($type, strlen('Record')), '<', '>')) {
+            return null;
+        }
+
+        $arguments = self::splitTopLevel(substr($type, strlen('Record<'), -1), [',']);
+
+        return count($arguments) === 2 ? [$arguments[0], $arguments[1]] : null;
     }
 
     /**

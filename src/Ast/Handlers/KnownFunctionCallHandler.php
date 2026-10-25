@@ -337,11 +337,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return $arm;
         }
 
-        $record = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
-            ? TsTypeShape::splitTopLevel(substr($arm, strlen('Record<'), -1), [','])
-            : [];
+        $record = TsTypeShape::recordArguments($arm);
 
-        if (count($record) === 2) {
+        if ($record !== null) {
             return TsTypeShape::listType([$record[1]]);
         }
 
@@ -360,11 +358,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      */
     private function filteredArm(string $arm, bool $dropsNull): ?string
     {
-        $record = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
-            ? TsTypeShape::splitTopLevel(substr($arm, strlen('Record<'), -1), [','])
-            : [];
+        $record = TsTypeShape::recordArguments($arm);
 
-        if (count($record) === 2) {
+        if ($record !== null) {
             return 'Record<'.$record[0].', '.$this->filteredValue($record[1], $dropsNull).'>';
         }
 

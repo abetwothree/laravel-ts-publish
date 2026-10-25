@@ -65,7 +65,7 @@ function analysisProbeCases(): array
         'SameNamedKindsPayload' => [SameNamedKindsPayload::class, 'toArray', null],
         // One enum's `…Type` token and its same-named sibling's `…Kind` token in one union.
         'SameNamedKindsUnions' => [SameNamedKindsPayload::class, 'unions', null],
-        // array_values() of a list, a Record, an object literal and an array_filter() result.
+        // array_values() and (object) and (array) casts of a list, a Record and an object literal, and stdClass values.
         'ReshapedListsPayload' => [ReshapedListsPayload::class, 'toArray', null],
     ];
 }

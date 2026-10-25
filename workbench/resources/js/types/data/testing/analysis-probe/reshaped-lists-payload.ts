@@ -6,4 +6,13 @@ export interface ReshapedListsPayloadProbe
     count_values: number[];
     size_values: (number | string)[];
     kept_tags: string[];
+    counts_object: Record<string, number>;
+    tags_object: Record<string, string>;
+    size_object: { width: number; label: string };
+    empty_object: Record<string, never>;
+    scalar_object: { scalar: string };
+    counts_array: Record<string, number>;
+    collection_object: string[];
+    blank: Record<string, unknown>;
+    fresh: Record<string, unknown>;
 }

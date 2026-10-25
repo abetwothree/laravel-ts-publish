@@ -149,6 +149,13 @@ test('maps bare castable classes to their TS shapes', function (string $castable
     [AsEnumCollection::class, 'unknown[]'],
 ]);
 
+test('maps stdClass to a record of unknown values', function () {
+    $map = (new TypeScriptMap)->gather();
+
+    expect($map[strtolower(stdClass::class)])->toBe('Record<string, unknown>')
+        ->and(json_encode(new stdClass))->toBe('{}');
+});
+
 test('maps bare iterable to unknown[], matching the bare array entry', function () {
     $map = (new TypeScriptMap)->gather();
 

@@ -303,7 +303,7 @@ it('types a new of a class that is not a resource as json_encode() writes it', f
     'a plain class with typed public properties' => [Coordinate::class, '{ lat: number; lng: number }'],
     'a Carbon subclass whose mixed jsonSerialize() says string' => [StampedDate::class, 'string'],
     'a model, which a fresh instance writes as no attributes' => [User::class, null],
-    'a class json_encode() writes as {} with no __toString()' => [stdClass::class, null],
+    'a stdClass, which json_encode() writes as {} until it gains properties' => [stdClass::class, 'Record<string, unknown>'],
     'an Arrayable, whose JSON depends on who serializes it' => [ArrayableData::class, null],
     'an Arrayable with a toArray() shape' => [Money::class, null],
     'a Collection, an Arrayable' => [Collection::class, null],

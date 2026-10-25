@@ -221,22 +221,84 @@ it('resolves an array cast of an array literal by delegating to the engine for t
         ->and($engine->receivedExpr)->toBe($inner);
 });
 
-it('resolves an array cast of a non-array operand to unknown[] without calling the engine', function () {
-    $handler = new CastHandler;
-    $expr = new CastArray_(new Variable('x'));
+// An array a filter enters again once cast, so a key an object kept is no longer kept.
+it('resolves an array cast of an operand typed as an array to the operand', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false, 'keepsKeys' => true]);
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
+    expect(new CastHandler()->resolve(new CastArray_(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    'a list' => ['string[]'],
+    'an empty list' => ['never[]'],
+    'a tuple' => ['[number, string]'],
+    'a record' => ['Record<string, number>'],
+    'an object literal' => ['{ a: number }'],
+    'a list or the object its gaps make' => ['string[] | Record<number, string>'],
+]);
 
-    expect($result)->toBe(['type' => 'unknown[]', 'optional' => false]);
+it('resolves an array cast of an operand not typed as an array to unknown[]', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastArray_(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => 'unknown[]', 'optional' => false]);
+})->with([
+    'an untyped value' => ['unknown'],
+    'a scalar, which PHP wraps in a list' => ['string'],
+    'a list or null' => ['string[] | null'],
+    'a named type' => ['PostResource'],
+]);
+
+// An object's array form holds its private and protected members under mangled keys.
+it('resolves an array cast of an operand the receiver resolver names a class for to unknown[] without calling the engine', function () {
+    $expr = new CastArray_(new FuncCall(new Name('collect')));
+
+    expect(new CastHandler()->resolve($expr, handlerTestScope(), throwingEngine()))
+        ->toBe(['type' => 'unknown[]', 'optional' => false]);
 });
 
-it('declines an object cast', function () {
-    $handler = new CastHandler;
-    $expr = new CastObject(new Variable('x'));
+// An API resource's filter never enters an object, so every result keeps its keys.
+it('resolves an object cast arm by arm as the stdClass PHP builds', function (string $type, string $object) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
+    expect(new CastHandler()->resolve(new CastObject(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => $object, 'optional' => false, 'keepsKeys' => true]);
+})->with([
+    'null' => ['null', 'Record<string, never>'],
+    'a list' => ['string[]', 'Record<string, string>'],
+    'a list of a union' => ['(number | string)[]', 'Record<string, number | string>'],
+    'an empty list' => ['never[]', 'Record<string, never>'],
+    'a tuple' => ['[number, string]', 'Record<string, number | string>'],
+    'a tuple with an optional member' => ['[number, (string | null)?]', 'Record<string, number | string | null>'],
+    'an empty tuple' => ['[]', 'Record<string, never>'],
+    'a record' => ['Record<number, string>', 'Record<number, string>'],
+    'an object literal' => ['{ a: number }', '{ a: number }'],
+    'an intersection of objects' => ['{ a: number } & Record<number, string>', '{ a: number } & Record<number, string>'],
+    'a string' => ['string', '{ scalar: string }'],
+    'a string literal' => ["'x'", "{ scalar: 'x' }"],
+    'a number literal' => ['1.5', '{ scalar: 1.5 }'],
+    'a boolean' => ['boolean', '{ scalar: boolean }'],
+    'a scalar or null' => ['string | null', '{ scalar: string } | Record<string, never>'],
+    'a list or the object its gaps make' => ['string[] | Record<number, string>', 'Record<string, string> | Record<number, string>'],
+    'two arms that build one object' => ['string[] | Record<string, string>', 'Record<string, string>'],
+]);
 
-    expect($result)->toBeNull();
+it('declines an object cast of an arm it cannot read', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new Variable('x')), handlerTestScope(), $engine))->toBeNull();
+})->with([
+    'an untyped value' => ['unknown'],
+    'an untyped value or null' => ['unknown | null'],
+    'a named type' => ['PostResource'],
+    'a list or a named type' => ['string[] | PostResource'],
+]);
+
+// PHP returns an object it casts unchanged, and builds an empty stdClass of null.
+it('resolves an object cast of an operand the receiver resolver names a class for to the operand', function () {
+    $engine = new SpyExpressionEngine(['type' => 'string[] | null', 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
+        ->toBe(['type' => 'string[] | Record<string, never>', 'optional' => false, 'keepsKeys' => true]);
 });
 
 // ScalarHandler
