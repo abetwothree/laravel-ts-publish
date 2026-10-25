@@ -339,11 +339,17 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            if ($this->writesUnreadKey($stmt, $varName, $into) || $this->appendsByReference($stmt, $varName)) {
+            if ($this->writesUnreadKey($stmt, $varName, $into)) {
                 $into->readsCompletely = false;
                 $into->holdsUnreadKeys = true;
 
                 continue;
+            }
+
+            // The statement's own writes still land beside what the append adds.
+            if ($this->appendsByReference($stmt, $varName)) {
+                $into->readsCompletely = false;
+                $into->holdsUnreadKeys = true;
             }
 
             if ($stmt instanceof Unset_) {
@@ -702,17 +708,18 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a statement passes the variable to a by-reference call that adds values to it under keys the walk never
-     * names: array_push(), array_unshift() or array_splice().
+     * Whether a statement's expression passes the variable to a by-reference call that adds values to it under keys the
+     * walk never names, array_push(), array_unshift() or array_splice(), as the statement or inside it.
      */
     private function appendsByReference(Node\Stmt $stmt, string $varName): bool
     {
-        $call = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
-
-        return $call instanceof CallLike && ! $call->isFirstClassCallable() && array_any(
-            $call->getArgs(),
-            fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
-                && resolve(ByReferenceArguments::class)->effect($call, $arg->value) === ByReferenceEffect::Appends,
+        return $stmt instanceof ExpressionStmt && $this->bodyHas(
+            [$stmt],
+            fn (Node $node): bool => $node instanceof CallLike && ! $node->isFirstClassCallable() && array_any(
+                $node->getArgs(),
+                fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
+                    && resolve(ByReferenceArguments::class)->effect($node, $arg->value) === ByReferenceEffect::Appends,
+            ),
         );
     }
 

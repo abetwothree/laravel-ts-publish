@@ -50,6 +50,14 @@ final class ReplacedParameter
         return $this->coalesced(['id' => 1]);
     }
 
+    /** @return array<string, mixed> */
+    public function pushedInline(): array
+    {
+        return [
+            'counted' => $this->counted(['id' => 1]),
+        ];
+    }
+
     /**
      * Replaces the array with a decoded one, then adds a key.
      *
@@ -249,6 +257,20 @@ final class ReplacedParameter
     private function pushed(array $data): array
     {
         array_push($data, 5);
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Pushes a value onto the array inside an assignment of its count, then adds a key.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function counted(array $data): array
+    {
+        $count = array_push($data, 5);
         $data['x'] = 1;
 
         return $data;

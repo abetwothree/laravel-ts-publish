@@ -90,6 +90,12 @@ it('keeps the seed past a key-keeping sort, an unset() of one key, an unset() th
     );
 });
 
+it('opens the seeded shape past an array_push() inside another statement', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'pushedInline'))->toBe([
+        'counted' => '{ id: number; x: number; [key: string]: unknown }',
+    ])->and(json_encode(new ReplacedParameter()->pushedInline()['counted']))->toBe('{"id":1,"0":5,"x":1}');
+});
+
 it('keeps the seed past a ??= in the method\'s own return', function () {
     expect(analyzedKeyTypes(ReplacedParameter::class, 'coalescedOwn'))->toBe(['id' => 'number', 'x' => 'number'])
         ->and(json_encode(new ReplacedParameter()->coalescedOwn()))->toBe('{"id":1,"x":1}');
