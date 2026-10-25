@@ -9,28 +9,46 @@ use Illuminate\Support\Facades\Config;
 /**
  * The enums `ts:publish` writes a file for, as the configured enum collector lists them, collected once per process
  * for each `ts-publish.enums` config.
+ *
+ * @internal
  */
 final class PublishedEnums
 {
-    /** The fingerprint of the `ts-publish.enums` config the set was collected under; null before the first read. */
-    private static ?string $configKey = null;
+    /** @var array{mixed}|null the `ts-publish.enums` config the set is collected under, wrapped; null before a read */
+    private static ?array $config = null;
 
-    /** @var array<string, true> */
-    private static array $enums = [];
+    /** Bumped each time a read finds that config changed, or the set flushed, since the read before. */
+    private static int $version = 0;
+
+    /** @var array<string, true>|null the enums collected under that config; null until a read collects them */
+    private static ?array $enums = null;
 
     /**
      * Whether `ts:publish` writes the enum's file: enum publishing is on and the configured collector lists the enum.
      */
     public static function includes(string $enum): bool
     {
-        $key = hash('xxh128', serialize(Config::array('ts-publish.enums')));
-
-        if ($key !== self::$configKey) {
-            self::$enums = Config::boolean('ts-publish.enums.enabled') ? self::collect() : [];
-            self::$configKey = $key;
-        }
+        self::version();
+        self::$enums ??= Config::boolean('ts-publish.enums.enabled') ? self::collect() : [];
 
         return isset(self::$enums[$enum]);
+    }
+
+    /**
+     * A number that changes whenever the `ts-publish.enums` config the set is collected under does, so an answer
+     * worked out under one set is never reused under another.
+     */
+    public static function version(): int
+    {
+        $config = [Config::get('ts-publish.enums')];
+
+        if ($config !== self::$config) {
+            self::$config = $config;
+            self::$enums = null;
+            self::$version++;
+        }
+
+        return self::$version;
     }
 
     /**
@@ -38,8 +56,8 @@ final class PublishedEnums
      */
     public static function flush(): void
     {
-        self::$configKey = null;
-        self::$enums = [];
+        self::$config = null;
+        self::$enums = null;
     }
 
     /**

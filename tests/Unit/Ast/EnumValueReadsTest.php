@@ -61,6 +61,14 @@ it('publishes the literal union when enum publishing is off or excludes the enum
     'excluded' => [['ts-publish.enums.excluded' => [Grade::class]]],
 ]);
 
+it('replays no memoized alias once the enums config changes', function () {
+    expect(analyzedKeyTypes(EnumValuesPayload::class)['fallback_grade'])->toBe('GradeType');
+
+    config()->set('ts-publish.enums.enabled', false);
+
+    expect(analyzedKeyTypes(EnumValuesPayload::class)['fallback_grade'])->toBe("'pass' | 'fail'");
+});
+
 it('publishes the literal union for an enum whose cases #[TsCase] renames or revalues', function () {
     expect(EnumValueTypes::value(Color::class, true)['type'])->toBe("'red' | 'green' | 'blue' | 'amber' | 'gray' | 'purple'")
         ->and(EnumValueTypes::name(Color::class, true)['type'])->toBe("'Red' | 'Green' | 'Blue' | 'Amber' | 'Gray' | 'Purple'")

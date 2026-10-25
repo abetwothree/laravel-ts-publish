@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use Closure;
 
 /**
@@ -22,6 +23,7 @@ use Closure;
  *     dropped: int,
  *     resources: int,
  *     models: int,
+ *     enums: int,
  * }
  * @phpstan-type MemoEntry = array{
  *     value: mixed,
@@ -32,6 +34,7 @@ use Closure;
  *     dropped: int,
  *     resources: int,
  *     models: int,
+ *     enums: int,
  * }
  *
  * @internal
@@ -87,8 +90,10 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
+        $enums = PublishedEnums::version();
+
         foreach ($this->entries[$key] ?? [] as $entry) {
-            if ($this->reproducible($entry)) {
+            if ($this->reproducible($entry, $enums)) {
                 $this->replay($entry);
 
                 /** @var T $value */
@@ -107,6 +112,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped(),
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
+            'enums' => $enums,
         ];
 
         try {
@@ -129,16 +135,17 @@ final class AnalysisMemo
     }
 
     /**
-     * Whether computing an answer again now could only reproduce it: nothing it read has changed, and each guard it
-     * entered is held now exactly where it was held then, so a fresh run is cut short at the same places.
+     * Whether computing an answer again now could only reproduce it: nothing it read has changed, the published enums
+     * at version $enums included, and each guard it entered is held now exactly where it was held then.
      *
      * @param  MemoEntry  $entry
      */
-    private function reproducible(array $entry): bool
+    private function reproducible(array $entry, int $enums): bool
     {
         // An answer worked out while dependencies went unrecorded has none to replay into a recording run.
         if ($entry['resources'] !== PublishedResourceRegistry::version()
             || $entry['models'] !== PublishedModelRegistry::version()
+            || $entry['enums'] !== $enums
             || (! $entry['recording'] && DependencyRecorder::isRecording())) {
             return false;
         }
@@ -208,6 +215,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'resources' => $frame['resources'],
             'models' => $frame['models'],
+            'enums' => $frame['enums'],
         ];
 
         foreach ($this->entries[$key] ?? [] as $index => $stored) {
