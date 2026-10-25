@@ -68,7 +68,7 @@ it('derives no forwarding target without both a proxying subject and a backing m
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
-it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file', function () {
+it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file and declaring class', function () {
     $model = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);
     $scope = new AnalysisScope($model, Post::class);
@@ -80,7 +80,7 @@ it('rebases a model scope onto an API resource over the model, which forwards to
         ->and($scope->forwardsUndeclaredMembersTo)->toBe(Post::class)
         ->and($scope->declaringFileClass)->toBe($model)
         ->and($scope->runtimeReflection)->toBe($resource)
-        ->and($scope->declaringClass)->toBe($resource);
+        ->and($scope->declaringClass)->toBe($model);
 });
 
 it('rebases a resource scope onto a resource collection, which forwards nothing: its items are the proxy', function () {

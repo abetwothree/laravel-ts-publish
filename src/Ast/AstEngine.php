@@ -232,6 +232,8 @@ final class AstEngine
     ): ?array {
         $scope = $this->bindingsFor($context);
         $scope->rebase(self::genericReflection($subjectClass), $modelClass);
+        // Macroable binds a closure with the subject as its scope class, so `self` names it there.
+        $scope->declaringClass = $scope->subjectReflection;
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
             $modelClass,

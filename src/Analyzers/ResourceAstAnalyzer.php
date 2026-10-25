@@ -160,7 +160,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
      * @param  ReflectionClass<object>|null  $runtimeClass  the class `$this` is at run time when this reads an
-     *                                                      ancestor's body for it; null when that is the subject
+     *                                                      ancestor's body for it; null keeps the scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
      */
@@ -185,7 +185,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->scope->carriesImports = $carriesImports;
         }
 
-        $this->scope->runtimeReflection = $runtimeClass ?? $this->scope->subjectReflection;
+        if ($runtimeClass !== null) {
+            $this->scope->runtimeReflection = $runtimeClass;
+        }
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
         $this->scope->seedCollectionFacts($this->runtimeClass());

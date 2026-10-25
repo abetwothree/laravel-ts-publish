@@ -498,8 +498,6 @@ final class AnalysisScope
     {
         $this->subjectReflection = $subject;
         $this->runtimeReflection = $subject;
-        // Macroable binds a closure with the subject as its scope class, so `self` names it there.
-        $this->declaringClass = $subject;
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -899,8 +897,9 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read the subject's own method $method, as within()'s $enter: no caller name
-     * reaches its body, which reads `$this` as the subject from its own file, and only $proofs of `$this` reads hold.
+     * Set the caller's state aside to read $method, a method `$this` reaches, as within()'s $enter: no caller name
+     * reaches its body, which reads its own file's imports and its own declaring class, and only $proofs of `$this`
+     * reads hold.
      *
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
