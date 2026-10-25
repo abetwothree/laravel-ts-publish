@@ -418,6 +418,16 @@ final class ValueResult
     }
 
     /**
+     * Every name an enum's tokens are spelled with: its type name, then each sibling name.
+     *
+     * @return non-empty-list<string>
+     */
+    public static function enumNames(string $fqcn): array
+    {
+        return [self::enumTypeName($fqcn), ...self::enumSiblingNames($fqcn)];
+    }
+
+    /**
      * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
      */
     private static function withoutEmptyListBesideList(string $type): string

@@ -612,7 +612,7 @@ class BroadcastEventTransformer extends CoreTransformer
                 $aliasable[$importPath][$name] = true;
 
                 if (TsTypeString::typeNameOccursIn($local, ...$types)) {
-                    $imports[$importPath][] = $local === $name ? $name : $name.' as '.$local;
+                    $imports[$importPath][] = $this->formatSiblingImportName($name, $local);
                 }
             }
         }

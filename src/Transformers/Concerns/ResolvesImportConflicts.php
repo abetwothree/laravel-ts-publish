@@ -66,6 +66,14 @@ trait ResolvesImportConflicts
     }
 
     /**
+     * Format a sibling import name, such as an enum's `…Kind`, applying "Name as Local" syntax when aliased.
+     */
+    protected function formatSiblingImportName(string $name, string $local): string
+    {
+        return $local === $name ? $name : $name.' as '.$local;
+    }
+
+    /**
      * Format a const import name, applying "OriginalName as Alias" syntax when aliased.
      */
     protected function formatConstImportName(string $fqcn): string

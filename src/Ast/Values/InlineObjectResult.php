@@ -165,7 +165,7 @@ final class InlineObjectResult
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
             fn (string $fqcn): bool => array_any(
-                [LaravelTsPublish::toTsType($fqcn)['type'], ...ValueResult::enumSiblingNames($fqcn)],
+                ValueResult::enumNames($fqcn),
                 fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $result['type']),
             ),
         ));

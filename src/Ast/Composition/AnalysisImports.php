@@ -114,6 +114,14 @@ final class AnalysisImports
     }
 
     /**
+     * Emit the sibling name unchanged — collision aliasing is the caller's concern.
+     */
+    protected function formatSiblingImportName(string $name, string $local): string
+    {
+        return $name;
+    }
+
+    /**
      * Emit the enum's const name unchanged — collision aliasing is the caller's concern.
      */
     protected function formatConstImportName(string $fqcn): string

@@ -17,6 +17,11 @@ use Illuminate\Support\Str;
 trait BuildsImportMaps
 {
     /**
+     * The import name a sibling name, such as an enum's `…Kind`, takes under its local name.
+     */
+    abstract protected function formatSiblingImportName(string $name, string $local): string;
+
+    /**
      * Collect modular (per-file) type imports for a set of FQCNs, each beside the sibling names it is imported under.
      *
      * With `$spelledIn`, a class imported under a sibling name keeps only the names those types spell: an enum a type
@@ -36,7 +41,7 @@ trait BuildsImportMaps
             $names = [$this->formatImportName($fqcn, $typeName)];
 
             foreach ($this->siblingImportNames[$fqcn] ?? [] as $name => $local) {
-                $names[] = $local === $name ? $name : $name.' as '.$local;
+                $names[] = $this->formatSiblingImportName($name, $local);
             }
 
             if ($spelledIn !== null && count($names) > 1) {

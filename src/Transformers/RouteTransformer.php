@@ -844,7 +844,7 @@ class RouteTransformer extends CoreTransformer
 
             // An enum's TypeScript name follows #[TsEnum(name:)]; a page reading only its `…Kind` needs no `…Type`.
             $names = array_filter(
-                [LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type', ...ValueResult::enumSiblingNames($fqcn)],
+                ValueResult::enumNames($fqcn),
                 static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$pageTypes),
             );
 

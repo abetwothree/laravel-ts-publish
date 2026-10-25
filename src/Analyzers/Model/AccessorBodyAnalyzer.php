@@ -140,7 +140,7 @@ final class AccessorBodyAnalyzer
 
         foreach ($info['enumFqcns'] as $i => $fqcn) {
             $name = $info['enumTypes'][$i];
-            $spellings[$name] = [...($spellings[$name] ?? [$name]), ...ValueResult::enumSiblingNames($fqcn)];
+            $spellings[$name] = [...($spellings[$name] ?? []), ...ValueResult::enumNames($fqcn)];
         }
 
         foreach ([[$info['enumTypes'], $spellings], [$info['classes'], []]] as [$names, $spelledAs]) {

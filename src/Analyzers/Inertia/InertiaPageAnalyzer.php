@@ -538,10 +538,7 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
             fn (string $fqcn): bool => enum_exists($fqcn)
-                ? array_any(
-                    [LaravelTsPublish::toTsType($fqcn)['type'], ...ValueResult::enumSiblingNames($fqcn)],
-                    fn (string $name): bool => $this->typeSpells($pageType, $name),
-                )
+                ? array_any(ValueResult::enumNames($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
                 : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
         ));
     }

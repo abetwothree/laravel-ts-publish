@@ -781,7 +781,7 @@ class ResourceTransformer extends CoreTransformer
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 
-        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends, ValueResult::enumSiblingNames(...));
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends, ValueResult::enumNames(...));
 
         return $this;
     }
@@ -849,16 +849,17 @@ class ResourceTransformer extends CoreTransformer
      * @param  array<TFqcn, string>  $map  FQCN => unaliased name
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
      * @param  list<string>  $extra  the extends clauses, and for resources the type alias
-     * @param  (Closure(TFqcn): list<string>)|null  $siblingsOf  the other names a class's tokens are spelled with
+     * @param  (Closure(TFqcn): list<string>)|null  $namesOf  every name a class's tokens are spelled with; null for
+     *                                                     its unaliased name alone
      * @return array<TFqcn, string>
      */
-    protected function keepSpelled(array $map, array $attributed, array $extra, ?Closure $siblingsOf = null): array
+    protected function keepSpelled(array $map, array $attributed, array $extra, ?Closure $namesOf = null): array
     {
         $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
         $ownNames = $this->ownNames($map, $attributed);
 
-        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra, $siblingsOf): bool {
-            $names = [$name, ...($siblingsOf === null ? [] : $siblingsOf($fqcn))];
+        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra, $namesOf): bool {
+            $names = $namesOf === null ? [$name] : $namesOf($fqcn);
 
             foreach ($types as $property => $type) {
                 if (in_array($fqcn, $attributed[$property] ?? [], true)
