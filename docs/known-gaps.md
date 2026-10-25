@@ -117,17 +117,20 @@ A method that builds an array in a variable and returns it publishes the keys it
   does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or any
   other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
-  reads instead; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
+  reads instead, beside `[key: string]: unknown` for a helper read as a value whose base or key write the walk could
+  not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
   variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
 A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of
-a declared `array{…}`. A parameter bound to nothing typed, such as an array `json_decode()` returns, publishes only the
-keys the helper writes: beside `[key: string]: unknown` where the helper is read as a value, and alone where its result
-is the method's own return. It falls back the same way where the argument holds an `EnumResource` wrap or two
-same-named enums, one a level below the other, and, for a helper read as a value, any model, resource or enum. Declare
-`@return array{…}` on the helper to publish the exact shape.
+a declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a
+value and alone where its result is the method's own return, when the argument is not one object literal (a `Record`,
+a list, a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an
+`EnumResource` wrap or two same-named enums a level apart, or, for a helper read as a value, any model, resource or
+enum. A top-level `unset()`, destructuring, `foreach` target or by-reference call of the parameter, a key-keeping sort
+such as `ksort()` aside, leaves only the helper's own writes. Declare `@return array{…}` on the helper to publish the
+exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
