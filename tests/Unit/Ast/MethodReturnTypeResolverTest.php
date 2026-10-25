@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyStampingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
@@ -280,6 +281,18 @@ test('keeps the open signature only for a parameter bound to nothing it can read
         ->and($values['opaque'])->toBe('{ url?: null; disabled?: boolean; [key: string]: unknown }')
         ->and($values['nested'])->toBe('{ id: number; url: string | null; disabled: boolean }')
         ->and(json_encode(new GuardedLinkPayload()->values()['opaque']))->toBe('[]');
+});
+
+// The parent's body is read in an analyzer of its own, which binds nothing the child passes, so it seeds nothing.
+test('keeps a parent:: helper that writes keys into its parameter open through the child', function () {
+    $child = new KeyStampingChild;
+
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(KeyStampingChild::class, 'stamped')['type'] ?? null)
+        ->toBe('{ x: number; [key: string]: unknown }')
+        ->and(resolve(MethodReturnTypeResolver::class)->resolve(KeyStampingChild::class, 'extended')['type'] ?? null)
+        ->toBe('{ x: number; y: number; [key: string]: unknown }')
+        ->and(json_encode($child->stamped(['id' => 1])))->toBe('{"id":1,"x":1}')
+        ->and(json_encode($child->extended(['id' => 1])))->toBe('{"id":1,"x":1,"y":2}');
 });
 
 test('lets a seeded shape win over a vague @return array<string, mixed>', function () {
