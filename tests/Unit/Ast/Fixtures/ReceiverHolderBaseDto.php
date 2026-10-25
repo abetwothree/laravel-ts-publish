@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
-/** A parent whose body builds `new static` and reads a property ReceiverHolderChildDto redeclares, and a private one. */
+/** A parent whose body builds `new static` and reads a property its child redeclares, and a private one. */
 class ReceiverHolderBaseDto
 {
     /** @var ReceiverBaseDto */

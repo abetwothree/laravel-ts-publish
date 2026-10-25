@@ -12,7 +12,7 @@ final class ReceiverHolderChildDto extends ReceiverHolderBaseDto
     /** @var ReceiverChildDto */
     protected $held;
 
-    /** Fill `$held` as this class redeclares it. */
+    /** Fill `$held` as this class redeclares it, and its own `$own`. */
     public function __construct()
     {
         parent::__construct();

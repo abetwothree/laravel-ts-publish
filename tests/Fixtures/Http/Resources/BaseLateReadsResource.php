@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * A test-only model-backed resource whose `toArray()` reads a constant key and an untyped property LateReadsResource
- * redeclares, beside a private property it redeclares too.
+ * redeclares, beside a private property LateReadsResource declares a public namesake of.
  */
 class BaseLateReadsResource extends JsonResource
 {
