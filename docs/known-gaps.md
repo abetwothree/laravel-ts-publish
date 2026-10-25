@@ -783,7 +783,8 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 An untyped property publishes its default's type joined with each literal or constant its class, an ancestor, a trait
 or the published subclass writes it, and `unknown` for any other write. A by-reference parameter on a receiver the scan
 cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel
-sends while the published type stays the default's. Declare the property's type, or give it a `@var` docblock.
+sends while the published type stays the default's. So does a write by a subclass of a receiver's declared class, such
+as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
 
 ### A column a body writes publishes its declared type, not the value written
 

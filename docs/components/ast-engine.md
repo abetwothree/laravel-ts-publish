@@ -495,8 +495,10 @@ literal or a constant expression, an ancestor's, a trait's or, through the runti
 other write declines: another value, a compound or element write, `unset()`, a computed `$this->{$name}` write in
 application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
 which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. The check cannot see a by-reference parameter on a receiver it cannot resolve, or a
-write from outside the class.
+`next()`, `prev()` and `reset()`. A value naming `static` is typed against the runtime class the caller passes, and
+declines on a receiver, whose object may be a subclass. The check cannot see a by-reference parameter on a receiver it
+cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from
+outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
