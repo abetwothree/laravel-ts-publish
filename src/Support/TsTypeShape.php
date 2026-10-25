@@ -60,7 +60,7 @@ final class TsTypeShape
 
             if (self::isWrapped($arm, '[', ']')) {
                 return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
-                    ? self::tupleMember(self::splitTopLevel(substr($arm, 1, -1), [','])[(int) $key] ?? null)
+                    ? self::tupleMembers($arm)[(int) $key] ?? null
                     : null;
             }
 
@@ -73,6 +73,16 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * Each member type of one tuple, in order, without its optional marker.
+     *
+     * @return list<string>
+     */
+    public static function tupleMembers(string $tuple): array
+    {
+        return array_map(self::tupleMember(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
     }
 
     /**
@@ -288,9 +298,9 @@ final class TsTypeShape
     /**
      * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union.
      */
-    private static function tupleMember(?string $member): ?string
+    private static function tupleMember(string $member): string
     {
-        if ($member === null || ! str_ends_with($member, '?')) {
+        if (! str_ends_with($member, '?')) {
             return $member;
         }
 

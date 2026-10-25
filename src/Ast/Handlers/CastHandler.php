@@ -20,12 +20,17 @@ use PhpParser\Node\Expr\Cast\Double as CastDouble;
 use PhpParser\Node\Expr\Cast\Int_ as CastInt;
 use PhpParser\Node\Expr\Cast\Object_ as CastObject;
 use PhpParser\Node\Expr\Cast\String_ as CastString;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Scalar\Float_;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 
 /**
  * PHP cast operators: a scalar cast alone sets the type, while `(object)` and `(array)` keep what the operand holds.
  *
- * `(object)` returns an object unchanged and builds a stdClass of any other value, which an API resource's filter never
- * enters. `(array)` keeps an array, and types an object as `unknown[]`: its array form mangles non-public member keys.
+ * `(object)` returns an object unchanged and builds a stdClass of an array or a scalar literal, which an API resource's
+ * filter never enters. `(array)` keeps an array, and types an object as `unknown[]`: its array form mangles non-public
+ * member keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -61,6 +66,7 @@ final class CastHandler implements ExpressionHandler
     private function objectCast(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
+        $literalOperand = $this->isScalarLiteral($operand);
         $result = $engine->resolve($operand);
         $arms = [];
 
@@ -69,7 +75,7 @@ final class CastHandler implements ExpressionHandler
                 $arm === 'unknown' => null,
                 $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
                 $isObject => $arm,
-                default => $this->builtObject($arm),
+                default => $this->builtObject($arm, $literalOperand),
             };
 
             if ($built === null) {
@@ -117,9 +123,9 @@ final class CastHandler implements ExpressionHandler
 
     /**
      * The stdClass `(object)` builds of one arm that holds no object: a keyed array as itself, a list or tuple keyed by
-     * index, a scalar under `scalar`; null for any other arm.
+     * index, a scalar under `scalar` where the operand or the arm is a literal; null for any other arm.
      */
-    private function builtObject(string $arm): ?string
+    private function builtObject(string $arm, bool $literalOperand): ?string
     {
         if ($this->isKeyedArray($arm)) {
             return $arm;
@@ -131,27 +137,32 @@ final class CastHandler implements ExpressionHandler
             return 'Record<string, '.$element.'>';
         }
 
-        return TsTypeShape::isScalar($arm) ? '{ scalar: '.$arm.' }' : null;
+        // An object the resolver cannot name may type as `string`, as a Carbon date does; PHP returns it as is.
+        $isScalar = TsTypeShape::isScalar($arm)
+            && ($literalOperand || ! in_array($arm, ['string', 'number', 'boolean'], true));
+
+        return $isScalar ? '{ scalar: '.$arm.' }' : null;
     }
 
     /**
-     * Every member type of a tuple as one union, `never` for the empty tuple; null where a member cannot be read.
+     * Every member type of a tuple as one union, or `never` for the empty tuple.
      */
-    private function tupleValues(string $tuple): ?string
+    private function tupleValues(string $tuple): string
     {
-        $values = [];
+        $members = TsTypeShape::tupleMembers($tuple);
 
-        foreach (array_keys(TsTypeShape::splitTopLevel(substr($tuple, 1, -1), [','])) as $index) {
-            $value = TsTypeShape::memberType($tuple, (string) $index);
+        return $members === [] ? 'never' : TsTypeString::hoistNull($members);
+    }
 
-            if ($value === null) {
-                return null;
-            }
-
-            $values[] = $value;
-        }
-
-        return $values === [] ? 'never' : TsTypeString::hoistNull($values);
+    /**
+     * Whether the operand is a string, int, float or boolean literal, which no object can be.
+     */
+    private function isScalarLiteral(Expr $operand): bool
+    {
+        return $operand instanceof String_
+            || $operand instanceof Int_
+            || $operand instanceof Float_
+            || ($operand instanceof ConstFetch && in_array($operand->name->toLowerString(), ['true', 'false'], true));
     }
 
     /**

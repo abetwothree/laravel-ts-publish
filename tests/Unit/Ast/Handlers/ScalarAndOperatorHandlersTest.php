@@ -31,6 +31,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\String_;
@@ -273,11 +274,10 @@ it('resolves an object cast arm by arm as the stdClass PHP builds', function (st
     'a record' => ['Record<number, string>', 'Record<number, string>'],
     'an object literal' => ['{ a: number }', '{ a: number }'],
     'an intersection of objects' => ['{ a: number } & Record<number, string>', '{ a: number } & Record<number, string>'],
-    'a string' => ['string', '{ scalar: string }'],
     'a string literal' => ["'x'", "{ scalar: 'x' }"],
     'a number literal' => ['1.5', '{ scalar: 1.5 }'],
-    'a boolean' => ['boolean', '{ scalar: boolean }'],
-    'a scalar or null' => ['string | null', '{ scalar: string } | Record<string, never>'],
+    'a boolean literal' => ['true', '{ scalar: true }'],
+    'a literal or null' => ["'x' | null", "{ scalar: 'x' } | Record<string, never>"],
     'a list or the object its gaps make' => ['string[] | Record<number, string>', 'Record<string, string> | Record<number, string>'],
     'two arms that build one object' => ['string[] | Record<string, string>', 'Record<string, string>'],
 ]);
@@ -291,6 +291,24 @@ it('declines an object cast of an arm it cannot read', function (string $type) {
     'an untyped value or null' => ['unknown | null'],
     'a named type' => ['PostResource'],
     'a list or a named type' => ['string[] | PostResource'],
+    // A Carbon date or a Stringable the resolver cannot name types as `string`, and PHP returns it unchanged.
+    'a string a variable holds' => ['string'],
+    'a number a variable holds' => ['number'],
+    'a boolean a variable holds' => ['boolean'],
+    'a string or null a variable holds' => ['string | null'],
+]);
+
+it('resolves an object cast of a scalar literal to the stdClass holding it under scalar', function (Expr $operand, string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject($operand), handlerTestScope(), $engine))
+        ->toBe(['type' => "{ scalar: {$type} }", 'optional' => false, 'keepsKeys' => true]);
+})->with([
+    'a string' => [fn (): Expr => new String_('x'), 'string'],
+    'an int' => [fn (): Expr => new Int_(1), 'number'],
+    'a float' => [fn (): Expr => new Float_(1.5), 'number'],
+    'true' => [fn (): Expr => new ConstFetch(new Name('true')), 'boolean'],
+    'false' => [fn (): Expr => new ConstFetch(new Name('FALSE')), 'boolean'],
 ]);
 
 // PHP returns an object it casts unchanged, and builds an empty stdClass of null.
@@ -300,6 +318,16 @@ it('resolves an object cast of an operand the receiver resolver names a class fo
     expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
         ->toBe(['type' => 'string[] | Record<string, never>', 'optional' => false, 'keepsKeys' => true]);
 });
+
+it('declines an object cast of an operand the receiver resolver names a class for where an arm is untyped', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
+        ->toBeNull();
+})->with([
+    'an untyped value' => ['unknown'],
+    'a list or an untyped value' => ['string[] | unknown'],
+]);
 
 // ScalarHandler
 

@@ -2,9 +2,20 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastObjectResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
+
+/** The type one expression resolves to through the resource profile of PostResource over a Post. */
+function objectCastType(string $php): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'];
+}
 
 it('types an (object) cast as the object it encodes, and stdClass as a record', function () {
     expect(analyzedKeyTypes(ReshapedListsPayload::class))->toMatchArray([
@@ -33,3 +44,12 @@ it('keeps the numeric keys of a cast object in a resource', function () {
     ])->and((new CastObjectResource(new Post))->resolve(request()))
         ->toEqual(['codes' => (object) [10 => 'a', 20 => 'b'], 'list' => ['a', 'b']]);
 });
+
+// A Carbon date or a Stringable types as `string`, and PHP returns an object it casts unchanged.
+it('leaves an (object) cast of a scalar-typed value that is no literal untyped', function (string $php) {
+    expect(objectCastType($php))->toBe('unknown');
+})->with([
+    'a string column' => ['(object) $this->title'],
+    'a date or an empty array' => ['(object) ($this->title ? now() : [])'],
+    'a Stringable' => ['(object) str($this->title)'],
+]);
