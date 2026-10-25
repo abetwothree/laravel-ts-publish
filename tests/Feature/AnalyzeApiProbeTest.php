@@ -19,6 +19,7 @@ use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
+use Workbench\App\ValueObjects\PanelPayload;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 
@@ -74,6 +75,8 @@ function analysisProbeCases(): array
         'GuardedLinkPayload' => [GuardedLinkPayload::class, 'toArray', null],
         // The same helper and its kin read as values: a nested argument, a +=, a declared shape and an unread one.
         'GuardedLinkPayloadValues' => [GuardedLinkPayload::class, 'values', null],
+        // An inherited toArray() whose `$this`, `static`, `self` and `parent` each name another class at run time.
+        'PanelPayload' => [PanelPayload::class, 'toArray', null],
     ];
 }
 

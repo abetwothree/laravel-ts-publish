@@ -934,23 +934,24 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve `$this->m()`: the subject's own method, else that of what `$this->resource` holds, since JsonResource
-     * forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it returns.
+     * Resolve `$this->m()`: the runtime class's method, or the declaring class's private one, else that of what
+     * `$this->resource` holds, since JsonResource forwards `__call()` there, else, where forwardedThisReceiver() leaves
+     * the call to a macro, what it returns.
      */
     private function fromThisMethodCall(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
+        $owner = $scope->thisMemberClass($method, true);
 
-        if ($subject->hasMethod($method)) {
-            return $this->memberMethod($subject->getName(), $method, true);
+        if ($owner->hasMethod($method)) {
+            return $this->memberMethod($owner->getName(), $method, true);
         }
 
         $forwarded = $this->forwardedThisReceiver($method, $scope);
 
         if ($forwarded === null) {
-            $macro = resolve(MacroCallResolver::class)->macroFor($subject, $method);
+            $macro = resolve(MacroCallResolver::class)->macroFor($owner, $method);
 
-            return $this->typeOf($this->macroReturnClasses($macro, $subject->getName()));
+            return $this->typeOf($this->macroReturnClasses($macro, $owner->getName()));
         }
 
         return $this->merge(

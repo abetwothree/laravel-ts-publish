@@ -4287,8 +4287,9 @@ declare global {
          * spreads and the `with()` it spreads.
          */
         export interface NoticeResource {
-            headline: string | number;
-            base_only: number;
+            headline: string;
+            child_only: boolean;
+            meta: number;
         }
         /**
          * only() away from a relation receiver: a top-level spread that names a withCount() virtual the schema

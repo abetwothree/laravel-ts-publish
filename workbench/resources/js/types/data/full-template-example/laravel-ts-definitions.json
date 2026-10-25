@@ -16360,11 +16360,16 @@
             "properties": [
                 {
                     "name": "headline",
-                    "type": "string | number",
+                    "type": "string",
                     "optional": false
                 },
                 {
-                    "name": "base_only",
+                    "name": "child_only",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "meta",
                     "type": "number",
                     "optional": false
                 }

@@ -16,9 +16,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the subject's own
- * declaration, else a macro registered under the name, else the declaration of the first class `$this->resource` holds
- * that declares it, as `__call` forwards it there.
+ * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the runtime class's
+ * declaration, or the declaring class's private one, else a macro registered under the name, else the declaration of
+ * the first class `$this->resource` holds that declares it, as `__call` forwards it there.
  *
  * Shared because more than one guard reflects a subject method the same way: StaticCallHandler's
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
@@ -38,18 +38,20 @@ final class SubjectMethodTypeResolver
      */
     public function resolve(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
     {
-        // PHP runs the subject's own declaration, so a namesake it shadows never answers for it.
-        if ($scope->subjectReflection->hasMethod($methodName)) {
+        $class = $scope->thisMemberClass($methodName, true);
+
+        // PHP runs the runtime class's own declaration, so a namesake it shadows never answers for it.
+        if ($class->hasMethod($methodName)) {
             // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
             $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;
 
-            return $this->resolveOn($scope->subjectReflection, $methodName, $site, $backing);
+            return $this->resolveOn($class, $methodName, $site, $backing);
         }
 
         // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
         $macros = resolve(MacroCallResolver::class);
 
-        if ($macros->runsMacro($scope->subjectReflection, $methodName)) {
+        if ($macros->runsMacro($class, $methodName)) {
             return $macros->resolve($scope, $methodName);
         }
 

@@ -864,11 +864,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
     {
-        if (! $this->scope->subjectReflection->hasMethod($methodName)) {
+        $class = $this->scope->thisMemberClass($methodName, true);
+
+        if (! $class->hasMethod($methodName)) {
             return null; // @codeCoverageIgnore
         }
 
-        $method = $this->scope->subjectReflection->getMethod($methodName);
+        $method = $class->getMethod($methodName);
 
         if (isset($this->scope->visitedSpreadMethods[$method->getName()])) {
             return null;
@@ -878,7 +880,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $this->frameworkMethodAnalysis($methodName);
         }
 
-        $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
+        $context = resolve(MethodLocator::class)->locate($class->getName(), $methodName);
         $targetMethod = $context?->method;
 
         if ($targetMethod === null || $targetMethod->stmts === null) {

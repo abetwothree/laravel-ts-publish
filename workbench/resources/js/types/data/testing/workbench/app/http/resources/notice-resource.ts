@@ -6,6 +6,7 @@
  */
 export interface NoticeResource
 {
-    headline: string | number;
-    base_only: number;
+    headline: string;
+    child_only: boolean;
+    meta: number;
 }
