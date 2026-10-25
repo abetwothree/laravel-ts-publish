@@ -121,6 +121,22 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'a method' => ['$this->fill($x);', ByReferenceEffect::Replaces],
 ]);
 
+it('tells a call that leaves every string key of the variable it takes by reference', function (string $statement, bool $keeps) {
+    $call = new AstParser()->parseSource('<?php namespace App; '.$statement)[0]->stmts[0]->expr;
+    $argument = array_find($call->getArgs(), fn ($arg): bool => $arg->value instanceof Variable && $arg->value->name === 'x')->value;
+
+    expect(resolve(ByReferenceArguments::class)->keepsStringKeys($call, $argument))->toBe($keeps);
+})->with([
+    'ksort()' => ['ksort($x);', true],
+    'asort()' => ['asort($x);', true],
+    'array_push()' => ['array_push($x, 1);', true],
+    'array_unshift()' => ['array_unshift($x, 1);', true],
+    'array_splice(), which can remove any key' => ['array_splice($x, 1, 1, ["z"]);', false],
+    'sort(), which renumbers every key' => ['sort($x);', false],
+    'array_walk(), which rewrites each value' => ['array_walk($x, "f");', false],
+    'a method' => ['$this->fill($x);', false],
+]);
+
 it('reports what a built-in leaves in a key of a variable it takes by reference', function () {
     $call = new AstParser()->parseSource('<?php sort($x["k"]["j"]);')[0]->expr;
 

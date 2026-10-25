@@ -18,12 +18,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Closure;
 use PhpParser\Node;
+use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -169,9 +171,9 @@ trait ReadsReturnedVariables
             return $result;
         }
 
-        // A parameter's binding is what it held on entry, which misses each key the body writes into it after.
+        // A parameter's binding is what it held on entry, which misses each write the body makes to it after.
         $walks = $result['type'] === 'unknown'
-            || ($this->entrySeed($stmts, $returned->name) !== null && $this->writesVariable($stmts, $returned->name));
+            || ($this->parameterSeed($returned->name) !== null && $this->writesVariable($stmts, $returned->name));
 
         return $walks ? $this->walkedValue($stmts, $returned->name) ?? $result : $result;
     }
@@ -289,7 +291,7 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            if ($this->writesUnreadKey($stmt, $varName, $into)) {
+            if ($this->writesUnreadKey($stmt, $varName, $into) || $this->appendsByReference($stmt, $varName)) {
                 $into->readsCompletely = false;
                 $into->holdsUnreadKeys = true;
 
@@ -307,12 +309,11 @@ trait ReadsReturnedVariables
                 continue;
             }
 
+            $assigned = $this->assignedValue($stmt, $varName);
+
             // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
-            if ($stmt instanceof ExpressionStmt
-                && $stmt->expr instanceof Assign
-                && $stmt->expr->var instanceof Variable
-                && $stmt->expr->var->name === $varName) {
-                $baseAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
+            if ($assigned !== null) {
+                $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
 
                 if ($baseAnalysis === null) {
                     $into->readsCompletely = false;
@@ -322,11 +323,11 @@ trait ReadsReturnedVariables
                 }
 
                 // A write that always runs replaces every key held before it, as fromLastReplacement() does at the top.
-                if (! $isConditional && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+                if (! $isConditional && ! $this->spreadsVariable($assigned, $varName)) {
                     $into->replaceWith($this->newVariableAnalysis());
                 }
 
-                $this->noteUntypedItems($stmt->expr->expr, $baseAnalysis);
+                $this->noteUntypedItems($assigned, $baseAnalysis);
                 $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
@@ -621,9 +622,9 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a top-level statement writes the whole variable other than by `=` or `+=`, as destructuring, a
-     * by-reference argument, a `foreach` target or unset() does, so the walk cannot tell which keys it still holds. A
-     * write inside a block the statement holds may not run.
+     * Whether a top-level statement writes the whole variable other than by its own `=`, `+=` or `??=`, as an embedded
+     * assignment, destructuring, a by-reference argument, a `foreach` target or unset() does, so the walk cannot tell
+     * which keys it still holds. A write inside a block the statement holds may not run.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -631,22 +632,19 @@ trait ReadsReturnedVariables
     {
         foreach ($stmts as $stmt) {
             $blocks = array_merge(...StatementBlocks::inner($stmt));
+            $own = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
 
             foreach (VariableWrites::of([$stmt], $this->subjectReflection()) as [$written, $node, $target]) {
-                if ($written !== $varName || $target instanceof ArrayDimFetch
-                    || (($node instanceof Assign || $node instanceof Plus) && $target instanceof Variable)
+                // A seed binds a value that is never null, so its own `??=` never runs.
+                $assigns = $node === $own && $target instanceof Variable
+                    && ($node instanceof Assign || $node instanceof Plus || $node instanceof CoalesceAssign);
+
+                if ($written !== $varName || $target instanceof ArrayDimFetch || $assigns
                     || array_any($blocks, fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $node))) {
                     continue;
                 }
 
-                // A sort that keeps each key, as ksort() does, leaves every key the seed holds.
-                $keepsKeys = $node instanceof CallLike && in_array(
-                    resolve(ByReferenceArguments::class)->effect($node, $target),
-                    [ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject],
-                    true,
-                );
-
-                if (! $keepsKeys) {
+                if (! $node instanceof CallLike || ! resolve(ByReferenceArguments::class)->keepsStringKeys($node, $target)) {
                     return true;
                 }
             }
@@ -656,18 +654,46 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Whether a statement passes the variable to a by-reference call that adds values to it under keys the walk never
+     * names: array_push(), array_unshift() or array_splice().
+     */
+    private function appendsByReference(Node\Stmt $stmt, string $varName): bool
+    {
+        $call = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
+
+        return $call instanceof CallLike && ! $call->isFirstClassCallable() && array_any(
+            $call->getArgs(),
+            fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
+                && resolve(ByReferenceArguments::class)->effect($call, $arg->value) === ByReferenceEffect::Appends,
+        );
+    }
+
+    /**
      * The value a statement `$var = value;` assigns where it replaces every key the variable held, one that spreads
      * the variable into itself aside; null for any other statement.
      */
     private function replacingValue(Node\Stmt $stmt, string $varName): ?Expr
     {
-        $replaces = $stmt instanceof ExpressionStmt
-            && $stmt->expr instanceof Assign
-            && $stmt->expr->var instanceof Variable
-            && $stmt->expr->var->name === $varName
-            && ! $this->spreadsVariable($stmt->expr->expr, $varName);
+        $value = $this->assignedValue($stmt, $varName);
 
-        return $replaces ? $stmt->expr->expr : null;
+        return $value !== null && ! $this->spreadsVariable($value, $varName) ? $value : null;
+    }
+
+    /**
+     * The value a statement assigns the whole variable, as `$var = value;` or a chain such as `$copy = $var = value;`
+     * does; null for any other statement.
+     */
+    private function assignedValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        $expr = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
+        $assigns = false;
+
+        while ($expr instanceof Assign) {
+            $assigns = $assigns || ($expr->var instanceof Variable && $expr->var->name === $varName);
+            $expr = $expr->expr;
+        }
+
+        return $assigns ? $expr : null;
     }
 
     /**

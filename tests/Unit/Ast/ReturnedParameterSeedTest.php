@@ -51,20 +51,48 @@ it('seeds nothing past a top-level whole write the walk does not read as an assi
         'sorted' => '{ x: number }',
         'matched' => '{ x: number }',
         'looped' => '{ x: number }',
-    ])->and(json_encode(array_diff_key(new ReplacedParameter()->values(), ['cleared' => true])))->toBe(
+    ])->and(json_encode(array_intersect_key(
+        new ReplacedParameter()->values(),
+        array_flip(['destructured', 'sorted', 'matched', 'looped']),
+    )))->toBe(
         '{"destructured":{"k":1,"x":1},"sorted":{"0":1,"x":1},"matched":{"0":"a","k":"a","1":"a","x":1},'
         .'"looped":{"k":1,"x":1}}',
     );
 });
 
+// The walk does not read an assignment inside a condition, so `k` stays unread there, but `id` never comes back.
+it('seeds nothing past an assignment inside another expression', function () {
+    $values = new ReplacedParameter()->values();
+
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'values'))->toMatchArray([
+        'chained' => '{ k: number; x: number }',
+        'inCondition' => 'never[] | { x: number }',
+    ])->and(json_encode($values['chained']))->toBe('{"k":1,"x":1}')
+        ->and(json_encode($values['inCondition']))->toBe('{"k":1,"x":1}');
+});
+
+it('seeds nothing past an array_splice(), whose keys publish open', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'values')['spliced'])->toBe('{ x: number; [key: string]: unknown }')
+        ->and(json_encode(new ReplacedParameter()->values()['spliced']))->toBe('{"0":5,"id":1,"x":1}');
+});
+
 // The walk still keeps `id` required past the unset() that may not run, though it removes the key where it runs.
-it('keeps the seed past a key-keeping sort, an unset() of one key and an unset() that may not run', function () {
+it('keeps the seed past a key-keeping sort, an unset() of one key, an unset() that may not run, a ??= and an array_push()', function () {
     expect(analyzedKeyTypes(ReplacedParameter::class, 'kept'))->toBe([
         'ksorted' => '{ id: number; x: number }',
         'trimmed' => '{ id: number; x: number }',
         'maybeCleared' => '{ id: number; x: number }',
-    ])->and(json_encode(new ReplacedParameter()->kept()))
-        ->toBe('{"ksorted":{"id":1,"x":1},"trimmed":{"id":1,"x":1},"maybeCleared":{"id":1,"x":1}}');
+        'coalesced' => '{ id: number; x: number }',
+        'pushed' => '{ id: number; x: number; [key: string]: unknown }',
+    ])->and(json_encode(new ReplacedParameter()->kept()))->toBe(
+        '{"ksorted":{"id":1,"x":1},"trimmed":{"id":1,"x":1},"maybeCleared":{"id":1,"x":1},"coalesced":{"id":1,"x":1},'
+        .'"pushed":{"id":1,"0":5,"x":1}}',
+    );
+});
+
+it('keeps the seed past a ??= in the method\'s own return', function () {
+    expect(analyzedKeyTypes(ReplacedParameter::class, 'coalescedOwn'))->toBe(['id' => 'number', 'x' => 'number'])
+        ->and(json_encode(new ReplacedParameter()->coalescedOwn()))->toBe('{"id":1,"x":1}');
 });
 
 it('seeds a map callback\'s parameter from its element', function () {

@@ -26,6 +26,9 @@ final class ReplacedParameter
             'sorted' => $this->sorted(['id' => 1]),
             'matched' => $this->matched(['id' => 1]),
             'looped' => $this->looped(['id' => 1]),
+            'chained' => $this->chained(['id' => 1]),
+            'inCondition' => $this->inCondition(['id' => 1]),
+            'spliced' => $this->spliced(['id' => 1]),
         ];
     }
 
@@ -36,7 +39,15 @@ final class ReplacedParameter
             'ksorted' => $this->ksorted(['id' => 1]),
             'trimmed' => $this->trimmed(['id' => 1, 'name' => 'n']),
             'maybeCleared' => $this->maybeCleared(['id' => 1]),
+            'coalesced' => $this->coalesced(['id' => 1]),
+            'pushed' => $this->pushed(['id' => 1]),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function coalescedOwn(): array
+    {
+        return $this->coalesced(['id' => 1]);
     }
 
     /**
@@ -165,6 +176,79 @@ final class ReplacedParameter
             unset($data);
         }
 
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Assigns the parameter inside another assignment, then adds a key.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function chained(array $data): array
+    {
+        $copy = $data = ['k' => 1];
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Assigns the parameter inside a condition, then adds a key.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function inCondition(array $data): array
+    {
+        if (($data = ['k' => 1]) === []) {
+            return [];
+        }
+
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Splices a value into the array, which can drop any of its keys, then adds a key.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function spliced(array $data): array
+    {
+        array_splice($data, 0, 0, [5]);
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Fills the parameter only when the caller passes none, then adds a key.
+     *
+     * @param  array<string, mixed>|null  $data
+     * @return array<string, mixed>
+     */
+    private function coalesced(?array $data = null): array
+    {
+        $data ??= [];
+        $data['x'] = 1;
+
+        return $data;
+    }
+
+    /**
+     * Pushes a value onto the array, which keeps every key it holds, then adds a key.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function pushed(array $data): array
+    {
+        array_push($data, 5);
         $data['x'] = 1;
 
         return $data;

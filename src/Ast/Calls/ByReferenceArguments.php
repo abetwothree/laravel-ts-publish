@@ -41,6 +41,9 @@ final class ByReferenceArguments
     /** The sort flags that compare int keys as numbers, so ksort() leaves a list's keys in order. */
     private const array NUMERIC_SORT_FLAGS = ['SORT_REGULAR', 'SORT_NUMERIC'];
 
+    /** The built-ins that only add values to the array they take, unlike array_splice(), which can remove any key. */
+    private const array ADDS_ONLY = ['array_push', 'array_unshift'];
+
     /** What a built-in leaves in the variable a by-reference parameter takes, by function and parameter name. */
     private const array EFFECTS = [
         'array_pop' => ['array' => ByReferenceEffect::KeepsList],
@@ -130,6 +133,20 @@ final class ByReferenceArguments
         }
 
         return ByReferenceEffect::Replaces;
+    }
+
+    /**
+     * Whether a call leaves every string key of a variable it passes by reference standing: a sort that keeps each key,
+     * or array_push() and array_unshift(), which only add values.
+     */
+    public function keepsStringKeys(CallLike $call, Expr $argument): bool
+    {
+        return match ($this->effect($call, $argument)) {
+            ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject => true,
+            ByReferenceEffect::Appends => $call instanceof FuncCall && $call->name instanceof Name
+                && in_array($this->namedFunction($call->name)?->getName(), self::ADDS_ONLY, true),
+            default => false,
+        };
     }
 
     /**
