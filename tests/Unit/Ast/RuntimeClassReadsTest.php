@@ -5,8 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
@@ -121,8 +125,18 @@ it('reads a method on an instance an inherited body builds with $this as the cla
 
 it('reads a static:: key and a declared property of a model-backed inherited body on the runtime class', function () {
     expect(publishedResourceKeyTypes(LateReadsResource::class, Post::class))
-        ->toBe(['child_key' => 'number', 'tier' => 'number', 'secret' => 'string'])
-        ->and((new LateReadsResource(new Post))->resolve(request()))->toBe(['child_key' => 1, 'tier' => 3, 'secret' => 'x']);
+        ->toMatchArray(['child_key' => 'number', 'tier' => 'number', 'secret' => 'string'])
+        ->and((new LateReadsResource(new Post))->resolve(request()))->toMatchArray(['child_key' => 1, 'tier' => 3, 'secret' => 'x']);
+});
+
+it('reads a property only the runtime class declares, and `new static` or static::make() as a value, on that class', function () {
+    $sent = (new LateReadsResource(new Post))->resolve(request());
+
+    expect(publishedResourceKeyTypes(LateReadsResource::class, Post::class))->toMatchArray([
+        'badge' => 'number', 'again' => 'LateReadsResource', 'made' => 'LateReadsResource',
+    ])->and($sent['badge'])->toBe(5)
+        ->and($sent['again'])->toBeInstanceOf(LateReadsResource::class)
+        ->and($sent['made'])->toBeInstanceOf(LateReadsResource::class);
 });
 
 it('types `new static` and a `$this->prop` receiver in an inherited body as the runtime class declares them', function () {
@@ -136,4 +150,38 @@ it('types `new static` and a `$this->prop` receiver in an inherited body as the 
         ->and(new ReceiverHolderChildDto()->fresh())->toBeInstanceOf(ReceiverHolderChildDto::class)
         ->and(new ReceiverHolderChildDto()->heldClass())->toBe(ReceiverChildDto::class)
         ->and(new ReceiverHolderChildDto()->ownClass())->toBe(ReceiverBaseDto::class);
+});
+
+/**
+ * What a BaseWrittenTierResource subclass sends over a fresh Post, its inherited `toArray()` run as PHP runs it.
+ *
+ * @return array<string, mixed>
+ */
+function writtenTierResponse(BaseWrittenTierResource $resource): array
+{
+    return $resource->resolve(request());
+}
+
+it('types an untyped property as its default joined with every literal a method the runtime class runs writes', function (
+    BaseWrittenTierResource $resource,
+    string $type,
+    mixed $default,
+    Closure $write,
+    mixed $written,
+) {
+    expect(publishedResourceKeyTypes($resource::class, Post::class)['tier'])->toBe($type)
+        ->and(writtenTierResponse($resource)['tier'])->toBe($default)
+        ->and(writtenTierResponse($write($resource))['tier'])->toBe($written);
+})->with([
+    'a string literal' => [fn () => new SilverTierResource(new Post), 'string', 'gold', fn (SilverTierResource $r) => $r->promote(), 'silver'],
+    'an int literal' => [fn () => new NumberTierResource(new Post), 'string | number', 'gold', fn (NumberTierResource $r) => $r->promote(), 5],
+    'a parameter' => [
+        fn () => new ParameterTierResource(new Post), 'unknown', 'gold', fn (ParameterTierResource $r) => $r->promote(['x' => 1]), ['x' => 1],
+    ],
+]);
+
+it('types an untyped property a class writes itself as its default joined with the literal written', function () {
+    expect(publishedResourceKeyTypes(BaseWrittenTierResource::class, Post::class))->toBe(['tier' => 'string', 'level' => 'number | string'])
+        ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)))->toBe(['tier' => 'gold', 'level' => 1])
+        ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)->maxLevel()))->toBe(['tier' => 'gold', 'level' => 'max']);
 });

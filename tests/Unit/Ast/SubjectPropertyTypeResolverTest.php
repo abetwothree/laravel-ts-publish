@@ -71,8 +71,8 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
             ->and($resolver->resolve($subject, 'items')['type'] ?? null)->toBe('string[]');
     });
 
-    // A write in any method the class runs, an ancestor's included, means a read may not hold the default.
-    test('an untyped default types its property only while no method the class runs writes it', function () {
+    // A write in any method the class runs, an ancestor's included, may change what a read holds.
+    test('an untyped default types its property joined with the constants its writes assign, and no other write', function () {
         $resolver = resolve(SubjectPropertyTypeResolver::class);
         $parent = new ReflectionClass(ReassignedDefaultsSubject::class);
         $child = new ReflectionClass(InheritedDefaultsSubject::class);
@@ -82,7 +82,7 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
             ->and($resolver->resolve($parent, 'views'))->toBeNull()
             ->and($resolver->resolve($parent, 'label')['type'] ?? null)->toBe('string')
             ->and($resolver->resolve($child, 'note'))->toBeNull()
-            ->and($resolver->resolve($child, 'label'))->toBeNull()
+            ->and($resolver->resolve($child, 'label')['type'] ?? null)->toBe('string | null')
             ->and($resolver->resolve(new ReflectionClass(DynamicDefaultsSubject::class), 'status'))->toBeNull();
     });
 

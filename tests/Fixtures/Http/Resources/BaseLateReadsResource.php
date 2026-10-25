@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * A test-only model-backed resource whose `toArray()` reads a constant key and an untyped property LateReadsResource
- * redeclares, beside a private property LateReadsResource declares a public namesake of.
+ * redeclares, a private property it declares a public namesake of, a property only it declares, and `new static`.
  */
 class BaseLateReadsResource extends JsonResource
 {
@@ -26,6 +26,9 @@ class BaseLateReadsResource extends JsonResource
             static::KEY => 1,
             'tier' => $this->tier,
             'secret' => $this->secret,
+            'badge' => $this->badge,
+            'again' => new static($this->resource),
+            'made' => static::make($this->resource),
         ];
     }
 }

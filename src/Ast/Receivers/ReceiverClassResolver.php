@@ -233,9 +233,12 @@ final class ReceiverClassResolver
         }
 
         $class = $call->class;
-        $onSubject = $class instanceof Variable
-            ? $class->name === 'this'
-            : $class instanceof Name && $this->scopeClassName($class, $scope) === $scope->staticCallClass($call)->getName();
+        $onSubject = match (true) {
+            $class instanceof Variable => $class->name === 'this',
+            ! $class instanceof Name => false,
+            $class->isSpecialClassName() => $class->toLowerString() !== 'parent',
+            default => $class->toString() === $subject->getName(),
+        };
 
         return $onSubject
             && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($subject, $call->name->toString()));

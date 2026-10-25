@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -44,8 +47,8 @@ use WeakMap;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
- * type second, an untyped default no method rewrites third — and answer whether the class declares it at all, and
- * whether a read still holds its default.
+ * type second, an untyped default joined with the constants its writes assign third — and answer whether the class
+ * declares it at all, and whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -180,8 +183,9 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The type of an untyped property's default, typed as a parameter default's value is, while no method the class
-     * runs writes the property, so a read still holds the default.
+     * The type of an untyped property's default, typed as a parameter default's value is, joined with the value each
+     * write a method the class runs assigns; null when a write assigns a value no constant evaluation types, or writes
+     * the property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
      * @return ValueExpressionResult|null
@@ -205,21 +209,51 @@ final class SubjectPropertyTypeResolver
         }
 
         $result = resolve(ValueResolver::class)->resolveConstantValue($value);
+        $writes = $result === null ? null : $this->propertyWrites($subject, $property->getName());
 
-        return $result === null || $this->writesProperty($subject, $property->getName()) ? null : $result;
+        if ($result === null || $writes === null) {
+            return null;
+        }
+
+        $written = [];
+
+        foreach ($writes as [$site, $declaration]) {
+            $assigned = $this->assignedConstant($site, $property->getName(), $subject, $declaration);
+
+            if ($assigned === null) {
+                return null;
+            }
+
+            $written[] = $assigned;
+        }
+
+        return $written === [] ? $result : ValueResult::unionResults([$result, ...$written]);
     }
 
     /**
-     * Whether any method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or application
-     * code writes a property whose name it computes.
-     *
-     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
+     * Whether any method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`.
      *
      * @param  ReflectionClass<object>  $class
      */
     private function writesProperty(ReflectionClass $class, string $name): bool
     {
+        return $this->propertyWrites($class, $name) !== [];
+    }
+
+    /**
+     * Each node where a method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or where
+     * application code writes a property whose name it computes, with the class or trait whose body holds it; null when
+     * a declaration cannot be read, since it may write anything.
+     *
+     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return list<array{Node, ReflectionClass<object>}>|null
+     */
+    private function propertyWrites(ReflectionClass $class, string $name): ?array
+    {
         $finder = new NodeFinder;
+        $writes = [];
 
         foreach ($this->declarations($class) as $declaration) {
             $file = $declaration->getFileName();
@@ -244,17 +278,47 @@ final class SubjectPropertyTypeResolver
 
             // A class whose declaration cannot be read may write anything.
             if (! $node instanceof ClassLike) {
-                return true;
+                return null;
             }
 
             foreach (self::writeSites($node) as [$site, $targets]) {
                 if ($this->writesTo($site, $targets, $name, $computedNames, $class, $declaration)) {
-                    return true;
+                    $writes[] = [$site, $declaration];
                 }
             }
         }
 
-        return false;
+        return $writes;
+    }
+
+    /**
+     * The value a write assigns `$this->{$name}` whole, evaluated as a constant expression in the body that holds it;
+     * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
+     * name, an unset, an iteration, a reference or a call that may take it by reference.
+     *
+     * @param  ReflectionClass<object>  $class  the class the property is read through, which `static` names
+     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the write, which `self` names
+     * @return ValueExpressionResult|null
+     */
+    private function assignedConstant(Node $site, string $name, ReflectionClass $class, ReflectionClass $declaration): ?array
+    {
+        if (! $site instanceof Assign
+            || ! $site->var instanceof PropertyFetch
+            || ! $site->var->name instanceof Identifier
+            || $site->var->name->toString() !== $name
+        ) {
+            return null;
+        }
+
+        $scope = new AnalysisScope($declaration);
+        $scope->runtimeReflection = $class;
+        $values = resolve(ValueResolver::class);
+
+        try {
+            return $values->resolveConstantValue($values->evaluateConstantExpression($site->expr, $scope));
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
     }
 
     /**

@@ -146,7 +146,7 @@ trait InspectsAstNodes
 
     /**
      * The class a name spells in the body under read, in any case: the runtime class for `static`, since late static
-     * binding follows the object, the subject for `self`, else the name.
+     * binding names the called class, the subject for `self`, else the name.
      */
     protected function scopeClassName(Name $name, AnalysisScope $scope): string
     {
