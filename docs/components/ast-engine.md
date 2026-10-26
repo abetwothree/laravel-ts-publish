@@ -551,7 +551,9 @@ suffix spelling the bindings its arguments make for the parameters whose declara
 bind alike share one answer, and a call that binds nothing keeps the plain key. The arguments are read in the caller's
 scope before the callee's frame opens, so what they record is the caller's. A subject method read under an `instanceof`
 proof that holds `$this->resource` to one model adds `@backing:<model>` to its `method-return:` key, so the read with
-the proof and the one without never share an answer. The `method-body:` cycle guard stays per
+the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
+class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
+keys, so two siblings never share an inherited helper's `static`. The `method-body:` cycle guard stays per
 method, so a recursion that passes a new value each time stops at its first repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse

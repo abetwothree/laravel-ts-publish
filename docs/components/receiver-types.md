@@ -420,7 +420,8 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 
 - **A fresh scope over the method's class**, never the caller's: a model is its own backing, a resource has the model
   `ModelClassResolver` gives it, and the parameters bind by their declarations and what the call passes. A trait helper
-  therefore reads each using resource's model.
+  therefore reads each using resource's model. Only `static` stays the caller's: a call on `$this`, or through
+  `self::`, `static::` or `parent::`, hands the body the caller's runtime class, as PHP forwards it.
 - **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
 - **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which
