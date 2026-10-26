@@ -47,7 +47,7 @@ final class SubjectMethodTypeResolver
             // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
             $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;
 
-            return $this->resolveOn($class, $methodName, $site, $backing);
+            return $this->resolveOn($class, $methodName, $site, $backing, $scope->runtimeReflection);
         }
 
         // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
@@ -104,10 +104,16 @@ final class SubjectMethodTypeResolver
      * @param  ReflectionClass<object>  $reflection
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
      * @return ValueExpressionResult|null
      */
-    public function resolveOn(ReflectionClass $reflection, string $methodName, ?CallSite $site = null, ?string $backing = null): ?array
-    {
+    public function resolveOn(
+        ReflectionClass $reflection,
+        string $methodName,
+        ?CallSite $site = null,
+        ?string $backing = null,
+        ?ReflectionClass $runtime = null,
+    ): ?array {
         if (! $reflection->hasMethod($methodName)) {
             return null;
         }
@@ -115,6 +121,6 @@ final class SubjectMethodTypeResolver
         /** @var class-string $class */
         $class = $reflection->getName();
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing, $runtime);
     }
 }

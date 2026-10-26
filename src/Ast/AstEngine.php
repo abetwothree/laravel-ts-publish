@@ -57,6 +57,7 @@ final class AstEngine
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
      *                           resource's toArray() is its body, never the resource object it publishes
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
      *
      * @internal
      */
@@ -67,6 +68,7 @@ final class AstEngine
         bool $carriesImports = true,
         array $passed = [],
         bool $readsCall = false,
+        ?ReflectionClass $runtime = null,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -74,12 +76,13 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
+        $runtime = $runtime?->getName() === $class ? null : $runtime;
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .($readsCall ? '@call' : '').CallSite::signature($passed);
+            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime === null ? '' : '@runtime:'.$runtime->getName());
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed, $readsCall),
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed, $readsCall, $runtime),
         );
 
         return clone $analysis;
@@ -91,12 +94,18 @@ final class AstEngine
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
      * @return ValueExpressionResult|null
      *
      * @internal
      */
-    public function analyzeMethodValue(string $class, string $method, array $passed = [], ?string $backing = null): ?array
-    {
+    public function analyzeMethodValue(
+        string $class,
+        string $method,
+        array $passed = [],
+        ?string $backing = null,
+        ?ReflectionClass $runtime = null,
+    ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
         if ($context === null) {
@@ -110,7 +119,14 @@ final class AstEngine
             default => null,
         };
         $scope = $this->bindingsFor($context, $modelClass, $passed);
-        $analyzer = new ResourceAstAnalyzer($scope->subjectReflection, $modelClass, $method, scope: $scope, context: $context);
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $method,
+            scope: $scope,
+            context: $context,
+            runtimeClass: $runtime,
+        );
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }
@@ -338,6 +354,7 @@ final class AstEngine
      * @param  ReflectionClass<object>  $reflection
      * @param  class-string<Model>|null  $modelClass
      * @param  array<string, PassedBinding>  $passed
+     * @param  ReflectionClass<object>|null  $runtime
      */
     private function analyzeOnce(
         ReflectionClass $reflection,
@@ -347,6 +364,7 @@ final class AstEngine
         string $key,
         array $passed,
         bool $readsCall,
+        ?ReflectionClass $runtime,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -363,6 +381,7 @@ final class AstEngine
                 $method,
                 carriesImports: $carriesImports,
                 passed: $passed,
+                runtimeClass: $runtime,
                 readsCall: $readsCall,
             );
 

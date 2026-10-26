@@ -6,15 +6,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
@@ -224,4 +227,42 @@ it('types a published class\'s public property against that class, whose instanc
     expect([$views(StartedViewCounter::class), $views(NinthViewCounter::class)])->toBe(['string', 'string | number'])
         ->and(json_encode(new NinthViewCounter))->toBe('{"views":"x"}')
         ->and(json_encode($bumped))->toBe('{"views":9}');
+});
+
+/**
+ * Each key a BaseHelperLevelResource class publishes with what it sends as built and once raise() has run.
+ *
+ * @param  class-string<BaseHelperLevelResource>  $resource
+ * @return array<string, array{string, mixed, mixed}>
+ */
+function helperLevelReads(string $resource): array
+{
+    $sent = (new $resource(new Post))->resolve(request());
+    $raised = (new $resource(new Post))->raise()->resolve(request());
+
+    return array_map(
+        fn (string $key, string $type): array => [$type, $sent[$key], $raised[$key]],
+        array_keys(publishedResourceKeyTypes($resource, Post::class)),
+        publishedResourceKeyTypes($resource, Post::class),
+    );
+}
+
+// One test reads all three, so a helper body memoised once per `class@method` would answer every sibling alike.
+it('reads `static` in a helper a private `$this->` or a `self::` call reaches as the caller\'s runtime class', function () {
+    $keys = ['via_private', 'q_private', 'via_self', 'const_private', 'const_self', 'shaped_private', 'via_protected', 'via_static', 'via_this_static'];
+    $expected = fn (string $level, string $constant, mixed $sent): array => array_combine($keys, [
+        [$level, 'x', $sent], [$level, 'x', $sent], [$level, 'x', $sent], [$constant, $sent, $sent], [$constant, $sent, $sent],
+        ['{ l: '.$level.' }', ['l' => 'x'], ['l' => $sent]], [$level, 'x', $sent], [$level, 'x', $sent], [$level, 'x', $sent],
+    ]);
+    $reads = [];
+
+    foreach ([BaseHelperLevelResource::class, SevenHelperLevelResource::class, TrueHelperLevelResource::class] as $resource) {
+        $reads[$resource] = array_combine($keys, helperLevelReads($resource));
+    }
+
+    expect($reads)->toBe([
+        BaseHelperLevelResource::class => $expected('string', 'string', 'base'),
+        SevenHelperLevelResource::class => $expected('string | number', 'number', 7),
+        TrueHelperLevelResource::class => $expected('string | boolean', 'boolean', true),
+    ]);
 });
