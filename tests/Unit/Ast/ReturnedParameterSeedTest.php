@@ -78,8 +78,8 @@ it('seeds nothing past an assignment inside another expression', function () {
         ->and(json_encode($values['inCondition']))->toBe('{"k":1,"x":1}');
 });
 
-// A rewrite that keeps every key leaves them required, as one at the top level does; one that may bring keys opens the
-// shape, but for an assignment inside another expression, which the walk does not read (a known gap).
+// A rewrite that keeps every key leaves them required, and one that may bring keys opens the shape, but for an
+// assignment inside another expression, which the walk does not read. A passed array rewritten in place gets no seed.
 it('keeps the keys required past a rewrite in a block that keeps every key', function () {
     expect(analyzedKeyTypes(KeyKeepingRewrites::class))->toBe([
         'merge_if' => '{ id: number; [key: string]: unknown }',
@@ -108,7 +108,7 @@ it('keeps the keys required past a rewrite in a block that keeps every key', fun
         'merge_other_if' => '{ id?: number; [key: string]: unknown }',
         'plus_other_if' => '{ id?: number; [key: string]: unknown }',
         'param_merge_if' => '{ id: number; x: number; [key: string]: unknown }',
-        'param_walk_if' => '{ id: number; x: number }',
+        'param_walk_if' => '{ x: number }',
     ])->and(json_encode(new KeyKeepingRewrites()->toArray()))->toBe(
         '{"merge_if":{"id":1},"merge_loop":{"id":1},"merge_recursive_if":{"id":1},"merge_recursive_loop":{"id":1},'
         .'"replace_if":{"id":1},"replace_loop":{"id":1},"replace_recursive_if":{"id":1},"replace_recursive_loop":{"id":1},'
@@ -140,17 +140,25 @@ it('keeps a resource\'s local keys required past a merge in an `if` and a loop',
         ->toBe(['id' => 3, 'title' => 't', 'body' => 'b', 'more' => 1, 'a' => true, 'b' => true]);
 });
 
-// The walk does not follow a value rewritten in place, so a seed would keep the argument's old value types. Its keys go
-// unpublished instead, the known gap; Arr::set() still opens the shape for the key it sets.
-it('seeds nothing past a top-level rewrite of the values in place', function () {
+// The walk does not follow a value rewritten in place, at the top level or in a block, so a seed would keep the
+// argument's old value types. Its keys go unpublished instead, the known gap; Arr::set() opens the shape for its key.
+it('seeds nothing past a rewrite of the values in place, at the top level or in a block', function () {
     expect(analyzedKeyTypes(InPlaceRewrittenParameter::class))->toBe([
         'walked' => '{ x: number }',
         'walked_recursive' => '{ x: number }',
         'ref_looped' => '{ x: number }',
         'arr_set' => '{ x: number; [key: string]: unknown }',
+        'if_walked' => '{ x: number }',
+        'if_arr_set' => '{ x: number; [key: string]: unknown }',
+        'loop_walked' => '{ x: number }',
+        'try_walked' => '{ x: number }',
     ])->and(json_encode(new InPlaceRewrittenParameter()->toArray()))->toBe(
         '{"walked":{"id":"1","n":"2","x":1},"walked_recursive":{"id":"1","n":"2","x":1},'
-        .'"ref_looped":{"id":"1","n":"2","x":1},"arr_set":{"id":"str","n":2,"x":1}}',
+        .'"ref_looped":{"id":"1","n":"2","x":1},"arr_set":{"id":"str","n":2,"x":1},"if_walked":{"id":1,"x":1},'
+        .'"if_arr_set":{"id":1,"x":1},"loop_walked":{"id":1,"x":1},"try_walked":{"id":"1","x":1}}',
+    )->and(json_encode(array_slice(new InPlaceRewrittenParameter(true, [1])->toArray(), 4)))->toBe(
+        '{"if_walked":{"id":"1","x":1},"if_arr_set":{"id":"str","x":1},"loop_walked":{"id":"1","x":1},'
+        .'"try_walked":{"id":"1","x":1}}',
     );
 });
 

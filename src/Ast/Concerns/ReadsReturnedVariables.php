@@ -723,8 +723,8 @@ trait ReadsReturnedVariables
      * which keys it still holds. A write inside a block the statement holds may not run, so the walk judges it there.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  bool  $inPlaceToo  whether a rewrite of the values in place counts too, as it does for a seed, whose old
-     *                            value types the walk would keep
+     * @param  bool  $inPlaceToo  whether a rewrite of the values in place counts too, inside a block as well, as it
+     *                            does for a seed, whose old value types the walk would keep
      */
     private function rewritesWhole(array $stmts, string $varName, bool $inPlaceToo = false): bool
     {
@@ -737,13 +737,16 @@ trait ReadsReturnedVariables
                 $assigns = $node === $own && $target instanceof Variable
                     && ($node instanceof Assign || $node instanceof Plus || $node instanceof CoalesceAssign);
 
-                if ($written !== $varName || $target instanceof ArrayDimFetch || $assigns
-                    || array_any($blocks, fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $node))) {
+                if ($written !== $varName || $target instanceof ArrayDimFetch || $assigns) {
                     continue;
                 }
 
-                if (! $this->keepsEveryKey($node, $varName)
-                    || ($inPlaceToo && $this->rewritesValuesInPlace($node, $varName))) {
+                if ($inPlaceToo && $this->rewritesValuesInPlace($node, $varName)) {
+                    return true;
+                }
+
+                if (! array_any($blocks, fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $node))
+                    && ! $this->keepsEveryKey($node, $varName)) {
                     return true;
                 }
             }
