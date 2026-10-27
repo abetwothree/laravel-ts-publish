@@ -34,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
@@ -263,6 +264,14 @@ it('leaves an untyped property `unknown` where a subclass writes it an untyped p
 it('leaves an untyped property `unknown` where a trait method the class overrides writes it', function () {
     expect(analyzedKeyTypes(AliasedTallyChild::class)['tier'])->toBe('unknown')
         ->and(new AliasedTallyChild()->setTierNumber(5)->toArray()['tier'])->toBe(5);
+});
+
+// A callback's parameter shadows the method's, so the method's scope cannot type a write the callback holds.
+it('leaves an untyped property `unknown` where a callback inside the method writes it', function () {
+    expect(analyzedKeyTypes(EnclosedWriteChild::class))->toBe(['last' => 'unknown', 'arrowed' => 'unknown', 'local' => 'string | number'])
+        ->and(json_encode(new EnclosedWriteChild()->toArray()))->toBe('{"last":"none","arrowed":"none","local":"none"}')
+        ->and(json_encode(new EnclosedWriteChild()->track('s')->trackArrow('s')->viaLocal('abc')->toArray()))
+        ->toBe('{"last":2,"arrowed":4,"local":3}');
 });
 
 // Siblings read in one process: a `static::` write typed once per class would leak one sibling's type to the next.

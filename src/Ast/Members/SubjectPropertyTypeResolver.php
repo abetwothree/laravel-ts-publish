@@ -42,6 +42,7 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -309,8 +310,8 @@ final class SubjectPropertyTypeResolver
 
     /**
      * The value a whole or compound write gives `$this->{$name}`, typed in the scope of the method that holds it; null
-     * where no method holds it, the class runs another body under that method's name, or the value names `static` and
-     * the runtime class is only assumed.
+     * where no method holds it, a function inside it holds the write, the class runs another body under that method's
+     * name, or the value names `static` and the runtime class is only assumed.
      *
      * @param  PropertyWrite  $write
      * @param  ReflectionClass<object>  $subject
@@ -326,6 +327,7 @@ final class SubjectPropertyTypeResolver
 
         // A trait's method the class overrides never runs as written, and the override's parameters are not its own.
         if ($value === null || $method === null || ! $self->hasMethod($methodName)
+            || $this->functionHolds($method, $site)
             || $self->getMethod($methodName)->getFileName() !== $file
             || ($knownRuntime === null && $this->namesStatic($value))
         ) {
@@ -338,6 +340,18 @@ final class SubjectPropertyTypeResolver
             $knownRuntime ?? $subject,
             assumesRuntime: $knownRuntime === null,
         );
+    }
+
+    /**
+     * Whether a closure, an arrow function or a nested class's method inside a method holds a node, binding names of
+     * its own over the method's.
+     */
+    private function functionHolds(ClassMethod $method, Node $site): bool
+    {
+        return new NodeFinder()->findFirst(
+            $method->stmts ?? [],
+            fn (Node $node): bool => $node instanceof FunctionLike && StatementBlocks::encloses($node, $site),
+        ) !== null;
     }
 
     /**
