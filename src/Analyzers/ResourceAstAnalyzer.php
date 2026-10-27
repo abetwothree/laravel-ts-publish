@@ -563,7 +563,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             : null;
 
         return $filterKeys !== null
-            || ($this->hasThisReceiver($expr) && $this->scope->subjectReflection->hasMethod($name));
+            || ($this->hasThisReceiver($expr) && $this->scope->thisMemberClass($name, true)->hasMethod($name));
     }
 
     /**

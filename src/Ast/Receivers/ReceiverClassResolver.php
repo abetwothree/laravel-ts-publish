@@ -222,26 +222,27 @@ final class ReceiverClassResolver
 
     /**
      * Whether PHP sends a static-syntax call to the subject's `__call()`, where a macro or the resource proxy answers
-     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the subject lacks.
+     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the class it reaches lacks.
      */
     public function sendsToSubjectCall(StaticCall $call, AnalysisScope $scope): bool
     {
-        $subject = $scope->subjectReflection;
-
-        if (! $call->name instanceof Identifier || $subject->hasMethod($call->name->toString())) {
+        if (! $call->name instanceof Identifier) {
             return false;
         }
 
+        $method = $call->name->toString();
+        $reached = $scope->staticCallClass($call);
         $class = $call->class;
         $onSubject = match (true) {
             $class instanceof Variable => $class->name === 'this',
             ! $class instanceof Name => false,
             $class->isSpecialClassName() => $class->toLowerString() !== 'parent',
-            default => $class->toString() === $subject->getName(),
+            default => $class->toString() === $scope->subjectReflection->getName(),
         };
 
         return $onSubject
-            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($subject, $call->name->toString()));
+            && ! $reached->hasMethod($method)
+            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($reached, $method));
     }
 
     /**

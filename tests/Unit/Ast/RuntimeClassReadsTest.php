@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildSiblingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
@@ -327,6 +328,11 @@ it('reads a column in a helper a model\'s ancestor reaches through `self::` or a
     ])->and((new SelfHelperPostResource($post))->resolve(request()))->toBe([
         'via_self' => 'x', 'via_self_shape' => ['t' => 'x', 'picked' => ['title' => 'x']], 'via_self_only' => ['title' => 'x'], 'via_private' => 'x',
     ]);
+});
+
+it('reads a `+` on a method only the runtime class declares, in a helper a `self::` call reaches, as PHP joins it', function () {
+    expect(publishedResourceKeyTypes(LateMethodResource::class, Post::class))->toBe(['joined' => '{ c: boolean; x: number }'])
+        ->and((new LateMethodResource(new Post))->resolve(request()))->toBe(['joined' => ['c' => true, 'x' => 1]]);
 });
 
 // Each class is read in one test, so a body read once per `class@method` would answer every sibling alike.
