@@ -1678,8 +1678,13 @@ class ModelAttributeResolver
 
         $defaults = $reflection->getDefaultProperties();
         $table = $this->tableKeyDeclaration($reflection);
-        // Model::initializeModelAttributes() lets #[Table] replace only the defaults `id` and `int`.
-        $keyName = $defaults['primaryKey'] === 'id' ? $table['key'] ?? 'id' : $defaults['primaryKey'];
+        // Model::initializeModelAttributes() lets #[Table] replace only the defaults `id` and `int`; from Laravel 13.39
+        // its `key: false` declares no primary key, as `$primaryKey = null` does.
+        $keyName = match (true) {
+            $defaults['primaryKey'] !== 'id' => $defaults['primaryKey'],
+            $table['key'] === false => null,
+            default => $table['key'] ?? 'id',
+        };
         $keyType = $defaults['keyType'] === 'int' ? $table['keyType'] ?? 'int' : $defaults['keyType'];
 
         if (! $uniqueIds) {
@@ -1703,7 +1708,7 @@ class ModelAttributeResolver
      * on the class, then its own traits, then each parent in turn.
      *
      * @param  ReflectionClass<Model>  $reflection
-     * @return array{key: ?string, keyType: ?string}
+     * @return array{key: string|false|null, keyType: ?string}
      */
     protected function tableKeyDeclaration(ReflectionClass $reflection): array
     {

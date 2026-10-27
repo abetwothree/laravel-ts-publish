@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyMod
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInitializeKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeylessTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyNameOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractNullKeyModel;
@@ -33,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
@@ -1336,6 +1338,21 @@ describe('keyTsType()', function () {
         'on a trait it uses' => [AbstractTraitTableKeyModel::class],
         'on its parent' => [AbstractInheritedTableKeyModel::class],
     ])->skip(! class_exists('Illuminate\Database\Eloquent\Attributes\Table'), 'Table attribute requires Laravel 13+');
+
+    test('reads a #[Table(key: false)] model as having no primary key, as a null $primaryKey does', function (string $model, string $nullKeyModel) {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->keyTsType($model))->toBe('null')
+            ->and($resolver->keyTsType($model))->toBe($resolver->keyTsType($nullKeyModel));
+    })->with([
+        'an abstract model, read without building it' => [AbstractKeylessTableModel::class, AbstractNullKeyModel::class],
+        'a concrete model, read from its instance' => [KeylessTablePost::class, NullKeyPost::class],
+    ])->skip(function (): bool {
+        $table = 'Illuminate\Database\Eloquent\Attributes\Table';
+        $type = class_exists($table) ? new ReflectionProperty($table, 'key')->getType() : null;
+
+        return ! str_contains((string) $type, 'false');
+    }, 'Table(key: false) requires Laravel 13.39+');
 
     // HasUniqueStringIds::getKeyType() runs the override on an instance, so a concrete model's key was always read.
     test('reads a concrete model\'s uniqueIds() override through its instance', function () {
