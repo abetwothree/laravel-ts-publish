@@ -191,27 +191,22 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Run the engine over the body that declares provide(), with its Model parameter bound to its declared type.
+     * Run the engine over provide() as the provider runs it, with its Model parameter bound to its declared type.
      *
-     * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
-     * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
+     * Located on the provider, an inherited or trait body reads `$this` and `static` as the provider and `self` as
+     * its declaring class. The provider is the known runtime class: the transformer passes its instance's class.
      *
      * @param  class-string<ModelMetadataProvider>  $providerClass
      */
     protected function analyzeBody(ReflectionMethod $method, string $providerClass): MethodAnalysis
     {
-        /** @var class-string $declaringClass */
-        $declaringClass = $method->getDeclaringClass()->getName();
-        $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
-        // An ancestor's provide() runs on the provider, a subclass of the class whose body is read here.
-        $assumesRuntime = $declaringClass !== $providerClass;
+        $context = resolve(MethodLocator::class)->locate($providerClass, $method->getName());
 
         if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName(), assumesRuntime: $assumesRuntime);
+            return resolve(AstEngine::class)->analyzeMethod($providerClass, $method->getName());
         }
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
-        $scope->assumesRuntime = $assumesRuntime;
 
         return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
     }
