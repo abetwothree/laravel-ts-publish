@@ -15,6 +15,7 @@ use Closure;
  * queuePosition(), so a token cannot count for one walk and not for the other.
  *
  * @phpstan-type QueuedClasses = array{classFqcns: list<class-string>, classTokenFqcns?: list<class-string>}
+ * @phpstan-type TokenSpelling = array{class-string, string}
  *
  * @internal
  */
@@ -134,7 +135,7 @@ final class ClassTokenQueue
      * The class behind each of this arm's tokens in the text, in order, beside the name the token spells. Reads the
      * queue as take() does.
      *
-     * @return list<array{class-string, string}>
+     * @return list<TokenSpelling>
      */
     public function spellings(string $text): array
     {

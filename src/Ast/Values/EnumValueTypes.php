@@ -36,11 +36,12 @@ final class EnumValueTypes
     /** Past this magnitude JavaScript reads an integer literal as a neighbouring number. */
     private const int MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 
-    /** @var array<string, EnumCases|null> enum => what its cases spell, read once per process; null with no case */
+    /** @var array<string, EnumCases|null> enum => what its cases spell, read once per process; null: no enum or case */
     private static array $cases = [];
 
     /**
-     * What reading `->value` on the enum publishes, or null when it holds none: a pure enum, or one with no case.
+     * What reading `->value` on the enum publishes, or null when it holds none: a pure enum, one with no case, or a
+     * class that is no enum.
      *
      * @return ValueExpressionResult|null
      */
@@ -68,7 +69,7 @@ final class EnumValueTypes
     }
 
     /**
-     * What reading `->name` on the enum publishes, or null when it has no case to read.
+     * What reading `->name` on the enum publishes, or null when it has no case to read, or is no enum.
      *
      * @return ValueExpressionResult|null
      */

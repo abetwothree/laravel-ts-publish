@@ -38,12 +38,13 @@ use ReflectionClass;
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool
  * }
+ * @phpstan-type EnumSpelling = array{string, string}
  *
  * @internal
  */
 final class ValueResult
 {
-    /** @var array<string, array{string, string}> enum FQCN => its type name and its const name, read once per run */
+    /** @var array<string, EnumSpelling> enum FQCN => its type name and its const name, read once per run */
     private static array $enumSpellings = [];
 
     /**
@@ -471,7 +472,7 @@ final class ValueResult
     /**
      * An enum's type name and const name, as toTsType() spells them, read once per run.
      *
-     * @return array{string, string}
+     * @return EnumSpelling
      */
     private static function enumSpelling(string $fqcn): array
     {
