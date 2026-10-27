@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
@@ -272,6 +273,32 @@ it('leaves an untyped property `unknown` where a callback inside the method writ
         ->and(json_encode(new EnclosedWriteChild()->toArray()))->toBe('{"last":"none","arrowed":"none","local":"none"}')
         ->and(json_encode(new EnclosedWriteChild()->track('s')->trackArrow('s')->viaLocal('abc')->toArray()))
         ->toBe('{"last":2,"arrowed":4,"local":3}');
+});
+
+// An element unset(), an append onto an object, an append beside a key write, and a computed key keep the known gap.
+it('types an untyped array a subclass appends to or keys into as its default with each element written', function () {
+    $resource = fn (): AppendedTagsResource => new AppendedTagsResource(null);
+
+    expect(publishedResourceKeyTypes(AppendedTagsResource::class, Post::class))->toBe([
+        'tags' => 'string[]',
+        'empty' => 'string[]',
+        'keyed' => '{ a: number; b?: number }',
+        'counts' => '{ a: number | string }',
+        'mixed' => '(string | number)[]',
+        'pruned' => 'unknown',
+        'labels' => 'unknown',
+        'both' => 'unknown',
+        'dynamic' => 'unknown',
+    ])->and(json_encode($resource()->resolve(request())))->toBe(
+        '{"tags":["base"],"empty":[],"keyed":{"a":1},"counts":{"a":1},"mixed":["m"],"pruned":["p"],"labels":{"a":"x"},'
+        .'"both":["a"],"dynamic":{"a":1}}',
+    )->and(json_encode($resource()->tag('x')->resolve(request())))->toBe(
+        '{"tags":["base","x"],"empty":["x"],"keyed":{"a":1,"b":2},"counts":{"a":"many"},"mixed":["m","x"],"pruned":["p"],'
+        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1}}',
+    )->and(json_encode($resource()->renumber()->tag('x')->prune()->resolve(request())))->toBe(
+        '{"tags":["base","x"],"empty":["x"],"keyed":{"a":1,"b":2},"counts":{"a":"many"},"mixed":[1,2,"x"],"pruned":["q"],'
+        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1}}',
+    );
 });
 
 // Siblings read in one process: a `static::` write typed once per class would leak one sibling's type to the next.

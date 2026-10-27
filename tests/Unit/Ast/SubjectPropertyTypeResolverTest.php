@@ -71,25 +71,27 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
             ->and($resolver->resolve($subject, 'items')['type'] ?? null)->toBe('string[]');
     });
 
-    // A write in any method the class runs, an ancestor's included, may change what a read holds. An element write or
-    // a computed name may leave anything there.
-    test('an untyped default types its property joined with the values its whole writes assign, and no other write', function () {
+    // A write in any method the class runs, an ancestor's included, may change what a read holds. A computed name may
+    // leave anything there.
+    test('an untyped default types its property joined with the values its writes assign, an append included', function () {
         $resolver = resolve(SubjectPropertyTypeResolver::class);
         $parent = new ReflectionClass(ReassignedDefaultsSubject::class);
         $child = new ReflectionClass(InheritedDefaultsSubject::class);
         $read = fn (object $subject, string $name): mixed => (fn () => $this->{$name})->call($subject);
         $viewed = new ReassignedDefaultsSubject('kept');
         $viewed->view();
+        $viewed->tag();
 
         expect($resolver->resolve($parent, 'note')['type'] ?? null)->toBe('string | null')
-            ->and($resolver->resolve($parent, 'tags'))->toBeNull()
+            ->and($resolver->resolve($parent, 'tags')['type'] ?? null)->toBe('(string | number)[]')
             ->and($resolver->resolve($parent, 'views')['type'] ?? null)->toBe('number')
             ->and($resolver->resolve($parent, 'label')['type'] ?? null)->toBe('string')
             ->and($resolver->resolve($child, 'note')['type'] ?? null)->toBe('string | null')
             ->and($resolver->resolve($child, 'label')['type'] ?? null)->toBe('string | null')
             ->and($resolver->resolve(new ReflectionClass(DynamicDefaultsSubject::class), 'status'))->toBeNull()
             ->and([$read(new ReassignedDefaultsSubject, 'note'), $read($viewed, 'note'), $read($viewed, 'views')])
-            ->toBe([null, 'kept', 1]);
+            ->toBe([null, 'kept', 1])
+            ->and($read($viewed, 'tags'))->toBe(['news', 'guide', 5]);
     });
 
     test('a default naming a constant this process cannot load declines instead of throwing', function () {
