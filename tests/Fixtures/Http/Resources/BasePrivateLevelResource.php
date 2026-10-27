@@ -31,6 +31,12 @@ class BasePrivateLevelResource extends JsonResource
         ];
     }
 
+    /** @return array<string, mixed> the count a method macro ResourceMacroServiceProvider registers reads */
+    public function macroViews(): array
+    {
+        return ['views' => $this->ninthViews()];
+    }
+
     /** Raise the level to the constant the runtime class declares. */
     public function raise(): static
     {

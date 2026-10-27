@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\ResourceMacroMixin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -49,5 +50,8 @@ class ResourceMacroServiceProvider extends ServiceProvider
         JsonResource::macro('plevelMacro', function () {
             return $this->plevel;
         });
+        $counter = new NinthViewCounter;
+        $counter->bump();
+        JsonResource::macro('ninthViews', [$counter, 'getViews']);
     }
 }

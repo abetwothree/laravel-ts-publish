@@ -48,7 +48,7 @@ class ModelMetadataAnalyzer
         $method = new ReflectionMethod($providerClass, 'provide');
         $declared = $this->parseDeclaredTypes($method);
         $casts = $this->parseTsCasts($method);
-        $analysis = $this->safeAnalyzeBody($method);
+        $analysis = $this->safeAnalyzeBody($method, $providerClass);
 
         if ($analysis !== null) {
             SharedEnumKinds::spellApart($analysis);
@@ -74,11 +74,13 @@ class ModelMetadataAnalyzer
 
     /**
      * Analyze the body, or null when the engine fails — inference then contributes nothing.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function safeAnalyzeBody(ReflectionMethod $method): ?MethodAnalysis
+    protected function safeAnalyzeBody(ReflectionMethod $method, string $providerClass): ?MethodAnalysis
     {
         try {
-            return $this->analyzeBody($method);
+            return $this->analyzeBody($method, $providerClass);
         } catch (Throwable) {
             return null;
         }
@@ -193,18 +195,23 @@ class ModelMetadataAnalyzer
      *
      * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
      * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function analyzeBody(ReflectionMethod $method): MethodAnalysis
+    protected function analyzeBody(ReflectionMethod $method, string $providerClass): MethodAnalysis
     {
         /** @var class-string $declaringClass */
         $declaringClass = $method->getDeclaringClass()->getName();
         $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
+        // An ancestor's provide() runs on the provider, a subclass of the class whose body is read here.
+        $assumesRuntime = $declaringClass !== $providerClass;
 
         if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName());
+            return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName(), assumesRuntime: $assumesRuntime);
         }
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
+        $scope->assumesRuntime = $assumesRuntime;
 
         return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
     }

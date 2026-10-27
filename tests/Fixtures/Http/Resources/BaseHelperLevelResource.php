@@ -76,6 +76,18 @@ class BaseHelperLevelResource extends JsonResource
         ];
     }
 
+    /** @return array<string, mixed> the response of the class `static` names, spread */
+    public function spreadOwn(): array
+    {
+        return [...static::make($this->resource)->resolve()];
+    }
+
+    /** @return array<string, mixed> a sibling's response, spread */
+    public function spreadSibling(): array
+    {
+        return [...TrueHelperLevelResource::make($this->resource)->resolve()];
+    }
+
     /** @return array<string, mixed> a sibling's method through its name, which PHP runs only on that sibling */
     public function siblingConst(): array
     {

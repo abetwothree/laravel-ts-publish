@@ -1634,7 +1634,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         DependencyRecorder::recordClass($resourceFqcn);
 
-        $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+        // A spread builds exactly the class it names, unless that is the class an assumed scope's `static` stands for.
+        $assumed = $this->scope->assumesRuntime && $resourceFqcn === $this->runtimeClass()->getName();
+        $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray', assumesRuntime: $assumed);
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;

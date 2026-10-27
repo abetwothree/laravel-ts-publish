@@ -23,10 +23,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServicePr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderChildDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ViewCountingModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ViewCountingResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
@@ -339,3 +342,25 @@ it('keeps an assumed runtime class through an inherited body and the helpers it 
     expect($types(true))->toMatchArray(['via_protected' => 'unknown', 'via_private' => 'unknown', 'const_self' => 'number'])
         ->and($types(false))->toMatchArray(['via_protected' => 'string | number', 'via_private' => 'string | number', 'const_self' => 'number']);
 });
+
+it('reads a spread response as assumed only where it is the class `static` names in an assumed scope', function () {
+    $type = fn (string $method, bool $assumes): string => array_column(resolve(AstEngine::class)
+        ->analyzeMethod(SevenHelperLevelResource::class, $method, Post::class, assumesRuntime: $assumes)->properties, 'type', 'name')['via_private'];
+
+    expect([$type('spreadOwn', true), $type('spreadOwn', false), $type('spreadSibling', true)])
+        ->toBe(['unknown', 'string | number', 'string | boolean'])
+        ->and(new SevenHelperLevelResource(new Post)->spreadOwn()['via_private'])->toBe('x')
+        ->and(new SevenHelperLevelResource(new Post)->spreadSibling()['via_private'])->toBe('x');
+});
+
+// The object a forwarded call or a method macro runs on is only known by a class it may extend.
+it('declines a `static` write in a model a resource forwards to, and in a method macro\'s object', function () {
+    app()->register(ResourceMacroServiceProvider::class, force: true);
+    $bumped = new NinthViewCountingModel()->bump();
+
+    expect(publishedResourceKeyTypes(ViewCountingResource::class, ViewCountingModel::class))->toBe(['views' => 'unknown'])
+        ->and(new ViewCountingResource($bumped)->resolve(request()))->toBe(['views' => 9])
+        ->and(resolve(AstEngine::class)->analyze(BasePrivateLevelResource::class, 'macroViews', Post::class)->properties[0]['type'])
+        ->toBe('unknown')
+        ->and(new BasePrivateLevelResource(new Post)->macroViews())->toBe(['views' => 9]);
+})->after(fn () => JsonResource::flushMacros());

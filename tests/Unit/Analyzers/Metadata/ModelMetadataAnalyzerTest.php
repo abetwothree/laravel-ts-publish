@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BaseTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ClassNamedKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProvideDecoyProvider;
@@ -20,11 +21,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NinthTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
+use Workbench\App\Models\Post;
 
 /**
  * @param  class-string<ModelMetadataProvider>  $providerClass
@@ -72,6 +75,18 @@ test('an inherited provide() keeps the parameter binding', function () {
     $analysis = analyzeMetadataTypesFor(InheritedModelMetadataProvider::class, ['enabled', 'table']);
 
     expect($analysis->types)->toBe(['enabled' => 'boolean', 'table' => 'string']);
+});
+
+// An inherited provide() runs on the provider, so its body's `static::` write is only assumed on the declaring class.
+test('reads a provide() body as the provider\'s class only where the provider declares it', function () {
+    $own = analyzeMetadataTypesFor(BaseTierMetadataProvider::class, ['tier']);
+    $inherited = analyzeMetadataTypesFor(NinthTierMetadataProvider::class, ['tier']);
+
+    expect($own->types)->toBe(['tier' => 'string'])
+        ->and(new BaseTierMetadataProvider()->provide(new Post))->toBe(['tier' => 'a'])
+        ->and($inherited->types)->toBe([])
+        ->and($inherited->undeclaredKeys(['tier']))->toBe(['tier'])
+        ->and(new NinthTierMetadataProvider()->provide(new Post))->toBe(['tier' => 9]);
 });
 
 test('drops unknown inferences and reports payload keys no source typed', function () {

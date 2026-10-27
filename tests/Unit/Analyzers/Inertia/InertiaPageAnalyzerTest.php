@@ -22,9 +22,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTierProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
@@ -284,6 +288,16 @@ it('types props delegated to a collaborator, and reads both inertia() helper for
         ->and($helper['pageType'])->toBe('Inertia.SharedData & { label: string }')
         ->and($chain['component'])->toBe('Dashboard/HelperChain')
         ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
+it('reads a delegated props body as the collaborator\'s class only where that class is final', function () {
+    app()->bind(TierPropsBuilder::class, NinthTierPropsBuilder::class);
+
+    // The container may inject a subclass of a class that is not final, whose `static::` write the body only assumes.
+    expect(pageData(ControllerWithTierProps::class.'@index')['pageType'])->toBe('Inertia.SharedData & { tier: unknown }')
+        ->and(app(TierPropsBuilder::class)->build())->toBe(['tier' => 9])
+        ->and(pageData(ControllerWithTierProps::class.'@exact')['pageType'])->toBe('Inertia.SharedData & { tier: string | number }')
+        ->and(app(FinalTierPropsBuilder::class)->build())->toBe(['tier' => 9]);
 });
 
 it('types an action a trait in another file supplies', function () {

@@ -324,7 +324,8 @@ class InertiaPageAnalyzer
 
     /**
      * Type a props argument delegated to a collaborator — `Inertia::render('X', $this->props->build())` —
-     * by analyzing that method on the property's own class.
+     * by analyzing that method on the property's own class, which the container may fill with a subclass unless it is
+     * final, so the body only assumes it.
      */
     protected function analyzeDelegatedProps(Expr $propsArg, MethodContext $context): ResourceAnalysis
     {
@@ -339,7 +340,11 @@ class InertiaPageAnalyzer
         }
 
         $analysis = new ResourceAnalysis;
-        $analysis->merge(resolve(AstEngine::class)->analyzeMethod($propertyClass, $propsArg->name->toString()));
+        $analysis->merge(resolve(AstEngine::class)->analyzeMethod(
+            $propertyClass,
+            $propsArg->name->toString(),
+            assumesRuntime: ! new ReflectionClass($propertyClass)->isFinal(),
+        ));
 
         return $analysis;
     }
