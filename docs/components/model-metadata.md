@@ -55,10 +55,9 @@ key and would fail on a key no source typed.
 `ModelMetadataAnalyzer::analyzeBody()` calls `AstEngine::analyzeMethod()` only when it cannot locate `provide()`.
 Otherwise it locates and binds `provide()` itself:
 
-- **Declaring class**: it locates `provide()` on the class that declares it, so `self::`, `parent::` and
-  `$this->method()` resolve against the file the body lives in. No test distinguishes this from the configured class.
-  An ancestor's `provide()` runs on the configured provider, so its read only assumes its runtime class
-  (`AnalysisScope::$assumesRuntime`).
+- **Provider class**: it locates `provide()` on the class of the provider instance the transformer ran, so that class
+  is the known runtime class: an inherited or trait body reads `$this` and `static` as the provider, and `self` and
+  `parent` from its declaring class.
 - **`locate()`, not `locateOwn()`**: for a trait method the declaring class is the using class, whose file holds no
   `provide()` node, and `locateOwn()` declines that shape. `ProvidesTraitModelMetadata` pins the trait case.
 - **Declared-type binding**: `AstEngine::bindingsFor()` binds the `Model $model` parameter to `Model`. Method calls on
