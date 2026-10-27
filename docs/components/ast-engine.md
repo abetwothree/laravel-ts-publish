@@ -172,8 +172,9 @@ docblocks say what each binding table holds. These eight facts span other classe
   `declaringFileClass` names the trait. A `$this->m()` call or a `$this->prop` read reaches its member on
   `thisMemberClass()`: the declaring class when it declares that member private, else the runtime class. A static-syntax
   call reads `staticCallClass()`, which applies no private rule, and every other `self`, `static` or `parent` reads
-  `relativeClass()`; the write scans take the same two classes (`VariableWrites::of()`). The runtime class is known in
-  the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or a
+  `relativeClass()`, while a call that forwards the runtime class hands it to its callee as `static`
+  (`forwardsRuntimeClass()`); the write scans take the same two classes (`VariableWrites::of()`). The runtime class is
+  known in the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or a
   non-static call through an ancestor's name; elsewhere, as in a receiver's body, `assumesRuntime` is set and
   `knownRuntime()` is null, since the object may be a subclass.
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
