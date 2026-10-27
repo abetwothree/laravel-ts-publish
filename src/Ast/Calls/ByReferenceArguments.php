@@ -174,10 +174,10 @@ final class ByReferenceArguments
             }
 
             if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
-                && $call->name instanceof Identifier && $runtime !== null
+                && $call->name instanceof Identifier && $runtime !== null && $declaring !== null
             ) {
                 $method = $call->name->toString();
-                $owner = $declaring === null ? $runtime : AnalysisScope::memberClassOf($declaring, $runtime, $method, true);
+                $owner = AnalysisScope::memberClassOf($declaring, $runtime, $method, true);
 
                 // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
                 DependencyRecorder::recordClass($owner->getName());

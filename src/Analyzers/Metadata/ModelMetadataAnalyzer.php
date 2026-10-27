@@ -48,7 +48,7 @@ class ModelMetadataAnalyzer
         $method = new ReflectionMethod($providerClass, 'provide');
         $declared = $this->parseDeclaredTypes($method);
         $casts = $this->parseTsCasts($method);
-        $analysis = $this->safeAnalyzeBody($method, $providerClass);
+        $analysis = $this->safeAnalyzeBody($providerClass);
 
         if ($analysis !== null) {
             SharedEnumKinds::spellApart($analysis);
@@ -77,10 +77,10 @@ class ModelMetadataAnalyzer
      *
      * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function safeAnalyzeBody(ReflectionMethod $method, string $providerClass): ?MethodAnalysis
+    protected function safeAnalyzeBody(string $providerClass): ?MethodAnalysis
     {
         try {
-            return $this->analyzeBody($method, $providerClass);
+            return $this->analyzeBody($providerClass);
         } catch (Throwable) {
             return null;
         }
@@ -198,17 +198,17 @@ class ModelMetadataAnalyzer
      *
      * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function analyzeBody(ReflectionMethod $method, string $providerClass): MethodAnalysis
+    protected function analyzeBody(string $providerClass): MethodAnalysis
     {
-        $context = resolve(MethodLocator::class)->locate($providerClass, $method->getName());
+        $context = resolve(MethodLocator::class)->locate($providerClass, 'provide');
 
         if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($providerClass, $method->getName());
+            return resolve(AstEngine::class)->analyzeMethod($providerClass, 'provide');
         }
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
 
-        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
+        return new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
     }
 
     /**

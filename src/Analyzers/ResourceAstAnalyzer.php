@@ -567,16 +567,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The class under analysis, the subject a warning names.
-     *
-     * @return ReflectionClass<object>
-     */
-    protected function subjectReflection(): ReflectionClass
-    {
-        return $this->scope->subjectReflection;
-    }
-
-    /**
      * The scope this analyzer reads its subject in.
      */
     protected function analysisScope(): AnalysisScope
@@ -2049,7 +2039,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $keys = array_column($analysis->properties, 'name');
         $types = JsEmitter::castsByKey($types, $keys);
 
-        JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
+        JsEmitter::warnAmbiguousCasts($this->scope->subjectReflection->getName(), array_keys($types), $keys);
 
         foreach ($types as $property => $value) {
             // PHP stores a numeric cast key as an int, while a property names its key as a string.
