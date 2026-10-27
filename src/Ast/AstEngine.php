@@ -57,7 +57,8 @@ final class AstEngine
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
      *                           resource's toArray() is its body, never the resource object it publishes
-     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class: what `static` names in the body,
+     *                                                 and whose model `$this` reads
      * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      *
      * @internal
@@ -73,12 +74,13 @@ final class AstEngine
         bool $assumesRuntime = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
+        $runtime = $runtime?->getName() === $class ? null : $runtime;
 
-        if ($modelClass === null && is_a($class, JsonResource::class, true)) {
-            $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
+        // An ancestor's helper reads the model of the class it runs for, which the ancestor may not name.
+        if ($modelClass === null && is_a(($runtime ?? $reflection)->getName(), JsonResource::class, true)) {
+            $modelClass = resolve(ModelClassResolver::class)->resolve($runtime ?? $reflection);
         }
 
-        $runtime = $runtime?->getName() === $class ? null : $runtime;
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
             .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime === null ? '' : '@runtime:'.$runtime->getName())
             .($assumesRuntime ? '@assumed' : '');
@@ -107,7 +109,8 @@ final class AstEngine
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
-     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class: what `static` names in the body,
+     *                                                 and whose model `$this` reads
      * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      * @return ValueExpressionResult|null
      *
@@ -127,10 +130,11 @@ final class AstEngine
             return null;
         }
 
+        $runs = $runtime?->getName() ?? $class;
         $modelClass = match (true) {
             $backing !== null => $backing,
-            is_a($class, Model::class, true) => $class,
-            is_a($class, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($context->reflection),
+            is_a($runs, Model::class, true) => $runs,
+            is_a($runs, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($runtime ?? $context->reflection),
             default => null,
         };
         $scope = $this->bindingsFor($context, $modelClass, $passed);

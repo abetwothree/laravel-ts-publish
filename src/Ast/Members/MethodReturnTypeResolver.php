@@ -63,8 +63,9 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
-     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body, as
-     *                                                 PHP forwards it through `self::` and a private `$this->` call
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body and
+     *                                                 whose model `$this` reads, as PHP forwards it through `self::`
+     *                                                 and a private `$this->` call
      * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      * @return ValueExpressionResult|null
      */
@@ -206,11 +207,13 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $runs = $runtime?->getName() ?? $class;
+
         try {
             $analysis = resolve(AstEngine::class)->analyzeMethod(
                 $class,
                 $methodName,
-                $backing ?? (is_a($class, Model::class, true) ? $class : null),
+                $backing ?? (is_a($runs, Model::class, true) ? $runs : null),
                 carriesImports: false,
                 passed: $passed,
                 readsCall: true,

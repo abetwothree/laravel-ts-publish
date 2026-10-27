@@ -394,13 +394,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The model a bare `$this` is when the subject under analysis is itself a model, as in its own method or accessor.
+     * The model a bare `$this` is when the runtime class is itself a model, as in its own method or accessor.
      */
     public function modelSubject(AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
+        $runtime = $scope->runtimeReflection;
 
-        return $subject->isSubclassOf(Model::class) ? ReceiverType::of($subject->getName()) : null;
+        return $runtime->isSubclassOf(Model::class) ? ReceiverType::of($runtime->getName()) : null;
     }
 
     /**

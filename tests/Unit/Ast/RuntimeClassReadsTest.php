@@ -17,15 +17,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadLis
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildSiblingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHelperPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
@@ -291,6 +294,29 @@ it('reads `static` in a helper a private `$this->` or a `self::` call reaches as
         BaseHelperLevelResource::class => $expected('string', 'string', 'base'),
         SevenHelperLevelResource::class => $expected('string | number', 'number', 7),
         TrueHelperLevelResource::class => $expected('string | boolean', 'boolean', true),
+    ]);
+});
+
+it('reads a model column in a helper a private `$this->` or a `self::` call reaches as the runtime class\'s model', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+
+    expect(publishedResourceKeyTypes(ModelHelperResource::class, Post::class))->toBe([
+        'via_protected' => 'string', 'via_self' => 'string', 'via_self_shape' => '{ t: string }', 'prot' => 'string',
+    ])->and((new ModelHelperResource($post))->resolve(request()))->toBe([
+        'via_protected' => 'x', 'via_self' => 'x', 'via_self_shape' => ['t' => 'x'], 'prot' => 'x',
+    ]);
+});
+
+it('reads a column in a helper a model\'s ancestor reaches through `self::` or a private `$this->` as the runtime model\'s', function () {
+    $post = new SelfHelperPost;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+
+    expect(publishedResourceKeyTypes(SelfHelperPostResource::class, SelfHelperPost::class))->toBe([
+        'via_self' => 'string', 'via_self_shape' => '{ t: string; picked: { title: string } }',
+        'via_self_only' => '{ title: string }', 'via_private' => 'string',
+    ])->and((new SelfHelperPostResource($post))->resolve(request()))->toBe([
+        'via_self' => 'x', 'via_self_shape' => ['t' => 'x', 'picked' => ['title' => 'x']], 'via_self_only' => ['title' => 'x'], 'via_private' => 'x',
     ]);
 });
 
