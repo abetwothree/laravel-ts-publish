@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -77,7 +78,8 @@ final class ByReferenceArguments
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
      * @param  array<Arg>  $passed  the call's arguments the caller asks about, keyed by position
-     * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name; null names neither
+     * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name, but for the declaring
+     *                                                 class's private `$this->m()`; null names neither
      * @param  ReflectionClass<object>|null  $declaring  the class `self` names, the using class in a trait's body; null
      *                                                   names neither it nor `parent`
      * @return list<Expr>
@@ -174,10 +176,13 @@ final class ByReferenceArguments
             if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
                 && $call->name instanceof Identifier && $runtime !== null
             ) {
-                // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
-                DependencyRecorder::recordClass($runtime->getName());
+                $method = $call->name->toString();
+                $owner = $declaring === null ? $runtime : AnalysisScope::memberClassOf($declaring, $runtime, $method, true);
 
-                return $runtime->getMethod($call->name->toString());
+                // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
+                DependencyRecorder::recordClass($owner->getName());
+
+                return $owner->getMethod($method);
             }
 
             if ($call instanceof StaticCall && $call->class instanceof Name && $call->name instanceof Identifier) {

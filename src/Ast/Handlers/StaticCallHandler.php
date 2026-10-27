@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -184,7 +185,9 @@ final class StaticCallHandler implements ExpressionHandler
             $className = $this->scopeClassName($call->class, $scope);
         }
 
-        if ($this->callsFrameworkParent($call, $className, $methodName)) {
+        $built = $this->builtClass($call, $className, $methodName, $scope);
+
+        if ($built === $className && $this->callsFrameworkParent($call, $className, $methodName)) {
             return $result;
         }
 
@@ -195,52 +198,52 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         // EnumResource::make($this->prop)
-        if ($this->isEnumResourceClass($className) && $methodName === 'make') {
-            return $this->analyzeEnumResourceMake($call, $className, $scope, $engine);
+        if ($this->isEnumResourceClass($built) && $methodName === 'make') {
+            return $this->analyzeEnumResourceMake($call, $built, $scope, $engine);
         }
 
         // EnumResource::collection($this->prop) — must precede the generic isResourceClass()
         // checks below: EnumResource extends JsonResource, so those would match it too and
         // yield the unsuffixed 'EnumResource[]' instead of resolving the wrapped enum.
-        if ($this->isEnumResourceClass($className) && $methodName === 'collection') {
-            return $this->analyzeEnumResourceCollection($call, $className, $scope, $engine);
+        if ($this->isEnumResourceClass($built) && $methodName === 'collection') {
+            return $this->analyzeEnumResourceCollection($call, $built, $scope, $engine);
         }
 
         // SomeCollection::make() builds the collection a key nests, so it must precede the generic make() arm below;
         // SomeCollection::collection() is JsonResource::collection(), a list of collections that arm spells.
-        if (is_a($className, ResourceCollection::class, true) && $methodName === 'make') {
-            $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
+        if (is_a($built, ResourceCollection::class, true) && $methodName === 'make') {
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($built);
 
             if ($nested !== null) {
-                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $className)];
+                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $built)];
             }
         }
 
         // SomeResource::make($this->prop) — nested resource
-        if ($this->isResourceClass($className) && $methodName === 'make') {
-            /** @var class-string $className */
-            $type = $this->resourceWrapType($call, $className, $scope, $engine);
-            $optional = $this->hasConditionalArgument($call, $className);
+        if ($this->isResourceClass($built) && $methodName === 'make') {
+            /** @var class-string $built */
+            $type = $this->resourceWrapType($call, $built, $scope, $engine);
+            $optional = $this->hasConditionalArgument($call, $built);
 
             return [
                 ...$result,
                 'type' => $type,
                 'optional' => $optional,
-                ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
+                ...($type === 'null' ? [] : ['resourceFqcn' => $built]),
             ];
         }
 
         // SomeResource::collection(...) — array or keyed record of nested resource
-        if ($this->isResourceClass($className) && $methodName === 'collection') {
-            $resourceName = TsNaming::resourceTypeName($className);
-            $optional = $this->hasConditionalArgument($call, $className);
+        if ($this->isResourceClass($built) && $methodName === 'collection') {
+            $resourceName = TsNaming::resourceTypeName($built);
+            $optional = $this->hasConditionalArgument($call, $built);
 
-            /** @var class-string $className */
+            /** @var class-string $built */
             return [
                 ...$result,
-                'type' => ResourceCollections::listType($resourceName, new ReflectionClass($className)),
+                'type' => ResourceCollections::listType($resourceName, new ReflectionClass($built)),
                 'optional' => $optional,
-                'resourceFqcn' => $className,
+                'resourceFqcn' => $built,
             ];
         }
 
@@ -248,7 +251,7 @@ final class StaticCallHandler implements ExpressionHandler
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
             $site = new CallSite($call, $scope, $engine);
-            $forwards = $this->forwardsRuntimeClass($call, $className, $methodName, $scope);
+            $forwards = $scope->forwardsRuntimeClass($call, $className, $methodName);
 
             return resolve(MethodReturnTypeResolver::class)->resolve(
                 $className,
@@ -271,23 +274,21 @@ final class StaticCallHandler implements ExpressionHandler
         return $call->class instanceof Name
             && $call->class->toLowerString() === 'parent'
             && method_exists($className, $methodName)
-            && str_starts_with(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName(), 'Illuminate\\');
+            && $this->isFrameworkClass(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName());
     }
 
     /**
-     * Whether a static-syntax call hands its body the caller's runtime class: `self::`, `static::` and `parent::`
-     * forward it, and PHP runs a non-static method named through the runtime class or an ancestor on `$this`.
+     * The class a static call to make() or collection() builds: JsonResource's own builds `new static`, the runtime
+     * class wherever the call forwards it, as `self::` and `parent::` do; any other call builds the class it names.
      */
-    private function forwardsRuntimeClass(StaticCall $call, string $className, string $methodName, AnalysisScope $scope): bool
+    private function builtClass(StaticCall $call, string $className, string $methodName, AnalysisScope $scope): string
     {
-        if (! $call->class instanceof Name) {
-            return false;
-        }
-
-        return $call->class->isSpecialClassName()
-            || (method_exists($className, $methodName)
-                && ! new ReflectionMethod($className, $methodName)->isStatic()
-                && is_a($scope->runtimeReflection->getName(), $className, true));
+        return in_array($methodName, ['make', 'collection'], true)
+            && method_exists($className, $methodName)
+            && new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName() === JsonResource::class
+            && $scope->forwardsRuntimeClass($call, $className, $methodName)
+                ? $scope->runtimeReflection->getName()
+                : $className;
     }
 
     /**
@@ -436,7 +437,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver instanceof StaticCall => $receiver->class instanceof Name
                 && $receiver->name instanceof Identifier
                 && $receiver->name->toString() === 'make'
-                && $this->scopeClassName($receiver->class, $scope) === $resourceFqcn,
+                && $this->builtClass($receiver, $this->scopeClassName($receiver->class, $scope), 'make', $scope) === $resourceFqcn,
             $receiver instanceof MethodCall => ($receiver->name instanceof Identifier && $receiver->name->toString() === 'toResource')
                 || $this->holdsOneResource($receiver->var, $type, $resourceFqcn, $scope),
             default => false,

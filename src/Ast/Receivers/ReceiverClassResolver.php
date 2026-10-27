@@ -212,7 +212,7 @@ final class ReceiverClassResolver
         return $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
-                    ? $this->modelFactory($class, $method, $call) ?? $this->returned($class, $method)
+                    ? $this->modelFactory($class, $method, $call) ?? $this->forwardedReturn($call, $class, $method, $scope)
                     : $this->forwardedStaticQuery($class, $method),
                 $receiver->classes,
             ),
@@ -1370,6 +1370,17 @@ final class ReceiverClassResolver
         }
 
         return $this->memberMethod(Builder::class, $method, false, $class);
+    }
+
+    /**
+     * What a static call to a method of one class returns: a call that forwards the runtime class reads a declared
+     * `static` return as that class, as `static::m()` reads it; any other reads it as the class called.
+     */
+    private function forwardedReturn(StaticCall $call, string $class, string $method, AnalysisScope $scope): ?ReceiverType
+    {
+        $static = $scope->forwardsRuntimeClass($call, $class, $method) ? $scope->runtimeReflection->getName() : null;
+
+        return $this->returned($class, $method, $static);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -13,7 +14,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildSiblingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
@@ -23,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
@@ -408,4 +413,59 @@ it('reads parent::toArray() in a collection helper as the list the declaring cla
         ->and(analyzedKeyTypes(DeclaredSpreadListCollection::class))->toBe(['[key: number]' => 'PostResource', 'count' => 'number'])
         ->and((new DeclaredListCollection(collect()))->resolve(request()))->toBe(['items' => []])
         ->and((new DeclaredSpreadListCollection(collect()))->resolve(request()))->toBe(['count' => 0]);
+});
+
+// JsonResource's make() and collection() build `new static`, which a `self::` call forwards as the runtime class.
+it('reads a self:: builder in an ancestor\'s helper as the runtime class it forwards, and new self as the declaring class', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+    $sent = (new ForwardedBuildResource($post))->resolve(request());
+
+    expect(publishedResourceKeyTypes(ForwardedBuildResource::class, Post::class))->toBe([
+        'made' => 'ForwardedBuildResource', 'listed' => 'ForwardedBuildResource[]',
+        'made_summary' => '{ child_summary: boolean }', 'made_titled' => '{ title: string }',
+        'new_summary' => '{ base_summary: number }',
+    ])->and($sent['made'])->toBeInstanceOf(ForwardedBuildResource::class)
+        ->and($sent['listed']->collects)->toBe(ForwardedBuildResource::class)
+        ->and($sent['made_summary'])->toBe(['child_summary' => true])
+        ->and($sent['made_titled'])->toBe(['title' => 'x'])
+        ->and($sent['new_summary'])->toBe(['base_summary' => 1]);
+});
+
+it('reads the self:: builder two siblings share as each one\'s own class, whichever is read first', function () {
+    $read = fn (string $class): array => publishedResourceKeyTypes($class, Post::class);
+    $child = ['made' => 'ForwardedBuildResource', 'listed' => 'ForwardedBuildResource[]', 'made_summary' => '{ child_summary: boolean }'];
+    $sibling = ['made' => 'ForwardedBuildSiblingResource', 'listed' => 'ForwardedBuildSiblingResource[]', 'made_summary' => '{ sibling_summary: string }'];
+    $childFirst = [$read(ForwardedBuildResource::class), $read(ForwardedBuildSiblingResource::class)];
+    resolve(AnalysisMemo::class)->reset();
+    $siblingFirst = [$read(ForwardedBuildSiblingResource::class), $read(ForwardedBuildResource::class)];
+
+    expect($childFirst[0])->toMatchArray($child)->and($childFirst[1])->toMatchArray($sibling)
+        ->and($siblingFirst[0])->toMatchArray($sibling)->and($siblingFirst[1])->toMatchArray($child)
+        ->and((new ForwardedBuildSiblingResource(new Post))->resolve(request())['made_summary'])->toBe(['sibling_summary' => 'x']);
+});
+
+it('reads a static return a self:: or parent:: call reaches as the runtime class it forwards', function () {
+    expect(analyzedKeyTypes(ForwardedFreshPayload::class))->toBe([
+        'self_fresh' => '{ b: boolean }', 'new_self' => '{ a: number }', 'parent_fresh' => '{ b: boolean }',
+    ])->and(new ForwardedFreshPayload()->toArray())->toBe([
+        'self_fresh' => ['b' => true], 'new_self' => ['a' => 1], 'parent_fresh' => ['b' => true],
+    ]);
+});
+
+// Laravel's own JsonResource publishes no type, so a `new` of it stays unknown rather than import a framework class.
+it('leaves a new of the framework parent unknown, while parent::make() builds the runtime class', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+    $analysis = resolve(AstEngine::class)->analyze(NewParentResource::class, 'toArray', Post::class);
+    $sent = (new NewParentResource($post))->resolve(request());
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toMatchArray([
+        'built' => 'unknown', 'made' => 'NewParentResource', 'listed' => 'NewParentResource[]',
+    ])->and(array_column($analysis->properties, 'type', 'name')['resolved'])->not->toContain('JsonResource')
+        ->and(array_keys($analysis->typeImports))->each->not->toContain('illuminate')
+        ->and(json_decode((string) json_encode($sent['built']), true))->toBe(['id' => 1, 'title' => 'x'])
+        ->and($sent['resolved'])->toBe(['id' => 1, 'title' => 'x'])
+        ->and($sent['made'])->toBeInstanceOf(NewParentResource::class)
+        ->and($sent['listed']->collects)->toBe(NewParentResource::class);
 });

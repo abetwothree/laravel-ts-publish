@@ -77,6 +77,11 @@ final class NewResourceHandler implements ExpressionHandler
             return $this->enumWrapValue($payload, $scope, $engine) ?? $result;
         }
 
+        // `new parent(...)` over JsonResource or ResourceCollection builds a resource no file publishes.
+        if ($this->isResourceClass($className) && $this->isFrameworkClass($className)) {
+            return $result;
+        }
+
         // new SomeCollection($this->items). Must precede the generic isResourceClass() branch below, for the same
         // reason as in analyzeStaticCall().
         if (is_a($className, ResourceCollection::class, true)) {

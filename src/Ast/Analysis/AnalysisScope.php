@@ -467,6 +467,28 @@ final class AnalysisScope
     }
 
     /**
+     * The class whose declaration `$this->$member` reaches from a body the declaring class holds: that class when it
+     * declares the member private, since PHP binds a private member to the calling scope, else the runtime class.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
+     * @return ReflectionClass<object>
+     */
+    public static function memberClassOf(ReflectionClass $declaring, ReflectionClass $runtime, string $member, bool $isMethod): ReflectionClass
+    {
+        $declared = match (true) {
+            $isMethod => $declaring->hasMethod($member) ? $declaring->getMethod($member) : null,
+            default => $declaring->hasProperty($member) ? $declaring->getProperty($member) : null,
+        };
+
+        // Reflection lists an ancestor's private method on its subclasses too, though no subclass body can call it.
+        $ownPrivate = $declared !== null && $declared->isPrivate()
+            && $declared->getDeclaringClass()->getName() === $declaring->getName();
+
+        return $ownPrivate ? $declaring : $runtime;
+    }
+
+    /**
      * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
      * proxy or names no one class. The one home of the proxy target, for every scope and every narrowing of it; a
      * ResourceCollection's items are proxyReceiver()'s.
@@ -554,17 +576,7 @@ final class AnalysisScope
      */
     public function thisMemberClass(string $member, bool $isMethod): ReflectionClass
     {
-        $declaring = $this->declaringClass;
-        $declared = match (true) {
-            $isMethod => $declaring->hasMethod($member) ? $declaring->getMethod($member) : null,
-            default => $declaring->hasProperty($member) ? $declaring->getProperty($member) : null,
-        };
-
-        // Reflection lists an ancestor's private method on its subclasses too, though no subclass body can call it.
-        $ownPrivate = $declared !== null && $declared->isPrivate()
-            && $declared->getDeclaringClass()->getName() === $declaring->getName();
-
-        return $ownPrivate ? $declaring : $this->runtimeReflection;
+        return self::memberClassOf($this->declaringClass, $this->runtimeReflection, $member, $isMethod);
     }
 
     /**
@@ -585,8 +597,8 @@ final class AnalysisScope
 
     /**
      * The class a static-syntax call on the subject reaches from the body under analysis: `$this::` and `static::`
-     * the runtime class, since PHP looks such a call up there with no private rule; `self::` the declaring class; a
-     * name the subject.
+     * the runtime class, since PHP looks such a call up there with no private rule; `self::` the declaring class,
+     * `parent::` its parent, or the subject where it has none; a name the subject.
      *
      * @return ReflectionClass<object>
      */
@@ -599,6 +611,22 @@ final class AnalysisScope
             $class instanceof Name => $this->relativeClass($class) ?? $this->subjectReflection,
             default => $this->subjectReflection,
         };
+    }
+
+    /**
+     * Whether a static-syntax call hands its callee the runtime class as `static`: `self::`, `static::` and `parent::`
+     * forward it, and PHP runs a non-static method named through the runtime class or an ancestor on `$this`.
+     */
+    public function forwardsRuntimeClass(StaticCall $call, string $className, string $methodName): bool
+    {
+        if (! $call->class instanceof Name) {
+            return false;
+        }
+
+        return $call->class->isSpecialClassName()
+            || (method_exists($className, $methodName)
+                && ! new ReflectionMethod($className, $methodName)->isStatic()
+                && is_a($this->runtimeReflection->getName(), $className, true));
     }
 
     /**

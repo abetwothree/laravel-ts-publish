@@ -84,6 +84,17 @@ it('binds self in a scanned body to the class that declares it, and to the using
         ->and([$sent->stashed, $sent->traitStashed])->toBe([['a', 1], ['a', 1]]);
 });
 
+it('reads a $this-> callee on the declaring class\'s own private method, which PHP calls over the runtime class\'s', function () {
+    $child = new ReflectionClass(ByReferenceSelfChild::class);
+    $sent = new ByReferenceSelfChild;
+    $sent->runFill();
+
+    expect(byReferenceArgumentsOf('$this->fill($a);', $child, new ReflectionClass(ByReferenceSelfBase::class)))->toBe(['$a'])
+        ->and(byReferenceArgumentsOf('$this->fill($a);', $child))->toBe([])
+        ->and(resolve(SubjectPropertyTypeResolver::class)->holdsDefault($child, 'filled'))->toBeFalse()
+        ->and($sent->filled)->toBe(['a', 1]);
+});
+
 it('names no $this, self or static callee without a class', function (string $statement) {
     expect(byReferenceArgumentsOf($statement))->toBe([]);
 })->with([

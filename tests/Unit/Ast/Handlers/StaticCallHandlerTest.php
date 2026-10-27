@@ -949,7 +949,7 @@ it('resolves new PostResource(...) to the resource channel', function () {
     ]);
 });
 
-it('reads self and static as the subject in any case, and leaves parent out', function (string $php, string $type) {
+it('reads self and static as the subject in any case, and parent::make() as the runtime class it builds', function (string $php, string $type) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
     expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'])->toBe($type);
@@ -957,7 +957,8 @@ it('reads self and static as the subject in any case, and leaves parent out', fu
     'SELF::make()' => ['SELF::make($this->author)', 'PostResource'],
     'Static::make()' => ['Static::make($this->author)', 'PostResource'],
     'new SELF()' => ['new SELF($this->author)', 'PostResource'],
-    'parent::make()' => ['parent::make($this->author)', 'unknown'],
+    // JsonResource::make() builds `new static`, which `parent::` forwards as PostResource.
+    'parent::make()' => ['parent::make($this->author)', 'PostResource'],
 ]);
 
 // Each branch of the conditional `@return` both declare is a string.
