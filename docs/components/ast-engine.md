@@ -494,8 +494,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 
 ## Subject mode
 
-Subject mode types `$this->prop` from the subject's own declaration. It always applies when `AnalysisScope::$modelClass`
-is `null`, as for a broadcast event, a DTO or any plain class. On those `$this->resource` is the subject's own property,
+Subject mode types `$this->prop` from the declaration `thisMemberClass()` reaches, the runtime class's or the declaring
+class's private one ([§ AnalysisScope](#analysisscope)). It always applies when `AnalysisScope::$modelClass` is `null`,
+as for a broadcast event, a DTO or any plain class. On those `$this->resource` is the subject's own property,
 since only an API resource has the proxy. On a model-backed subject, it applies to a property
 `SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
 PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
@@ -510,17 +511,19 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
 `AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A
-non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
-the class fills it. The default joins the type of each value a method the class runs assigns the property whole as a
-literal or a constant expression, an ancestor's, a trait's or, through the runtime class, a subclass's included. Any
-other write declines: another value, a compound or element write, `unset()`, a computed `$this->{$name}` write in
-application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
-which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and
-declines where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
-by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
-(`$this->holder()->views`), or a write from outside the class.
+an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A non-public
+property declared without a value publishes `null`; a public one left `null` declines, since code outside the class
+fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
+operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
+as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
+property itself takes the default and constant writes under an `AnalysisMemo` guard. Any other write declines: a value
+the engine cannot type, a write in a trait's method the class overrides, an element write, `unset()`, a computed
+`$this->{$name}` write in application code, or an argument to a by-reference parameter of a callee the scan can name
+([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
+`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
+method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
+receiver's declared class (`$this->holder()->views`), or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With

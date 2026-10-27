@@ -130,8 +130,9 @@ a list, a `{…} | null`, or an array `json_decode()` returns), names a model no
 `EnumResource` wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less
 read cannot import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or
 by-reference call of the parameter leaves only the helper's own writes; a `??=`, a key-keeping sort such as `ksort()`,
-`array_push()` and `array_unshift()` keep the argument's keys. Declare `@return array{…}` on the helper to publish the
-exact shape.
+`array_push()` and `array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the
+walk cannot read, makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape
+open. Declare `@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
@@ -780,11 +781,14 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 
 ### An untyped property's default ignores writes the scan cannot see
 
-An untyped property publishes its default's type joined with each literal or constant its class, an ancestor, a trait
-or the published subclass writes it, and `unknown` for any other write. A by-reference parameter on a receiver the scan
-cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel
-sends while the published type stays the default's. So does a write by a subclass of a receiver's declared class, such
-as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
+An untyped property publishes its default's type joined with each value its class, an ancestor, a trait or the published
+subclass writes it, whole or by a compound operator, typed in the writing method's scope. It publishes `unknown` for any
+other write: an element write, an `unset()`, a write in a trait's method the class overrides, or a value the engine
+cannot type, such as an untyped parameter or a `mixed` call. A helper that a write calls to read the property back
+publishes it `unknown` where that helper is read first. A by-reference parameter on a receiver the scan cannot resolve,
+such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel sends while the
+published type stays the default's. So does a write by a subclass of a receiver's declared class, such as the object
+behind `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
 
 ### A receiver's body reads `static` as its declared class
 
