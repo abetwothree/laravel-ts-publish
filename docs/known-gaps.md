@@ -129,12 +129,14 @@ and alone where its result is the method's own return, when the argument is not 
 a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an `EnumResource`
 wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less read cannot
 import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference
-call of the parameter leaves only the helper's own writes; a `??=`, a key-keeping sort such as `ksort()`,
-`array_push()`, `array_unshift()`, `array_walk()`, `Arr::set()` and a by-reference `foreach` keep the argument's keys.
-Inside a block, such a write, or an `=` of a value the walk cannot read, makes each key held before it optional, a
-local's too, and, but for an `unset()`, publishes the shape open, unless it keeps every key, as those calls and an `=`
-of `array_merge()` or `array_replace()`, either recursive, or `Arr::add()` taking the array first, or of a `+` it leads,
-do. Declare `@return array{…}` on the helper to publish the exact shape.
+call of the parameter leaves only the helper's own writes, and so does a rewrite of its values in place, `array_walk()`,
+a by-reference `foreach` or `Arr::set()`; a `??=`, a key-keeping sort such as `ksort()`, `array_push()` and
+`array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the walk cannot read,
+makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape open, unless it
+keeps every key, as those calls, a rewrite in place and an `=` of `array_merge()` or `array_replace()`, either
+recursive, or `Arr::add()` taking the array first, or of a `+` it leads, do. A rewrite in place inside a block, or of a
+local, keeps the earlier value types, though `array_walk()` may turn a number into a string. Declare `@return array{…}`
+on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
