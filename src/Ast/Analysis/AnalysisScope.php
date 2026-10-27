@@ -440,8 +440,9 @@ final class AnalysisScope
     public ReflectionClass $declaringClass;
 
     /**
-     * The runtime class: the class `$this` and `static` are when the body runs. The subject, unless ResourceAstAnalyzer
-     * reads an ancestor's body for a subclass, or a method of an instance the body builds, which within() puts back.
+     * The runtime class `$this` and `static` are: the subject, unless this reads an ancestor's body for a subclass, a
+     * helper for a caller's runtime class, or a method of a built instance. See docs/components/ast-engine.md
+     * § AnalysisScope.
      *
      * @var ReflectionClass<object>
      */
@@ -676,8 +677,8 @@ final class AnalysisScope
     }
 
     /**
-     * The runtime class where the scope knows it, null where it only assumes it: the published class's, or a helper's
-     * reached from such a scope through `$this`, `self`, `static`, `parent`, an ancestor's name or a `static` return.
+     * The runtime class where the scope knows it, null where it only assumes it; which is which:
+     * docs/components/ast-engine.md § Known or assumed runtime class.
      *
      * @return ReflectionClass<object>|null
      */
