@@ -51,10 +51,10 @@ reflection answers, a decline included.
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method |
-| `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the subject for `self`, or its framework parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
+| `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
-| `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the subject for `self`, or its framework parent for `parent`; marked unsaved, and `attributeless` for a model built with no constructor argument |
+| `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the declaring class for `self`, or its parent for `parent`; marked unsaved, and `attributeless` for a model built with no constructor argument |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
 | A ternary, `?:` or `??` | The union of the non-`null` arms. See [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
@@ -98,15 +98,16 @@ binding names spreads the one model `$x` holds. [AST engine § Narrowing](ast-en
 
 ### `self` and `parent`
 
-PHP binds `self` and `parent` to the class that declares the method body, and the engine can analyze an inherited body
-under a child subject. `AnalysisScope::$declaringFileClass` cannot stand in for that class, because it tracks files for
-inline `@var` imports. It names a trait for a trait's method, and `analyze()` sets it from the located method. So
-`new self`, `new parent`, `self::m()` and `parent::m()` resolve only when the subject's parent is absent or under
-`Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` names the runtime class,
-since late static binding names the called class (`InspectsAstNodes::scopeClassName()`). `$this->m()` and `$this->prop`
-read the runtime class's member, or the declaring class's own private one, through `AnalysisScope::thisMemberClass()`.
-A `$this->m()` declared to return `static`, a private one included, returns the runtime class, so a body read on that
-value knows the class where the caller does (`ReceiverType::$runtimeInstance`).
+PHP binds `self` to the class that declares the method body, the class that uses the trait for a trait's method, and
+`parent` to that class's parent; `static` names the runtime class, since late static binding names the called class. An
+inherited or trait body is read with all three on the scope, and `AnalysisScope::relativeClass()` names them for
+receivers, values and constant keys. The by-reference write scans take the same runtime and declaring classes
+(`VariableWrites::of()`, `SubjectPropertyTypeResolver`). `AnalysisScope::$declaringFileClass` cannot stand in for the
+declaring class: it names the trait, whose file holds the inline `@var` imports. A `parent::` call into a method Laravel
+declares types only where the analyzer reads it, as `parent::toArray()` (`StaticCallHandler::callsFrameworkParent()`).
+`$this->m()` and `$this->prop` read the runtime class's member, or the declaring class's own private one, through
+`AnalysisScope::thisMemberClass()`. A `$this->m()` declared to return `static`, a private one included, returns the
+runtime class, so a body read on that value knows the class where the caller does (`ReceiverType::$runtimeInstance`).
 
 ### Visibility
 

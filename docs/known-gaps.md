@@ -792,6 +792,13 @@ as the object behind `$this->holder()->views`. Declare the property's type, or g
 `static::START`, publishes `Holder::START`'s type, though Laravel sends the subclass's. A write naming `static` in such
 a body publishes `unknown` instead. Declare the method's return type.
 
+### `self::make()` and `self::collection()` in a parent's body publish the parent's resource
+
+JsonResource's `make()` and `collection()` build `new static`, which a `self::` or `parent::` call forwards as the class
+Laravel runs. So in a `toArray()` or helper a parent resource declares, `self::make($this->child)` publishes the parent
+resource's type, though Laravel sends the subclass's response, and `parent::make()` publishes `unknown`. Write
+`static::make()`.
+
 ### A column a body writes publishes its declared type, not the value written
 
 A read of a column the body wrote through the model, such as `$this->resource->title = null;` then

@@ -168,12 +168,13 @@ docblocks say what each binding table holds. These eight facts span other classe
 - **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
   runtime class, the one `$this` and `static` are, which differs from the subject when `ResourceAstAnalyzer` reads an
   ancestor's body for a subclass, or a method of an instance the body builds; `declaringClass` is the declaring class,
-  the one `self` names, which is the using class for a trait's method, where `declaringFileClass` names the trait. A
-  `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()`: the declaring class when it
-  declares that member private, else the runtime class. A static-syntax call reads `staticCallClass()`, which applies
-  no private rule, and `InspectsAstNodes::scopeClassName()` reads `static` as the runtime class. The runtime class is
-  known in the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or
-  a non-static call through an ancestor's name; elsewhere, as in a receiver's body, `assumesRuntime` is set and
+  the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
+  `declaringFileClass` names the trait. A `$this->m()` call or a `$this->prop` read reaches its member on
+  `thisMemberClass()`: the declaring class when it declares that member private, else the runtime class. A static-syntax
+  call reads `staticCallClass()`, which applies no private rule, and every other `self`, `static` or `parent` reads
+  `relativeClass()`; the write scans take the same two classes (`VariableWrites::of()`). The runtime class is known in
+  the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or a
+  non-static call through an ancestor's name; elsewhere, as in a receiver's body, `assumesRuntime` is set and
   `knownRuntime()` is null, since the object may be a subclass.
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
