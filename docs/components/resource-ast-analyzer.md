@@ -97,8 +97,8 @@ every profile, the order handlers run in decides which one answers; see
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
   spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
   the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
-  `readingLocals` guards. It re-derives `requestVarNames` and `declaringFileClass`, binds the method's parameters, and
-  what the call passes them through `CallSite::passedTo()`, as
+  `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's
+  parameters, and what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.

@@ -98,19 +98,14 @@ binding names spreads the one model `$x` holds. [AST engine § Narrowing](ast-en
 
 ### `self` and `parent`
 
-PHP binds `self` to the class that declares the method body, the class that uses the trait for a trait's method, and
-`parent` to that class's parent; `static` names the runtime class, since late static binding names the called class. An
-inherited or trait body is read with all three on the scope, and `AnalysisScope::relativeClass()` names them for
-receivers, values and constant keys. The by-reference write scans take the same runtime and declaring classes
-(`VariableWrites::of()`, `SubjectPropertyTypeResolver`). `AnalysisScope::$declaringFileClass` cannot stand in for the
-declaring class: it names the trait, whose file holds the inline `@var` imports. `self::`, `static::` and `parent::`
-forward the runtime class to their callee as `static` (`AnalysisScope::forwardsRuntimeClass()`), so a declared `static`
-return, and JsonResource's own `make()` and `collection()`, which build `new static`, name the runtime class; `new self`
-and `new parent` build the declaring class and its parent exactly. Any other `parent::` call into a method Laravel
-declares types only where the analyzer reads it, as `parent::toArray()` (`StaticCallHandler::callsFrameworkParent()`).
-`$this->m()` and `$this->prop` read the runtime class's member, or the declaring class's own private one, through
-`AnalysisScope::thisMemberClass()`. A `$this->m()` declared to return `static`, a private one included, returns the
-runtime class, so a body read on that value knows the class where the caller does (`ReceiverType::$runtimeInstance`).
+[AST engine § AnalysisScope](ast-engine.md#analysisscope) names the classes `self`, `static` and `parent` read as, and
+the private rule `$this->` takes. On a receiver, `self::`, `static::` and `parent::` forward the runtime class to their
+callee as `static`, so a declared `static` return, and JsonResource's own `make()` and `collection()`, which build
+`new static`, name the runtime class; `new self` and `new parent` build the declaring class and its parent exactly. Any
+other `parent::` call into a method Laravel declares types only where the analyzer reads it, as `parent::toArray()`
+(`StaticCallHandler::callsFrameworkParent()`). A `$this->m()` declared to return `static`, a private one included,
+returns the runtime class, so a body read on that value knows the class where the caller does
+(`ReceiverType::$runtimeInstance`).
 
 ### Visibility
 
@@ -214,8 +209,8 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
   read with `$this` bound to the resource and its captured variables read where it is declared.
   `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()` keeps the model, which it calls
   directly.
-- **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
-  `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
+- **A model's own body**: a model method or accessor body runs on the model, so nothing forwards.
+  `ReceiverClassResolver::modelSubject()` names the runtime class, that model, for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
 
 A receiver holding an `Illuminate\Http\Request` declines, because `KnownMethodRuleHandler` owns request calls. The call
@@ -424,12 +419,12 @@ When the literal shape declines, `MethodReturnTypeResolver` reads the method's o
 `AstEngine::analyzeMethodValue()`. So `MediaType::extensions(): array`, a `match` of string lists, publishes `string[]`,
 and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 
-- **A fresh scope over the method's class**, never the caller's: a model is its own backing, a resource has the model
-  `ModelClassResolver` gives it, and the parameters bind by their declarations and what the call passes. A trait helper
-  therefore reads each using resource's model. Only `static` stays the caller's: a call on `$this`, through `self::`,
-  `static::` or `parent::`, or to a non-static method through the runtime class's or an ancestor's name, which PHP runs
-  on `$this`, hands the body the caller's runtime class. Any other body, a receiver's included, only assumes the class
-  it reads, so a write naming `static` declines there (`AnalysisScope::knownRuntime()`).
+- **A fresh scope over the method's class**, never the caller's, but for the runtime class a call hands on: there
+  `$this`, `static` and the model `$this` reads are the caller's, so an ancestor's helper a `self::` call reaches reads
+  the calling resource's model. Otherwise a model is its own backing and a resource has the model `ModelClassResolver`
+  gives it, so a trait helper reads each using resource's model. The parameters bind by their declarations and what the
+  call passes. Which calls hand the runtime class on, and which bodies only assume it:
+  [AST engine § Known or assumed runtime class](ast-engine.md#known-or-assumed-runtime-class).
 - **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
 - **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which

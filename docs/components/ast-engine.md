@@ -166,17 +166,16 @@ the matrix does not run these profiles.
 docblocks say what each binding table holds. These eight facts span other classes:
 
 - **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
-  runtime class, the one `$this` and `static` are, which differs from the subject when `ResourceAstAnalyzer` reads an
-  ancestor's body for a subclass, or a method of an instance the body builds; `declaringClass` is the declaring class,
-  the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
-  `declaringFileClass` names the trait. A `$this->m()` call or a `$this->prop` read reaches its member on
-  `thisMemberClass()`: the declaring class when it declares that member private, else the runtime class. A static-syntax
-  call reads `staticCallClass()`, which applies no private rule, and every other `self`, `static` or `parent` reads
-  `relativeClass()`, while a call that forwards the runtime class hands it to its callee as `static`
-  (`forwardsRuntimeClass()`); the write scans take the same two classes (`VariableWrites::of()`). The runtime class is
-  known in the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or a
-  non-static call through an ancestor's name; elsewhere, as in a receiver's body, `assumesRuntime` is set and
-  `knownRuntime()` is null, since the object may be a subclass.
+  runtime class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring
+  class, the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
+  `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
+  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds.
+  A `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the
+  declaring class when it declares that member private, else the runtime class; a method on a built instance takes the
+  same rule. A static-syntax call reads `staticCallClass()`, which applies no private rule, and every other `self`,
+  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class hands
+  it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the same two classes
+  (`VariableWrites::of()`). Whether the runtime class is known is [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -207,6 +206,24 @@ docblocks say what each binding table holds. These eight facts span other classe
   [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
+
+### Known or assumed runtime class
+
+`assumesRuntime` says whether a scope knows its runtime class or only assumes it, and `knownRuntime()` is null where it
+assumes it. Only a known runtime class types a property write that names `static`, as
+`SubjectPropertyTypeResolver::resolve()`'s `$knownRuntime` takes it. The runtime class is known:
+
+- in the published class's own scope;
+- in a helper that scope reaches through `$this->`, `$this::`, `self::`, `static::`, `parent::` or a non-static
+  `Ancestor::m()` from an instance of it, and in a body run on what a `$this->` call declared `: static` returns: each
+  keeps the caller's flag (`assumesCallee()`);
+- for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
+- for a `final` collaborator the container fills (`assumesInjected()`);
+- for an exact construction, `new X` or `X::make()` (`assumesBuilt()`).
+
+Anywhere else it is assumed, since the object may be a subclass: a receiver's declared class, the model
+`$this->resource` forwards to and a method macro's object (`ASSUMES_HELD_OBJECT`), a collaborator that is not final,
+and, conservatively, a call through another class's name that forwards nothing.
 
 ### Writing a scope binding
 
@@ -559,7 +576,8 @@ proof that holds `$this->resource` to one model adds `@backing:<model>` to its `
 the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
 class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
 keys, so two siblings never share an inherited helper's `static`. A read that only assumes its runtime class adds
-`@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class. The
+`@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class.
+`AnalysisMemo::runtimeKey()` spells both suffixes for all three keys. The
 `method-body:` cycle guard stays per method, so a recursion that passes a new value each time stops at its first
 repeat.
 

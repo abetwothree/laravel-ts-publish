@@ -58,8 +58,9 @@ Otherwise it locates and binds `provide()` itself:
 - **Provider class**: it locates `provide()` on the class of the provider instance the transformer ran, so that class
   is the known runtime class: an inherited or trait body reads `$this` and `static` as the provider, and `self` and
   `parent` from its declaring class.
-- **`locate()`, not `locateOwn()`**: for a trait method the declaring class is the using class, whose file holds no
-  `provide()` node, and `locateOwn()` declines that shape. `ProvidesTraitModelMetadata` pins the trait case.
+- **`locate()`, not `locateOwn()`**: the provider's own file holds no `provide()` node for an inherited or a trait
+  method, and `locateOwn()` reads only that file. `NinthTierMetadataProvider` and `ProvidesTraitModelMetadata` pin the
+  two cases.
 - **Declared-type binding**: `AstEngine::bindingsFor()` binds the `Model $model` parameter to `Model`. Method calls on
   it reflect Laravel's own docblocks, so `getTable()`, `getKeyName()`, `getRouteKeyName()` and `getMorphClass()` infer
   `string`.
