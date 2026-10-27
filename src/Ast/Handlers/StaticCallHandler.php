@@ -244,14 +244,34 @@ final class StaticCallHandler implements ExpressionHandler
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
             $site = new CallSite($call, $scope, $engine);
-            // `self::`, `static::` and `parent::` forward late static binding, so `static` in the body is the caller's.
-            $forwards = $call->class instanceof Name && $call->class->isSpecialClassName();
+            $forwards = $this->forwardsRuntimeClass($call, $className, $methodName, $scope);
 
-            return resolve(MethodReturnTypeResolver::class)
-                ->resolve($className, $methodName, $site, runtime: $forwards ? $scope->runtimeReflection : null) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve(
+                $className,
+                $methodName,
+                $site,
+                runtime: $forwards ? $scope->runtimeReflection : null,
+                assumesRuntime: ! $forwards || $scope->assumesRuntime,
+            ) ?? $result;
         }
 
         return $result;
+    }
+
+    /**
+     * Whether a static-syntax call hands its body the caller's runtime class: `self::`, `static::` and `parent::`
+     * forward it, and PHP runs a non-static method named through the runtime class or an ancestor on `$this`.
+     */
+    private function forwardsRuntimeClass(StaticCall $call, string $className, string $methodName, AnalysisScope $scope): bool
+    {
+        if (! $call->class instanceof Name) {
+            return false;
+        }
+
+        return $call->class->isSpecialClassName()
+            || (method_exists($className, $methodName)
+                && ! new ReflectionMethod($className, $methodName)->isStatic()
+                && is_a($scope->runtimeReflection->getName(), $className, true));
     }
 
     /**

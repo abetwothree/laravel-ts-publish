@@ -953,7 +953,10 @@ final class ReceiverClassResolver
         $owner = $on ?? $scope->thisMemberClass($method, true);
 
         if ($owner->hasMethod($method)) {
-            return $this->memberMethod($owner->getName(), $method, true);
+            // PHP's `static` is the runtime class even in a private method of an ancestor, so a declared one names it.
+            $held = $this->memberMethod($owner->getName(), $method, true, staticClass: $scope->runtimeReflection->getName());
+
+            return $held !== null && DeclaredClasses::returnsStatic($owner->getName(), $method) ? $held->asRuntimeInstance() : $held;
         }
 
         $forwarded = $this->forwardedThisReceiver($method, $scope, $owner);
@@ -1310,9 +1313,15 @@ final class ReceiverClassResolver
      *
      * @param  bool  $fromInside  the call is on `$this`, so a non-public method is reachable
      * @param  class-string<Model>|null  $queried  the model the receiver, a query, relation or factory, builds
+     * @param  class-string|null  $staticClass  the caller's runtime class, which a declared `static` names
      */
-    private function memberMethod(string $class, string $method, bool $fromInside, ?string $queried = null): ?ReceiverType
-    {
+    private function memberMethod(
+        string $class,
+        string $method,
+        bool $fromInside,
+        ?string $queried = null,
+        ?string $staticClass = null,
+    ): ?ReceiverType {
         if (! $this->isCallable($class, $method, $fromInside)) {
             return $this->forwardedQueryMethod($class, $method, $queried);
         }
@@ -1331,7 +1340,7 @@ final class ReceiverClassResolver
             return new ReceiverType(DeclaredClasses::returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
         }
 
-        return $this->returned($class, $method);
+        return $this->returned($class, $method, $staticClass);
     }
 
     /**
@@ -1366,10 +1375,12 @@ final class ReceiverClassResolver
     /**
      * What a method returns on one class, remembering the model a model's own query builds, as `query()`'s
      * `Builder<static>` does, and the model `all()`'s `Collection<int, static>` lists.
+     *
+     * @param  class-string|null  $staticClass  the caller's runtime class, which a declared `static` names
      */
-    private function returned(string $class, string $method): ?ReceiverType
+    private function returned(string $class, string $method, ?string $staticClass = null): ?ReceiverType
     {
-        $classes = DeclaredClasses::returnClasses($class, $method);
+        $classes = DeclaredClasses::returnClasses($class, $method, $staticClass);
 
         if ($classes === [EloquentCollection::class] && ReceiverType::isConcreteModel($class)) {
             $declared = $this->declaredReturn($class, $method);

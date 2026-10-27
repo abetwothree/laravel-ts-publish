@@ -442,6 +442,12 @@ final class AnalysisScope
     public ReflectionClass $runtimeReflection;
 
     /**
+     * Whether the runtime class is only assumed: a body a receiver's call or an unrelated class's name reaches reads
+     * the class declared or named, whose subclass the object may be. Set once, by the builder; see knownRuntime().
+     */
+    public bool $assumesRuntime = false;
+
+    /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
      * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped, not fixed:
      *                                                TernaryHandler narrows it for an `instanceof` true arm and
@@ -575,6 +581,17 @@ final class AnalysisScope
             : $class instanceof Name && $class->toLowerString() === 'static';
 
         return $late ? $this->runtimeReflection : $this->subjectReflection;
+    }
+
+    /**
+     * The runtime class where the scope knows it, null where it only assumes it: the published class's, or a helper's
+     * reached from such a scope through `$this`, `self`, `static`, `parent`, an ancestor's name or a `static` return.
+     *
+     * @return ReflectionClass<object>|null
+     */
+    public function knownRuntime(): ?ReflectionClass
+    {
+        return $this->assumesRuntime ? null : $this->runtimeReflection;
     }
 
     /**

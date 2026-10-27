@@ -46,5 +46,8 @@ class ResourceMacroServiceProvider extends ServiceProvider
         JsonResource::macro('heldRows', function () {
             return $this->resource;
         });
+        JsonResource::macro('plevelMacro', function () {
+            return $this->plevel;
+        });
     }
 }

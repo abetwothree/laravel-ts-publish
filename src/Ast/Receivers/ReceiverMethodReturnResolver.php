@@ -113,7 +113,7 @@ final class ReceiverMethodReturnResolver
             }
 
             $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
-                ?? $this->resolveOn($class, $methodName, $fromInside, $site);
+                ?? $this->resolveOn($class, $methodName, $fromInside, $site, ! $receiver->runtimeInstance || $scope->assumesRuntime);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -482,10 +482,16 @@ final class ReceiverMethodReturnResolver
      * method a relation or an Eloquent builder does not declare is typed on the class its query forwards it to.
      *
      * @param  class-string  $class
+     * @param  bool  $assumesRuntime  the object is only assumed to be the class, whose subclass it may be
      * @return ValueExpressionResult|null
      */
-    private function resolveOn(string $class, string $methodName, bool $fromInside, ?CallSite $site = null): ?array
-    {
+    private function resolveOn(
+        string $class,
+        string $methodName,
+        bool $fromInside,
+        ?CallSite $site = null,
+        bool $assumesRuntime = true,
+    ): ?array {
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
@@ -506,7 +512,7 @@ final class ReceiverMethodReturnResolver
 
         $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, assumesRuntime: $assumesRuntime);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.

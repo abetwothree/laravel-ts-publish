@@ -11,6 +11,18 @@ class StartedViewCounter
 
     public $views = 'x';
 
+    /** The count, read in a body a receiver's call reaches. */
+    public function getViews()
+    {
+        return $this->views;
+    }
+
+    /** The object's class's start constant, read in a body a receiver's call reaches. */
+    public function startConst()
+    {
+        return static::START;
+    }
+
     /** Restart the count at the constant the object's class declares. */
     public function bump(): void
     {

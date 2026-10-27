@@ -423,6 +423,7 @@ function analysisScopeSetOnceFields(): array
 {
     return [
         'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement',
+        'assumesRuntime',
     ];
 }
 

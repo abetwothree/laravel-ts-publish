@@ -163,6 +163,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                                                      ancestor's body for it; null keeps the scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
+     * @param  bool  $assumesRuntime  whether the runtime class is only assumed; false keeps the scope's own
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -175,6 +176,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         private readonly array $passed = [],
         ?ReflectionClass $runtimeClass = null,
         private readonly bool $readsCall = false,
+        bool $assumesRuntime = false,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -187,6 +189,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         if ($runtimeClass !== null) {
             $this->scope->runtimeReflection = $runtimeClass;
+        }
+
+        if ($assumesRuntime) {
+            $this->scope->assumesRuntime = true;
         }
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
@@ -1925,6 +1931,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
             runtimeClass: $this->runtimeClass(),
+            assumesRuntime: $this->scope->assumesRuntime,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];

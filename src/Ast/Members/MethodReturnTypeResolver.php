@@ -42,7 +42,7 @@ use ReflectionMethod;
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
  * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
- * runtime class and bindings; the rules are in docs/components/receiver-types.md § Following a method's return type.
+ * known or assumed runtime class, and bindings; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -65,6 +65,7 @@ final class MethodReturnTypeResolver
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body, as
      *                                                 PHP forwards it through `self::` and a private `$this->` call
+     * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      * @return ValueExpressionResult|null
      */
     public function resolve(
@@ -73,6 +74,7 @@ final class MethodReturnTypeResolver
         ?CallSite $site = null,
         ?string $backing = null,
         ?ReflectionClass $runtime = null,
+        bool $assumesRuntime = false,
     ): ?array {
         if (! method_exists($class, $methodName)) {
             return null;
@@ -84,9 +86,9 @@ final class MethodReturnTypeResolver
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime === null ? '' : '@runtime:'.$runtime->getName()),
-            function () use ($class, $methodName, $passed, $backing, $runtime): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime);
+                .($runtime === null ? '' : '@runtime:'.$runtime->getName()).($assumesRuntime ? '@assumed' : ''),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $assumesRuntime): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $assumesRuntime);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -129,8 +131,14 @@ final class MethodReturnTypeResolver
      * @param  ReflectionClass<object>|null  $runtime
      * @return ValueExpressionResult|null
      */
-    private function reflectOrReadBody(string $class, string $methodName, array $passed, ?string $backing, ?ReflectionClass $runtime): ?array
-    {
+    private function reflectOrReadBody(
+        string $class,
+        string $methodName,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): ?array {
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
 
@@ -138,8 +146,8 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime)
-            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime), $reflected)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $assumesRuntime)
+            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime, $assumesRuntime), $reflected)
             ?? $reflected;
     }
 
@@ -180,6 +188,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?ReflectionClass $runtime,
+        bool $assumesRuntime,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -206,6 +215,7 @@ final class MethodReturnTypeResolver
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
+                assumesRuntime: $assumesRuntime,
             );
         } finally {
             $memo->leave($key);
@@ -249,8 +259,14 @@ final class MethodReturnTypeResolver
      * @param  ReflectionClass<object>|null  $runtime
      * @return ValueExpressionResult|null
      */
-    private function bodyValue(string $class, string $methodName, array $passed, ?string $backing, ?ReflectionClass $runtime): ?array
-    {
+    private function bodyValue(
+        string $class,
+        string $methodName,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
         $memo = resolve(AnalysisMemo::class);
@@ -261,7 +277,7 @@ final class MethodReturnTypeResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime);
+            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $assumesRuntime);
         } finally {
             $memo->leave($key);
         }

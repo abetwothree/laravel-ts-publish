@@ -58,6 +58,7 @@ final class AstEngine
      * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
      *                           resource's toArray() is its body, never the resource object it publishes
      * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
+     * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      *
      * @internal
      */
@@ -69,6 +70,7 @@ final class AstEngine
         array $passed = [],
         bool $readsCall = false,
         ?ReflectionClass $runtime = null,
+        bool $assumesRuntime = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -78,11 +80,22 @@ final class AstEngine
 
         $runtime = $runtime?->getName() === $class ? null : $runtime;
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime === null ? '' : '@runtime:'.$runtime->getName());
+            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime === null ? '' : '@runtime:'.$runtime->getName())
+            .($assumesRuntime ? '@assumed' : '');
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed, $readsCall, $runtime),
+            fn (): MethodAnalysis => $this->analyzeOnce(
+                $reflection,
+                $method,
+                $modelClass,
+                $carriesImports,
+                $key,
+                $passed,
+                $readsCall,
+                $runtime,
+                $assumesRuntime,
+            ),
         );
 
         return clone $analysis;
@@ -95,6 +108,7 @@ final class AstEngine
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
+     * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -105,6 +119,7 @@ final class AstEngine
         array $passed = [],
         ?string $backing = null,
         ?ReflectionClass $runtime = null,
+        bool $assumesRuntime = false,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -119,6 +134,7 @@ final class AstEngine
             default => null,
         };
         $scope = $this->bindingsFor($context, $modelClass, $passed);
+        $scope->assumesRuntime = $assumesRuntime;
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
             $modelClass,
@@ -236,6 +252,7 @@ final class AstEngine
      *
      * @param  class-string  $subjectClass
      * @param  class-string<Model>|null  $modelClass
+     * @param  bool  $assumesRuntime  the caller only assumes the subject's class, as a receiver's body does
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -245,9 +262,11 @@ final class AstEngine
         ?string $modelClass,
         ClosureExpr|ArrowFunction $closure,
         MethodContext $context,
+        bool $assumesRuntime = false,
     ): ?array {
         $scope = $this->bindingsFor($context);
         $scope->rebase(self::genericReflection($subjectClass), $modelClass);
+        $scope->assumesRuntime = $assumesRuntime;
         // Macroable binds a closure with the subject as its scope class, so `self` names it there.
         $scope->declaringClass = $scope->subjectReflection;
         $analyzer = new ResourceAstAnalyzer(
@@ -365,6 +384,7 @@ final class AstEngine
         array $passed,
         bool $readsCall,
         ?ReflectionClass $runtime,
+        bool $assumesRuntime,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -383,6 +403,7 @@ final class AstEngine
                 passed: $passed,
                 runtimeClass: $runtime,
                 readsCall: $readsCall,
+                assumesRuntime: $assumesRuntime,
             );
 
             return $analyzer->analyze();

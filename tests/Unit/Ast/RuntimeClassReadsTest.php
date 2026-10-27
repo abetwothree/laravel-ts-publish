@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
@@ -26,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderChildDto;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
@@ -219,6 +221,20 @@ it('leaves a receiver\'s property `unknown` where a write names `static`, since 
         ->and((new SevenLevelResource(new Post))->resolve(request())['views'])->toBe(9);
 });
 
+// The holder's body only assumes the class the receiver declares; only its direct `static::` read still reads it.
+it('declines a `static` write in a body a receiver\'s call reaches, since the object may be a subclass', function () {
+    $reads = [];
+
+    foreach ([BasePrivateLevelResource::class, SevenLevelResource::class, TrueLevelResource::class] as $resource) {
+        $types = publishedResourceKeyTypes($resource, Post::class);
+        $sent = (new $resource(new Post))->resolve(request());
+        $reads[$resource] = [$types['counter_getviews'], $sent['counter_getviews'], $types['counter_startconst'], $sent['counter_startconst']];
+    }
+
+    // `counter_startconst` is the known gap "a receiver's body reads `static` as its declared class": `string` for a 9.
+    expect($reads)->each->toBe(['unknown', 9, 'string', 9]);
+});
+
 it('types a published class\'s public property against that class, whose instances it describes', function () {
     $views = fn (string $class): string => resolve(AstEngine::class)->analyzePublicProperties($class)->properties[0]['type'];
     $bumped = new NinthViewCounter;
@@ -230,21 +246,19 @@ it('types a published class\'s public property against that class, whose instanc
 });
 
 /**
- * Each key a BaseHelperLevelResource class publishes with what it sends as built and once raise() has run.
+ * The given keys a BaseHelperLevelResource class publishes, each with what it sends as built and once raise() has run.
  *
  * @param  class-string<BaseHelperLevelResource>  $resource
+ * @param  list<string>  $keys
  * @return array<string, array{string, mixed, mixed}>
  */
-function helperLevelReads(string $resource): array
+function helperLevelReads(string $resource, array $keys): array
 {
+    $types = publishedResourceKeyTypes($resource, Post::class);
     $sent = (new $resource(new Post))->resolve(request());
     $raised = (new $resource(new Post))->raise()->resolve(request());
 
-    return array_map(
-        fn (string $key, string $type): array => [$type, $sent[$key], $raised[$key]],
-        array_keys(publishedResourceKeyTypes($resource, Post::class)),
-        publishedResourceKeyTypes($resource, Post::class),
-    );
+    return array_combine($keys, array_map(fn (string $key): array => [$types[$key], $sent[$key], $raised[$key]], $keys));
 }
 
 // One test reads all three, so a helper body memoised once per `class@method` would answer every sibling alike.
@@ -257,7 +271,7 @@ it('reads `static` in a helper a private `$this->` or a `self::` call reaches as
     $reads = [];
 
     foreach ([BaseHelperLevelResource::class, SevenHelperLevelResource::class, TrueHelperLevelResource::class] as $resource) {
-        $reads[$resource] = array_combine($keys, helperLevelReads($resource));
+        $reads[$resource] = helperLevelReads($resource, $keys);
     }
 
     expect($reads)->toBe([
@@ -265,4 +279,63 @@ it('reads `static` in a helper a private `$this->` or a `self::` call reaches as
         SevenHelperLevelResource::class => $expected('string | number', 'number', 7),
         TrueHelperLevelResource::class => $expected('string | boolean', 'boolean', true),
     ]);
+});
+
+// Each class is read in one test, so a body read once per `class@method` would answer every sibling alike.
+it('reads `static` in a body a non-static call through an ancestor\'s name or a `static` return reaches as the runtime class', function () {
+    $keys = ['via_named', 'const_named', 'static_named', 'me_const', 'me_helper', 'me_private_const'];
+    $expected = fn (string $level, string $constant, mixed $sent): array => array_combine($keys, [
+        [$level, 'x', $sent], [$constant, $sent, $sent], ['string', 'base', 'base'],
+        [$constant, $sent, $sent], [$level, 'x', $sent], [$constant, $sent, $sent],
+    ]);
+    $reads = [];
+
+    foreach ([BaseHelperLevelResource::class, SevenHelperLevelResource::class, TrueHelperLevelResource::class] as $resource) {
+        $reads[$resource] = helperLevelReads($resource, $keys);
+    }
+
+    expect($reads)->toBe([
+        BaseHelperLevelResource::class => $expected('string', 'string', 'base'),
+        SevenHelperLevelResource::class => $expected('string | number', 'number', 7),
+        TrueHelperLevelResource::class => $expected('string | boolean', 'boolean', true),
+    ]);
+});
+
+it('reads a call through an unrelated class\'s name on that class, which PHP runs on no other object', function () {
+    $sibling = fn (string $resource): string => resolve(AstEngine::class)
+        ->analyze($resource, 'siblingConst', Post::class)->properties[0]['type'];
+
+    expect([$sibling(SevenHelperLevelResource::class), $sibling(TrueHelperLevelResource::class)])->toBe(['boolean', 'boolean'])
+        ->and(new TrueHelperLevelResource(new Post)->siblingConst())->toBe(['sibling_const' => true])
+        ->and(fn () => new SevenHelperLevelResource(new Post)->siblingConst())->toThrow(Error::class, 'cannot be called statically');
+});
+
+// A fresh app per row, so the first route's read is the one a shared entry would hand the second.
+it('reads one body through a receiver and through `$this->` apart, whichever comes first', function (string $method) {
+    app()->register(ResourceMacroServiceProvider::class, force: true);
+    $types = [];
+
+    foreach (resolve(AstEngine::class)->analyze(BaseHelperLevelResource::class, $method, Post::class)->properties as $property) {
+        $types[$property['name']] = $property['type'];
+    }
+
+    $held = new BaseHelperLevelResource(new Post)->raise()->held();
+
+    expect($types)->toMatchArray([
+        'held' => 'unknown', 'own' => 'string', 'held_shape' => '{ l: unknown }', 'own_shape' => '{ l: string }',
+        'held_macro' => 'unknown', 'own_macro' => 'string',
+    ])
+        ->and(new BaseHelperLevelResource(new Post)->raise()->$method())
+        ->toMatchArray(['own' => 'base', 'own_shape' => ['l' => 'base'], 'own_macro' => 'base'])
+        ->and([$held->publicHelper(), $held->publicShape(), $held->viaMacro()])->toBe(['x', ['l' => 'x'], 'x']);
+})->with(['a receiver first' => ['receiverFirst'], '`$this->` first' => ['thisFirst']])
+    ->after(fn () => JsonResource::flushMacros());
+
+// Read assumed first in one process, so a known read sharing its entry would answer as it does.
+it('keeps an assumed runtime class through an inherited body and the helpers it calls', function () {
+    $types = fn (bool $assumes): array => array_column(resolve(AstEngine::class)
+        ->analyzeMethod(SevenHelperLevelResource::class, 'toArray', Post::class, assumesRuntime: $assumes)->properties, 'type', 'name');
+
+    expect($types(true))->toMatchArray(['via_protected' => 'unknown', 'via_private' => 'unknown', 'const_self' => 'number'])
+        ->and($types(false))->toMatchArray(['via_protected' => 'string | number', 'via_private' => 'string | number', 'const_self' => 'number']);
 });

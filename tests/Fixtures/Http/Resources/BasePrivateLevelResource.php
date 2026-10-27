@@ -11,7 +11,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * A test-only resource whose `toArray()` reads a private untyped `$level` its own method writes through `static::`,
- * and a holder's untyped property the holder's subclass writes through `static::`.
+ * and a holder's untyped property the holder's subclass writes through `static::`, read directly and through the
+ * holder's own methods.
  */
 class BasePrivateLevelResource extends JsonResource
 {
@@ -22,7 +23,12 @@ class BasePrivateLevelResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        return ['level' => $this->level, 'views' => $this->counter()->views];
+        return [
+            'level' => $this->level,
+            'views' => $this->counter()->views,
+            'counter_getviews' => $this->counter()->getViews(),
+            'counter_startconst' => $this->counter()->startConst(),
+        ];
     }
 
     /** Raise the level to the constant the runtime class declares. */

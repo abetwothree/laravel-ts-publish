@@ -33,12 +33,12 @@ final class DeclaredClasses
     /**
      * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
      *
-     * `static` and `$this` name the receiver class; `self` names the class that declares the method. Visibility is the
-     * caller's concern.
+     * `static` and `$this` name the receiver class, or the caller's runtime class where it passes one; `self` names the
+     * class that declares the method. Visibility is the caller's concern.
      *
      * @return non-empty-list<class-string>|null
      */
-    public static function returnClasses(string $class, string $method): ?array
+    public static function returnClasses(string $class, string $method, ?string $staticClass = null): ?array
     {
         DependencyRecorder::recordClass($class);
 
@@ -50,14 +50,33 @@ final class DeclaredClasses
         $declaring = $reflection->getDeclaringClass()->getName();
 
         if ($reflection->hasReturnType()) {
-            return self::nativeClasses($reflection->getReturnType(), $class, $declaring);
+            return self::nativeClasses($reflection->getReturnType(), $staticClass ?? $class, $declaring);
         }
 
         $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
 
         return $docblock === null
             ? null
-            : self::docblockClasses($docblock, LaravelTsPublish::methodDeclaringFileClass($reflection), $class, $declaring);
+            : self::docblockClasses($docblock, LaravelTsPublish::methodDeclaringFileClass($reflection), $staticClass ?? $class, $declaring);
+    }
+
+    /**
+     * Whether a method declares it returns `static` or `$this` and nothing else but null.
+     */
+    public static function returnsStatic(string $class, string $method): bool
+    {
+        $reflection = new ReflectionMethod($class, $method);
+        $type = $reflection->getReturnType();
+
+        if ($type !== null) {
+            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
+        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
+        $returned = array_diff($arms, ['null']);
+
+        return $returned !== [] && array_diff($returned, ['static', '$this']) === [];
     }
 
     /**
