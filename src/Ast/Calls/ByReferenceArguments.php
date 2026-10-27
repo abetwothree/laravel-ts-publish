@@ -262,11 +262,10 @@ final class ByReferenceArguments
      */
     private function namedClass(Name $name, ?ReflectionClass $runtime, ?ReflectionClass $declaring): ?ReflectionClass
     {
-        $class = match ($name->toLowerString()) {
-            'static' => $runtime?->getName(),
-            'self' => $declaring?->getName(),
-            'parent' => ($declaring?->getParentClass() ?: null)?->getName(),
-            default => $name->toString(),
+        $class = match (true) {
+            ! $name->isSpecialClassName() => $name->toString(),
+            $runtime === null || $declaring === null => null,
+            default => AnalysisScope::relativeClassOf($name, $runtime, $declaring)?->getName(),
         };
 
         if ($class === null || ! class_exists($class)) {

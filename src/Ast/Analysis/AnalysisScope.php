@@ -495,6 +495,25 @@ final class AnalysisScope
     }
 
     /**
+     * The class `self`, `static` or `parent` names in a body the declaring class holds and the runtime class runs: the
+     * declaring class, the runtime class, or the declaring class's parent. Null for any other name, and for a `parent`
+     * the declaring class lacks.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<object>  $declaring
+     * @return ReflectionClass<object>|null
+     */
+    public static function relativeClassOf(Name $name, ReflectionClass $runtime, ReflectionClass $declaring): ?ReflectionClass
+    {
+        return match ($name->toLowerString()) {
+            'self' => $declaring,
+            'static' => $runtime,
+            'parent' => $declaring->getParentClass() ?: null,
+            default => null,
+        };
+    }
+
+    /**
      * Whether a body run on an object the container fills only assumes its class: unless the class is final, the
      * container may bind a subclass in its place.
      */
@@ -595,19 +614,13 @@ final class AnalysisScope
     }
 
     /**
-     * The class `self`, `static` or `parent` names in the body under analysis: the declaring class, the runtime class,
-     * or the declaring class's parent. Null for any other name, and for a `parent` the declaring class lacks.
+     * The class `self`, `static` or `parent` names in the body under analysis; see relativeClassOf().
      *
      * @return ReflectionClass<object>|null
      */
     public function relativeClass(Name $name): ?ReflectionClass
     {
-        return match ($name->toLowerString()) {
-            'self' => $this->declaringClass,
-            'static' => $this->runtimeReflection,
-            'parent' => $this->declaringClass->getParentClass() ?: null,
-            default => null,
-        };
+        return self::relativeClassOf($name, $this->runtimeReflection, $this->declaringClass);
     }
 
     /**
