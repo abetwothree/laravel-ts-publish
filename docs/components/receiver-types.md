@@ -105,6 +105,8 @@ inline `@var` imports. It names a trait for a trait's method, and `analyze()` se
 `Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` names the runtime class,
 since late static binding names the called class (`InspectsAstNodes::scopeClassName()`). `$this->m()` and `$this->prop`
 read the runtime class's member, or the declaring class's own private one, through `AnalysisScope::thisMemberClass()`.
+A `$this->m()` declared to return `static`, a private one included, returns the runtime class, so a body read on that
+value knows the class where the caller does (`ReceiverType::$runtimeInstance`).
 
 ### Visibility
 
@@ -420,8 +422,10 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 
 - **A fresh scope over the method's class**, never the caller's: a model is its own backing, a resource has the model
   `ModelClassResolver` gives it, and the parameters bind by their declarations and what the call passes. A trait helper
-  therefore reads each using resource's model. Only `static` stays the caller's: a call on `$this`, or through
-  `self::`, `static::` or `parent::`, hands the body the caller's runtime class, as PHP forwards it.
+  therefore reads each using resource's model. Only `static` stays the caller's: a call on `$this`, through `self::`,
+  `static::` or `parent::`, or to a non-static method through the runtime class's or an ancestor's name, which PHP runs
+  on `$this`, hands the body the caller's runtime class. Any other body, a receiver's included, only assumes the class
+  it reads, so a write naming `static` declines there (`AnalysisScope::knownRuntime()`).
 - **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
 - **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which

@@ -786,6 +786,12 @@ cannot resolve, such as `$other->fill($this->tags)`, and a write from outside th
 sends while the published type stays the default's. So does a write by a subclass of a receiver's declared class, such
 as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
 
+### A receiver's body reads `static` as its declared class
+
+`'start' => $this->counter()->startConst()`, where `counter(): Holder` returns a subclass and `startConst()` returns
+`static::START`, publishes `Holder::START`'s type, though Laravel sends the subclass's. A write naming `static` in such
+a body publishes `unknown` instead. Declare the method's return type.
+
 ### A column a body writes publishes its declared type, not the value written
 
 A read of a column the body wrote through the model, such as `$this->resource->title = null;` then

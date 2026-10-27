@@ -171,7 +171,10 @@ docblocks say what each binding table holds. These eight facts span other classe
   the one `self` names, which is the using class for a trait's method, where `declaringFileClass` names the trait. A
   `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()`: the declaring class when it
   declares that member private, else the runtime class. A static-syntax call reads `staticCallClass()`, which applies
-  no private rule, and `InspectsAstNodes::scopeClassName()` reads `static` as the runtime class.
+  no private rule, and `InspectsAstNodes::scopeClassName()` reads `static` as the runtime class. The runtime class is
+  known in the published class's scope and in a helper it reaches through `$this`, `self::`, `static::`, `parent::` or
+  a non-static call through an ancestor's name; elsewhere, as in a receiver's body, `assumesRuntime` is set and
+  `knownRuntime()` is null, since the object may be a subclass.
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -495,10 +498,10 @@ literal or a constant expression, an ancestor's, a trait's or, through the runti
 other write declines: another value, a compound or element write, `unset()`, a computed `$this->{$name}` write in
 application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
 which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. A value naming `static` is typed against the runtime class the caller passes, and
-declines on a receiver, whose object may be a subclass. The check cannot see a by-reference parameter on a receiver it
-cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from
-outside the class.
+`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and
+declines where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
+by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
+(`$this->holder()->views`), or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -553,8 +556,10 @@ scope before the callee's frame opens, so what they record is the caller's. A su
 proof that holds `$this->resource` to one model adds `@backing:<model>` to its `method-return:` key, so the read with
 the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
 class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
-keys, so two siblings never share an inherited helper's `static`. The `method-body:` cycle guard stays per
-method, so a recursion that passes a new value each time stops at its first repeat.
+keys, so two siblings never share an inherited helper's `static`. A read that only assumes its runtime class adds
+`@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class. The
+`method-body:` cycle guard stays per method, so a recursion that passes a new value each time stops at its first
+repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
 records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have

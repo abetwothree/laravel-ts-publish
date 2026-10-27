@@ -111,7 +111,7 @@ _Avoid_: signature key, pattern key
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
 **Runtime class**:
-The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
+The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs. It is known in the published class's own scope and in the helpers that scope reaches through `$this`, `self`, `static`, `parent` or an ancestor's name; a receiver's method body only assumes it, since the object may be a subclass of the class declared.
 _Avoid_: leaf, publishing collection, called class
 
 **Declaring class**:
