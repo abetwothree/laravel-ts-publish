@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Closure;
+use Illuminate\Support\Arr;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -27,14 +28,19 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignOp\Plus;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\ClassMethod;
@@ -68,6 +74,14 @@ use WeakMap;
 trait ReadsReturnedVariables
 {
     use InspectsAstNodes;
+
+    /** The built-ins whose result keeps every string key of the array they take first. */
+    private const array KEEPS_FIRST_KEYS = [
+        'array_merge',
+        'array_merge_recursive',
+        'array_replace',
+        'array_replace_recursive',
+    ];
 
     /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
     private array $untypedKeyWrites = [];
@@ -378,14 +392,14 @@ trait ReadsReturnedVariables
             if ($assigned !== null) {
                 $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
 
-                if ($baseAnalysis === null && $nested) {
-                    $this->loosenHeldKeys($into, bringsKeys: true);
-
-                    continue;
-                }
-
                 if ($baseAnalysis === null) {
-                    $into->holdUnreadKeys();
+                    $keepsKeys = $stmt instanceof ExpressionStmt && $this->keepsEveryKey($stmt->expr, $varName);
+
+                    if ($nested && ! $keepsKeys) {
+                        $this->loosenHeldKeys($into, bringsKeys: true);
+                    } else {
+                        $into->holdUnreadKeys();
+                    }
 
                     continue;
                 }
@@ -726,7 +740,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                if (! $node instanceof CallLike || ! resolve(ByReferenceArguments::class)->keepsStringKeys($node, $target)) {
+                if (! $this->keepsEveryKey($node, $varName)) {
                     return true;
                 }
             }
@@ -737,18 +751,69 @@ trait ReadsReturnedVariables
 
     /**
      * Whether a statement's expression passes the variable to a by-reference call that adds values to it under keys the
-     * walk never names, array_push(), array_unshift() or array_splice(), as the statement or inside it.
+     * walk never names, array_push(), array_unshift(), array_splice() or `Arr::set()`, as the statement or inside it.
      */
     private function appendsByReference(Node\Stmt $stmt, string $varName): bool
     {
         return $stmt instanceof ExpressionStmt && $this->bodyHas(
             [$stmt],
-            fn (Node $node): bool => $node instanceof CallLike && ! $node->isFirstClassCallable() && array_any(
-                $node->getArgs(),
-                fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
-                    && resolve(ByReferenceArguments::class)->effect($node, $arg->value) === ByReferenceEffect::Appends,
+            fn (Node $node): bool => $node instanceof CallLike && ! $node->isFirstClassCallable() && (
+                $this->callsArrOn($node, 'set', $varName) || array_any(
+                    $node->getArgs(),
+                    fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
+                        && resolve(ByReferenceArguments::class)->effect($node, $arg->value)
+                            === ByReferenceEffect::Appends,
+                )
             ),
         );
+    }
+
+    /**
+     * Whether a whole write keeps every string key the variable holds: an `=` of a merge or a replace taking it first,
+     * of `Arr::add()` on it or of a `+` it leads; a `+=`; `Arr::set()` on it; a by-reference `foreach` over it; or a
+     * by-reference call that keeps them. The one rule rewritesWhole() and a block's unread `=` decide by.
+     */
+    private function keepsEveryKey(Node $write, string $varName): bool
+    {
+        $value = $this->chainedValue($write instanceof Expr ? $write : null, $varName);
+        $names = fn (?Expr $expr): bool => $expr instanceof Variable && $expr->name === $varName;
+
+        return match (true) {
+            $value instanceof BinaryOp\Plus => $names($value->left),
+            $value instanceof FuncCall => $value->name instanceof Name
+                && in_array($value->name->toLowerString(), self::KEEPS_FIRST_KEYS, true)
+                && $this->takesFirst($value, $varName),
+            $value instanceof StaticCall => $this->callsArrOn($value, 'add', $varName),
+            $write instanceof Plus => $names($write->var),
+            $write instanceof Foreach_ => $write->byRef && $names($write->expr),
+            $write instanceof CallLike => $this->callsArrOn($write, 'set', $varName)
+                || (! $write->isFirstClassCallable() && array_any(
+                    $write->getArgs(),
+                    fn (Arg $arg): bool => $names($arg->value)
+                        && resolve(ByReferenceArguments::class)->keepsStringKeys($write, $arg->value),
+                )),
+            default => false,
+        };
+    }
+
+    /**
+     * Whether a call passes the variable itself as its first argument.
+     */
+    private function takesFirst(CallLike $call, string $varName): bool
+    {
+        $first = $call->isFirstClassCallable() ? null : $call->getArgs()[0] ?? null;
+
+        return $first !== null && $first->value instanceof Variable && $first->value->name === $varName;
+    }
+
+    /**
+     * Whether a call is `Arr::{$method}()` on the variable itself.
+     */
+    private function callsArrOn(CallLike $call, string $method, string $varName): bool
+    {
+        return $call instanceof StaticCall && $call->class instanceof Name && $call->class->toString() === Arr::class
+            && $call->name instanceof Identifier && $call->name->toLowerString() === $method
+            && $this->takesFirst($call, $varName);
     }
 
     /**
@@ -768,7 +833,15 @@ trait ReadsReturnedVariables
      */
     private function assignedValue(Node\Stmt $stmt, string $varName): ?Expr
     {
-        $expr = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
+        return $this->chainedValue($stmt instanceof ExpressionStmt ? $stmt->expr : null, $varName);
+    }
+
+    /**
+     * The value an expression assigns the whole variable, as `$var = value` or a chain such as `$copy = $var = value`
+     * does; null for any other expression.
+     */
+    private function chainedValue(?Expr $expr, string $varName): ?Expr
+    {
         $assigns = false;
 
         while ($expr instanceof Assign) {

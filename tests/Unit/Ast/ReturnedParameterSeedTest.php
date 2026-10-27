@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyKeepingRewrites;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeRewrittenParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReplacedParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SeededEnumMembers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SeededRows;
+use Illuminate\Http\Request;
+use Workbench\App\Http\Resources\MergedPostResource;
+use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
 
 it('joins a helper\'s writes onto the shape of the array it is passed', function () {
@@ -70,6 +74,68 @@ it('seeds nothing past an assignment inside another expression', function () {
         'inCondition' => 'never[] | { x: number }',
     ])->and(json_encode($values['chained']))->toBe('{"k":1,"x":1}')
         ->and(json_encode($values['inCondition']))->toBe('{"k":1,"x":1}');
+});
+
+// A rewrite that keeps every key leaves them required, as one at the top level does; one that may bring keys opens the
+// shape, but for an assignment inside another expression, which the walk does not read (a known gap).
+it('keeps the keys required past a rewrite in a block that keeps every key', function () {
+    expect(analyzedKeyTypes(KeyKeepingRewrites::class))->toBe([
+        'merge_if' => '{ id: number; [key: string]: unknown }',
+        'merge_loop' => '{ id: number; [key: string]: unknown }',
+        'merge_recursive_if' => '{ id: number; [key: string]: unknown }',
+        'merge_recursive_loop' => '{ id: number; [key: string]: unknown }',
+        'replace_if' => '{ id: number; [key: string]: unknown }',
+        'replace_loop' => '{ id: number; [key: string]: unknown }',
+        'replace_recursive_if' => '{ id: number; [key: string]: unknown }',
+        'replace_recursive_loop' => '{ id: number; [key: string]: unknown }',
+        'arr_add_if' => '{ id: number; [key: string]: unknown }',
+        'arr_add_loop' => '{ id: number; [key: string]: unknown }',
+        'arr_set_if' => '{ id: number; [key: string]: unknown }',
+        'arr_set_loop' => '{ id: number; [key: string]: unknown }',
+        'plus_if' => '{ id: number; [key: string]: unknown }',
+        'plus_loop' => '{ id: number; [key: string]: unknown }',
+        'plus_assign_if' => '{ id: number; [key: string]: unknown }',
+        'plus_assign_loop' => '{ id: number; [key: string]: unknown }',
+        'ref_foreach_if' => '{ id: number }',
+        'ref_foreach_loop' => '{ id: number }',
+        'walk_if' => '{ id: number }',
+        'walk_loop' => '{ id: number }',
+        'walk_recursive_if' => '{ id: number }',
+        'walk_recursive_loop' => '{ id: number }',
+        'plus_inline_if' => '{ id: number }',
+        'merge_other_if' => '{ id?: number; [key: string]: unknown }',
+        'plus_other_if' => '{ id?: number; [key: string]: unknown }',
+        'param_merge_if' => '{ id: number; x: number; [key: string]: unknown }',
+        'param_walk_if' => '{ id: number; x: number }',
+    ])->and(json_encode(new KeyKeepingRewrites()->toArray()))->toBe(
+        '{"merge_if":{"id":1},"merge_loop":{"id":1},"merge_recursive_if":{"id":1},"merge_recursive_loop":{"id":1},'
+        .'"replace_if":{"id":1},"replace_loop":{"id":1},"replace_recursive_if":{"id":1},"replace_recursive_loop":{"id":1},'
+        .'"arr_add_if":{"id":1},"arr_add_loop":{"id":1},"arr_set_if":{"id":1},"arr_set_loop":{"id":1},"plus_if":{"id":1},'
+        .'"plus_loop":{"id":1},"plus_assign_if":{"id":1},"plus_assign_loop":{"id":1},"ref_foreach_if":{"id":1},'
+        .'"ref_foreach_loop":{"id":1},"walk_if":{"id":1},"walk_loop":{"id":1},"walk_recursive_if":{"id":1},'
+        .'"walk_recursive_loop":{"id":1},"plus_inline_if":{"id":1},"merge_other_if":{"id":1},"plus_other_if":{"id":1},'
+        .'"param_merge_if":{"id":1,"x":1},"param_walk_if":{"id":1,"x":1}}',
+    )->and(json_encode(new KeyKeepingRewrites(true, [1, 2])->toArray()))->toBe(
+        '{"merge_if":{"id":1,"m":1},"merge_loop":{"id":1,"m":1},"merge_recursive_if":{"id":1,"m":1},'
+        .'"merge_recursive_loop":{"id":1,"m":[1,1]},"replace_if":{"id":2},"replace_loop":{"id":2},'
+        .'"replace_recursive_if":{"id":2},"replace_recursive_loop":{"id":2},"arr_add_if":{"id":1,"k":1},'
+        .'"arr_add_loop":{"id":1,"k":1},"arr_set_if":{"id":1,"k":1},"arr_set_loop":{"id":1,"k":1},"plus_if":{"id":1,"p":1},'
+        .'"plus_loop":{"id":1,"p":1},"plus_assign_if":{"id":1,"e":1},"plus_assign_loop":{"id":1,"e":1},'
+        .'"ref_foreach_if":{"id":2},"ref_foreach_loop":{"id":4},"walk_if":{"id":2},"walk_loop":{"id":4},'
+        .'"walk_recursive_if":{"id":2},"walk_recursive_loop":{"id":4},"plus_inline_if":{"id":1,"e":1},'
+        .'"merge_other_if":{"e":1,"m":1},"plus_other_if":{"e":1,"p":1},"param_merge_if":{"id":1,"m":1,"x":1},'
+        .'"param_walk_if":{"id":2,"x":1}}',
+    );
+});
+
+it('keeps a resource\'s local keys required past a merge in an `if` and a loop', function () {
+    $post = new Post(['title' => 't']);
+    $post->id = 3;
+
+    expect(publishedResourceKeyTypes(MergedPostResource::class, Post::class))->toBe(['id' => 'number', 'title' => 'string'])
+        ->and((new MergedPostResource($post))->resolve(request()))->toBe(['id' => 3, 'title' => 't', 'a' => true, 'b' => true])
+        ->and((new MergedPostResource($post))->resolve(Request::create('/', 'GET', ['full' => 1, 'more' => 1])))
+        ->toBe(['id' => 3, 'title' => 't', 'body' => 'b', 'more' => 1, 'a' => true, 'b' => true]);
 });
 
 it('seeds nothing past an array_splice(), whose keys publish open', function () {

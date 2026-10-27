@@ -15930,6 +15930,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MergedPostResource": {
+            "name": "MergedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MergedSignatureKeysResource": {
             "name": "MergedSignatureKeysResource",
             "properties": [

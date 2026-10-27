@@ -4121,6 +4121,14 @@ declare global {
             currency?: workbench.app.enums.CurrencyType;
         }
         /**
+         * Fixture: builds its response in a local, then merges keys into it inside an `if` and a loop, which keeps every key
+         * the local held. The merged keys stay unpublished, the known gap of a returned variable the walk reads only partly.
+         */
+        export interface MergedPostResource {
+            id: number;
+            title: string;
+        }
+        /**
          * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
          * value covers every key it matches, and merges of a helper's keys and of the model itself.
          */
