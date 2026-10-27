@@ -9,6 +9,6 @@ export interface PanelPayloadProbe
     secret: string;
     weight: number;
     own: string | number;
-    root: unknown;
+    root: number;
     late: string;
 }

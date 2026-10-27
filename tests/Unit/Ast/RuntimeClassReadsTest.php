@@ -10,6 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredListCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
@@ -20,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
@@ -36,6 +40,7 @@ use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\TraitPanelPayload;
 
 /** Parse one `$this->m()` call written as a statement. */
 function runtimeClassCall(string $php): Expr
@@ -364,3 +369,43 @@ it('declines a `static` write in a model a resource forwards to, and in a method
         ->toBe('unknown')
         ->and(new BasePrivateLevelResource(new Post)->macroViews())->toBe(['views' => 9]);
 })->after(fn () => JsonResource::flushMacros());
+
+it('reads self:: and parent:: as the declaring class in inherited and trait bodies', function () {
+    expect(analyzedKeyTypes(PanelPayload::class))->toMatchArray(['own' => 'string | number', 'root' => 'number'])
+        ->and(analyzedKeyTypes(TraitPanelPayload::class))->toBe(['own' => 'string', 'root' => 'number', 'late' => 'string'])
+        ->and(analyzedKeyTypes(InheritedHelperPayload::class))->toBe([
+            'self' => 'string | number', 'parent' => 'number', 'static' => 'string',
+            'v' => '{ self: string | number; parent: number; static: string }',
+        ]);
+});
+
+it('sends what self:: and parent:: name in inherited and trait bodies', function () {
+    expect(new PanelPayload()->toArray())->toMatchArray(['own' => 0, 'root' => 1])
+        ->and(new TraitPanelPayload()->toArray())->toBe(['own' => 'own', 'root' => 1, 'late' => 'own'])
+        ->and(new InheritedHelperPayload()->toArray())->toBe([
+            'self' => 1, 'parent' => 1, 'static' => 'x', 'v' => ['self' => 1, 'parent' => 1, 'static' => 'x'],
+        ]);
+});
+
+// `stash` and `trait_stash` reach the ancestor's by-reference fill(), which may leave anything in them.
+it('reads self:: and parent:: in a helper an ancestor declares as that ancestor and its parent', function () {
+    $post = new Post;
+    $post->forceFill(['title' => 'x']);
+
+    expect(publishedResourceKeyTypes(DeclaredReadsResource::class, Post::class))->toBe([
+        'root' => 'number', 'base_part' => 'number', 'base_key' => 'boolean', 'built' => '{ base_part: number }',
+        'built_titled' => '{ title: string }', 'views' => 'number', 'level' => 'string', 'stash' => 'unknown',
+        'trait_stash' => 'unknown',
+    ])->and((new DeclaredReadsResource($post))->resolve(request()))->toBe([
+        'root' => 1, 'base_part' => 1, 'base_key' => true, 'built' => ['base_part' => 1], 'built_titled' => ['title' => 'x'],
+        'views' => 1.5, 'level' => 'root', 'stash' => ['seed' => 1, 'filled' => true],
+        'trait_stash' => ['seed' => 1, 'filled' => true],
+    ]);
+});
+
+it('reads parent::toArray() in a collection helper as the list the declaring class\'s parent sends', function () {
+    expect(analyzedKeyTypes(DeclaredListCollection::class))->toBe(['items' => 'PostResource[]'])
+        ->and(analyzedKeyTypes(DeclaredSpreadListCollection::class))->toBe(['[key: number]' => 'PostResource', 'count' => 'number'])
+        ->and((new DeclaredListCollection(collect()))->resolve(request()))->toBe(['items' => []])
+        ->and((new DeclaredSpreadListCollection(collect()))->resolve(request()))->toBe(['count' => 0]);
+});

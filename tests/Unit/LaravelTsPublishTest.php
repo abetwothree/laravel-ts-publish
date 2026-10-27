@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
@@ -1914,6 +1915,10 @@ describe('closureReturnedTypes', function () {
         $closure = fn () => 'hello';
 
         expect($this->service->closureReturnedTypes($closure)['type'])->toBe('unknown');
+    });
+
+    test('closureReturnedTypes reads self as the closure\'s scope class', function () {
+        expect($this->service->closureReturnedTypes(new SelfTypedHelpers()->selfGetter())['type'])->toBe('SelfTypedHelpers');
     });
 });
 

@@ -145,16 +145,21 @@ trait InspectsAstNodes
     }
 
     /**
-     * The class a name spells in the body under read, in any case: the runtime class for `static`, since late static
-     * binding names the called class, the subject for `self`, else the name.
+     * The class a name spells in the body under read, in any case: AnalysisScope::relativeClass() for `self`, `static`
+     * and `parent`, else the name as written, which no class matches for a `parent` the declaring class lacks.
      */
     protected function scopeClassName(Name $name, AnalysisScope $scope): string
     {
-        return match ($name->toLowerString()) {
-            'static' => $scope->runtimeReflection->getName(),
-            'self' => $scope->subjectReflection->getName(),
-            default => $name->toString(),
-        };
+        return $scope->relativeClass($name)?->getName() ?? $name->toString();
+    }
+
+    /**
+     * The class whose constant a fetch reads, as scopeClassName() names it, or null for a `parent` the declaring class
+     * lacks: defined() and constant() would read a name left as written against the calling class.
+     */
+    protected function constantClassName(Name $class, AnalysisScope $scope): ?string
+    {
+        return $class->isSpecialClassName() ? $scope->relativeClass($class)?->getName() : $class->toString();
     }
 
     /**
@@ -215,10 +220,7 @@ trait InspectsAstNodes
             return null;
         }
 
-        $parent = $scope->subjectReflection->getParentClass();
-        $class = $key->class->toLowerString() === 'parent'
-            ? ($parent === false ? null : $parent->getName())
-            : $this->scopeClassName($key->class, $scope);
+        $class = $this->constantClassName($key->class, $scope);
         $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
         $value = $constant !== null && defined($constant) ? constant($constant) : null;
 

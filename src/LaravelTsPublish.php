@@ -678,10 +678,16 @@ class LaravelTsPublish
         return TsTypeString::isVagueTsType($type);
     }
 
-    /** @return TypeScriptTypeInfo */
+    /**
+     * A closure's native return type, `self` and `parent` read against the closure's scope class.
+     *
+     * @return TypeScriptTypeInfo
+     */
     public function closureReturnedTypes(Closure $closure): array
     {
-        return $this->resolveReflectionType(new ReflectionFunction($closure)->getReturnType());
+        $function = new ReflectionFunction($closure);
+
+        return $this->resolveReflectionType($function->getReturnType(), $function->getClosureScopeClass());
     }
 
     /**
@@ -763,7 +769,8 @@ class LaravelTsPublish
     /**
      * Resolve a reflected native type to TypeScript, reading `self` and `parent` against the declaring class.
      *
-     * @param  ReflectionClass<object>|null  $declaringClass  the class whose member declares the type
+     * @param  ReflectionClass<object>|null  $declaringClass  the class `self` names where the type is written: a
+     *                                                        member's declaring class, a closure's scope class
      * @return TypeScriptTypeInfo
      */
     public function resolveReflectionType(?ReflectionType $returnType, ?ReflectionClass $declaringClass = null): array
@@ -2201,7 +2208,7 @@ class LaravelTsPublish
     /**
      * A reflected named type's name, `self` and `parent` resolved against the class whose member declares it.
      *
-     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait.
+     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait's method or a closure.
      *
      * @param  ReflectionClass<object>|null  $declaringClass
      */

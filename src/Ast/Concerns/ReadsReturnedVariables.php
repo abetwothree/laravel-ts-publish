@@ -50,7 +50,6 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
-use ReflectionClass;
 use WeakMap;
 
 /**
@@ -92,13 +91,6 @@ trait ReadsReturnedVariables
      * @return ValueExpressionResult
      */
     abstract protected function analyzeValueExpression(Expr $expr): array;
-
-    /**
-     * The class under analysis, the subject a warning names.
-     *
-     * @return ReflectionClass<object>
-     */
-    abstract protected function subjectReflection(): ReflectionClass;
 
     /**
      * The scope the walk reads in, which an arm its join leaves out is recorded against.
@@ -235,7 +227,7 @@ trait ReadsReturnedVariables
     {
         $assigned = false;
 
-        foreach (VariableWrites::of($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
+        foreach (VariableWrites::of($stmts, $this->analysisScope()) as [$written, $node, $writtenTo]) {
             if ($written !== $varName) {
                 continue;
             }
@@ -287,7 +279,7 @@ trait ReadsReturnedVariables
 
         $writes = $returned === []
             ? []
-            : VariableWrites::of($stmts, $this->subjectReflection(), $this->analysisScope()->declaringFileClass);
+            : VariableWrites::of($stmts, $this->analysisScope());
 
         foreach ($writes as [$name, , $target]) {
             if (! isset($returned[$name])) {
@@ -587,7 +579,7 @@ trait ReadsReturnedVariables
     private function writesVariable(array $stmts, string $varName): bool
     {
         return array_any(
-            VariableWrites::of($stmts, $this->subjectReflection()),
+            VariableWrites::of($stmts, $this->analysisScope()),
             fn (array $write): bool => $write[0] === $varName,
         );
     }
@@ -704,7 +696,7 @@ trait ReadsReturnedVariables
             $blocks = array_merge(...StatementBlocks::inner($stmt));
             $own = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
 
-            foreach (VariableWrites::of([$stmt], $this->subjectReflection()) as [$written, $node, $target]) {
+            foreach (VariableWrites::of([$stmt], $this->analysisScope()) as [$written, $node, $target]) {
                 // A seed binds a value that is never null, so its own `??=` never runs.
                 $assigns = $node === $own && $target instanceof Variable
                     && ($node instanceof Assign || $node instanceof Plus || $node instanceof CoalesceAssign);

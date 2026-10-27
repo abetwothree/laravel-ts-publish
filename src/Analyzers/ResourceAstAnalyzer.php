@@ -827,13 +827,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Resolve and analyze what the parent class's declaration of a method hands a `parent::` call to it.
+     * Resolve and analyze what the declaring class's parent's declaration of a method hands a `parent::` call to it.
      *
      * A whole read is the method's own return, which takes the collected list flat; a spread or variable builds on it.
      */
     protected function analyzeParentCall(string $method, bool $whole = false): ?ResourceAnalysis
     {
-        $parentClass = $this->scope->subjectReflection->getParentClass();
+        $parentClass = $this->scope->declaringClass->getParentClass();
 
         if ($parentClass === false) {
             return null;
@@ -848,7 +848,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         // Read before a parent analyzer is built, which would answer the collected list's response instead.
-        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection)) {
+        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->declaringClass)) {
             return $this->collectedListAnalysis();
         }
 
@@ -1483,8 +1483,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 if ($funcCallName instanceof Name) {
                     $funcName = $funcCallName->getLast();
 
-                    if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->subjectReflection));
+                    if ($this->scope->declaringClass->hasMethod($funcName)) {
+                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
                     }
                 }
 
@@ -1873,7 +1873,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         // A collection's toArray() analysis is the response that wraps the list, while resolve() returns the list.
-        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection, $runtime)) {
+        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->declaringClass, $runtime)) {
             return $whole ? $this->flatCollectedListAnalysis() : $this->collectedListAnalysis();
         }
 

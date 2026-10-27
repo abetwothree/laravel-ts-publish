@@ -22,6 +22,7 @@ use Workbench\App\ValueObjects\GuardedLinkPayload;
 use Workbench\App\ValueObjects\PanelPayload;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
+use Workbench\App\ValueObjects\TraitPanelPayload;
 
 /**
  * Renders `AstEngine::analyze()`'s three fields into real `.ts` modules, mechanically — no
@@ -77,6 +78,8 @@ function analysisProbeCases(): array
         'GuardedLinkPayloadValues' => [GuardedLinkPayload::class, 'values', null],
         // An inherited toArray() whose `$this`, `static`, `self` and `parent` each name another class at run time.
         'PanelPayload' => [PanelPayload::class, 'toArray', null],
+        // A trait-supplied toArray() whose `self` and `parent` name the class that uses the trait and its parent.
+        'TraitPanelPayload' => [TraitPanelPayload::class, 'toArray', null],
     ];
 }
 

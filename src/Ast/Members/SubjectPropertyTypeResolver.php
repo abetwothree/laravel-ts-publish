@@ -54,6 +54,7 @@ use WeakMap;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type PropertyWrites list<array{Node, ReflectionClass<object>}>
+ * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
  *
  * @internal
  */
@@ -223,8 +224,8 @@ final class SubjectPropertyTypeResolver
 
         $written = [];
 
-        foreach ($writes as [$site, $declaration]) {
-            $assigned = $this->assignedConstant($site, $property->getName(), $runtime, $declaration);
+        foreach ($writes as [$site, $self]) {
+            $assigned = $this->assignedConstant($site, $property->getName(), $runtime, $self);
 
             if ($assigned === null) {
                 return null;
@@ -248,8 +249,8 @@ final class SubjectPropertyTypeResolver
 
     /**
      * Each node where a method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or where
-     * application code writes a property whose name it computes, with the class or trait whose body holds it; null when
-     * a declaration cannot be read, since it may write anything.
+     * application code writes a property whose name it computes, with the class `self` names there; null when a
+     * declaration cannot be read, since it may write anything.
      *
      * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
      *
@@ -261,7 +262,7 @@ final class SubjectPropertyTypeResolver
         $finder = new NodeFinder;
         $writes = [];
 
-        foreach ($this->declarations($class) as $declaration) {
+        foreach ($this->declarations($class) as [$declaration, $self]) {
             $file = $declaration->getFileName();
 
             // An internal class's code cannot name a property its user-land subclass declares.
@@ -288,8 +289,8 @@ final class SubjectPropertyTypeResolver
             }
 
             foreach (self::writeSites($node) as [$site, $targets]) {
-                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $declaration)) {
-                    $writes[] = [$site, $declaration];
+                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
+                    $writes[] = [$site, $self];
                 }
             }
         }
@@ -304,10 +305,10 @@ final class SubjectPropertyTypeResolver
      *
      * @param  ReflectionClass<object>|null  $runtime  the class the object is, which `static` names; null declines a
      *                                                 value naming `static`, since a subclass may give it another type
-     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the write, which `self` names
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the write
      * @return ValueExpressionResult|null
      */
-    private function assignedConstant(Node $site, string $name, ?ReflectionClass $runtime, ReflectionClass $declaration): ?array
+    private function assignedConstant(Node $site, string $name, ?ReflectionClass $runtime, ReflectionClass $self): ?array
     {
         if (! $site instanceof Assign
             || ! $site->var instanceof PropertyFetch
@@ -326,8 +327,8 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
-        $scope = new AnalysisScope($declaration);
-        $scope->runtimeReflection = $runtime ?? $declaration;
+        $scope = new AnalysisScope($self);
+        $scope->runtimeReflection = $runtime ?? $self;
         $values = resolve(ValueResolver::class);
 
         try {
@@ -349,21 +350,23 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The class, then each ancestor, each followed by every trait it uses, transitively.
+     * The class, then each ancestor, each followed by every trait it uses, transitively, each with the class `self`
+     * names in its body: a class itself, a trait the class that uses it.
      *
      * @param  ReflectionClass<object>  $class
-     * @return list<ReflectionClass<object>>
+     * @return list<Declaration>
      */
     private function declarations(ReflectionClass $class): array
     {
         $declarations = [];
-        $pending = [$class];
+        $pending = [[$class, $class]];
 
         while ($pending !== []) {
-            $declaration = array_shift($pending);
-            $declarations[] = $declaration;
+            [$declaration, $self] = array_shift($pending);
+            $declarations[] = [$declaration, $self];
             $parent = $declaration->getParentClass();
-            $pending = [...array_values($declaration->getTraits()), ...$pending, ...($parent === false ? [] : [$parent])];
+            $traits = array_map(fn (ReflectionClass $trait): array => [$trait, $self], array_values($declaration->getTraits()));
+            $pending = [...$traits, ...$pending, ...($parent === false ? [] : [[$parent, $parent]])];
         }
 
         return $declarations;
@@ -374,16 +377,16 @@ final class SubjectPropertyTypeResolver
      * unsets, iterates into, takes a reference to or passes it to a by-reference parameter.
      *
      * @param  list<Expr|Arg>  $targets  what writeTargets() returned for the node
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the node
+     * @param  ReflectionClass<object>  $runtime  the class read through, which `$this` and `static` name
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the node
      */
     private function writesTo(
         Node $node,
         array $targets,
         string $name,
         bool $computedNames,
-        ReflectionClass $subject,
-        ReflectionClass $declaration,
+        ReflectionClass $runtime,
+        ReflectionClass $self,
     ): bool {
         $hits = array_filter(
             $targets,
@@ -396,7 +399,7 @@ final class SubjectPropertyTypeResolver
 
         // Only a call passing the property pays for reflecting its callee.
         /** @var list<Arg> $hits */
-        return resolve(ByReferenceArguments::class)->of($node, $hits, $subject, $declaration) !== [];
+        return resolve(ByReferenceArguments::class)->of($node, $hits, $runtime, $self) !== [];
     }
 
     /**

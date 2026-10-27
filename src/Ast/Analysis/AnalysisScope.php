@@ -426,8 +426,8 @@ final class AnalysisScope
     public ReflectionClass $declaringFileClass;
 
     /**
-     * The class `self` names in the body under analysis: its method's declaring class, which PHP reports as the using
-     * class for a trait's method. The subject, unless the body is an ancestor's.
+     * The class `self` names in the body under analysis, and whose parent `parent` names: its method's declaring class,
+     * which PHP reports as the using class for a trait's method. The subject, unless the body is an ancestor's.
      *
      * @var ReflectionClass<object>
      */
@@ -568,19 +568,37 @@ final class AnalysisScope
     }
 
     /**
+     * The class `self`, `static` or `parent` names in the body under analysis: the declaring class, the runtime class,
+     * or the declaring class's parent. Null for any other name, and for a `parent` the declaring class lacks.
+     *
+     * @return ReflectionClass<object>|null
+     */
+    public function relativeClass(Name $name): ?ReflectionClass
+    {
+        return match ($name->toLowerString()) {
+            'self' => $this->declaringClass,
+            'static' => $this->runtimeReflection,
+            'parent' => $this->declaringClass->getParentClass() ?: null,
+            default => null,
+        };
+    }
+
+    /**
      * The class a static-syntax call on the subject reaches from the body under analysis: `$this::` and `static::`
-     * the runtime class, since PHP looks such a call up there with no private rule; `self::` or a name the subject.
+     * the runtime class, since PHP looks such a call up there with no private rule; `self::` the declaring class; a
+     * name the subject.
      *
      * @return ReflectionClass<object>
      */
     public function staticCallClass(StaticCall $call): ReflectionClass
     {
         $class = $call->class;
-        $late = $class instanceof Variable
-            ? $class->name === 'this'
-            : $class instanceof Name && $class->toLowerString() === 'static';
 
-        return $late ? $this->runtimeReflection : $this->subjectReflection;
+        return match (true) {
+            $class instanceof Variable => $class->name === 'this' ? $this->runtimeReflection : $this->subjectReflection,
+            $class instanceof Name => $this->relativeClass($class) ?? $this->subjectReflection,
+            default => $this->subjectReflection,
+        };
     }
 
     /**

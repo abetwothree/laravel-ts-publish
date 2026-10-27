@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroScopeLeakRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\SelfTypedTwin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MacroShadowedPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -186,3 +188,13 @@ describe('with no resource macro registered', function () {
         'an object that is not invokable' => [new stdClass],
     ]);
 });
+
+// Macroable binds a macro to the class it is called on, so a closure's `self` names that class, not the mixin.
+it('reads a macro returning self as the macro\'s scope class', function () {
+    SelfTypedHelpers::mixin(new SelfTypedTwin);
+    $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
+
+    expect(resolve(MacroCallResolver::class)->resolve($scope, 'twin'))
+        ->toMatchArray(['type' => 'SelfTypedHelpers', 'modelFqcn' => SelfTypedHelpers::class])
+        ->and(new SelfTypedHelpers()->twin())->toBeInstanceOf(SelfTypedHelpers::class);
+})->after(fn () => SelfTypedHelpers::flushMacros());

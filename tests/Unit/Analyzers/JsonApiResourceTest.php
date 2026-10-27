@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\InheritedToAttributesSpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\JsonApiValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingOverrideApiResource;
@@ -216,6 +217,16 @@ test('a toArray() that builds on parent::toArray() sends the whole model under a
 test('a parent::toAttributes() spread reads the $attributes names JsonApiResource returns', function () {
     expect(publishedResourceKeyTypes(ParentToAttributesSpreadApiResource::class, Post::class))
         ->toMatchArray(['attributes' => '{ title: string; extra: number }']);
+});
+
+test('an inherited toAttributes() reads its parent::toAttributes() as its declaring class\'s parent\'s', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+
+    expect(publishedResourceKeyTypes(InheritedToAttributesSpreadApiResource::class, Post::class))
+        ->toMatchArray(['attributes' => '{ title: string; extra: number }'])
+        ->and(json_encode(new InheritedToAttributesSpreadApiResource($post)->resolve(request())))
+        ->toContain('"attributes":{"title":"x","extra":1}');
 });
 
 test('a keyless name an own toArray() returns reads the model attribute', function () {

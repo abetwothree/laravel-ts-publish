@@ -1538,20 +1538,9 @@ final class ReceiverClassResolver
      */
     private function namedClass(Name $name, AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
-        $parent = $subject->getParentClass();
+        $class = $this->scopeClassName($name, $scope);
 
-        // self/parent bind to the class declaring the body, and an inherited body is analyzed under the child;
-        // only with no user-land ancestor is that class always the subject.
-        $bodyIsSubjects = $parent === false || str_starts_with($parent->getName(), 'Illuminate\\');
-
-        $class = match ($name->toLowerString()) {
-            'self' => $bodyIsSubjects ? $subject->getName() : null,
-            'parent' => $bodyIsSubjects && $parent !== false ? $parent->getName() : null,
-            default => $this->scopeClassName($name, $scope),
-        };
-
-        return $class !== null && DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
+        return DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
     }
 
     /**

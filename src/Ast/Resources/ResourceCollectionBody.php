@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -173,7 +174,7 @@ final class ResourceCollectionBody
     private function holdsCollectedList(array $stmts, string $name, ReflectionClass $declaring): bool
     {
         $writes = array_values(array_filter(
-            VariableWrites::of($stmts, $declaring),
+            VariableWrites::of($stmts, new AnalysisScope($declaring)),
             fn (array $write): bool => $write[0] === $name,
         ));
 

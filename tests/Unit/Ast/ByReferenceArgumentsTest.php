@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfBase;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Expression;
@@ -16,11 +19,11 @@ use PhpParser\PrettyPrinter\Standard;
 /**
  * The arguments of() reports for the one call a statement makes, every argument asked about, printed as PHP.
  *
- * @param  ReflectionClass<object>|null  $subject
- * @param  ReflectionClass<object>|null  $declaration
+ * @param  ReflectionClass<object>|null  $runtime
+ * @param  ReflectionClass<object>|null  $declaring  the runtime class when not given
  * @return list<string>
  */
-function byReferenceArgumentsOf(string $statement, ?ReflectionClass $subject = null, ?ReflectionClass $declaration = null): array
+function byReferenceArgumentsOf(string $statement, ?ReflectionClass $runtime = null, ?ReflectionClass $declaring = null): array
 {
     $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
     $call = $stmt instanceof Expression ? $stmt->expr : null;
@@ -34,7 +37,7 @@ function byReferenceArgumentsOf(string $statement, ?ReflectionClass $subject = n
 
     return array_map(
         fn ($argument): string => $printer->prettyPrintExpr($argument),
-        resolve(ByReferenceArguments::class)->of($call, $passed, $subject, $declaration ?? $subject),
+        resolve(ByReferenceArguments::class)->of($call, $passed, $runtime, $declaring ?? $runtime),
     );
 }
 
@@ -58,7 +61,7 @@ it('reports the arguments a call passes to a by-reference parameter of the calle
     'a first-class callable' => ['preg_match(...);', []],
 ]);
 
-it('binds parent:: to the declaration\'s parent, not the subject\'s', function () {
+it('binds parent:: to the declaring class\'s parent, not the runtime class\'s', function () {
     $subject = new ReflectionClass(ByReferenceDefaultsSubject::class);
 
     expect(byReferenceArgumentsOf('parent::append($a);', $subject))->toBe(['$a'])
@@ -66,7 +69,22 @@ it('binds parent:: to the declaration\'s parent, not the subject\'s', function (
         ->toBe([]);
 });
 
-it('names no $this, self or static callee without a subject', function (string $statement) {
+it('binds self in a scanned body to the class that declares it, and to the using class in a trait', function () {
+    $child = new ReflectionClass(ByReferenceSelfChild::class);
+    $defaults = resolve(SubjectPropertyTypeResolver::class);
+    $sent = new ByReferenceSelfChild;
+    $sent->run();
+    $sent->stashAll();
+
+    expect(byReferenceArgumentsOf('self::stash($a);', $child, new ReflectionClass(ByReferenceSelfBase::class)))->toBe(['$a'])
+        ->and(byReferenceArgumentsOf('self::stash($a);', $child))->toBe([])
+        ->and(byReferenceArgumentsOf('static::stash($a);', $child, new ReflectionClass(ByReferenceSelfBase::class)))->toBe([])
+        ->and($defaults->holdsDefault($child, 'stashed'))->toBeFalse()
+        ->and($defaults->holdsDefault($child, 'traitStashed'))->toBeFalse()
+        ->and([$sent->stashed, $sent->traitStashed])->toBe([['a', 1], ['a', 1]]);
+});
+
+it('names no $this, self or static callee without a class', function (string $statement) {
     expect(byReferenceArgumentsOf($statement))->toBe([]);
 })->with([
     '$this' => ['$this->fill($a);'],

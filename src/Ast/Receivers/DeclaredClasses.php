@@ -80,7 +80,8 @@ final class DeclaredClasses
     }
 
     /**
-     * The classes a native type names; null when it is absent, an intersection, or has any builtin arm but `null`.
+     * The classes a native type names, `parent` read as the parent of the class `self` names; null when it is absent,
+     * an intersection, or has any builtin arm but `null`.
      *
      * @return non-empty-list<class-string>|null
      */
@@ -103,6 +104,7 @@ final class DeclaredClasses
             $class = match ($name) {
                 'static' => $staticClass,
                 'self' => $selfClass,
+                'parent' => self::isClassLike($selfClass) ? (string) get_parent_class($selfClass) : '',
                 default => $name,
             };
 

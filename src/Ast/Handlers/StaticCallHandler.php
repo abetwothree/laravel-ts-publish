@@ -160,7 +160,7 @@ final class StaticCallHandler implements ExpressionHandler
     private function readsParentCollectedList(StaticCall $call, AnalysisScope $scope): bool
     {
         return $this->isParentCallTo($call, 'toArray')
-            && resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList('toArray', $scope->subjectReflection);
+            && resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList('toArray', $scope->declaringClass);
     }
 
     /**
@@ -179,9 +179,13 @@ final class StaticCallHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        // `self`/`static` read as the class they name in the body, so those calls are treated as ClassName::*() calls.
+        // `self`, `static` and `parent` read as the class they name in the body, so those are ClassName::*() calls.
         if ($call->class instanceof Name) {
             $className = $this->scopeClassName($call->class, $scope);
+        }
+
+        if ($this->callsFrameworkParent($call, $className, $methodName)) {
+            return $result;
         }
 
         // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
@@ -259,6 +263,18 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
+     * Whether a `parent::` call reaches a method Laravel declares, whose body serves the runtime class, as make()'s
+     * `new static` does: the analyzer reads the ones it knows, such as parent::toArray(), and leaves the rest unknown.
+     */
+    private function callsFrameworkParent(StaticCall $call, string $className, string $methodName): bool
+    {
+        return $call->class instanceof Name
+            && $call->class->toLowerString() === 'parent'
+            && method_exists($className, $methodName)
+            && str_starts_with(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName(), 'Illuminate\\');
+    }
+
+    /**
      * Whether a static-syntax call hands its body the caller's runtime class: `self::`, `static::` and `parent::`
      * forward it, and PHP runs a non-static method named through the runtime class or an ancestor on `$this`.
      */
@@ -306,13 +322,14 @@ final class StaticCallHandler implements ExpressionHandler
 
         $method = new ReflectionMethod($resourceFqcn, $methodName);
 
-        // Not self-returning: the expression is the method's payload, not the resource. Resolving it
-        // needs the receiver's own analyzer, so only the subject or the runtime class is in scope — a foreign
-        // resource class returns null and keeps the `unknown` floor rather than claiming its keys.
+        // Not self-returning: the expression is the method's payload, not the resource. Resolving it needs the
+        // receiver's own analyzer, so only the subject, the runtime class or the declaring class is in scope — a
+        // foreign resource class returns null and keeps the `unknown` floor rather than claiming its keys.
         if (! $this->methodPreservesReceiverType($method, $resourceFqcn)) {
             $built = match ($resourceFqcn) {
                 $scope->subjectReflection->getName() => $scope->subjectReflection,
                 $scope->runtimeReflection->getName() => $scope->runtimeReflection,
+                $scope->declaringClass->getName() => $scope->declaringClass,
                 default => null,
             };
 

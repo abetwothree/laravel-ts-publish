@@ -26,14 +26,14 @@ use Workbench\App\Models\Profile;
 use Workbench\App\Models\User;
 
 /**
- * The names VariableWrites::of() reports for a parsed body, in order, with UnseenWritesResource as the subject.
+ * The names VariableWrites::of() reports for a parsed body, in order, read in a scope over UnseenWritesResource.
  *
  * @return list<string>
  */
 function localWriteNames(string $body): array
 {
     return array_column(
-        VariableWrites::of(new AstParser()->parseSource('<?php '.$body), new ReflectionClass(UnseenWritesResource::class)),
+        VariableWrites::of(new AstParser()->parseSource('<?php '.$body), new AnalysisScope(new ReflectionClass(UnseenWritesResource::class))),
         0,
     );
 }

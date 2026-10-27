@@ -120,7 +120,7 @@ final class MacroCallResolver
                     // A method macro runs on the object its callable holds, never the subject.
                     $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)
                         ->resolve($function->getDeclaringClass()->getName(), $function->getName(), assumesRuntime: true),
-                    $function instanceof ReflectionFunction => $this->functionType($function, $runtime->getName(), $modelClass, $assumes),
+                    $function instanceof ReflectionFunction => $this->functionType($function, $runtime, $modelClass, $assumes),
                     default => null,
                 };
 
@@ -130,17 +130,18 @@ final class MacroCallResolver
     }
 
     /**
-     * A closure's or function's return: its native type, else its `@return`, else a closure's body.
+     * A closure's or function's return: its native type, `self` and `parent` read against the class Macroable binds
+     * it to, else its `@return`, else a closure's body.
      *
-     * @param  class-string  $subjectClass
+     * @param  ReflectionClass<object>  $subject  the class the macro runs on
      * @param  class-string<Model>|null  $modelClass
      * @param  bool  $assumesRuntime  the caller only assumes the subject's class, as a receiver's body does
      * @return ValueExpressionResult|null
      */
-    private function functionType(ReflectionFunction $function, string $subjectClass, ?string $modelClass, bool $assumesRuntime): ?array
+    private function functionType(ReflectionFunction $function, ReflectionClass $subject, ?string $modelClass, bool $assumesRuntime): ?array
     {
         $acceptor = resolve(ReflectedTypeAcceptor::class);
-        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType()));
+        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType(), $subject));
 
         if ($declared !== null && ! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;
@@ -152,7 +153,7 @@ final class MacroCallResolver
             return $documented;
         }
 
-        return $this->bodyType($function, $subjectClass, $modelClass, $assumesRuntime) ?? $declared ?? $documented;
+        return $this->bodyType($function, $subject->getName(), $modelClass, $assumesRuntime) ?? $declared ?? $documented;
     }
 
     /**

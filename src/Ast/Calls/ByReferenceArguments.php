@@ -77,14 +77,14 @@ final class ByReferenceArguments
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
      * @param  array<Arg>  $passed  the call's arguments the caller asks about, keyed by position
-     * @param  ReflectionClass<object>|null  $subject  `$this`, `self` and `static` bind to it; null names none of them
-     * @param  ReflectionClass<object>|null  $declaration  the class or trait whose body holds the call; `parent`
-     *                                                     binds to its parent
+     * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name; null names neither
+     * @param  ReflectionClass<object>|null  $declaring  the class `self` names, the using class in a trait's body; null
+     *                                                   names neither it nor `parent`
      * @return list<Expr>
      */
-    public function of(CallLike $call, array $passed, ?ReflectionClass $subject, ?ReflectionClass $declaration): array
+    public function of(CallLike $call, array $passed, ?ReflectionClass $runtime, ?ReflectionClass $declaring): array
     {
-        $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $subject, $declaration);
+        $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $runtime, $declaring);
 
         if ($callee === null
             || ($callee instanceof ReflectionFunction && in_array($callee->getName(), self::POINTER_FUNCTIONS, true))
@@ -154,13 +154,13 @@ final class ByReferenceArguments
      *
      * A method PHP cannot find goes to `__call()` or `__callStatic()`, which take their arguments by value.
      *
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
+     * @param  ReflectionClass<object>|null  $runtime
+     * @param  ReflectionClass<object>|null  $declaring
      */
     private function callee(
         CallLike $call,
-        ?ReflectionClass $subject,
-        ?ReflectionClass $declaration,
+        ?ReflectionClass $runtime,
+        ?ReflectionClass $declaring,
     ): ?ReflectionFunctionAbstract {
         try {
             if ($call instanceof FuncCall && $call->name instanceof Name) {
@@ -168,20 +168,20 @@ final class ByReferenceArguments
             }
 
             if ($call instanceof New_ && $call->class instanceof Name) {
-                return $this->namedClass($call->class, $subject, $declaration)?->getConstructor();
+                return $this->namedClass($call->class, $runtime, $declaring)?->getConstructor();
             }
 
             if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
-                && $call->name instanceof Identifier && $subject !== null
+                && $call->name instanceof Identifier && $runtime !== null
             ) {
                 // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
-                DependencyRecorder::recordClass($subject->getName());
+                DependencyRecorder::recordClass($runtime->getName());
 
-                return $subject->getMethod($call->name->toString());
+                return $runtime->getMethod($call->name->toString());
             }
 
             if ($call instanceof StaticCall && $call->class instanceof Name && $call->name instanceof Identifier) {
-                return $this->namedClass($call->class, $subject, $declaration)?->getMethod($call->name->toString());
+                return $this->namedClass($call->class, $runtime, $declaring)?->getMethod($call->name->toString());
             }
         } catch (ReflectionException) {
             return null;
@@ -251,16 +251,16 @@ final class ByReferenceArguments
     /**
      * The class a static call or `new` names, or null when it cannot be loaded.
      *
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
+     * @param  ReflectionClass<object>|null  $runtime
+     * @param  ReflectionClass<object>|null  $declaring
      * @return ReflectionClass<object>|null
      */
-    private function namedClass(Name $name, ?ReflectionClass $subject, ?ReflectionClass $declaration): ?ReflectionClass
+    private function namedClass(Name $name, ?ReflectionClass $runtime, ?ReflectionClass $declaring): ?ReflectionClass
     {
-        $parent = $declaration?->getParentClass();
-        $class = match (strtolower($name->toString())) {
-            'self', 'static' => $subject?->getName(),
-            'parent' => $parent === null || $parent === false ? null : $parent->getName(),
+        $class = match ($name->toLowerString()) {
+            'static' => $runtime?->getName(),
+            'self' => $declaring?->getName(),
+            'parent' => ($declaring?->getParentClass() ?: null)?->getName(),
             default => $name->toString(),
         };
 

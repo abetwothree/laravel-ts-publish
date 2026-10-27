@@ -84,7 +84,7 @@ trait CollectsLocalVarBindings
      */
     protected function seedBody(array $stmts, AnalysisScope $scope, ?ClosureExpr $closure = null): void
     {
-        $writes = VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes = VariableWrites::of($stmts, $scope);
         $exitingBlock = $this->exitingBlocks($stmts);
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope, $exitingBlock);
         $binding = $this->bindingWrites($replacing, $scope);
@@ -152,7 +152,7 @@ trait CollectsLocalVarBindings
         ?array &$parked = null,
     ): void {
         $writes ??= $this->bindingWrites($this->partitionWrites(
-            VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            VariableWrites::of($stmts, $scope),
             $stmts,
             $scope,
         )[0], $scope);
@@ -314,7 +314,7 @@ trait CollectsLocalVarBindings
         }
 
         $ended = [];
-        $writes ??= VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= VariableWrites::of($stmts, $scope);
         $exitingBlock ??= $this->exitingBlocks($stmts);
 
         foreach ($writes as [$name, $node, $target, $kind]) {

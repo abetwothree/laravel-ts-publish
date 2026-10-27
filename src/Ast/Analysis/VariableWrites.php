@@ -78,17 +78,16 @@ final class VariableWrites
      * through `$this`; a nested class's or a named function's never does.
      *
      * @param  array<Node>  $stmts
-     * @param  ReflectionClass<object>|null  $subject  the class `$this`, `self` and `static` name, for a call's callee
-     * @param  ReflectionClass<object>|null  $declaration  the class or trait whose body holds the statements, else the
-     *                                                     subject
+     * @param  AnalysisScope|null  $scope  names a call's callee on `$this`, `self`, `static` or `parent` as the body
+     *                                     does; null names none of them
      * @return NamedWrites
      */
-    public static function of(array $stmts, ?ReflectionClass $subject = null, ?ReflectionClass $declaration = null): array
+    public static function of(array $stmts, ?AnalysisScope $scope = null): array
     {
         /** @var NamedWrites $writes */
         $writes = [];
 
-        self::collectInto($stmts, [], $writes, $subject, $declaration ?? $subject);
+        self::collectInto($stmts, [], $writes, $scope?->runtimeReflection, $scope?->declaringClass);
 
         return $writes;
     }
@@ -119,7 +118,7 @@ final class VariableWrites
     public static function writtenNames(array $stmts, AnalysisScope $scope): array
     {
         return array_column(
-            self::partition(self::of($stmts, $scope->subjectReflection, $scope->declaringFileClass), $stmts, $scope)[0],
+            self::partition(self::of($stmts, $scope), $stmts, $scope)[0],
             0,
         );
     }
@@ -244,19 +243,19 @@ final class VariableWrites
      * @param  array<mixed>|Node  $nodes
      * @param  list<ArrowFunction|ClosureExpr>  $enclosing  the nested functions between the body and the nodes
      * @param  NamedWrites  $writes
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
+     * @param  ReflectionClass<object>|null  $runtime
+     * @param  ReflectionClass<object>|null  $declaring
      */
     private static function collectInto(
         array|Node $nodes,
         array $enclosing,
         array &$writes,
-        ?ReflectionClass $subject,
-        ?ReflectionClass $declaration,
+        ?ReflectionClass $runtime,
+        ?ReflectionClass $declaring,
     ): void {
         foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
             if (is_array($node)) {
-                self::collectInto($node, $enclosing, $writes, $subject, $declaration);
+                self::collectInto($node, $enclosing, $writes, $runtime, $declaring);
 
                 continue;
             }
@@ -273,7 +272,7 @@ final class VariableWrites
                 }
             }
 
-            foreach (self::rootedWriteTargets($node, $subject, $declaration) as $target) {
+            foreach (self::rootedWriteTargets($node, $runtime, $declaring) as $target) {
                 $name = self::rootVariable($target);
 
                 if ($name !== null && self::reachesBody($name, $enclosing)) {
@@ -291,7 +290,7 @@ final class VariableWrites
                 if ($child instanceof Node || is_array($child)) {
                     // A closure's `use` clause and parameter defaults run in the enclosing scope.
                     $within = in_array($subNode, ['uses', 'params'], true) ? $enclosing : $inner;
-                    self::collectInto($child, $within, $writes, $subject, $declaration);
+                    self::collectInto($child, $within, $writes, $runtime, $declaring);
                 }
             }
         }
@@ -324,11 +323,11 @@ final class VariableWrites
      * The expressions a `catch`, `unset()`, `static`, `global`, a by-reference `foreach` or a by-reference argument
      * writes to, each counted only for the variable rootVariable() finds.
      *
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
+     * @param  ReflectionClass<object>|null  $runtime
+     * @param  ReflectionClass<object>|null  $declaring
      * @return list<Expr>
      */
-    private static function rootedWriteTargets(Node $node, ?ReflectionClass $subject, ?ReflectionClass $declaration): array
+    private static function rootedWriteTargets(Node $node, ?ReflectionClass $runtime, ?ReflectionClass $declaring): array
     {
         if ($node instanceof CallLike) {
             // Only a call passing a variable or a key of one pays for reflecting its callee.
@@ -339,7 +338,7 @@ final class VariableWrites
 
             return $passed === []
                 ? []
-                : resolve(ByReferenceArguments::class)->of($node, $passed, $subject, $declaration);
+                : resolve(ByReferenceArguments::class)->of($node, $passed, $runtime, $declaring);
         }
 
         $targets = match (true) {
@@ -473,7 +472,7 @@ final class VariableWrites
             : null;
         $body = $callback instanceof ClosureExpr ? $callback->stmts : [$callback->expr];
         $values = $element === null ? null : self::elementValues(array_values(array_filter(
-            self::of($body, $scope->subjectReflection, $scope->declaringFileClass),
+            self::of($body, $scope),
             fn (array $write): bool => $write[0] === $element,
         )));
 

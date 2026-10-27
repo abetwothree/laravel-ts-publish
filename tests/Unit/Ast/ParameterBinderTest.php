@@ -16,9 +16,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenModelMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
@@ -275,6 +277,21 @@ test('binds each parameter into the table its declared type belongs in, and leav
         ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))
         ->toBe(['post' => 'Post | null', 'owner' => 'Post | User', 'stats' => '{ views: number; shares: number }', 'count' => 'number'])
         ->and($scope->requestVarNames)->toBe([]);
+});
+
+// PHP 8.4 reflects `self` and `parent` as spelled, and 8.5 too in a trait's method.
+test('reads a parameter typed self as its declaring class', function () {
+    $reflection = new ReflectionClass(SelfTypedHelpers::class);
+    $scope = new AnalysisScope($reflection, SelfTypedHelpers::class);
+
+    foreach (['matchedWith', 'pairedWith'] as $method) {
+        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), [], $scope);
+    }
+
+    expect($scope->varModelBindings)->toBe(['other' => SelfTypedHelpers::class, 'mate' => SelfTypedHelpers::class])
+        ->and($scope->varDeclaredBindings)->toBe(['spare' => [SelfTypedHelpers::class], 'base' => [Model::class]])
+        ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))
+        ->toBe(['spare' => 'SelfTypedHelpers | null']);
 });
 
 // An API resource's output was inferred without the request rules, so only another subject binds a request there.

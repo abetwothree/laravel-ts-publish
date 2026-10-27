@@ -537,22 +537,6 @@ final class ValueResolver
     }
 
     /**
-     * The class a constant fetch names, or null for `parent` on a subject that has none.
-     */
-    private function constantClassName(Name $class, AnalysisScope $scope): ?string
-    {
-        if ($class->toLowerString() === 'parent') {
-            $parentReflection = $scope->subjectReflection->getParentClass();
-
-            return $parentReflection === false
-                ? null // @codeCoverageIgnore — every JsonResource subclass has a parent
-                : $parentReflection->getName();
-        }
-
-        return $this->scopeClassName($class, $scope);
-    }
-
-    /**
      * Whether a class, interface or enum of this name can be loaded.
      *
      * @phpstan-assert-if-true class-string $className

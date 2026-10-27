@@ -66,7 +66,7 @@ trait CollectsInstanceofGuards
      */
     protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes ??= VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= VariableWrites::of($stmts, $scope);
 
         $this->bindBlockGuards($stmts, null, $scope, $writes);
         $this->proveGuardedReads($stmts, $scope, $writes);
@@ -87,7 +87,7 @@ trait CollectsInstanceofGuards
 
         $paths = [];
 
-        foreach (VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, , $target]) {
+        foreach (VariableWrites::of($stmts, $scope) as [$name, , $target]) {
             $path = $name === 'this' ? $this->thisReadPath($target) : null;
 
             if ($path !== null) {

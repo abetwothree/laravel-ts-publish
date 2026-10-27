@@ -114,7 +114,7 @@ final class ModelFills
             if ($param->var instanceof Variable && is_string($param->var->name) && $param->default instanceof New_
                 && ($scope->closureParamExprBindings[$param->var->name] ?? null) === $param->default
             ) {
-                $writes ??= VariableWrites::of($body, $scope->subjectReflection, $scope->declaringFileClass);
+                $writes ??= VariableWrites::of($body, $scope);
                 self::mark($param->default, $param->var->name, $body, $writes, $scope, $parked);
             }
         }
