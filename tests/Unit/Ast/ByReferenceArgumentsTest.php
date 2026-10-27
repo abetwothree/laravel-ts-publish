@@ -162,8 +162,8 @@ it('tells a call that leaves every string key of the variable it takes by refere
     'array_unshift()' => ['array_unshift($x, 1);', true],
     'array_splice(), which can remove any key' => ['array_splice($x, 1, 1, ["z"]);', false],
     'sort(), which renumbers every key' => ['sort($x);', false],
-    'array_walk(), which writes each value in place' => ['array_walk($x, "f");', true],
-    'array_walk_recursive(), which writes each leaf in place' => ['array_walk_recursive($x, "f");', true],
+    'array_walk(), which rewrites each value' => ['array_walk($x, "f");', false],
+    'array_walk_recursive(), which rewrites each leaf' => ['array_walk_recursive($x, "f");', false],
     'a method' => ['$this->fill($x);', false],
 ]);
 

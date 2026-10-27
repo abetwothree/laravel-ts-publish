@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InPlaceSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InPlaceRewrittenParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyKeepingRewrites;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeRewrittenParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReplacedParameter;
@@ -136,6 +138,26 @@ it('keeps a resource\'s local keys required past a merge in an `if` and a loop',
         ->and((new MergedPostResource($post))->resolve(request()))->toBe(['id' => 3, 'title' => 't', 'a' => true, 'b' => true])
         ->and((new MergedPostResource($post))->resolve(Request::create('/', 'GET', ['full' => 1, 'more' => 1])))
         ->toBe(['id' => 3, 'title' => 't', 'body' => 'b', 'more' => 1, 'a' => true, 'b' => true]);
+});
+
+// The walk does not follow a value rewritten in place, so a seed would keep the argument's old value types. Its keys go
+// unpublished instead, the known gap; Arr::set() still opens the shape for the key it sets.
+it('seeds nothing past a top-level rewrite of the values in place', function () {
+    expect(analyzedKeyTypes(InPlaceRewrittenParameter::class))->toBe([
+        'walked' => '{ x: number }',
+        'walked_recursive' => '{ x: number }',
+        'ref_looped' => '{ x: number }',
+        'arr_set' => '{ x: number; [key: string]: unknown }',
+    ])->and(json_encode(new InPlaceRewrittenParameter()->toArray()))->toBe(
+        '{"walked":{"id":"1","n":"2","x":1},"walked_recursive":{"id":"1","n":"2","x":1},'
+        .'"ref_looped":{"id":"1","n":"2","x":1},"arr_set":{"id":"str","n":2,"x":1}}',
+    );
+});
+
+it('seeds nothing past a top-level rewrite in place in a helper a resource reads or spreads', function () {
+    expect(analyzedKeyTypes(InPlaceSpreadResource::class))->toBe(['ref_stringified' => '{ x: number }', 'label' => 'string'])
+        ->and((new InPlaceSpreadResource(null))->resolve(request()))
+        ->toBe(['ref_stringified' => ['id' => '1', 'n' => '2', 'x' => 1], 'count' => '#1', 'label' => 'l']);
 });
 
 it('seeds nothing past an array_splice(), whose keys publish open', function () {

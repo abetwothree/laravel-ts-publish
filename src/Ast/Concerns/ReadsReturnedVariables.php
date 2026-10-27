@@ -714,7 +714,7 @@ trait ReadsReturnedVariables
             return null;
         }
 
-        return $this->rewritesWhole($stmts, $varName) ? null : $bound;
+        return $this->rewritesWhole($stmts, $varName, inPlaceToo: true) ? null : $bound;
     }
 
     /**
@@ -723,8 +723,10 @@ trait ReadsReturnedVariables
      * which keys it still holds. A write inside a block the statement holds may not run, so the walk judges it there.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  bool  $inPlaceToo  whether a rewrite of the values in place counts too, as it does for a seed, whose old
+     *                            value types the walk would keep
      */
-    private function rewritesWhole(array $stmts, string $varName): bool
+    private function rewritesWhole(array $stmts, string $varName, bool $inPlaceToo = false): bool
     {
         foreach ($stmts as $stmt) {
             $blocks = array_merge(...StatementBlocks::inner($stmt));
@@ -740,7 +742,8 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                if (! $this->keepsEveryKey($node, $varName)) {
+                if (! $this->keepsEveryKey($node, $varName)
+                    || ($inPlaceToo && $this->rewritesValuesInPlace($node, $varName))) {
                     return true;
                 }
             }
@@ -770,8 +773,8 @@ trait ReadsReturnedVariables
 
     /**
      * Whether a whole write keeps every string key the variable holds: an `=` of a merge or a replace taking it first,
-     * of `Arr::add()` on it or of a `+` it leads; a `+=`; `Arr::set()` on it; a by-reference `foreach` over it; or a
-     * by-reference call that keeps them. The one rule rewritesWhole() and a block's unread `=` decide by.
+     * of `Arr::add()` on it or of a `+` it leads; a `+=`; a by-reference call that keeps them; or a rewrite of its
+     * values in place. The one rule rewritesWhole() and a block's unread `=` decide by.
      */
     private function keepsEveryKey(Node $write, string $varName): bool
     {
@@ -785,12 +788,31 @@ trait ReadsReturnedVariables
                 && $this->takesFirst($value, $varName),
             $value instanceof StaticCall => $this->callsArrOn($value, 'add', $varName),
             $write instanceof Plus => $names($write->var),
+            $write instanceof CallLike && ! $write->isFirstClassCallable() && array_any(
+                $write->getArgs(),
+                fn (Arg $arg): bool => $names($arg->value)
+                    && resolve(ByReferenceArguments::class)->keepsStringKeys($write, $arg->value),
+            ) => true,
+            default => $this->rewritesValuesInPlace($write, $varName),
+        };
+    }
+
+    /**
+     * Whether a write rewrites the variable's values in place, keeping every key but not each value's type:
+     * array_walk() or array_walk_recursive() on it, a by-reference `foreach` over it, or `Arr::set()` on it.
+     */
+    private function rewritesValuesInPlace(Node $write, string $varName): bool
+    {
+        $names = fn (Expr $expr): bool => $expr instanceof Variable && $expr->name === $varName;
+        $inPlace = [ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves];
+
+        return match (true) {
             $write instanceof Foreach_ => $write->byRef && $names($write->expr),
             $write instanceof CallLike => $this->callsArrOn($write, 'set', $varName)
                 || (! $write->isFirstClassCallable() && array_any(
                     $write->getArgs(),
                     fn (Arg $arg): bool => $names($arg->value)
-                        && resolve(ByReferenceArguments::class)->keepsStringKeys($write, $arg->value),
+                        && in_array(resolve(ByReferenceArguments::class)->effect($write, $arg->value), $inPlace, true),
                 )),
             default => false,
         };

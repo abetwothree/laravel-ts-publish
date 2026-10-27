@@ -139,14 +139,12 @@ final class ByReferenceArguments
 
     /**
      * Whether a call leaves every string key of a variable it passes by reference standing: a sort that keeps each key,
-     * array_push() and array_unshift(), which only add values, or array_walk() and array_walk_recursive(), which only
-     * write them in place.
+     * or array_push() and array_unshift(), which only add values.
      */
     public function keepsStringKeys(CallLike $call, Expr $argument): bool
     {
         return match ($this->effect($call, $argument)) {
-            ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject, ByReferenceEffect::WritesElements,
-            ByReferenceEffect::WritesLeaves => true,
+            ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject => true,
             ByReferenceEffect::Appends => $call instanceof FuncCall && $call->name instanceof Name
                 && in_array($this->namedFunction($call->name)?->getName(), self::ADDS_ONLY, true),
             default => false,
