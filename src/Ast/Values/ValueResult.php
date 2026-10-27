@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -158,7 +159,7 @@ final class ValueResult
         }
 
         foreach (self::modelChannelFqcns($result) as $model) {
-            if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
+            if (FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract()) {
                 return false;
             }
         }

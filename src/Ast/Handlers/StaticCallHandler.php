@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
@@ -274,7 +275,7 @@ final class StaticCallHandler implements ExpressionHandler
         return $call->class instanceof Name
             && $call->class->toLowerString() === 'parent'
             && method_exists($className, $methodName)
-            && $this->isFrameworkClass(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName());
+            && FrameworkClasses::is(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName());
     }
 
     /**

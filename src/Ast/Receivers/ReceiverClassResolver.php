@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -826,7 +827,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
+        return FrameworkClasses::is($property->getDeclaringClass()->getName())
             ? null
             : $this->typeOf($this->propertyClasses($property, $scope->runtimeReflection->getName()));
     }
@@ -1623,7 +1624,7 @@ final class ReceiverClassResolver
         $declaring = $property->getDeclaringClass();
 
         // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $docComment = str_starts_with($declaring->getName(), 'Illuminate\\') ? false : $property->getDocComment();
+        $docComment = FrameworkClasses::is($declaring->getName()) ? false : $property->getDocComment();
         $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
 
         if ($declared === null || $declared === '') {

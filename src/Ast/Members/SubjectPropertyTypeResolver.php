@@ -112,7 +112,7 @@ final class SubjectPropertyTypeResolver
 
         $property = $subject->getProperty($name);
 
-        if ($property->isStatic() || str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')) {
+        if ($property->isStatic() || FrameworkClasses::is($property->getDeclaringClass()->getName())) {
             return false;
         }
 
@@ -271,7 +271,7 @@ final class SubjectPropertyTypeResolver
                 continue;
             }
 
-            $computedNames = ! str_starts_with($declaration->getName(), 'Illuminate\\');
+            $computedNames = ! FrameworkClasses::is($declaration->getName());
 
             // A framework body counts only a write that spells the name, so a source that never does is not walked.
             if (! $computedNames && ! $this->spellsName($file, $name)) {

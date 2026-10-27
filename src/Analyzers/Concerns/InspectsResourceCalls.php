@@ -100,15 +100,6 @@ trait InspectsResourceCalls
     }
 
     /**
-     * Whether Laravel declares a class, as JsonResource and ResourceCollection: a body it declares serves the runtime
-     * class, and a resource it declares publishes no type, so neither is read as the class it names.
-     */
-    protected function isFrameworkClass(string $fqcn): bool
-    {
-        return str_starts_with(ltrim($fqcn, '\\'), 'Illuminate\\');
-    }
-
-    /**
      * Whether a class is an API resource this run will also emit a file for, as ResourceCollections decides it.
      *
      * @phpstan-assert-if-true class-string<JsonResource> $fqcn

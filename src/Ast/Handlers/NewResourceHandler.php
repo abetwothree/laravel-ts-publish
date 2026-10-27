@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -78,7 +79,7 @@ final class NewResourceHandler implements ExpressionHandler
         }
 
         // `new parent(...)` over JsonResource or ResourceCollection builds a resource no file publishes.
-        if ($this->isResourceClass($className) && $this->isFrameworkClass($className)) {
+        if ($this->isResourceClass($className) && FrameworkClasses::is($className)) {
             return $result;
         }
 
