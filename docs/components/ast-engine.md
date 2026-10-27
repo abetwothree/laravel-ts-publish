@@ -516,14 +516,16 @@ property declared without a value publishes `null`; a public one left `null` dec
 fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
 operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
 as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
-property itself takes the default and constant writes under an `AnalysisMemo` guard. Any other write declines: a value
-the engine cannot type, a write in a trait's method the class overrides, an element write, `unset()`, a computed
-`$this->{$name}` write in application code, or an argument to a by-reference parameter of a callee the scan can name
-([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
-`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
-method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
-receiver's declared class (`$this->holder()->views`), or a write from outside the class.
+property itself takes the default and constant writes under an `AnalysisMemo` guard. An append joins the elements of
+each list the type holds, and a literal string key joins a one-object shape as an optional key. Any other write
+declines: a value the engine cannot type, a write a closure or arrow function in the method holds, a write in a trait's
+method the class overrides, any other element write, `unset()`, a computed `$this->{$name}` write in application code,
+or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local
+write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and
+`reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only
+assumes its runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a
+receiver it cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write
+from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With

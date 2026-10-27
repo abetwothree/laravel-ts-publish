@@ -123,16 +123,18 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
-A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of
-a declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a
-value and alone where its result is the method's own return, when the argument is not one object literal (a `Record`,
-a list, a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an
-`EnumResource` wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less
-read cannot import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or
-by-reference call of the parameter leaves only the helper's own writes; a `??=`, a key-keeping sort such as `ksort()`,
-`array_push()` and `array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the
-walk cannot read, makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape
-open. Declare `@return array{…}` on the helper to publish the exact shape.
+A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of a
+declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a value
+and alone where its result is the method's own return, when the argument is not one object literal (a `Record`, a list,
+a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an `EnumResource`
+wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less read cannot
+import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference
+call of the parameter leaves only the helper's own writes; a `??=`, a key-keeping sort such as `ksort()`,
+`array_push()`, `array_unshift()`, `array_walk()`, `Arr::set()` and a by-reference `foreach` keep the argument's keys.
+Inside a block, such a write, or an `=` of a value the walk cannot read, makes each key held before it optional, a
+local's too, and, but for an `unset()`, publishes the shape open, unless it keeps every key, as those calls and an `=`
+of `array_merge()` or `array_replace()`, either recursive, or `Arr::add()` taking the array first, or of a `+` it leads,
+do. Declare `@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
@@ -782,13 +784,16 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 ### An untyped property's default ignores writes the scan cannot see
 
 An untyped property publishes its default's type joined with each value its class, an ancestor, a trait or the published
-subclass writes it, whole or by a compound operator, typed in the writing method's scope. It publishes `unknown` for any
-other write: an element write, an `unset()`, a write in a trait's method the class overrides, or a value the engine
-cannot type, such as an untyped parameter or a `mixed` call. A helper that a write calls to read the property back
-publishes it `unknown` where that helper is read first. A by-reference parameter on a receiver the scan cannot resolve,
-such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel sends while the
-published type stays the default's. So does a write by a subclass of a receiver's declared class, such as the object
-behind `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
+subclass writes it, whole or by a compound operator, typed in the writing method's scope; an append joins the elements
+of its list, and a literal string key joins its object as an optional key. It publishes `unknown` for any other write:
+an `unset()` of the property or an element, a computed or nested key, an append onto an object or beside a key write, a
+by-reference `foreach`, a write a closure or arrow function in the method holds, a write in a trait's method the class
+overrides, or a value the engine cannot type, such as an untyped parameter or a `mixed` call. A helper that a write
+calls to read the property back publishes it `unknown` where that helper is read first. A by-reference parameter on a
+receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change
+the value Laravel sends while the published type stays the default's. So does a write by a subclass of a receiver's
+declared class, such as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var`
+docblock.
 
 ### A receiver's body reads `static` as its declared class
 
