@@ -74,7 +74,6 @@ final class AstEngine
         bool $assumesRuntime = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
-        $runtime = $runtime?->getName() === $class ? null : $runtime;
 
         // An ancestor's helper reads the model of the class it runs for, which the ancestor may not name.
         if ($modelClass === null && is_a(($runtime ?? $reflection)->getName(), JsonResource::class, true)) {
@@ -82,8 +81,7 @@ final class AstEngine
         }
 
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime === null ? '' : '@runtime:'.$runtime->getName())
-            .($assumesRuntime ? '@assumed' : '');
+            .($readsCall ? '@call' : '').CallSite::signature($passed).AnalysisMemo::runtimeKey($class, $runtime, $assumesRuntime);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,

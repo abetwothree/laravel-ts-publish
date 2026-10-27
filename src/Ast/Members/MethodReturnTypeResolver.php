@@ -83,11 +83,10 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
-        $runtime = $runtime?->getName() === $class ? null : $runtime;
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime === null ? '' : '@runtime:'.$runtime->getName()).($assumesRuntime ? '@assumed' : ''),
+                .AnalysisMemo::runtimeKey($class, $runtime, $assumesRuntime),
             function () use ($class, $methodName, $passed, $backing, $runtime, $assumesRuntime): ?array {
                 $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $assumesRuntime);
 

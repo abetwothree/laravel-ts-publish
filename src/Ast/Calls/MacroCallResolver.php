@@ -113,7 +113,7 @@ final class MacroCallResolver
         $assumes = $scope->assumesRuntime;
 
         return resolve(AnalysisMemo::class)->remember(
-            'macro:'.$runtime->getName().'@'.$method.'@'.($modelClass ?? '').($assumes ? '@assumed' : ''),
+            'macro:'.$runtime->getName().'@'.$method.'@'.($modelClass ?? '').AnalysisMemo::runtimeKey($runtime->getName(), $runtime, $assumes),
             function () use ($runtime, $method, $modelClass, $assumes): ?array {
                 $function = $this->reflect($this->macroFor($runtime, $method));
                 $result = match (true) {
