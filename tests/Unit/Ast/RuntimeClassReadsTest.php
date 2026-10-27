@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPrivateResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
@@ -147,6 +148,14 @@ it('reads a method on an instance an inherited body builds with $this as the cla
         'built' => ['base_part' => 1],
         'late_built' => ['child_part' => true],
         'late_made' => ['child_part' => true],
+    ]);
+});
+
+it('reads the declaring class\'s private method on an instance an inherited body builds as the runtime class', function () {
+    expect(publishedResourceKeyTypes(BuiltPrivateResource::class, Post::class))->toBe([
+        'late_built' => '{ base_label: number }', 'late_made' => '{ base_label: number }',
+    ])->and((new BuiltPrivateResource(new Post))->resolve(request()))->toBe([
+        'late_built' => ['base_label' => 1], 'late_made' => ['base_label' => 1],
     ]);
 });
 

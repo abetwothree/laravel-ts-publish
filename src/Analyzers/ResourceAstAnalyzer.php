@@ -327,19 +327,23 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Spread-analyze a named method of an instance the body builds, read with `$this` as that instance. The
-     * ExpressionEngine entry point for a handler that resolves a self-returning chain onto a non-preserving method
+     * Spread-analyze a named method of an instance the body builds, read with `$this` as that instance, and the
+     * declaring class's own private one where it has it, as PHP calls that over the built class's namesake.
+     *
+     * The ExpressionEngine entry point for a handler that resolves a self-returning chain onto a non-preserving method
      * body, whose result becomes one value's inline type — never the flatten target, so not top-level.
      *
      * @param  ReflectionClass<object>  $built  the class the chain builds
      */
     public function spreadAnalysis(string $methodName, ReflectionClass $built): ?ResourceAnalysis
     {
+        $on = AnalysisScope::memberClassOf($this->scope->declaringClass, $built, $methodName, true);
+
         return $this->scope->within(
             function (AnalysisScope $scope) use ($built): void {
                 $scope->runtimeReflection = $built;
             },
-            fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $built),
+            fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $on),
         );
     }
 
