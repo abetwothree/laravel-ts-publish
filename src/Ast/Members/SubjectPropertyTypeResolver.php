@@ -78,11 +78,12 @@ final class SubjectPropertyTypeResolver
      * yields a type whose tokens can be imported.
      *
      * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $runtime  the class a write's `static` names; null where only the declared
-     *                                                 class is known, which declines such a write
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, where the runtime class
+     *                                                      is known; null where it is only assumed, which declines such
+     *                                                      a write
      * @return ValueExpressionResult|null
      */
-    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $runtime = null): ?array
+    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $knownRuntime = null): ?array
     {
         if (! $subject->hasProperty($name)) {
             return null;
@@ -92,7 +93,7 @@ final class SubjectPropertyTypeResolver
 
         return resolve(PropertyDocblockTypeReader::class)->read($property)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property, $runtime);
+            ?? $this->defaultValueType($subject, $property, $knownRuntime);
     }
 
     /**
@@ -194,10 +195,10 @@ final class SubjectPropertyTypeResolver
      * the property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
-     * @param  ReflectionClass<object>|null  $runtime  the class a write's `static` names, if known
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, if known
      * @return ValueExpressionResult|null
      */
-    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $runtime): ?array
+    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $knownRuntime): ?array
     {
         if ($property->getType() !== null || ! $property->hasDefaultValue()) {
             return null;
@@ -225,7 +226,7 @@ final class SubjectPropertyTypeResolver
         $written = [];
 
         foreach ($writes as [$site, $self]) {
-            $assigned = $this->assignedConstant($site, $property->getName(), $runtime, $self);
+            $assigned = $this->assignedConstant($site, $property->getName(), $knownRuntime, $self);
 
             if ($assigned === null) {
                 return null;
@@ -303,12 +304,13 @@ final class SubjectPropertyTypeResolver
      * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
      * name, an unset, an iteration, a reference or a call that may take it by reference.
      *
-     * @param  ReflectionClass<object>|null  $runtime  the class the object is, which `static` names; null declines a
-     *                                                 value naming `static`, since a subclass may give it another type
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class the object is, which `static` names; null
+     *                                                      declines a value naming `static`, since a subclass may give
+     *                                                      it another type
      * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the write
      * @return ValueExpressionResult|null
      */
-    private function assignedConstant(Node $site, string $name, ?ReflectionClass $runtime, ReflectionClass $self): ?array
+    private function assignedConstant(Node $site, string $name, ?ReflectionClass $knownRuntime, ReflectionClass $self): ?array
     {
         if (! $site instanceof Assign
             || ! $site->var instanceof PropertyFetch
@@ -323,12 +325,12 @@ final class SubjectPropertyTypeResolver
             fn (Node $node): bool => $node instanceof Name && $node->toLowerString() === 'static',
         ) !== null;
 
-        if ($namesStatic && $runtime === null) {
+        if ($namesStatic && $knownRuntime === null) {
             return null;
         }
 
         $scope = new AnalysisScope($self);
-        $scope->runtimeReflection = $runtime ?? $self;
+        $scope->runtimeReflection = $knownRuntime ?? $self;
         $values = resolve(ValueResolver::class);
 
         try {

@@ -113,7 +113,7 @@ final class ReceiverMethodReturnResolver
             }
 
             $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
-                ?? $this->resolveOn($class, $methodName, $fromInside, $site, ! $receiver->runtimeInstance || $scope->assumesRuntime);
+                ?? $this->resolveOn($class, $methodName, $fromInside, $site, $scope->assumesCallee($receiver->runtimeInstance));
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -490,7 +490,7 @@ final class ReceiverMethodReturnResolver
         string $methodName,
         bool $fromInside,
         ?CallSite $site = null,
-        bool $assumesRuntime = true,
+        bool $assumesRuntime = AnalysisScope::ASSUMES_HELD_OBJECT,
     ): ?array {
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);

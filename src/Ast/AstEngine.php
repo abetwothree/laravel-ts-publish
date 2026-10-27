@@ -314,7 +314,8 @@ final class AstEngine
                 continue;
             }
 
-            $result = $resolver->resolve($reflection, $name, $reflection) ?? ValueResult::unknown();
+            // A published class's properties describe its own instances, so it is their known runtime class.
+            $result = $resolver->resolve($reflection, $name, knownRuntime: $reflection) ?? ValueResult::unknown();
 
             // json_encode() omits a typed property never assigned; a promoted or defaulted one is always present.
             $analysis->addProperty($name, $result, optional: ! $property->hasDefaultValue() && ! $property->isPromoted());

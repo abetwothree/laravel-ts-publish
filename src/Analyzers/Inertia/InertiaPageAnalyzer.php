@@ -343,7 +343,7 @@ class InertiaPageAnalyzer
         $analysis->merge(resolve(AstEngine::class)->analyzeMethod(
             $propertyClass,
             $propsArg->name->toString(),
-            assumesRuntime: ! new ReflectionClass($propertyClass)->isFinal(),
+            assumesRuntime: AnalysisScope::assumesInjected(new ReflectionClass($propertyClass)->isFinal()),
         ));
 
         return $analysis;

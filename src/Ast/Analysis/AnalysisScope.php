@@ -127,6 +127,12 @@ final class AnalysisScope
     /** The varGuardBindings key of the proofs on an API resource's `$this->resource`, a name no variable spells. */
     public const string PROXY_GUARDS = '$this->resource';
 
+    /**
+     * Whether a body run on an object the code holds, such as a receiver, the model `$this->resource` forwards to or a
+     * method macro's callable, only assumes its class: always, since the object may be a subclass of the class known.
+     */
+    public const bool ASSUMES_HELD_OBJECT = true;
+
     /** Every name-keyed binding table, empty: a function scope no caller's name reaches. */
     public const array NO_NAME_BINDINGS = [
         'closureParamExprBindings' => [],
@@ -489,6 +495,15 @@ final class AnalysisScope
     }
 
     /**
+     * Whether a body run on an object the container fills only assumes its class: unless the class is final, the
+     * container may bind a subclass in its place.
+     */
+    public static function assumesInjected(bool $isFinal): bool
+    {
+        return ! $isFinal;
+    }
+
+    /**
      * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
      * proxy or names no one class. The one home of the proxy target, for every scope and every narrowing of it; a
      * ResourceCollection's items are proxyReceiver()'s.
@@ -627,6 +642,24 @@ final class AnalysisScope
             || (method_exists($className, $methodName)
                 && ! new ReflectionMethod($className, $methodName)->isStatic()
                 && is_a($this->runtimeReflection->getName(), $className, true));
+    }
+
+    /**
+     * Whether the body a call reaches only assumes its runtime class: one the call runs on this scope's runtime
+     * instance keeps this scope's flag, and any other is assumed.
+     */
+    public function assumesCallee(bool $onRuntimeInstance): bool
+    {
+        return ! $onRuntimeInstance || $this->assumesRuntime;
+    }
+
+    /**
+     * Whether a body run on an instance of a class this scope builds only assumes it: a build is exact, unless the
+     * class is the one an assumed scope's `static` stands for.
+     */
+    public function assumesBuilt(string $class): bool
+    {
+        return $this->assumesRuntime && $class === $this->runtimeReflection->getName();
     }
 
     /**

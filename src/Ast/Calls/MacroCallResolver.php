@@ -119,7 +119,7 @@ final class MacroCallResolver
                 $result = match (true) {
                     // A method macro runs on the object its callable holds, never the subject.
                     $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)
-                        ->resolve($function->getDeclaringClass()->getName(), $function->getName(), assumesRuntime: true),
+                        ->resolve($function->getDeclaringClass()->getName(), $function->getName(), assumesRuntime: AnalysisScope::ASSUMES_HELD_OBJECT),
                     $function instanceof ReflectionFunction => $this->functionType($function, $runtime, $modelClass, $assumes),
                     default => null,
                 };

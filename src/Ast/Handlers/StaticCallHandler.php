@@ -258,7 +258,7 @@ final class StaticCallHandler implements ExpressionHandler
                 $methodName,
                 $site,
                 runtime: $forwards ? $scope->runtimeReflection : null,
-                assumesRuntime: ! $forwards || $scope->assumesRuntime,
+                assumesRuntime: $scope->assumesCallee($forwards),
             ) ?? $result;
         }
 

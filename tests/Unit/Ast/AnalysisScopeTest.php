@@ -603,6 +603,19 @@ it('reaches an ancestor\'s private member on the runtime class, since the declar
         ->and($scope->thisMemberClass('secret', false))->toBe($child);
 });
 
+// A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
+it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
+    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
+    $scope->assumesRuntime = $assumed;
+
+    expect([
+        $scope->assumesCallee(true), $scope->assumesCallee(false),
+        $scope->assumesBuilt(PanelPayload::class), $scope->assumesBuilt(BasePanelPayload::class),
+    ])->toBe([$assumed, true, $assumed, false])
+        ->and([AnalysisScope::assumesInjected(true), AnalysisScope::assumesInjected(false), AnalysisScope::ASSUMES_HELD_OBJECT])
+        ->toBe([false, true, true]);
+})->with(['a known scope' => [false], 'an assumed scope' => [true]]);
+
 // A write replaces what the caller's test saw on that path and every path through it, and only those.
 it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
