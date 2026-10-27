@@ -35,7 +35,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other six methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other seven methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -128,25 +128,30 @@ final class AstEngine
             return null;
         }
 
-        $runs = $runtime?->getName() ?? $class;
-        $modelClass = match (true) {
-            $backing !== null => $backing,
-            is_a($runs, Model::class, true) => $runs,
-            is_a($runs, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($runtime ?? $context->reflection),
-            default => null,
-        };
-        $scope = $this->bindingsFor($context, $modelClass, $passed);
-        $scope->assumesRuntime = $assumesRuntime;
-        $analyzer = new ResourceAstAnalyzer(
-            $scope->subjectReflection,
-            $modelClass,
-            $method,
-            scope: $scope,
-            context: $context,
-            runtimeClass: $runtime,
-        );
+        [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime, $assumesRuntime);
 
         return $this->returnsValue($context->method, $analyzer, $scope);
+    }
+
+    /**
+     * The value one expression of a located method's body holds, read in a fresh scope over that method, as
+     * analyzeMethodValue() reads the method's returns.
+     *
+     * @param  ReflectionClass<object>|null  $runtime  what `static` names in the body, and whose model `$this` reads
+     * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeExpressionValue(
+        MethodContext $context,
+        Expr $expr,
+        ?ReflectionClass $runtime = null,
+        bool $assumesRuntime = false,
+    ): array {
+        $method = $context->method->name->toString();
+
+        return $this->valueReader($context, $method, [], null, $runtime, $assumesRuntime)[0]->resolve($expr);
     }
 
     /**
@@ -333,6 +338,44 @@ final class AstEngine
     private static function genericReflection(string $className): ReflectionClass
     {
         return new ReflectionClass($className);
+    }
+
+    /**
+     * An analyzer reading values in a located method's body, with the scope it reads in: the method's parameters bound
+     * as a call passing $passed binds them, and the model its runtime class reads.
+     *
+     * @param  array<string, PassedBinding>  $passed
+     * @param  class-string<Model>|null  $backing
+     * @param  ReflectionClass<object>|null  $runtime
+     * @return array{ResourceAstAnalyzer, AnalysisScope}
+     */
+    private function valueReader(
+        MethodContext $context,
+        string $method,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): array {
+        $runs = $runtime?->getName() ?? $context->reflection->getName();
+        $modelClass = match (true) {
+            $backing !== null => $backing,
+            is_a($runs, Model::class, true) => $runs,
+            is_a($runs, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($runtime ?? $context->reflection),
+            default => null,
+        };
+        $scope = $this->bindingsFor($context, $modelClass, $passed);
+        $scope->assumesRuntime = $assumesRuntime;
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $method,
+            scope: $scope,
+            context: $context,
+            runtimeClass: $runtime,
+        );
+
+        return [$analyzer, $scope];
     }
 
     /**

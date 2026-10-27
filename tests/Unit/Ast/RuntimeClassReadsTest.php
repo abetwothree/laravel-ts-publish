@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
@@ -32,11 +33,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrittenTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
@@ -48,6 +52,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
+use Workbench\App\Http\Resources\TieredNoticeResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PanelPayload;
 use Workbench\App\ValueObjects\TraitPanelPayload;
@@ -221,6 +226,43 @@ it('types an untyped property a class writes itself as its default joined with t
     expect(publishedResourceKeyTypes(BaseWrittenTierResource::class, Post::class))->toBe(['tier' => 'string', 'level' => 'number | string'])
         ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)))->toBe(['tier' => 'gold', 'level' => 1])
         ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)->maxLevel()))->toBe(['tier' => 'gold', 'level' => 'max']);
+});
+
+it('types an untyped property a subclass writes through a typed setter as its default joined with the setter\'s type', function () {
+    expect(analyzedKeyTypes(TieredNoticeResource::class))
+        ->toBe(['headline' => 'string | number', 'label' => 'string', 'tier' => 'string', 'base_only' => 'number'])
+        ->and((new TieredNoticeResource(null))->resolve(request()))
+        ->toBe(['headline' => 0, 'label' => 'base', 'tier' => 'gold', 'base_only' => 1])
+        ->and((new TieredNoticeResource(null))->withTier('silver')->resolve(request())['tier'])->toBe('silver');
+});
+
+// A write that reads the property it sets reads its default and constant writes there, and no later read may replay
+// that. Read through `labelled()` first, `copyLabel()` reaches that helper again, so the cycle cut leaves it `unknown`.
+it('types an untyped property\'s non-constant writes in the scope of the method that holds each', function () {
+    $written = new WrittenTallyChild()->setTier(5)->keepTier()->bump()->tick()->relabel()->stress();
+    $child = new ReflectionClass(WrittenTallyChild::class);
+
+    expect(analyzedKeyTypes(WrittenTallyChild::class))->toBe([
+        'tier' => 'string | number',
+        'count' => 'number',
+        'label' => 'string | number',
+        'labelled' => '{ label: unknown }',
+    ])->and(resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'tier', $child)['type'] ?? null)->toBe('string | number')
+        ->and(json_encode(new WrittenTallyChild()->toArray()))->toBe('{"tier":"gold","count":0,"label":"draft","labelled":{"label":"draft"}}')
+        ->and(json_encode($written->toArray()))->toBe('{"tier":5,"count":2,"label":"draft!","labelled":{"label":"draft!"}}')
+        ->and(json_encode(new WrittenTallyChild()->setLabel(3)->copyLabel()->toArray()['labelled']))->toBe('{"label":3}');
+});
+
+// The known gap: the engine cannot type an untyped parameter, which may hold anything.
+it('leaves an untyped property `unknown` where a subclass writes it an untyped parameter', function () {
+    expect(analyzedKeyTypes(UntypedTallyChild::class)['tier'])->toBe('unknown')
+        ->and(json_encode(new UntypedTallyChild()->setTier(['x' => 1])->toArray()['tier']))->toBe('{"x":1}');
+});
+
+// The class's own `setTier()` binds a `string`, which the trait's body, run only as `setTierNumber()`, never sees.
+it('leaves an untyped property `unknown` where a trait method the class overrides writes it', function () {
+    expect(analyzedKeyTypes(AliasedTallyChild::class)['tier'])->toBe('unknown')
+        ->and(new AliasedTallyChild()->setTierNumber(5)->toArray()['tier'])->toBe(5);
 });
 
 // Siblings read in one process: a `static::` write typed once per class would leak one sibling's type to the next.

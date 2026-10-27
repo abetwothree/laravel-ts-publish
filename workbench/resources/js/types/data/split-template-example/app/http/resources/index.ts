@@ -230,6 +230,7 @@ export * from './team-status-audit-resource';
 export * from './team-subscriber-local-resource';
 export * from './team-subscriber-resource';
 export * from './ternary-resource';
+export * from './tiered-notice-resource';
 export * from './to-array-casts-resource';
 export * from './tracking-event-resource';
 export * from './trait-helper-read-resource';

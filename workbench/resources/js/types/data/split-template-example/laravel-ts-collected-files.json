@@ -353,6 +353,7 @@
     "app\/Http\/Resources\/TeamSubscriberLocalResource.php",
     "app\/Http\/Resources\/TeamSubscriberResource.php",
     "app\/Http\/Resources\/TernaryResource.php",
+    "app\/Http\/Resources\/TieredNoticeResource.php",
     "app\/Http\/Resources\/ToArrayCastsResource.php",
     "app\/Http\/Resources\/TrackingEventResource.php",
     "app\/Http\/Resources\/TraitHelperReadResource.php",

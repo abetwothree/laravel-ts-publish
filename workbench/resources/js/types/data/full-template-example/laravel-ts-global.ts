@@ -5623,6 +5623,16 @@ declare global {
             nested_ternary_label: string | null;
         }
         /**
+         * Fixture: a runtime class of BaseNoticeResource's `toArray()` that writes the untyped `$tier` it inherits through a
+         * typed setter.
+         */
+        export interface TieredNoticeResource {
+            headline: string | number;
+            label: string;
+            tier: string;
+            base_only: number;
+        }
+        /**
          * Fixture resource used to test #[TsCasts] placed on the toArray() method
          * rather than on the class. No class-level annotation is present on purpose so that
          * method-level behavior is tested in isolation.
