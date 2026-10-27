@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -26,8 +27,6 @@ use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
-use ReflectionType;
-use ReflectionUnionType;
 
 /**
  * Binds the parameters of a method whose body is read apart from its call, such as a subject's helper: by the types
@@ -182,7 +181,7 @@ final class ParameterBinder
      */
     public function narrowableClasses(ReflectionParameter $parameter): ?array
     {
-        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter);
 
         if ($classes === null || array_any($classes, fn (string $class): bool => is_a($class, Request::class, true))) {
             return null;
@@ -201,7 +200,7 @@ final class ParameterBinder
      */
     public function declaredModel(ReflectionParameter $parameter): ?string
     {
-        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter);
 
         return $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
     }
@@ -227,7 +226,7 @@ final class ParameterBinder
     public function takesPassedValue(ReflectionParameter $parameter, ReflectionMethod $method): bool
     {
         return ! $parameter->isVariadic()
-            && $this->nativeClasses($parameter->getType()) === null
+            && $this->nativeClasses($parameter) === null
             && $this->declaredValue(
                 $parameter,
                 (string) $method->getDocComment(),
@@ -271,7 +270,7 @@ final class ParameterBinder
                 continue;
             }
 
-            $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+            $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter);
 
             if ($classes !== null && array_any($classes, fn (string $class): bool => is_a($class, Request::class, true))) {
                 continue;
@@ -311,39 +310,16 @@ final class ParameterBinder
     }
 
     /**
-     * The classes a native type names when every arm but `null` is a loadable class, else null.
+     * The classes a parameter's native type names when every arm but `null` is a loadable class, `self` and `parent`
+     * read against the class that declares it, as PHP 8.4 and a trait's method leave them as written; else null.
      *
      * @return non-empty-list<class-string>|null
      */
-    private function nativeClasses(?ReflectionType $type): ?array
+    private function nativeClasses(ReflectionParameter $parameter): ?array
     {
-        $arms = match (true) {
-            $type instanceof ReflectionNamedType => [$type],
-            $type instanceof ReflectionUnionType => $type->getTypes(),
-            default => [],
-        };
+        $declaring = $parameter->getDeclaringClass()?->getName() ?? '';
 
-        $classes = [];
-
-        foreach ($arms as $arm) {
-            if (! $arm instanceof ReflectionNamedType) {
-                return null;
-            }
-
-            $class = $arm->getName();
-
-            if ($class === 'null') {
-                continue;
-            }
-
-            if ($arm->isBuiltin() || ! (class_exists($class) || interface_exists($class))) {
-                return null;
-            }
-
-            $classes[] = $class;
-        }
-
-        return $classes === [] ? null : $classes;
+        return DeclaredClasses::nativeClasses($parameter->getType(), $declaring, $declaring);
     }
 
     /**
@@ -355,7 +331,9 @@ final class ParameterBinder
      */
     private function declaredValue(ReflectionParameter $parameter, string $docComment, ReflectionClass $context): ?array
     {
-        $value = resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::resolveReflectionType($parameter->getType()));
+        $value = resolve(ReflectedTypeAcceptor::class)->accept(
+            LaravelTsPublish::resolveReflectionType($parameter->getType(), $parameter->getDeclaringClass()),
+        );
 
         if ($value === null || TsTypeString::isVagueTsType($value['type'])) {
             $reader = resolve(PropertyDocblockTypeReader::class);

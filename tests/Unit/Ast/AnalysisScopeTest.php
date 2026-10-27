@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -16,12 +18,16 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Http\Resources\BareFuncCallResource;
+use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\BasePanelPayload;
+use Workbench\App\ValueObjects\PanelPayload;
 
 it('constructs with the given subject reflection and model class', function () {
     $reflection = new ReflectionClass(stdClass::class);
@@ -38,6 +44,8 @@ it('constructs with the given subject reflection and model class', function () {
         ->and($scope->localVarBindings)->toBe([])
         ->and($scope->varDocBindings)->toBe([])
         ->and($scope->declaringFileClass)->toBe($reflection)
+        ->and($scope->declaringClass)->toBe($reflection)
+        ->and($scope->runtimeReflection)->toBe($reflection)
         ->and($scope->resolvingLocalVars)->toBe([])
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
@@ -62,7 +70,7 @@ it('derives no forwarding target without both a proxying subject and a backing m
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
-it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file', function () {
+it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file and declaring class', function () {
     $model = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);
     $scope = new AnalysisScope($model, Post::class);
@@ -72,7 +80,9 @@ it('rebases a model scope onto an API resource over the model, which forwards to
     expect($scope->subjectReflection)->toBe($resource)
         ->and($scope->modelClass)->toBe(Post::class)
         ->and($scope->forwardsUndeclaredMembersTo)->toBe(Post::class)
-        ->and($scope->declaringFileClass)->toBe($model);
+        ->and($scope->declaringFileClass)->toBe($model)
+        ->and($scope->runtimeReflection)->toBe($resource)
+        ->and($scope->declaringClass)->toBe($model);
 });
 
 it('rebases a resource scope onto a resource collection, which forwards nothing: its items are the proxy', function () {
@@ -272,7 +282,7 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
     $scope->copyBindings(new Variable('item', ['startFilePos' => 5]), 'param', $captured);
     $claimed = array_keys($scope->varGuardBindings);
     $inside = $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', $scope->declaringFileClass, []),
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
         fn (): array => $scope->varGuardBindings,
     );
 
@@ -413,7 +423,10 @@ it('captures every public array table but the re-entrancy guards and the narrowe
  */
 function analysisScopeSetOnceFields(): array
 {
-    return ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
+    return [
+        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement',
+        'assumesRuntime',
+    ];
 }
 
 /**
@@ -457,9 +470,9 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase, strin
 it('within() restores every name table and ambient field after a read, a throw included', function (string $throws, string $odd) {
     $setOnce = analysisScopeSetOnceFields();
     $ambient = [
-        'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'resolvingLocalVars',
-        'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof', 'filtersNestedResources',
-        'mapResultArrayed',
+        'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
+        'runtimeReflection', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(
@@ -519,13 +532,15 @@ it('restores every field a subject method read sets aside', function () {
     $inside = [];
 
     $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs),
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(Post::class, 'publishable'), $proofs),
         function () use ($scope, &$inside): void {
             $inside = [
                 $scope->nameBindings(),
                 $scope->resolvingLocalVars,
                 $scope->declaringFileClass->getName(),
                 $scope->visitedSpreadMethods,
+                $scope->readsSpreadMethod(new ReflectionMethod(DraftPost::class, 'publishable')),
+                $scope->readsSpreadMethod(new ReflectionMethod(StaticSyntaxResource::class, 'publishable')),
             ];
 
             $scope->localVarBindings['inner'] = new Variable('body');
@@ -535,12 +550,77 @@ it('restores every field a subject method read sets aside', function () {
         },
     );
 
-    expect($inside)->toBe([[...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, ['helper' => true]])
+    expect($inside)->toBe([
+        [...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, [Post::class.'::publishable' => true], true, false,
+    ])
         ->and($scope->nameBindings())->toBe($before)
         ->and($scope->resolvingLocalVars)->toBe(['item' => true])
         ->and($scope->declaringFileClass)->toBe($declaring)
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
+
+// `self` names the class whose method the body is, and a trait's method is the using class's own.
+it('restores the declaring class with the rest of the state', function (string $subject, string $method, string $declaring, string $file) {
+    $scope = new AnalysisScope(new ReflectionClass($subject));
+    $inside = [];
+
+    $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod($subject, $method), []),
+        function () use ($scope, &$inside): void {
+            $inside = [
+                $scope->declaringClass->getName(),
+                $scope->declaringFileClass->getName(),
+                $scope->runtimeReflection->getName(),
+            ];
+
+            $scope->declaringClass = new ReflectionClass(User::class);
+        },
+    );
+
+    expect($inside)->toBe([$declaring, $file, $subject])
+        ->and($scope->declaringClass->getName())->toBe($subject)
+        ->and($scope->declaringFileClass->getName())->toBe($subject)
+        ->and($scope->runtimeReflection->getName())->toBe($subject);
+})->with([
+    'an inherited method' => [PanelPayload::class, 'toArray', BasePanelPayload::class, BasePanelPayload::class],
+    'a trait\'s method' => [BareFuncCallResource::class, 'includeMorphValue', BareFuncCallResource::class, IncludesMorphValue::class],
+]);
+
+// PHP binds a private member to the class whose body reads it; any other member is the runtime class's.
+it('reaches a $this member on the declaring class only where it declares that member private', function (string $member, bool $isMethod, string $reached) {
+    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
+    $scope->declaringClass = new ReflectionClass(BasePanelPayload::class);
+
+    expect($scope->thisMemberClass($member, $isMethod)->getName())->toBe($reached);
+})->with([
+    'a private method' => ['weight', true, BasePanelPayload::class],
+    'a private property' => ['secret', false, BasePanelPayload::class],
+    'a public method the runtime class overrides' => ['title', true, PanelPayload::class],
+    'a protected method the runtime class overrides' => ['extra', true, PanelPayload::class],
+    'a protected property the runtime class redeclares' => ['tier', false, PanelPayload::class],
+    'a member neither declares' => ['missing', true, PanelPayload::class],
+]);
+
+it('reaches an ancestor\'s private member on the runtime class, since the declaring class cannot see it', function () {
+    $child = new ReflectionClass(new class extends BasePanelPayload {});
+    $scope = new AnalysisScope($child);
+
+    expect($scope->thisMemberClass('weight', true))->toBe($child)
+        ->and($scope->thisMemberClass('secret', false))->toBe($child);
+});
+
+// A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
+it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
+    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
+    $scope->assumesRuntime = $assumed;
+
+    expect([
+        $scope->assumesCallee(true), $scope->assumesCallee(false),
+        $scope->assumesBuilt(PanelPayload::class), $scope->assumesBuilt(BasePanelPayload::class),
+    ])->toBe([$assumed, true, $assumed, false])
+        ->and([AnalysisScope::assumesInjected(true), AnalysisScope::assumesInjected(false), AnalysisScope::ASSUMES_HELD_OBJECT])
+        ->toBe([false, true, true]);
+})->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
 // A write replaces what the caller's test saw on that path and every path through it, and only those.
 it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
@@ -550,7 +630,7 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     $before = $scope->narrowedReads;
 
     $inside = $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', $scope->declaringFileClass, [], $rewritten),
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
         fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
     );
 

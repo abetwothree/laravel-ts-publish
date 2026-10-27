@@ -25,6 +25,16 @@ final class TsTypeShape
     }
 
     /**
+     * Whether one union arm is a JSON scalar: a number, string or boolean, or a literal of one.
+     */
+    public static function isScalar(string $arm): bool
+    {
+        return in_array($arm, ['number', 'string', 'boolean', 'true', 'false'], true)
+            || is_numeric($arm)
+            || (strlen($arm) >= 2 && in_array($arm[0], ['"', "'"], true) && $arm[-1] === $arm[0]);
+    }
+
+    /**
      * Whether an object literal or a `Record<number, …>` sits anywhere in the type, outside quotes.
      *
      * A template literal's `${…}` reads as an object, so an unsure answer is yes.
@@ -42,15 +52,15 @@ final class TsTypeShape
     public static function memberType(string $type, string $key): ?string
     {
         foreach (self::arms($type) as $arm) {
-            if (str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')) {
-                $arguments = self::splitTopLevel(substr($arm, 7, -1), [',']);
+            $record = self::recordArguments($arm);
 
-                return $arguments[1] ?? null;
+            if ($record !== null) {
+                return $record[1];
             }
 
             if (self::isWrapped($arm, '[', ']')) {
                 return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
-                    ? self::tupleMember(self::splitTopLevel(substr($arm, 1, -1), [','])[(int) $key] ?? null)
+                    ? self::tupleMembers($arm)[(int) $key] ?? null
                     : null;
             }
 
@@ -63,6 +73,16 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * Each member type of one tuple, in order, without its optional marker.
+     *
+     * @return list<string>
+     */
+    public static function tupleMembers(string $tuple): array
+    {
+        return array_map(self::tupleMember(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
     }
 
     /**
@@ -147,6 +167,22 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * The key and value types of a type that is one `Record<K, V>`, or null for any other type.
+     *
+     * @return array{string, string}|null
+     */
+    public static function recordArguments(string $type): ?array
+    {
+        if (! str_starts_with($type, 'Record<') || ! self::isWrapped(substr($type, strlen('Record')), '<', '>')) {
+            return null;
+        }
+
+        $arguments = self::splitTopLevel(substr($type, strlen('Record<'), -1), [',']);
+
+        return count($arguments) === 2 ? [$arguments[0], $arguments[1]] : null;
     }
 
     /**
@@ -262,9 +298,9 @@ final class TsTypeShape
     /**
      * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union.
      */
-    private static function tupleMember(?string $member): ?string
+    private static function tupleMember(string $member): string
     {
-        if ($member === null || ! str_ends_with($member, '?')) {
+        if (! str_ends_with($member, '?')) {
             return $member;
         }
 

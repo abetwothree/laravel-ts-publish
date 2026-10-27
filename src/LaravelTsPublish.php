@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -76,6 +77,8 @@ use UnitEnum;
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
+ *
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -630,7 +633,7 @@ class LaravelTsPublish
 
     /**
      * Like `methodReturnedTypes`, but falls back to the `@return` docblock
-     * when the method has no signature return type.
+     * when the method has no signature return type, or a vague one the docblock spells more closely.
      *
      * @template T of object
      *
@@ -660,6 +663,10 @@ class LaravelTsPublish
             return $docblockInfo;
         }
 
+        if (TsTypeString::spellsListAsRecord($signatureInfo['type'], $docblockInfo['type'])) {
+            return $docblockInfo;
+        }
+
         return $signatureInfo['type'] !== 'unknown' ? $signatureInfo : $docblockInfo;
     }
 
@@ -671,10 +678,16 @@ class LaravelTsPublish
         return TsTypeString::isVagueTsType($type);
     }
 
-    /** @return TypeScriptTypeInfo */
+    /**
+     * A closure's native return type, `self` and `parent` read against the closure's scope class.
+     *
+     * @return TypeScriptTypeInfo
+     */
     public function closureReturnedTypes(Closure $closure): array
     {
-        return $this->resolveReflectionType(new ReflectionFunction($closure)->getReturnType());
+        $function = new ReflectionFunction($closure);
+
+        return $this->resolveReflectionType($function->getReturnType(), $function->getClosureScopeClass());
     }
 
     /**
@@ -756,7 +769,8 @@ class LaravelTsPublish
     /**
      * Resolve a reflected native type to TypeScript, reading `self` and `parent` against the declaring class.
      *
-     * @param  ReflectionClass<object>|null  $declaringClass  the class whose member declares the type
+     * @param  ReflectionClass<object>|null  $declaringClass  the class `self` names where the type is written: a
+     *                                                        member's declaring class, a closure's scope class
      * @return TypeScriptTypeInfo
      */
     public function resolveReflectionType(?ReflectionType $returnType, ?ReflectionClass $declaringClass = null): array
@@ -1616,10 +1630,11 @@ class LaravelTsPublish
      *                                   aliasPropertyType() consumes only the matching prefix, in order
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  SiblingImportNames  $siblings  each sibling name an FQCN is imported under, such as an enum's `…Kind`
      */
-    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
+    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases, array $siblings = []): string
     {
-        return TsTypeString::aliasPropertyType($type, $itemFqcns, $nameMap, $aliases);
+        return TsTypeString::aliasPropertyType($type, $itemFqcns, $nameMap, $aliases, $siblings);
     }
 
     /**
@@ -2193,7 +2208,7 @@ class LaravelTsPublish
     /**
      * A reflected named type's name, `self` and `parent` resolved against the class whose member declares it.
      *
-     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait.
+     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait's method or a closure.
      *
      * @param  ReflectionClass<object>|null  $declaringClass
      */

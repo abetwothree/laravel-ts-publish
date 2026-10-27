@@ -348,6 +348,7 @@ test('a bare enum case in a payload publishes its enum, aliased beside a same-na
         'status' => 'AppStatusType',
         'crm_status' => 'CrmStatusType',
         'kept' => 'AppStatusType',
+        'status_name' => 'AppStatusKind',
     ])->and(array_merge(...array_values($transformer->typeImports)))
         ->toContain('StatusType as AppStatusType')
         ->toContain('StatusType as CrmStatusType');

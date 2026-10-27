@@ -7,7 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use Closure;
+use ReflectionClass;
 
 /**
  * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
@@ -22,6 +24,7 @@ use Closure;
  *     dropped: int,
  *     resources: int,
  *     models: int,
+ *     enums: int,
  * }
  * @phpstan-type MemoEntry = array{
  *     value: mixed,
@@ -32,6 +35,7 @@ use Closure;
  *     dropped: int,
  *     resources: int,
  *     models: int,
+ *     enums: int,
  * }
  *
  * @internal
@@ -46,6 +50,19 @@ final class AnalysisMemo
 
     /** @var array<string, list<MemoEntry>> each key's answers, one per set of its guards held when it was computed */
     private array $entries = [];
+
+    /**
+     * The key suffix that tells a body's reads for one runtime class apart: none for the class read itself, since that
+     * read is the plain one, and `@assumed` where the runtime class is only assumed.
+     *
+     * @param  ReflectionClass<object>|null  $runtime
+     */
+    public static function runtimeKey(string $classRead, ?ReflectionClass $runtime, bool $assumed): string
+    {
+        $runtimeName = $runtime?->getName();
+
+        return ($runtimeName === null || $runtimeName === $classRead ? '' : '@runtime:'.$runtimeName).($assumed ? '@assumed' : '');
+    }
 
     /**
      * Enter a guarded analysis. Entering one already on the stack returns false instead, which cuts every answer being
@@ -87,8 +104,10 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
+        $enums = PublishedEnums::version();
+
         foreach ($this->entries[$key] ?? [] as $entry) {
-            if ($this->reproducible($entry)) {
+            if ($this->reproducible($entry, $enums)) {
                 $this->replay($entry);
 
                 /** @var T $value */
@@ -107,6 +126,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped(),
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
+            'enums' => $enums,
         ];
 
         try {
@@ -129,16 +149,17 @@ final class AnalysisMemo
     }
 
     /**
-     * Whether computing an answer again now could only reproduce it: nothing it read has changed, and each guard it
-     * entered is held now exactly where it was held then, so a fresh run is cut short at the same places.
+     * Whether computing an answer again now could only reproduce it: nothing it read has changed, the published enums
+     * at version $enums included, and each guard it entered is held now exactly where it was held then.
      *
      * @param  MemoEntry  $entry
      */
-    private function reproducible(array $entry): bool
+    private function reproducible(array $entry, int $enums): bool
     {
         // An answer worked out while dependencies went unrecorded has none to replay into a recording run.
         if ($entry['resources'] !== PublishedResourceRegistry::version()
             || $entry['models'] !== PublishedModelRegistry::version()
+            || $entry['enums'] !== $enums
             || (! $entry['recording'] && DependencyRecorder::isRecording())) {
             return false;
         }
@@ -208,6 +229,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'resources' => $frame['resources'],
             'models' => $frame['models'],
+            'enums' => $frame['enums'],
         ];
 
         foreach ($this->entries[$key] ?? [] as $index => $stored) {

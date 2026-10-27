@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -46,11 +48,14 @@ use Throwable;
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
+ * @phpstan-import-type SpelledKinds from SharedEnumKinds
  *
+ * @phpstan-type PageKinds = list<SpelledKinds>
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
+ *     pageKinds?: PageKinds,
  *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
@@ -283,7 +288,7 @@ class InertiaPageAnalyzer
                 return [$compacted];
             }
 
-            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->literalLocalBindings());
+            $merged = $this->mergedArrayLiteral($propsArg, $scope, null, $scope->literalLocalBindings());
 
             if ($merged !== null) {
                 return [$merged];
@@ -319,7 +324,8 @@ class InertiaPageAnalyzer
 
     /**
      * Type a props argument delegated to a collaborator — `Inertia::render('X', $this->props->build())` —
-     * by analyzing that method on the property's own class.
+     * by analyzing that method on the property's own class, which the container may fill with a subclass unless it is
+     * final, so the body only assumes it.
      */
     protected function analyzeDelegatedProps(Expr $propsArg, MethodContext $context): ResourceAnalysis
     {
@@ -334,7 +340,11 @@ class InertiaPageAnalyzer
         }
 
         $analysis = new ResourceAnalysis;
-        $analysis->merge(resolve(AstEngine::class)->analyzeMethod($propertyClass, $propsArg->name->toString()));
+        $analysis->merge(resolve(AstEngine::class)->analyzeMethod(
+            $propertyClass,
+            $propsArg->name->toString(),
+            assumesRuntime: AnalysisScope::assumesInjected(new ReflectionClass($propertyClass)->isFinal()),
+        ));
 
         return $analysis;
     }
@@ -364,6 +374,8 @@ class InertiaPageAnalyzer
         $allFqcns = [];
         /** @var list<class-string> $constFqcns */
         $constFqcns = [];
+        /** @var PageKinds $pageKinds per page type, each `…Kind` it spells => its enum */
+        $pageKinds = [];
         /** @var array<string, list<string>> $externalImports */
         $externalImports = [];
 
@@ -387,6 +399,7 @@ class InertiaPageAnalyzer
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
 
             $this->forgetOverriddenChannels($analysis, $casts);
+            $pageKinds[] = SharedEnumKinds::spellApart($analysis);
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $renumbered = $this->renumberTopLevel($props, $casts, $subject);
@@ -425,6 +438,7 @@ class InertiaPageAnalyzer
             'component' => count($components) === 1 ? $components[0] : $components,
             'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
+            'pageKinds' => $pageKinds,
             'enumConstFqcns' => $constFqcns,
             'externalImports' => $externalImports,
         ];
@@ -531,7 +545,7 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
             fn (string $fqcn): bool => enum_exists($fqcn)
-                ? $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])
+                ? array_any(ValueResult::enumNames($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
                 : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
         ));
     }

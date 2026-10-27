@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
@@ -133,4 +134,16 @@ test('a toArray() that spreads its $with keys publishes them', function () {
     expect(collect((new ResourceTransformer(ToArraySpreadsWithResource::class))->properties)
         ->map(fn (array $p, string $name): string => $name.($p['optional'] ? '?' : '').': '.$p['type'])
         ->implode('; '))->toBe('id: number; version: string; extra: string');
+});
+
+test('a with() an inherited body reaches reads JsonResource\'s $with on the instance it runs on', function () {
+    expect(publishedResourceKeyTypes(BuiltInstanceResource::class, Post::class))->toMatchArray([
+        'built_with' => '{ base_meta: number }',
+        'late_with' => '{ meta: number }',
+        'child_meta' => 'boolean',
+    ])->and((new BuiltInstanceResource(new Post))->resolve(request()))->toMatchArray([
+        'built_with' => ['base_meta' => 1],
+        'late_with' => ['meta' => 1],
+        'child_meta' => true,
+    ]);
 });

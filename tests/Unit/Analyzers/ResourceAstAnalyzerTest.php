@@ -3281,24 +3281,24 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         expect($names)->toContain('name', 'value', 'meta');
     });
 
-    test('wrapped resource name property resolves to string', function () {
+    test('wrapped resource name property resolves to the enum\'s Kind alias', function () {
         $reflection = new ReflectionClass(MediaTypeResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $name = collect($analysis->properties)->firstWhere('name', 'name');
 
-        expect($name['type'])->toBe('string');
+        expect($name['type'])->toBe('MediaTypeKind');
     });
 
-    test('wrapped resource value property resolves to string for string-backed enum', function () {
+    test('wrapped resource value property resolves to the published enum\'s value type', function () {
         $reflection = new ReflectionClass(MediaTypeResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $value = collect($analysis->properties)->firstWhere('name', 'value');
 
-        expect($value['type'])->toBe('string');
+        expect($value['type'])->toBe('MediaTypeType');
     });
 
     test('inline array value is analyzed as inline object type', function () {
@@ -3339,14 +3339,14 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
 });
 
 describe('ResourceAstAnalyzer @var union docblock edge cases', function () {
-    test('null-first @var docblock resolves backing type correctly', function () {
+    test('null-first @var docblock resolves the enum\'s value type', function () {
         $reflection = new ReflectionClass(EnumNullFirstResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $value = collect($analysis->properties)->firstWhere('name', 'value');
 
-        expect($value['type'])->toBe('string');
+        expect($value['type'])->toBe('MediaTypeType');
     });
 
     test('model-backed resource using $this->resource->prop resolves model attribute type', function () {
@@ -3371,24 +3371,24 @@ describe('ResourceAstAnalyzer with MediaTypeInstanceOfResource (instanceof guard
         expect($names)->toContain('name', 'value', 'meta');
     });
 
-    test('wrapped resource name property resolves to string via instanceof hint', function () {
+    test('wrapped resource name property resolves to the enum\'s Kind alias via instanceof hint', function () {
         $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $name = collect($analysis->properties)->firstWhere('name', 'name');
 
-        expect($name['type'])->toBe('string');
+        expect($name['type'])->toBe('MediaTypeKind');
     });
 
-    test('wrapped resource value property resolves to string for string-backed enum via instanceof hint', function () {
+    test('wrapped resource value property resolves to the published enum\'s value type via instanceof hint', function () {
         $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $value = collect($analysis->properties)->firstWhere('name', 'value');
 
-        expect($value['type'])->toBe('string');
+        expect($value['type'])->toBe('MediaTypeType');
     });
 
     test('inline array includes resolved method types via instanceof hint', function () {
@@ -3428,8 +3428,8 @@ describe('ResourceAstAnalyzer with MediaTypePositiveInstanceOfResource (positive
         $name = collect($analysis->properties)->firstWhere('name', 'name');
         $value = collect($analysis->properties)->firstWhere('name', 'value');
 
-        expect($name['type'])->toBe('string');
-        expect($value['type'])->toBe('string');
+        expect($name['type'])->toBe('MediaTypeKind');
+        expect($value['type'])->toBe('MediaTypeType');
     });
 
     test('empty inline array resolves to never[], the shape json_encode actually emits', function () {
@@ -3454,14 +3454,14 @@ describe('ResourceAstAnalyzer with MediaTypePositiveInstanceOfResource (positive
 });
 
 describe('ResourceAstAnalyzer with UnitEnumResource (unit enum wrapping)', function () {
-    test('unit enum name resolves to string', function () {
+    test('unit enum name resolves to its published type, which is its names', function () {
         $reflection = new ReflectionClass(UnitEnumResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $name = collect($analysis->properties)->firstWhere('name', 'name');
 
-        expect($name['type'])->toBe('string');
+        expect($name['type'])->toBe('VisibilityType');
     });
 
     test('unit enum value falls back to string | number', function () {

@@ -277,7 +277,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        return $map;
+        return $map + $this->siblingGlobalAliases();
     }
 
     /**
@@ -781,7 +781,7 @@ class ResourceTransformer extends CoreTransformer
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 
-        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends);
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends, ValueResult::enumNames(...));
 
         return $this;
     }
@@ -849,16 +849,21 @@ class ResourceTransformer extends CoreTransformer
      * @param  array<TFqcn, string>  $map  FQCN => unaliased name
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
      * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  (Closure(TFqcn): list<string>)|null  $namesOf  every name a class's tokens are spelled with; null for
+     *                                                        its unaliased name alone
      * @return array<TFqcn, string>
      */
-    protected function keepSpelled(array $map, array $attributed, array $extra): array
+    protected function keepSpelled(array $map, array $attributed, array $extra, ?Closure $namesOf = null): array
     {
         $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
         $ownNames = $this->ownNames($map, $attributed);
 
-        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra): bool {
+        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra, $namesOf): bool {
+            $names = $namesOf === null ? [$name] : $namesOf($fqcn);
+
             foreach ($types as $property => $type) {
-                if (in_array($fqcn, $attributed[$property] ?? [], true) && TsTypeString::typeNameOccursIn($name, $type)) {
+                if (in_array($fqcn, $attributed[$property] ?? [], true)
+                    && array_any($names, static fn (string $spelled): bool => TsTypeString::typeNameOccursIn($spelled, $type))) {
                     return true;
                 }
             }
@@ -914,9 +919,9 @@ class ResourceTransformer extends CoreTransformer
     {
         $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
 
-        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
-            $this->localImportName($fqcn, $typeName),
-            ...$types,
+        $spelled = fn (string $typeName, string $fqcn): bool => array_any(
+            $this->localImportNames($fqcn, $typeName),
+            static fn (string $local): bool => TsTypeString::typeNameOccursIn($local, ...$types),
         );
         $this->enumFqcnMap = array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
         $this->resourceFqcnMap = array_filter($this->resourceFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
@@ -947,8 +952,10 @@ class ResourceTransformer extends CoreTransformer
         $valueImports = [];
         $hasEnums = $this->shouldGenerateHasEnums();
 
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
+
         $typeImports = [
-            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->enumFqcnMap, $types),
             ...$this->collectModularTypeImports($this->resourceFqcnMap),
             ...$this->collectModularTypeImports($this->modelFqcnMap),
         ];
@@ -1288,6 +1295,8 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->mergePropertyFqcnMaps());
+
         $this->applyImportNameRegistries(
             $registry,
             $constRegistry,
@@ -1315,6 +1324,7 @@ class ResourceTransformer extends CoreTransformer
                 $propFqcns,
                 $nameMap,
                 $this->importAliases,
+                $this->siblingImportNames,
             );
         }
     }

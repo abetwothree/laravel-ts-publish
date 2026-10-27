@@ -35,11 +35,12 @@ abstract class CoreCollector
     abstract protected function finderSettings(): array;
 
     /**
-     * Forget every memoized class map so a later run in the same process rescans the disk.
+     * Forget every memoized class map, and the published enums collected from them, so a later run rescans the disk.
      */
     public static function flushClassMapCache(): void
     {
         self::$classMaps = [];
+        PublishedEnums::flush();
     }
 
     /** @return Collection<int, class-string<TFindable>> */

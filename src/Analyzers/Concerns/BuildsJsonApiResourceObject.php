@@ -212,7 +212,7 @@ trait BuildsJsonApiResourceObject
      */
     protected function spreadsFrameworkToAttributes(ArrayItem $item): bool
     {
-        $parent = $this->scope->subjectReflection->getParentClass();
+        $parent = $this->scope->declaringClass->getParentClass();
 
         return $item->key === null
             && $item->unpack

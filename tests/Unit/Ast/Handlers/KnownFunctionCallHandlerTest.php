@@ -5,9 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
+use Workbench\App\ValueObjects\ReshapedListsPayload;
 
 /** The type one expression resolves to through the resource profile of PostResource over a Post. */
 function knownFunctionCallType(string $php): string
@@ -70,4 +72,24 @@ it('publishes array_filter() as the array Laravel sends, and a gap in a list as 
         ->toContain('"filtered_list":{"1":"anana"}')
         ->toContain('"filtered_nulls":["Banana"]')
         ->toContain('"filtered_nulls_by":["Banana",null]');
+});
+
+// array_values() re-indexes, so every arm it reads is a list; PHP throws a TypeError on null, so that arm is left out.
+it('reads array_values() of each arm as the list of its values', function () {
+    expect(analyzedKeyTypes(ArrayValuesArms::class))->toMatchArray([
+        'maybe_tags' => 'string[]',
+        'pair' => '[number, string]',
+        'none' => 'never[]',
+        'post' => 'unknown',
+    ]);
+});
+
+it('keeps the element type through array_values()', function () {
+    expect(analyzedKeyTypes(ReshapedListsPayload::class))->toMatchArray([
+        'tags' => 'string[]',
+        'count_values' => 'number[]',
+        'size_values' => '(number | string)[]',
+        'kept_tags' => 'string[]',
+    ])->and(json_encode(new ReshapedListsPayload()->toArray()))
+        ->toContain('"tags":["a"],"count_values":[1],"size_values":[1,"x"],"kept_tags":["a"]');
 });

@@ -2629,6 +2629,16 @@ declare global {
             id: number;
             slug: string;
         }
+        /**
+         * Fixture: a model-less resource whose `toArray()` calls and spreads helpers NoticeResource overrides, spreads the
+         * `with()` it leaves to JsonResource, and reads a constant and an untyped property NoticeResource redeclares.
+         */
+        export interface BaseNoticeResource {
+            headline: string | number;
+            label: string;
+            tier: string;
+            base_only: number;
+        }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
         }
@@ -3424,7 +3434,7 @@ declare global {
             limits: { daily: number; codes: string[] };
             tags: (string | number)[];
             notes: never[];
-            stage_name?: string;
+            stage_name?: workbench.app.enums.StatusKind;
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {
@@ -3520,7 +3530,7 @@ declare global {
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
-            value: string;
+            value: workbench.app.enums.MediaTypeType;
         }
         /**
          * Resource with non-conventional name — tests #[UseResource] attribute model resolution.
@@ -3990,8 +4000,8 @@ declare global {
             unflagged_rows: { id: number }[];
         }
         export interface MediaTypeInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: workbench.app.enums.MediaTypeKind;
+            value?: workbench.app.enums.MediaTypeType;
             meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
@@ -4000,14 +4010,14 @@ declare global {
          * to exercise additional coverage paths.
          */
         export interface MediaTypePositiveInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: workbench.app.enums.MediaTypeKind;
+            value?: workbench.app.enums.MediaTypeType;
             meta?: { label?: string };
             empty?: never[];
         }
         export interface MediaTypeResource {
-            name: string;
-            value: string;
+            name: workbench.app.enums.MediaTypeKind;
+            value: workbench.app.enums.MediaTypeType;
             meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
@@ -4109,6 +4119,14 @@ declare global {
             archived_at?: string | null;
             total?: string;
             currency?: workbench.app.enums.CurrencyType;
+        }
+        /**
+         * Fixture: builds its response in a local, then merges keys into it inside an `if` and a loop, which keeps every key
+         * the local held. The merged keys stay unpublished, the known gap of a returned variable the walk reads only partly.
+         */
+        export interface MergedPostResource {
+            id: number;
+            title: string;
         }
         /**
          * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
@@ -4273,6 +4291,17 @@ declare global {
          */
         export interface NonThisReceiverSpreadResource {
             id: number;
+        }
+        /**
+         * Fixture: the runtime class of BaseNoticeResource's `toArray()`, overriding the helper it calls, the helper it
+         * spreads, the `with()` it spreads, and the constant and property it reads.
+         */
+        export interface NoticeResource {
+            headline: string;
+            label: number;
+            tier: number;
+            child_only: boolean;
+            meta: number;
         }
         /**
          * only() away from a relation receiver: a top-level spread that names a withCount() virtual the schema
@@ -4566,10 +4595,10 @@ declare global {
             headline_id: number;
             headline: string;
             maybe: { maybe_title: string | null };
-            status_label: { label: string; value: number };
-            status_payload: { payload_status: unknown; payload_name: string };
+            status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
+            status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
             payload_status: workbench.app.enums.StatusType;
-            payload_name: string;
+            payload_name: workbench.app.enums.StatusKind;
         }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
@@ -5602,6 +5631,16 @@ declare global {
             nested_ternary_label: string | null;
         }
         /**
+         * Fixture: a runtime class of BaseNoticeResource's `toArray()` that writes the untyped `$tier` it inherits through a
+         * typed setter.
+         */
+        export interface TieredNoticeResource {
+            headline: string | number;
+            label: string;
+            tier: string;
+            base_only: number;
+        }
+        /**
          * Fixture resource used to test #[TsCasts] placed on the toArray() method
          * rather than on the class. No class-level annotation is present on purpose so that
          * method-level behavior is tested in isolation.
@@ -5680,7 +5719,7 @@ declare global {
          * Also accesses an unknown property to test the unknown enum property path.
          */
         export interface UnitEnumResource {
-            name: string;
+            name: workbench.app.enums.VisibilityType;
             value: string | number;
             custom: unknown;
         }
@@ -6493,6 +6532,7 @@ declare global {
             status: workbench.app.enums.StatusType;
             crm_status: workbench.crm.enums.StatusType;
             kept: workbench.app.enums.StatusType;
+            status_name: workbench.app.enums.StatusKind;
         }
         export interface PureEnumEvent {
             role: workbench.app.enums.RoleType;

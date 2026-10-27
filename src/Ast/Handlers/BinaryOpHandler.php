@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -215,20 +216,10 @@ final class BinaryOpHandler implements ExpressionHandler
             $type === 'unknown' => self::UNTYPED,
             array_all(
                 TsTypeString::splitTopLevelUnion($type),
-                fn (string $arm): bool => $this->isScalarType($arm) || in_array($arm, $enumTokens, true),
+                fn (string $arm): bool => TsTypeShape::isScalar($arm) || in_array($arm, $enumTokens, true),
             ) => self::SCALAR,
             default => self::HIDDEN_KEYS,
         };
-    }
-
-    /**
-     * Whether one union arm is a JSON scalar: a number, string or boolean, or a literal of one.
-     */
-    private function isScalarType(string $arm): bool
-    {
-        return in_array($arm, ['number', 'string', 'boolean', 'true', 'false'], true)
-            || is_numeric($arm)
-            || (strlen($arm) >= 2 && in_array($arm[0], ['"', "'"], true) && $arm[-1] === $arm[0]);
     }
 
     /**

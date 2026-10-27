@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -133,9 +134,18 @@ final class AccessorBodyAnalyzer
      */
     private function namesEveryClass(array $result, array $info): bool
     {
-        foreach ([$info['enumTypes'], $info['classes']] as $names) {
+        // A backed enum's `…Kind` token is one of its occurrences too.
+        /** @var array<string, non-empty-list<string>> $spellings enum type name => the names its tokens spell */
+        $spellings = [];
+
+        foreach ($info['enumFqcns'] as $i => $fqcn) {
+            $name = $info['enumTypes'][$i];
+            $spellings[$name] = [...($spellings[$name] ?? []), ...ValueResult::enumNames($fqcn)];
+        }
+
+        foreach ([[$info['enumTypes'], $spellings], [$info['classes'], []]] as [$names, $spelledAs]) {
             foreach (array_count_values($names) as $name => $count) {
-                $pattern = TsTypeString::queuedTokenPattern([(string) $name]);
+                $pattern = TsTypeString::queuedTokenPattern(array_values(array_unique($spelledAs[$name] ?? [(string) $name])));
 
                 if ($count > 1 && preg_match_all($pattern, $info['type']) < $count) {
                     return false;

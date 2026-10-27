@@ -8,29 +8,42 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Closure;
+use Illuminate\Support\Arr;
 use PhpParser\Node;
+use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignOp\Plus;
+use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
@@ -43,7 +56,6 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
-use ReflectionClass;
 use WeakMap;
 
 /**
@@ -62,6 +74,14 @@ use WeakMap;
 trait ReadsReturnedVariables
 {
     use InspectsAstNodes;
+
+    /** The built-ins whose result keeps every string key of the array they take first. */
+    private const array KEEPS_FIRST_KEYS = [
+        'array_merge',
+        'array_merge_recursive',
+        'array_replace',
+        'array_replace_recursive',
+    ];
 
     /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
     private array $untypedKeyWrites = [];
@@ -87,13 +107,6 @@ trait ReadsReturnedVariables
     abstract protected function analyzeValueExpression(Expr $expr): array;
 
     /**
-     * The class under analysis, the subject a warning names.
-     *
-     * @return ReflectionClass<object>
-     */
-    abstract protected function subjectReflection(): ReflectionClass;
-
-    /**
      * The scope the walk reads in, which an arm its join leaves out is recorded against.
      */
     abstract protected function analysisScope(): AnalysisScope;
@@ -110,6 +123,12 @@ trait ReadsReturnedVariables
      * @return TAnalysis
      */
     abstract protected function newVariableAnalysis(): MethodAnalysis;
+
+    /**
+     * The keys a parameter holds on entry, read from the value the host binds it to; null where it binds none it can
+     * read back key by key.
+     */
+    abstract protected function parameterSeed(string $varName): ?MethodAnalysis;
 
     /**
      * The key and value an append `$var[] = value` writes where the host reads an appended item as a named key; null
@@ -143,7 +162,8 @@ trait ReadsReturnedVariables
     abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
 
     /**
-     * Resolve what a body returns, a returned variable the scope cannot type read through the walk over its writes.
+     * Resolve what a body returns, a returned variable the scope cannot type, or a seeded parameter the body writes,
+     * read through the walk over its writes.
      *
      * ResolvesReturnedValues entry point for a closure's returns and those of a method read as a value.
      *
@@ -154,11 +174,16 @@ trait ReadsReturnedVariables
     {
         $result = $this->analyzeValueExpression($returned);
 
-        if ($result['type'] !== 'unknown' || ! $returned instanceof Variable || ! is_string($returned->name)) {
+        if (! $returned instanceof Variable || ! is_string($returned->name)) {
             return $result;
         }
 
-        return $this->walkedValue($stmts, $returned->name) ?? $result;
+        $bound = $this->parameterSeed($returned->name);
+
+        // A parameter's binding is what it held on entry, which misses each write the body makes to it after.
+        $walks = $result['type'] === 'unknown' || ($bound !== null && $this->writesVariable($stmts, $returned->name));
+
+        return $walks ? $this->walkedValue($stmts, $returned->name, $bound) ?? $result : $result;
     }
 
     /**
@@ -179,11 +204,11 @@ trait ReadsReturnedVariables
         $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
         $holding = $stmts[count($before)] ?? null;
 
-        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable($holding, $name))) {
+        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable([$holding], $name))) {
             return null;
         }
 
-        return $this->walkedValue($before, $name);
+        return $this->walkedValue($before, $name, $this->parameterSeed($name));
     }
 
     /**
@@ -197,8 +222,9 @@ trait ReadsReturnedVariables
      */
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): MethodAnalysis
     {
-        $reads = $this->readsVariableArray($stmts, $varName);
-        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
+        $seed = $this->entrySeed($stmts, $varName, $this->parameterSeed($varName));
+        $reads = $this->readsVariableArray($stmts, $varName, $seed);
+        $analysis = $this->walkVariable($stmts, $varName, $topLevel, $seed);
         $analysis->readsCompletely = $analysis->readsCompletely && $reads;
 
         return $analysis;
@@ -206,15 +232,16 @@ trait ReadsReturnedVariables
 
     /**
      * Whether every whole write to a variable has a form the walk reads: each assignment of the variable is an array
-     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it. A key write never counts against.
+     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it or the walk starts from $seed. A key write
+     * never counts against.
      *
      * @param  array<Node\Stmt>  $stmts
      */
-    protected function readsVariableArray(array $stmts, string $varName): bool
+    protected function readsVariableArray(array $stmts, string $varName, ?MethodAnalysis $seed): bool
     {
         $assigned = false;
 
-        foreach (VariableWrites::of($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
+        foreach (VariableWrites::of($stmts, $this->analysisScope()) as [$written, $node, $writtenTo]) {
             if ($written !== $varName) {
                 continue;
             }
@@ -235,7 +262,57 @@ trait ReadsReturnedVariables
             $assigned = $assigned || $node instanceof Assign;
         }
 
-        return $assigned;
+        return $assigned || $seed !== null;
+    }
+
+    /**
+     * Whether a method returns a parameter its body writes only by key and the walk starts with no seed, so the keys
+     * its caller passed reach the return unread.
+     */
+    protected function returnsUnseededParameter(ClassMethod $method): bool
+    {
+        if ($method->params === []) {
+            return false;
+        }
+
+        $stmts = $method->stmts ?? [];
+        $parameters = [];
+        $returned = [];
+
+        foreach ($method->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $parameters[] = $param->var->name;
+            }
+        }
+
+        foreach ($this->collectReturnExpressions($stmts) as $expr) {
+            if ($expr instanceof Variable && is_string($expr->name) && in_array($expr->name, $parameters, true)) {
+                $returned[$expr->name] = false;
+            }
+        }
+
+        $writes = $returned === []
+            ? []
+            : VariableWrites::of($stmts, $this->analysisScope());
+
+        foreach ($writes as [$name, , $target]) {
+            if (! isset($returned[$name])) {
+                continue;
+            }
+
+            if (! $target instanceof ArrayDimFetch) {
+                // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
+                unset($returned[$name]);
+            } elseif (VariableWrites::rootVariable($target) === $name) {
+                $returned[$name] = true;
+            }
+        }
+
+        // Written only by key, a parameter starts from its host seed itself, as entrySeed() would start it.
+        return array_any(
+            array_keys(array_filter($returned)),
+            fn (string $name): bool => $this->parameterSeed($name) === null,
+        );
     }
 
     /**
@@ -243,10 +320,12 @@ trait ReadsReturnedVariables
      *
      * The bodies of an `if` chain and of a `foreach`, `for` or `while` join as branches. Assignments inside a `try`
      * body, a `catch`, a `case`, or a `do` body after its first `break` or `continue`, are marked as optional. A
-     * whole-array write that analyzes as nothing leaves the variable not read completely, since its keys are unknown.
+     * whole-array write that analyzes as nothing, or a key write the walk cannot name, leaves unread keys.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  TAnalysis  $into
+     * @param  bool  $nested  whether the statements sit in a block the walk's top level holds, where a whole write
+     *                        the walk cannot read may not run, so leaves each key held before it optional
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -254,13 +333,25 @@ trait ReadsReturnedVariables
         bool $isConditional,
         MethodAnalysis $into,
         bool $topLevel = true,
+        bool $nested = false,
     ): void {
         foreach ($stmts as $stmt) {
+            $rewrites = $nested && $this->rewritesWhole([$stmt], $varName);
+
             if ($stmt instanceof TryCatch || $stmt instanceof Switch_
                 || $stmt instanceof Block || $stmt instanceof Do_) {
                 $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
 
+                // Its own write, a `do` condition or a `catch` variable, lands after a block it holds has run.
+                if ($rewrites) {
+                    $this->loosenHeldKeys($into, bringsKeys: true);
+                }
+
                 continue;
+            }
+
+            if ($rewrites) {
+                $this->loosenHeldKeys($into, bringsKeys: ! $stmt instanceof Unset_);
             }
 
             $appendedValue = $this->appendedValue($stmt, $varName);
@@ -274,9 +365,14 @@ trait ReadsReturnedVariables
             }
 
             if ($this->writesUnreadKey($stmt, $varName, $into)) {
-                $into->readsCompletely = false;
+                $into->holdUnreadKeys();
 
                 continue;
+            }
+
+            // The statement's own writes still land beside what the append adds.
+            if ($this->appendsByReference($stmt, $varName)) {
+                $into->holdUnreadKeys();
             }
 
             if ($stmt instanceof Unset_) {
@@ -290,25 +386,30 @@ trait ReadsReturnedVariables
                 continue;
             }
 
+            $assigned = $this->assignedValue($stmt, $varName);
+
             // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
-            if ($stmt instanceof ExpressionStmt
-                && $stmt->expr instanceof Assign
-                && $stmt->expr->var instanceof Variable
-                && $stmt->expr->var->name === $varName) {
-                $baseAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
+            if ($assigned !== null) {
+                $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
 
                 if ($baseAnalysis === null) {
-                    $into->readsCompletely = false;
+                    $keepsKeys = $stmt instanceof ExpressionStmt && $this->keepsEveryKey($stmt->expr, $varName);
+
+                    if ($nested && ! $keepsKeys) {
+                        $this->loosenHeldKeys($into, bringsKeys: true);
+                    } else {
+                        $into->holdUnreadKeys();
+                    }
 
                     continue;
                 }
 
                 // A write that always runs replaces every key held before it, as fromLastReplacement() does at the top.
-                if (! $isConditional && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+                if (! $isConditional && ! $this->spreadsVariable($assigned, $varName)) {
                     $into->replaceWith($this->newVariableAnalysis());
                 }
 
-                $this->noteUntypedItems($stmt->expr->expr, $baseAnalysis);
+                $this->noteUntypedItems($assigned, $baseAnalysis);
                 $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
@@ -323,7 +424,7 @@ trait ReadsReturnedVariables
                 $addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($addedAnalysis === null) {
-                    $into->readsCompletely = false;
+                    $into->holdUnreadKeys();
 
                     continue;
                 }
@@ -485,16 +586,17 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The inline object a variable's walk over a body reads; null where the walk reads it only partly, or reads no key.
+     * The inline object a variable's walk over a body reads, from the keys $bound gives a parameter on entry; null
+     * where the walk reads it only partly, or reads no key.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return ValueExpressionResult|null
      */
-    private function walkedValue(array $stmts, string $varName): ?array
+    private function walkedValue(array $stmts, string $varName, ?MethodAnalysis $bound): ?array
     {
-        $branch = $this->variableBranch($stmts, $varName, topLevel: false);
+        $branch = $this->readFrom($stmts, $varName, false, $bound);
 
-        if ($branch === null || $branch->properties === []) {
+        if ($branch === null || ! $branch->readsCompletely || $branch->properties === []) {
             return null;
         }
 
@@ -504,12 +606,14 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a statement writes the named variable anywhere within it, as VariableWrites::of() counts a write.
+     * Whether statements write the named variable anywhere within them, as VariableWrites::of() counts a write.
+     *
+     * @param  array<Node\Stmt>  $stmts
      */
-    private function writesVariable(Node\Stmt $stmt, string $varName): bool
+    private function writesVariable(array $stmts, string $varName): bool
     {
         return array_any(
-            VariableWrites::of([$stmt], $this->subjectReflection()),
+            VariableWrites::of($stmts, $this->analysisScope()),
             fn (array $write): bool => $write[0] === $varName,
         );
     }
@@ -523,18 +627,40 @@ trait ReadsReturnedVariables
      */
     private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
-        return $this->readsVariableArray($stmts, $varName) ? $this->walkVariable($stmts, $varName, $topLevel) : null;
+        return $this->readFrom($stmts, $varName, $topLevel, $this->parameterSeed($varName));
     }
 
     /**
-     * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis.
+     * A returned variable's walk from the keys $bound gives a parameter on entry, or null when the gate rejects a whole
+     * write; the gate and the walk share the one seed.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return TAnalysis|null
+     */
+    private function readFrom(array $stmts, string $varName, bool $topLevel, ?MethodAnalysis $bound): ?MethodAnalysis
+    {
+        $seed = $this->entrySeed($stmts, $varName, $bound);
+
+        return $this->readsVariableArray($stmts, $varName, $seed)
+            ? $this->walkVariable($stmts, $varName, $topLevel, $seed)
+            : null;
+    }
+
+    /**
+     * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis; with none at the
+     * top level, from $seed, the keys a parameter holds on entry.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis
      */
-    private function walkVariable(array $stmts, string $varName, bool $topLevel): MethodAnalysis
+    private function walkVariable(array $stmts, string $varName, bool $topLevel, ?MethodAnalysis $seed): MethodAnalysis
     {
         $analysis = $this->newVariableAnalysis();
+
+        if ($seed !== null) {
+            $analysis->merge($seed);
+        }
+
         $live = $this->fromLastReplacement($stmts, $varName);
         // A value read during the walk can start a walk of its own, whose writes are not this one's.
         $outer = $this->untypedKeyWrites;
@@ -564,17 +690,191 @@ trait ReadsReturnedVariables
         $start = 0;
 
         foreach ($stmts as $index => $stmt) {
-            if ($stmt instanceof ExpressionStmt
-                && $stmt->expr instanceof Assign
-                && $stmt->expr->var instanceof Variable
-                && $stmt->expr->var->name === $varName
-                && $this->readsAsArray($stmt->expr->expr)
-                && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+            $value = $this->replacingValue($stmt, $varName);
+
+            if ($value !== null && $this->readsAsArray($value)) {
                 $start = $index;
             }
         }
 
         return array_slice($stmts, $start);
+    }
+
+    /**
+     * The keys a parameter whose host seed is $bound holds where the walk over a body starts; null where a top-level
+     * write replaces it, an assignment whether the walk reads its value or not, or the host seeds it with none.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function entrySeed(array $stmts, string $varName, ?MethodAnalysis $bound): ?MethodAnalysis
+    {
+        // Only a seed pays for the write scan, which reflects the callee of each call passed the variable.
+        if ($bound === null
+            || array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null)) {
+            return null;
+        }
+
+        return $this->rewritesWhole($stmts, $varName, inPlaceToo: true) ? null : $bound;
+    }
+
+    /**
+     * Whether a statement writes the whole variable other than by its own `=`, `+=` or `??=`, as an embedded
+     * assignment, destructuring, a by-reference argument, a `foreach` target or unset() does, so the walk cannot tell
+     * which keys it still holds. A write inside a block the statement holds may not run, so the walk judges it there.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  bool  $inPlaceToo  whether a rewrite of the values in place counts too, inside a block as well, as it
+     *                            does for a seed, whose old value types the walk would keep
+     */
+    private function rewritesWhole(array $stmts, string $varName, bool $inPlaceToo = false): bool
+    {
+        foreach ($stmts as $stmt) {
+            $blocks = array_merge(...StatementBlocks::inner($stmt));
+            $own = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
+
+            foreach (VariableWrites::of([$stmt], $this->analysisScope()) as [$written, $node, $target]) {
+                // A seed binds a value that is never null, so its own `??=` never runs.
+                $assigns = $node === $own && $target instanceof Variable
+                    && ($node instanceof Assign || $node instanceof Plus || $node instanceof CoalesceAssign);
+
+                if ($written !== $varName || $target instanceof ArrayDimFetch || $assigns) {
+                    continue;
+                }
+
+                if ($inPlaceToo && $this->rewritesValuesInPlace($node, $varName)) {
+                    return true;
+                }
+
+                if (! array_any($blocks, fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $node))
+                    && ! $this->keepsEveryKey($node, $varName)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a statement's expression passes the variable to a by-reference call that adds values to it under keys the
+     * walk never names, array_push(), array_unshift(), array_splice() or `Arr::set()`, as the statement or inside it.
+     */
+    private function appendsByReference(Node\Stmt $stmt, string $varName): bool
+    {
+        return $stmt instanceof ExpressionStmt && $this->bodyHas(
+            [$stmt],
+            fn (Node $node): bool => $node instanceof CallLike && ! $node->isFirstClassCallable() && (
+                $this->callsArrOn($node, 'set', $varName) || array_any(
+                    $node->getArgs(),
+                    fn (Arg $arg): bool => $arg->value instanceof Variable && $arg->value->name === $varName
+                        && resolve(ByReferenceArguments::class)->effect($node, $arg->value)
+                            === ByReferenceEffect::Appends,
+                )
+            ),
+        );
+    }
+
+    /**
+     * Whether a whole write keeps every string key the variable holds: an `=` of a merge or a replace taking it first,
+     * of `Arr::add()` on it or of a `+` it leads; a `+=`; a by-reference call that keeps them; or a rewrite of its
+     * values in place. The one rule rewritesWhole() and a block's unread `=` decide by.
+     */
+    private function keepsEveryKey(Node $write, string $varName): bool
+    {
+        $value = $this->chainedValue($write instanceof Expr ? $write : null, $varName);
+        $names = fn (?Expr $expr): bool => $expr instanceof Variable && $expr->name === $varName;
+
+        return match (true) {
+            $value instanceof BinaryOp\Plus => $names($value->left),
+            $value instanceof FuncCall => $value->name instanceof Name
+                && in_array($value->name->toLowerString(), self::KEEPS_FIRST_KEYS, true)
+                && $this->takesFirst($value, $varName),
+            $value instanceof StaticCall => $this->callsArrOn($value, 'add', $varName),
+            $write instanceof Plus => $names($write->var),
+            $write instanceof CallLike && ! $write->isFirstClassCallable() && array_any(
+                $write->getArgs(),
+                fn (Arg $arg): bool => $names($arg->value)
+                    && resolve(ByReferenceArguments::class)->keepsStringKeys($write, $arg->value),
+            ) => true,
+            default => $this->rewritesValuesInPlace($write, $varName),
+        };
+    }
+
+    /**
+     * Whether a write rewrites the variable's values in place, keeping every key but not each value's type:
+     * array_walk() or array_walk_recursive() on it, a by-reference `foreach` over it, or `Arr::set()` on it.
+     */
+    private function rewritesValuesInPlace(Node $write, string $varName): bool
+    {
+        $names = fn (Expr $expr): bool => $expr instanceof Variable && $expr->name === $varName;
+        $inPlace = [ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves];
+
+        return match (true) {
+            $write instanceof Foreach_ => $write->byRef && $names($write->expr),
+            $write instanceof CallLike => $this->callsArrOn($write, 'set', $varName)
+                || (! $write->isFirstClassCallable() && array_any(
+                    $write->getArgs(),
+                    fn (Arg $arg): bool => $names($arg->value)
+                        && in_array(resolve(ByReferenceArguments::class)->effect($write, $arg->value), $inPlace, true),
+                )),
+            default => false,
+        };
+    }
+
+    /**
+     * Whether a call passes the variable itself as its first argument.
+     */
+    private function takesFirst(CallLike $call, string $varName): bool
+    {
+        $first = $call->isFirstClassCallable() ? null : $call->getArgs()[0] ?? null;
+
+        return $first !== null && $first->value instanceof Variable && $first->value->name === $varName;
+    }
+
+    /**
+     * Whether a call is `Arr::{$method}()` on the variable itself.
+     */
+    private function callsArrOn(CallLike $call, string $method, string $varName): bool
+    {
+        return $call instanceof StaticCall && $call->class instanceof Name && $call->class->toString() === Arr::class
+            && $call->name instanceof Identifier && $call->name->toLowerString() === $method
+            && $this->takesFirst($call, $varName);
+    }
+
+    /**
+     * The value a statement `$var = value;` assigns where it replaces every key the variable held, one that spreads
+     * the variable into itself aside; null for any other statement.
+     */
+    private function replacingValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        $value = $this->assignedValue($stmt, $varName);
+
+        return $value !== null && ! $this->spreadsVariable($value, $varName) ? $value : null;
+    }
+
+    /**
+     * The value a statement assigns the whole variable, as `$var = value;` or a chain such as `$copy = $var = value;`
+     * does; null for any other statement.
+     */
+    private function assignedValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        return $this->chainedValue($stmt instanceof ExpressionStmt ? $stmt->expr : null, $varName);
+    }
+
+    /**
+     * The value an expression assigns the whole variable, as `$var = value` or a chain such as `$copy = $var = value`
+     * does; null for any other expression.
+     */
+    private function chainedValue(?Expr $expr, string $varName): ?Expr
+    {
+        $assigns = false;
+
+        while ($expr instanceof Assign) {
+            $assigns = $assigns || ($expr->var instanceof Variable && $expr->var->name === $varName);
+            $expr = $expr->expr;
+        }
+
+        return $assigns ? $expr : null;
     }
 
     /**
@@ -694,7 +994,7 @@ trait ReadsReturnedVariables
         foreach ($bodies as $body) {
             $this->untypedKeyWrites = $before;
             $branch = clone $into;
-            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
+            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel, nested: true);
             $branches[] = $branch;
             $notes[] = $this->untypedKeyWrites;
             array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
@@ -851,7 +1151,8 @@ trait ReadsReturnedVariables
         bool $topLevel,
     ): void {
         if ($stmt instanceof Block) {
-            $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+            $block = $stmt->stmts;
+            $this->collectVariableArrayAssignments($block, $varName, $isConditional, $into, $topLevel, nested: true);
 
             return;
         }
@@ -860,29 +1161,31 @@ trait ReadsReturnedVariables
             $body = array_values($stmt->stmts);
             $jump = array_find_key($body, $this->holdsBreakOrContinue(...)) ?? count($body);
             $head = array_slice($body, 0, $jump);
+            $tail = array_slice($body, $jump);
 
-            $this->collectVariableArrayAssignments($head, $varName, $isConditional, $into, $topLevel);
-            $this->collectVariableArrayAssignments(array_slice($body, $jump), $varName, true, $into, $topLevel);
+            $this->collectVariableArrayAssignments($head, $varName, $isConditional, $into, $topLevel, nested: true);
+            $this->collectVariableArrayAssignments($tail, $varName, true, $into, $topLevel, nested: true);
 
             return;
         }
 
         if ($stmt instanceof Switch_) {
             foreach ($stmt->cases as $case) {
-                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel);
+                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel, nested: true);
             }
 
             return;
         }
 
-        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel, nested: true);
 
         foreach ($stmt->catches as $catch) {
-            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel);
+            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel, nested: true);
         }
 
         if ($stmt->finally !== null) {
-            $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
+            $finally = $stmt->finally->stmts;
+            $this->collectVariableArrayAssignments($finally, $varName, $isConditional, $into, $topLevel, nested: true);
         }
     }
 
@@ -1005,6 +1308,22 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Make each key the variable holds optional before a whole write the walk cannot read, which may replace them all,
+     * and leave the keys it may bring unread; an unset() brings none.
+     */
+    private function loosenHeldKeys(MethodAnalysis $into, bool $bringsKeys): void
+    {
+        $into->properties = array_map(
+            fn (array $property): array => [...$property, 'optional' => true],
+            $into->properties,
+        );
+
+        if ($bringsKeys) {
+            $into->holdUnreadKeys();
+        }
+    }
+
+    /**
      * Whether an unset() past the variable's last whole replacement takes from it a key the walk cannot name, which may
      * be any key the walk reads.
      *
@@ -1049,7 +1368,7 @@ trait ReadsReturnedVariables
     {
         $key = $dim instanceof Variable ? $this->literalLocal($dim) : $dim;
 
-        return $key === null ? null : $this->resolveKeyName($key, $this->subjectReflection());
+        return $key === null ? null : $this->resolveKeyName($key, $this->analysisScope());
     }
 
     /**

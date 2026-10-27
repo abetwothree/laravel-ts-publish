@@ -144,7 +144,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
             'method' => fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null,
             'import-less' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report', false)['type'],
         ];
-        $report = '{ self: { v: { id: number }; report: unknown[] }; id: number }';
+        $report = '{ self: { v: { id: number }; report: Record<string, unknown> }; id: number }';
 
         $types = [$first => $reads[$first]()];
 

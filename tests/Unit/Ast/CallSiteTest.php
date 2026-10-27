@@ -60,7 +60,7 @@ test('each call publishes its own argument, a written parameter its local, and a
         'post_label' => '{ title: string; name: unknown }',
         'author_label' => '{ title: unknown; name: string }',
         'unknown_label' => '{ title: unknown; name: unknown }',
-        'nested' => '{ deeper: unknown[] }',
+        'nested' => '{ deeper: Record<string, unknown> }',
         'written' => '{ author_name: string }',
         'shout' => '?string',
         'fallback' => '{ value: unknown }',

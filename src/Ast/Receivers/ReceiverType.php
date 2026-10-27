@@ -29,6 +29,8 @@ final readonly class ReceiverType
      * @param  bool  $keyed  a collection whose keys a step such as `keyBy()`, `sortBy()` or `filter()` moved off 0..n-1
      * @param  bool  $attributeless  a `new` model with no attributes yet, whose columns read null but for a default
      * @param  list<string>  $filled  the columns a write gave such a model, which read as written
+     * @param  bool  $runtimeInstance  an instance of the scope's runtime class, as a `$this->m()` declared `static`
+     *                                 returns, so a body read on it knows that class where the scope does
      */
     public function __construct(
         public array $classes,
@@ -41,6 +43,7 @@ final readonly class ReceiverType
         public bool $keyed = false,
         public bool $attributeless = false,
         public array $filled = [],
+        public bool $runtimeInstance = false,
     ) {}
 
     /**
@@ -91,13 +94,21 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver marked as an instance of the scope's runtime class.
+     */
+    public function asRuntimeInstance(): self
+    {
+        return $this->copy(runtimeInstance: true);
+    }
+
+    /**
      * The same value holding other classes, as an `instanceof` test narrows it.
      *
      * @param  non-empty-list<class-string>  $classes
      */
     public function withClasses(array $classes): self
     {
-        return $this->copy(classes: $classes);
+        return $this->copy(classes: $classes, runtimeInstance: false);
     }
 
     /**
@@ -138,6 +149,7 @@ final readonly class ReceiverType
         ?bool $unsaved = null,
         ?bool $attributeless = null,
         ?array $filled = null,
+        ?bool $runtimeInstance = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -150,6 +162,7 @@ final readonly class ReceiverType
             keyed: $this->keyed,
             attributeless: $attributeless ?? $this->attributeless,
             filled: $filled ?? $this->filled,
+            runtimeInstance: $runtimeInstance ?? $this->runtimeInstance,
         );
     }
 }

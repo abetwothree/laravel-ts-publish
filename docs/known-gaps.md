@@ -117,15 +117,26 @@ A method that builds an array in a variable and returns it publishes the keys it
   does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or any
   other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
-  reads instead; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
+  reads instead, beside `[key: string]: unknown` for a helper read as a value whose base or key write the walk could
+  not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
   variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
-A method read as a value that returns a parameter it only writes keys into publishes those keys plus
-`[key: string]: unknown`, for the keys its caller passed. A closed array the call passes, or a declared `array{…}`
-parameter, therefore loses its own keys to that signature, and a `+=` on the parameter still publishes only the keys it
-adds. Declare `@return array{…}` on the method to publish the exact shape.
+A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of a
+declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a value
+and alone where its result is the method's own return, when the argument is not one object literal (a `Record`, a list,
+a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an `EnumResource`
+wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less read cannot
+import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference
+call of the parameter leaves only the helper's own writes, and so does a rewrite of its values in place, `array_walk()`,
+a by-reference `foreach` or `Arr::set()`, inside a block too; a `??=`, a key-keeping sort such as `ksort()`,
+`array_push()` and `array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the
+walk cannot read, makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape
+open, unless it keeps every key, as those calls, a local's rewrite in place and an `=` of `array_merge()` or
+`array_replace()`, either recursive, or `Arr::add()` taking the array first, or of a `+` it leads, do. A local rewritten
+in place keeps its earlier value types, though `array_walk()` may turn a number into a string. Declare
+`@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
@@ -205,8 +216,9 @@ metadata companion that would import both throws at publish time ("imports [Stat
 because its inferred imports (`ModelMetadataAnalyzer::inferredTypeImports()`) skip the alias resolver its cast imports
 use. A route file with two such page props ships two `import type { StatusType }` lines, TS2300 in the consumer's
 build, since `RouteTransformer::resolvePageTypeImports()` has no alias resolver or collision guard, and no workbench
-route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. The
-fix, carrying the FQCN beside the rendered name, changes the import channel.
+route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. A
+`->name` read does not: it falls back there to its literal case-name union rather than collide. The fix, carrying the
+FQCN beside the rendered name, changes the import channel, and retires that fallback (`SharedEnumKinds`).
 
 Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. In a companion you can instead
 cast one key to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' =>
@@ -214,6 +226,12 @@ cast one key to a distinct name its module exports, such as `['type' => 'AppStat
 collides, since `TsCastsImportResolver` aliases only between casts, and an inline `'Status as AppStatusType'` emits
 invalid TypeScript. A key typed by a docblock-displaced union has no such handle, because its enums are keyed by FQCN
 rather than by property name, so narrow it to one enum.
+
+### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
+
+`$this->resource->value` in a resource wrapping a pure enum, such as `UnitEnumResource.value`, publishes
+`string | number`. A pure enum has no `value`: PHP reads the undefined property as `null` with a warning, which
+Laravel's error handler turns into an exception. Read `->name`, which publishes the enum's `…Type`.
 
 ### An enum named like another enum's type name collides with it
 
@@ -240,8 +258,9 @@ Return `(object) []` from the provider instead.
 `ModelMetadataAnalyzer::inferredTypeImports()` imports an enum a provider body returns from the path its namespace
 implies, without checking `enums.excluded`, `#[TsExclude]` or `enums.additional_directories`. When enum publishing
 leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of `ts:publish` failing. Resources have
-`PublishedResourceRegistry` for this check, and enums have no equivalent. Publish the enum, or cast the property with
-an import-aware `#[TsCasts]`.
+`PublishedResourceRegistry` for this check. Enums have `PublishedEnums`, but only an enum's `->value` and `->name` reads
+consult it, and a raw enum read such as this one does not. Publish the enum, or cast the property with an import-aware
+`#[TsCasts]`.
 
 ### A model published on demand gets no metadata companion and is not watched
 
@@ -610,8 +629,8 @@ What `'summary' => new Summary` sends depends on who serializes it when `Summary
 broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). The same holds for a
 `Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
 sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
-model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`,
-such as `stdClass`, publish `unknown` too. Type such a key with `#[TsCasts]`.
+model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
+publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
@@ -671,7 +690,9 @@ Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
 `['week' => $this->schedule(), 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`,
 `[1 => $this->schedule()]` publishes `string[][]`, `$c ? $this->schedule() : [1 => 'a']` publishes `string[]` and
 `['o' => [...collect([$this->schedule()])]]` publishes `{ o: string[][] }`, though Laravel sends the object with its
-keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the key with `#[TsCasts]`.
+keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. An `(object) [...]` cast is such an
+object: `['week' => (object) [1 => 'mon'], 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`.
+Type the key with `#[TsCasts]`.
 
 ### A model's `toArray()` keeps the numeric keys of an `Arrayable` value whose class the package cannot name
 
@@ -764,11 +785,23 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 
 ### An untyped property's default ignores writes the scan cannot see
 
-An untyped property publishes its default's type while nothing in the class, its ancestors or its traits writes it. A
-subclass's write, including a child's that inherits `toArray()` and so publishes its parent's types, a by-reference
-parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class
-all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
-it a `@var` docblock.
+An untyped property publishes its default's type joined with each value its class, an ancestor, a trait or the published
+subclass writes it, whole or by a compound operator, typed in the writing method's scope; an append joins the elements
+of its list, and a literal string key joins its object as an optional key. It publishes `unknown` for any other write:
+an `unset()` of the property or an element, a computed or nested key, an append onto an object or beside a key write, a
+by-reference `foreach`, a write a closure or arrow function in the method holds, a write in a trait's method the class
+overrides, or a value the engine cannot type, such as an untyped parameter or a `mixed` call. A helper that a write
+calls to read the property back publishes it `unknown` where that helper is read first. A by-reference parameter on a
+receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change
+the value Laravel sends while the published type stays the default's. So does a write by a subclass of a receiver's
+declared class, such as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var`
+docblock.
+
+### A receiver's body reads `static` as its declared class
+
+`'start' => $this->counter()->startConst()`, where `counter(): Holder` returns a subclass and `startConst()` returns
+`static::START`, publishes `Holder::START`'s type, though Laravel sends the subclass's. A write naming `static` in such
+a body publishes `unknown` instead. Declare the method's return type.
 
 ### A column a body writes publishes its declared type, not the value written
 

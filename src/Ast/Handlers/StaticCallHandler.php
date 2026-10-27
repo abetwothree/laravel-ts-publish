@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
@@ -24,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -112,7 +114,8 @@ final class StaticCallHandler implements ExpressionHandler
         ) {
             $site = new CallSite($expr, $scope, $engine);
 
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site);
+            return resolve(SubjectMethodTypeResolver::class)
+                ->resolve($scope, $expr->name->toString(), $site, $scope->staticCallClass($expr));
         }
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
@@ -159,7 +162,7 @@ final class StaticCallHandler implements ExpressionHandler
     private function readsParentCollectedList(StaticCall $call, AnalysisScope $scope): bool
     {
         return $this->isParentCallTo($call, 'toArray')
-            && resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList('toArray', $scope->subjectReflection);
+            && resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList('toArray', $scope->declaringClass);
     }
 
     /**
@@ -178,63 +181,70 @@ final class StaticCallHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        // `self`/`static` read as the subject, so those calls are treated identically to ClassName::*() calls.
+        // `self`, `static` and `parent` read as the class they name in the body, so those are ClassName::*() calls.
         if ($call->class instanceof Name) {
-            $className = $this->subjectClassName($call->class, $scope->subjectReflection);
+            $className = $this->scopeClassName($call->class, $scope);
+        }
+
+        $built = $this->builtClass($call, $className, $methodName, $scope);
+
+        if ($built === $className && $this->callsFrameworkParent($call, $className, $methodName)) {
+            return $result;
         }
 
         // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
         if (resolve(ReceiverClassResolver::class)->sendsToSubjectCall($call, $scope)) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $methodName, new CallSite($call, $scope, $engine));
+            return resolve(SubjectMethodTypeResolver::class)
+                ->resolve($scope, $methodName, new CallSite($call, $scope, $engine), $scope->staticCallClass($call));
         }
 
         // EnumResource::make($this->prop)
-        if ($this->isEnumResourceClass($className) && $methodName === 'make') {
-            return $this->analyzeEnumResourceMake($call, $className, $scope, $engine);
+        if ($this->isEnumResourceClass($built) && $methodName === 'make') {
+            return $this->analyzeEnumResourceMake($call, $built, $scope, $engine);
         }
 
         // EnumResource::collection($this->prop) — must precede the generic isResourceClass()
         // checks below: EnumResource extends JsonResource, so those would match it too and
         // yield the unsuffixed 'EnumResource[]' instead of resolving the wrapped enum.
-        if ($this->isEnumResourceClass($className) && $methodName === 'collection') {
-            return $this->analyzeEnumResourceCollection($call, $className, $scope, $engine);
+        if ($this->isEnumResourceClass($built) && $methodName === 'collection') {
+            return $this->analyzeEnumResourceCollection($call, $built, $scope, $engine);
         }
 
         // SomeCollection::make() builds the collection a key nests, so it must precede the generic make() arm below;
         // SomeCollection::collection() is JsonResource::collection(), a list of collections that arm spells.
-        if (is_a($className, ResourceCollection::class, true) && $methodName === 'make') {
-            $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
+        if (is_a($built, ResourceCollection::class, true) && $methodName === 'make') {
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($built);
 
             if ($nested !== null) {
-                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $className)];
+                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $built)];
             }
         }
 
         // SomeResource::make($this->prop) — nested resource
-        if ($this->isResourceClass($className) && $methodName === 'make') {
-            /** @var class-string $className */
-            $type = $this->resourceWrapType($call, $className, $scope, $engine);
-            $optional = $this->hasConditionalArgument($call, $className);
+        if ($this->isResourceClass($built) && $methodName === 'make') {
+            /** @var class-string $built */
+            $type = $this->resourceWrapType($call, $built, $scope, $engine);
+            $optional = $this->hasConditionalArgument($call, $built);
 
             return [
                 ...$result,
                 'type' => $type,
                 'optional' => $optional,
-                ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
+                ...($type === 'null' ? [] : ['resourceFqcn' => $built]),
             ];
         }
 
         // SomeResource::collection(...) — array or keyed record of nested resource
-        if ($this->isResourceClass($className) && $methodName === 'collection') {
-            $resourceName = TsNaming::resourceTypeName($className);
-            $optional = $this->hasConditionalArgument($call, $className);
+        if ($this->isResourceClass($built) && $methodName === 'collection') {
+            $resourceName = TsNaming::resourceTypeName($built);
+            $optional = $this->hasConditionalArgument($call, $built);
 
-            /** @var class-string $className */
+            /** @var class-string $built */
             return [
                 ...$result,
-                'type' => ResourceCollections::listType($resourceName, new ReflectionClass($className)),
+                'type' => ResourceCollections::listType($resourceName, new ReflectionClass($built)),
                 'optional' => $optional,
-                'resourceFqcn' => $className,
+                'resourceFqcn' => $built,
             ];
         }
 
@@ -242,11 +252,44 @@ final class StaticCallHandler implements ExpressionHandler
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
             $site = new CallSite($call, $scope, $engine);
+            $forwards = $scope->forwardsRuntimeClass($call, $className, $methodName);
 
-            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName, $site) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve(
+                $className,
+                $methodName,
+                $site,
+                runtime: $forwards ? $scope->runtimeReflection : null,
+                assumesRuntime: $scope->assumesCallee($forwards),
+            ) ?? $result;
         }
 
         return $result;
+    }
+
+    /**
+     * Whether a `parent::` call reaches a method Laravel declares, whose body serves the runtime class, as make()'s
+     * `new static` does: the analyzer reads the ones it knows, such as parent::toArray(), and leaves the rest unknown.
+     */
+    private function callsFrameworkParent(StaticCall $call, string $className, string $methodName): bool
+    {
+        return $call->class instanceof Name
+            && $call->class->toLowerString() === 'parent'
+            && method_exists($className, $methodName)
+            && FrameworkClasses::is(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName());
+    }
+
+    /**
+     * The class a static call to make() or collection() builds: JsonResource's own builds `new static`, the runtime
+     * class wherever the call forwards it, as `self::` and `parent::` do; any other call builds the class it names.
+     */
+    private function builtClass(StaticCall $call, string $className, string $methodName, AnalysisScope $scope): string
+    {
+        return in_array($methodName, ['make', 'collection'], true)
+            && method_exists($className, $methodName)
+            && new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName() === JsonResource::class
+            && $scope->forwardsRuntimeClass($call, $className, $methodName)
+                ? $scope->runtimeReflection->getName()
+                : $className;
     }
 
     /**
@@ -281,15 +324,22 @@ final class StaticCallHandler implements ExpressionHandler
 
         $method = new ReflectionMethod($resourceFqcn, $methodName);
 
-        // Not self-returning: the expression is the method's payload, not the resource. Resolving it
-        // needs the receiver's own analyzer, so only the analyzer's own class is in scope — a foreign
-        // resource class returns null and keeps the `unknown` floor rather than claiming its keys.
+        // Not self-returning: the expression is the method's payload, not the resource. Resolving it needs the
+        // receiver's own analyzer, so only the subject, the runtime class or the declaring class is in scope — a
+        // foreign resource class returns null and keeps the `unknown` floor rather than claiming its keys.
         if (! $this->methodPreservesReceiverType($method, $resourceFqcn)) {
-            if ($resourceFqcn !== $scope->subjectReflection->getName()) {
+            $built = match ($resourceFqcn) {
+                $scope->subjectReflection->getName() => $scope->subjectReflection,
+                $scope->runtimeReflection->getName() => $scope->runtimeReflection,
+                $scope->declaringClass->getName() => $scope->declaringClass,
+                default => null,
+            };
+
+            if ($built === null) {
                 return null;
             }
 
-            $analysis = $engine->spreadAnalysis($methodName);
+            $analysis = $engine->spreadAnalysis($methodName, $built);
 
             if ($analysis === null || $analysis->properties === []) {
                 return null;
@@ -358,7 +408,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function resolvedBody(New_ $new, array $receiver, string $resourceFqcn, AnalysisScope $scope): array
     {
-        $class = $new->class instanceof Name ? $this->subjectClassName($new->class, $scope->subjectReflection) : null;
+        $class = $new->class instanceof Name ? $this->scopeClassName($new->class, $scope) : null;
         $nested = $class !== null && is_a($class, ResourceCollection::class, true)
             ? resolve(ResourceCollectionBody::class)->nestedValue($class)
             : null;
@@ -384,11 +434,11 @@ final class StaticCallHandler implements ExpressionHandler
 
         return match (true) {
             $receiver instanceof New_ => $receiver->class instanceof Name
-                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+                && $this->scopeClassName($receiver->class, $scope) === $resourceFqcn,
             $receiver instanceof StaticCall => $receiver->class instanceof Name
                 && $receiver->name instanceof Identifier
                 && $receiver->name->toString() === 'make'
-                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+                && $this->builtClass($receiver, $this->scopeClassName($receiver->class, $scope), 'make', $scope) === $resourceFqcn,
             $receiver instanceof MethodCall => ($receiver->name instanceof Identifier && $receiver->name->toString() === 'toResource')
                 || $this->holdsOneResource($receiver->var, $type, $resourceFqcn, $scope),
             default => false,

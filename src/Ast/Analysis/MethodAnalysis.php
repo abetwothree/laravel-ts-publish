@@ -60,6 +60,13 @@ class MethodAnalysis
     public bool $readsCompletely = true;
 
     /**
+     * Whether keys these hold reach the return unread: from a whole write, helper or spread the walk cannot read, a key
+     * write it cannot name, an appending by-reference call, or a returned parameter it starts with no seed. Set through
+     * holdUnreadKeys(); the body fallback publishes such a shape open.
+     */
+    public bool $holdsUnreadKeys = false;
+
+    /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
@@ -161,6 +168,15 @@ class MethodAnalysis
     }
 
     /**
+     * Mark that keys these hold reach the return unread, so the read behind them is not complete either.
+     */
+    public function holdUnreadKeys(): void
+    {
+        $this->readsCompletely = false;
+        $this->holdsUnreadKeys = true;
+    }
+
+    /**
      * Record one more runtime key a signature covers: it replaces no earlier entry, is never optional, and its value
      * admits `undefined`. It brings no cast, so, as merge() does, the name's earlier cast no longer describes it.
      *
@@ -175,14 +191,15 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key the
-     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
-     * consumes each as a positional queue against the rendered type. `carried` unions per kind; `readsCompletely` ANDs.
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key it
+     * sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType() consumes
+     * each as a positional queue. `carried` unions per kind; `readsCompletely` ANDs and `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
+        $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
@@ -232,6 +249,7 @@ class MethodAnalysis
     {
         $this->properties = $source->properties;
         $this->readsCompletely = $source->readsCompletely;
+        $this->holdsUnreadKeys = $source->holdsUnreadKeys;
         $this->enumResources = $source->enumResources;
         $this->nestedResources = $source->nestedResources;
         $this->customImports = $source->customImports;

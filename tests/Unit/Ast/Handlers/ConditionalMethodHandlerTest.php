@@ -104,7 +104,7 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -143,7 +143,7 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('Unexpected expression passed to ConditionalMethodHandlerArmStubEngine');
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -212,7 +212,7 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
         return $this->result;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -936,8 +936,8 @@ it('reads a parameter bound to an enum case default as that enum', function (str
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
         ->toBe($type);
 })->with([
-    '->value' => ['->value', 'number'],
-    '->name' => ['->name', 'string'],
+    '->value' => ['->value', 'StatusType'],
+    '->name' => ['->name', 'StatusKind'],
     'a method' => ['->icon()', 'string'],
 ]);
 

@@ -38,7 +38,8 @@ reflection answers, a decline included.
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
-| `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
+| `E::Case`, `self::Case`, `static::Case` | The enum `E` when it is an enum with that case, so a local holding one, a ternary of cases and `E::from()` read as the enum; any other class constant declines |
+| `$this->m()` | The method `thisMemberClass()` reaches, the runtime class's or the declaring class's private one ([AST engine § AnalysisScope](ast-engine.md#analysisscope)), at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `DeclaredClasses::returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
@@ -50,10 +51,10 @@ reflection answers, a decline included.
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method |
-| `static::m()`, `self::m()`, `parent::m()` | The subject, or its framework parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
+| `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
-| `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent`; marked unsaved, and `attributeless` for a model built with no constructor argument |
+| `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the declaring class for `self`, or its parent for `parent`, but nothing for Laravel's own JsonResource or ResourceCollection; marked unsaved, and `attributeless` for a model built with no constructor argument |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
 | A ternary, `?:` or `??` | The union of the non-`null` arms. See [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
@@ -97,12 +98,14 @@ binding names spreads the one model `$x` holds. [AST engine § Narrowing](ast-en
 
 ### `self` and `parent`
 
-PHP binds `self` and `parent` to the class that declares the method body, and the engine can analyze an inherited body
-under a child subject. `AnalysisScope::$declaringFileClass` cannot stand in for that class, because it tracks files for
-inline `@var` imports. It names a trait for a trait's method, and `analyze()` sets it from the located method. So
-`new self`, `new parent`, `self::m()` and `parent::m()` resolve only when the subject's parent is absent or under
-`Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` always names the subject,
-since late static binding follows the object.
+[AST engine § AnalysisScope](ast-engine.md#analysisscope) names the classes `self`, `static` and `parent` read as, and
+the private rule `$this->` takes. On a receiver, `self::`, `static::` and `parent::` forward the runtime class to their
+callee as `static`, so a declared `static` return, and JsonResource's own `make()` and `collection()`, which build
+`new static`, name the runtime class; `new self` and `new parent` build the declaring class and its parent exactly. Any
+other `parent::` call into a method Laravel declares types only where the analyzer reads it, as `parent::toArray()`
+(`StaticCallHandler::callsFrameworkParent()`). A `$this->m()` declared to return `static`, a private one included,
+returns the runtime class, so a body read on that value knows the class where the caller does
+(`ReceiverType::$runtimeInstance`).
 
 ### Visibility
 
@@ -206,8 +209,8 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
   read with `$this` bound to the resource and its captured variables read where it is declared.
   `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()` keeps the model, which it calls
   directly.
-- **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
-  `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
+- **A model's own body**: a model method or accessor body runs on the model, so nothing forwards.
+  `ReceiverClassResolver::modelSubject()` names the runtime class, that model, for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
 
 A receiver holding an `Illuminate\Http\Request` declines, because `KnownMethodRuleHandler` owns request calls. The call
@@ -353,11 +356,19 @@ When a declared return is too vague to publish, such as a bare `: array`, `Metho
 body once per set of bindings its calls' arguments make. The shape spelled by its literal return, or by a returned
 variable the walk reads, replaces the declaration's array arms, so `PriceQuoteService::quote()`, which declares only
 `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it
-too, so it publishes what the bare `$this->m()` does.
+too, so it publishes what the bare `$this->m()` does. A vague `@return array<string, …>` wins over the native `array` in
+`methodOrDocblockReturnTypes()`, and by the same rule over a body value whose arms it spells with a `Record` for the
+`unknown[]`, as a parameter returned untouched can be: a string-keyed array encodes as a `Record`, never as a list
+(`TsTypeString::spellsListAsRecord()`).
 
-A returned parameter that the body writes only through its keys still holds every key its caller passed, which the body
-never sees, so `returnsKeyWrittenParameter()` adds `[key: string]: unknown` to the shape. `DecoratedPayloadResource`
-pins it through a container instance, a static call and a resource's own helper.
+A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
+from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the
+body never sees them, so the analyzer marks the analysis as holding unread keys
+(`ReadsReturnedVariables::returnsUnseededParameter()`) and the shape gains `[key: string]: unknown`.
+`DecoratedPayloadResource` pins that through a container instance, a static call and a resource's own helper. A walk
+that holds keys it never read, from a whole write, helper or spread it cannot read, a key write it cannot name or an
+appending by-reference call anywhere in a statement (`MethodAnalysis::$holdsUnreadKeys`), opens the shape the same way,
+as `UnreadBasePayload` pins.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
@@ -408,9 +419,12 @@ When the literal shape declines, `MethodReturnTypeResolver` reads the method's o
 `AstEngine::analyzeMethodValue()`. So `MediaType::extensions(): array`, a `match` of string lists, publishes `string[]`,
 and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 
-- **A fresh scope over the method's class**, never the caller's: a model is its own backing, a resource has the model
-  `ModelClassResolver` gives it, and the parameters bind by their declarations and what the call passes. A trait helper
-  therefore reads each using resource's model.
+- **A fresh scope over the method's class**, never the caller's, but for the runtime class a call hands on: there
+  `$this`, `static` and the model `$this` reads are the caller's, so an ancestor's helper a `self::` call reaches reads
+  the calling resource's model. Otherwise a model is its own backing and a resource has the model `ModelClassResolver`
+  gives it, so a trait helper reads each using resource's model. The parameters bind by their declarations and what the
+  call passes. Which calls hand the runtime class on, and which bodies only assume it:
+  [AST engine § Known or assumed runtime class](ast-engine.md#known-or-assumed-runtime-class).
 - **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
 - **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which
@@ -442,6 +456,14 @@ Each class types the property one of two ways:
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
 
+An enum's `value` or `name`, read on an enum or on `BackedEnum` or `UnitEnum`, comes from [`EnumValueTypes`] first, and
+what it declines falls to the reflected property. `->value` publishes the enum's `…Type` alias with its import, and
+`->name` a backed enum's `…Kind` alias, or a pure enum's `…Type`, since its values are its names. An alias needs a
+[reader that carries imports][reader-no-import], an enum [`PublishedEnums`] says `ts:publish` writes, and no case whose
+`#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends. A case past
+±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number` and `string`. `PropertyChainHandler`'s
+wrapped-enum arm asks the same class.
+
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
 `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
@@ -464,9 +486,11 @@ These pages cover the neighbors of receiver resolution:
 
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
+[`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
+[`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
 [`ReceiverClassResolver`]: ../../src/Ast/Receivers/ReceiverClassResolver.php

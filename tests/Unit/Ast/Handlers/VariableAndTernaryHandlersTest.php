@@ -60,7 +60,7 @@ function variableHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -114,7 +114,7 @@ final class VariableHandlersLoopEngine implements ExpressionEngine
         return $this->dispatcher->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -158,7 +158,7 @@ final class TernaryArmRecordingEngine implements ExpressionEngine
     }
 
     /** Fails the test: no method is spread in this case. */
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -612,7 +612,7 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
     }
 
     /** Fails the test: no method is spread in this case. */
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }

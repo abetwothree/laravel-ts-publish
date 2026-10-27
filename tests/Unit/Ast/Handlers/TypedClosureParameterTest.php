@@ -20,8 +20,8 @@ it('binds a closure parameter to the class its native type names', function () {
         'replaced_options' => '{ id: string }[]',
         'null_default?' => 'null',
         'null_default_member?' => 'unknown',
-        'enum_default?' => 'number',
-        'unit_enum_default?' => 'string',
+        'enum_default?' => 'StatusType',
+        'unit_enum_default?' => 'StatusKind',
     ]);
 });
 
@@ -32,8 +32,8 @@ it('binds no declared class over a default that names an enum case or is null', 
     expect(publishedResourceKeyTypes(TypedClosureParameterResource::class, Post::class))->toMatchArray([
         'null_default?' => 'null',
         'null_default_member?' => 'unknown',
-        'enum_default?' => 'number',
-        'unit_enum_default?' => 'string',
+        'enum_default?' => 'StatusType',
+        'unit_enum_default?' => 'StatusKind',
     ])->and($sent)->toMatchArray([
         'null_default' => null,
         'null_default_member' => null,

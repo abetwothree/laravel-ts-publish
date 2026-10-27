@@ -33,7 +33,7 @@ function dispatcherTestEngine(): ExpressionEngine
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }

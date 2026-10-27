@@ -163,8 +163,19 @@ the matrix does not run these profiles.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These seven facts span other classes:
+docblocks say what each binding table holds. These eight facts span other classes:
 
+- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
+  runtime class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring
+  class, the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
+  `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
+  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds.
+  A `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the
+  declaring class when it declares that member private, else the runtime class; a method on a built instance takes the
+  same rule. A static-syntax call reads `staticCallClass()`, which applies no private rule, and every other `self`,
+  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class hands
+  it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the same two classes
+  (`VariableWrites::of()`). Whether the runtime class is known is [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -195,6 +206,24 @@ docblocks say what each binding table holds. These seven facts span other classe
   [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
+
+### Known or assumed runtime class
+
+`assumesRuntime` says whether a scope knows its runtime class or only assumes it, and `knownRuntime()` is null where it
+assumes it. Only a known runtime class types a property write that names `static`, as
+`SubjectPropertyTypeResolver::resolve()`'s `$knownRuntime` takes it. The runtime class is known:
+
+- in the published class's own scope;
+- in a helper that scope reaches through `$this->`, `$this::`, `self::`, `static::`, `parent::` or a non-static
+  `Ancestor::m()` from an instance of it, and in a body run on what a `$this->` call declared `: static` returns: each
+  keeps the caller's flag (`assumesCallee()`);
+- for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
+- for a `final` collaborator the container fills (`assumesInjected()`);
+- for an exact construction, `new X` or `X::make()` (`assumesBuilt()`).
+
+Anywhere else it is assumed, since the object may be a subclass: a receiver's declared class, the model
+`$this->resource` forwards to and a method macro's object (`ASSUMES_HELD_OBJECT`), a collaborator that is not final,
+and, conservatively, a call through another class's name that forwards nothing.
 
 ### Writing a scope binding
 
@@ -465,8 +494,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 
 ## Subject mode
 
-Subject mode types `$this->prop` from the subject's own declaration. It always applies when `AnalysisScope::$modelClass`
-is `null`, as for a broadcast event, a DTO or any plain class. On those `$this->resource` is the subject's own property,
+Subject mode types `$this->prop` from the declaration `thisMemberClass()` reaches, the runtime class's or the declaring
+class's private one ([§ AnalysisScope](#analysisscope)). It always applies when `AnalysisScope::$modelClass` is `null`,
+as for a broadcast event, a DTO or any plain class. On those `$this->resource` is the subject's own property,
 since only an API resource has the proxy. On a model-backed subject, it applies to a property
 `SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
 PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
@@ -481,14 +511,21 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
 `AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A
-non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
-the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
-trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
-by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan shares), such
-as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. The check
-cannot see a subclass's write, including a child's that inherits `toArray()` and so publishes its parent's analysis
-(#79), a by-reference parameter on a receiver it cannot resolve, or a write from outside the class.
+an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A non-public
+property declared without a value publishes `null`; a public one left `null` declines, since code outside the class
+fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
+operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
+as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
+property itself takes the default and constant writes under an `AnalysisMemo` guard. An append joins the elements of
+each list the type holds, and a literal string key joins a one-object shape as an optional key. Any other write
+declines: a value the engine cannot type, a write a closure or arrow function in the method holds, a write in a trait's
+method the class overrides, any other element write, `unset()`, a computed `$this->{$name}` write in application code,
+or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local
+write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and
+`reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only
+assumes its runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a
+receiver it cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write
+from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -541,8 +578,13 @@ suffix spelling the bindings its arguments make for the parameters whose declara
 bind alike share one answer, and a call that binds nothing keeps the plain key. The arguments are read in the caller's
 scope before the callee's frame opens, so what they record is the caller's. A subject method read under an `instanceof`
 proof that holds `$this->resource` to one model adds `@backing:<model>` to its `method-return:` key, so the read with
-the proof and the one without never share an answer. The `method-body:` cycle guard stays per
-method, so a recursion that passes a new value each time stops at its first repeat.
+the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
+class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
+keys, so two siblings never share an inherited helper's `static`. A read that only assumes its runtime class adds
+`@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class.
+`AnalysisMemo::runtimeKey()` spells both suffixes for all three keys. The
+`method-body:` cycle guard stays per method, so a recursion that passes a new value each time stops at its first
+repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
 records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have
@@ -699,9 +741,9 @@ Each consumer enters the engine at the point that fits its subject:
 | --- | --- | --- |
 | `ResourceTransformer` | `ResourceAstAnalyzer::analyze()` on the resource profile | A resource's `toArray()` is that profile's own subject |
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
-| `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
+| `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
-| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false`, then `analyzeMethodValue()` | It is the body fallback: the literal shape, then the value read, which carries imports. See [Receiver types][body-fallback]. |
 

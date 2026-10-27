@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -59,6 +60,15 @@ final class AnalysisImports
             unset($enumFqcnMap[$fqcn]);
         }
 
+        // Every caller keeps only the names its type spells, so a backed enum offers its `…Kind` beside its `…Type`.
+        $this->siblingImportNames = [];
+
+        foreach (array_keys($enumFqcnMap) as $fqcn) {
+            foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+                $this->siblingImportNames[$fqcn][$name] = $name;
+            }
+        }
+
         $resourceFqcnMap = [];
 
         foreach ($analysis->nestedResources as $fqcn) {
@@ -96,6 +106,14 @@ final class AnalysisImports
     protected function formatImportName(string $fqcn, string $typeName): string
     {
         return $typeName;
+    }
+
+    /**
+     * Emit the sibling name unchanged — collision aliasing is the caller's concern.
+     */
+    protected function formatSiblingImportName(string $name, string $local): string
+    {
+        return $name;
     }
 
     /**

@@ -31,7 +31,7 @@ function inertiaWrapperEngine(): ExpressionEngine
             return ['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model'];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -135,7 +135,7 @@ it('reads the wrapped value by name when the group is written first', function (
             return ['type' => 'Post[]', 'optional' => false];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }

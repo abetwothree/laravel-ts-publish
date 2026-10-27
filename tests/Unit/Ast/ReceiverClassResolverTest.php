@@ -33,6 +33,7 @@ use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
+use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -68,6 +69,19 @@ describe('ReceiverClassResolver::resolve()', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->priority'), postScope())?->classes)
             ->toBe([Priority::class]);
     });
+
+    test('names the enum an enum case fetch holds', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\Workbench\App\Enums\Grade::Pass'), postScope())?->classes)
+            ->toBe([Grade::class]);
+    });
+
+    test('declines a class constant that is no enum case, and ::class', function (string $php) {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope()))->toBeNull();
+    })->with([
+        'a model constant' => ['\Workbench\App\Models\Post::CREATED_AT'],
+        'an enum constant that is no case' => ['\Workbench\App\Enums\Grade::Missing'],
+        '::class' => ['\Workbench\App\Enums\Grade::class'],
+    ]);
 
     test('a date-cast attribute holds Carbon, and a static-returning call keeps it', function () {
         $resolver = resolve(ReceiverClassResolver::class);
@@ -527,16 +541,20 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
             ->and($resolver->resolve(receiverExpr('new self($this->resource)'), $fluent)?->classes)->toBe([FluentSelfResource::class]);
     });
 
-    test('with a user-land parent, self and parent decline because an inherited body is analyzed under the child', function () {
+    test('with a user-land parent, self and parent name the declaring class and its parent, and static the runtime class', function () {
         $resolver = resolve(ReceiverClassResolver::class);
-        $scope = new AnalysisScope(new ReflectionClass(ReceiverChildDto::class));
+        $own = new AnalysisScope(new ReflectionClass(ReceiverChildDto::class));
+        $inherited = new AnalysisScope(new ReflectionClass(ReceiverChildDto::class));
+        $inherited->declaringClass = new ReflectionClass(ReceiverBaseDto::class);
 
-        expect($resolver->resolve(receiverExpr('new self'), $scope))->toBeNull()
-            ->and($resolver->resolve(receiverExpr('new parent'), $scope))->toBeNull()
-            ->and($resolver->resolve(receiverExpr('self::copy()'), $scope))->toBeNull()
-            ->and($resolver->resolve(receiverExpr('parent::copy()'), $scope))->toBeNull()
-            ->and($resolver->resolve(receiverExpr('new static'), $scope)?->classes)->toBe([ReceiverChildDto::class])
-            ->and($resolver->resolve(receiverExpr('static::fresh()'), $scope)?->classes)->toBe([ReceiverChildDto::class]);
+        expect($resolver->resolve(receiverExpr('new self'), $own)?->classes)->toBe([ReceiverChildDto::class])
+            ->and($resolver->resolve(receiverExpr('new parent'), $own)?->classes)->toBe([ReceiverBaseDto::class])
+            ->and($resolver->resolve(receiverExpr('parent::copy()'), $own)?->classes)->toBe([ReceiverBaseDto::class])
+            ->and($resolver->resolve(receiverExpr('new self'), $inherited)?->classes)->toBe([ReceiverBaseDto::class])
+            ->and($resolver->resolve(receiverExpr('self::copy()'), $inherited)?->classes)->toBe([ReceiverBaseDto::class])
+            ->and($resolver->resolve(receiverExpr('new parent'), $inherited))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('new static'), $inherited)?->classes)->toBe([ReceiverChildDto::class])
+            ->and($resolver->resolve(receiverExpr('static::fresh()'), $inherited)?->classes)->toBe([ReceiverChildDto::class]);
     });
 });
 

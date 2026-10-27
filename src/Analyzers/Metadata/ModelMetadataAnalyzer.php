@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -39,7 +40,8 @@ class ModelMetadataAnalyzer
     /**
      * Resolve every type the provider can emit, keeping inferred types only for keys the payload returned.
      *
-     * @param  class-string<ModelMetadataProvider>  $providerClass
+     * @param  class-string<ModelMetadataProvider>  $providerClass  the class of the instance whose payload was
+     *                                                              collected, which an inherited provide() runs as
      * @param  list<string>  $payloadKeys
      */
     public function analyze(string $providerClass, array $payloadKeys, string $namespacePath = ''): ModelMetadataAnalysis
@@ -47,7 +49,12 @@ class ModelMetadataAnalyzer
         $method = new ReflectionMethod($providerClass, 'provide');
         $declared = $this->parseDeclaredTypes($method);
         $casts = $this->parseTsCasts($method);
-        $analysis = $this->safeAnalyzeBody($method);
+        $analysis = $this->safeAnalyzeBody($providerClass);
+
+        if ($analysis !== null) {
+            SharedEnumKinds::spellApart($analysis);
+        }
+
         $inferred = $analysis === null ? [] : $this->inferTypes($analysis, $payloadKeys);
         $result = $this->mergeTypes($inferred, $declared, $casts);
 
@@ -68,11 +75,13 @@ class ModelMetadataAnalyzer
 
     /**
      * Analyze the body, or null when the engine fails — inference then contributes nothing.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function safeAnalyzeBody(ReflectionMethod $method): ?MethodAnalysis
+    protected function safeAnalyzeBody(string $providerClass): ?MethodAnalysis
     {
         try {
-            return $this->analyzeBody($method);
+            return $this->analyzeBody($providerClass);
         } catch (Throwable) {
             return null;
         }
@@ -183,24 +192,24 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Run the engine over the body that declares provide(), with its Model parameter bound to its declared type.
+     * Run the engine over provide() as the provider runs it, with its Model parameter bound to its declared type.
      *
-     * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
-     * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
+     * Located on the provider, an inherited or trait body reads `$this` and `static` as the provider and `self` as
+     * its declaring class. The provider is the known runtime class: the transformer passes its instance's class.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function analyzeBody(ReflectionMethod $method): MethodAnalysis
+    protected function analyzeBody(string $providerClass): MethodAnalysis
     {
-        /** @var class-string $declaringClass */
-        $declaringClass = $method->getDeclaringClass()->getName();
-        $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
+        $context = resolve(MethodLocator::class)->locate($providerClass, 'provide');
 
         if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName());
+            return resolve(AstEngine::class)->analyzeMethod($providerClass, 'provide');
         }
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
 
-        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
+        return new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
     }
 
     /**

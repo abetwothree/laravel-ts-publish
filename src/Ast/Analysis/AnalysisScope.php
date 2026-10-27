@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -39,6 +40,7 @@ use PhpParser\Node\Scalar\MagicConst\Line;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * The mutable state threaded through one ResourceAstAnalyzer::analyze() call: the subject under
@@ -107,6 +109,8 @@ use ReflectionClass;
  *      modelClass: class-string<Model>|null,
  *      forwardsUndeclaredMembersTo: class-string|null,
  *      declaringFileClass: ReflectionClass<object>,
+ *      declaringClass: ReflectionClass<object>,
+ *      runtimeReflection: ReflectionClass<object>,
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
@@ -122,6 +126,12 @@ final class AnalysisScope
 {
     /** The varGuardBindings key of the proofs on an API resource's `$this->resource`, a name no variable spells. */
     public const string PROXY_GUARDS = '$this->resource';
+
+    /**
+     * Whether a body run on an object the code holds, such as a receiver, the model `$this->resource` forwards to or a
+     * method macro's callable, only assumes its class: always, since the object may be a subclass of the class known.
+     */
+    public const bool ASSUMES_HELD_OBJECT = true;
 
     /** Every name-keyed binding table, empty: a function scope no caller's name reaches. */
     public const array NO_NAME_BINDINGS = [
@@ -388,8 +398,8 @@ final class AnalysisScope
     public array $readingLocals = [];
 
     /**
-     * Spread methods currently on the analysis stack, so a method that spreads itself — directly or
-     * through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
+     * Spread methods currently on the analysis stack, by declaring class and name, so a method that spreads itself —
+     * directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
      *
      * @var array<string, true>
      */
@@ -422,6 +432,29 @@ final class AnalysisScope
     public ReflectionClass $declaringFileClass;
 
     /**
+     * The class `self` names in the body under analysis, and whose parent `parent` names: its method's declaring class,
+     * which PHP reports as the using class for a trait's method. The subject, unless the body is an ancestor's.
+     *
+     * @var ReflectionClass<object>
+     */
+    public ReflectionClass $declaringClass;
+
+    /**
+     * The runtime class `$this` and `static` are: the subject, unless this reads an ancestor's body for a subclass, a
+     * helper for a caller's runtime class, or a method of a built instance. See docs/components/ast-engine.md
+     * § AnalysisScope.
+     *
+     * @var ReflectionClass<object>
+     */
+    public ReflectionClass $runtimeReflection;
+
+    /**
+     * Whether the runtime class is only assumed: a body a receiver's call or an unrelated class's name reaches reads
+     * the class declared or named, whose subclass the object may be. Set once, by the builder; see knownRuntime().
+     */
+    public bool $assumesRuntime = false;
+
+    /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
      * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped, not fixed:
      *                                                TernaryHandler narrows it for an `instanceof` true arm and
@@ -432,10 +465,62 @@ final class AnalysisScope
         public ?string $modelClass = null,
     ) {
         $this->declaringFileClass = $subjectReflection;
+        $this->declaringClass = $subjectReflection;
+        $this->runtimeReflection = $subjectReflection;
 
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+    }
+
+    /**
+     * The class whose declaration `$this->$member` reaches from a body the declaring class holds: that class when it
+     * declares the member private, since PHP binds a private member to the calling scope, else the runtime class.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
+     * @return ReflectionClass<object>
+     */
+    public static function memberClassOf(ReflectionClass $declaring, ReflectionClass $runtime, string $member, bool $isMethod): ReflectionClass
+    {
+        $declared = match (true) {
+            $isMethod => $declaring->hasMethod($member) ? $declaring->getMethod($member) : null,
+            default => $declaring->hasProperty($member) ? $declaring->getProperty($member) : null,
+        };
+
+        // Reflection lists an ancestor's private method on its subclasses too, though no subclass body can call it.
+        $ownPrivate = $declared !== null && $declared->isPrivate()
+            && $declared->getDeclaringClass()->getName() === $declaring->getName();
+
+        return $ownPrivate ? $declaring : $runtime;
+    }
+
+    /**
+     * The class `self`, `static` or `parent` names in a body the declaring class holds and the runtime class runs: the
+     * declaring class, the runtime class, or the declaring class's parent. Null for any other name, and for a `parent`
+     * the declaring class lacks.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<object>  $declaring
+     * @return ReflectionClass<object>|null
+     */
+    public static function relativeClassOf(Name $name, ReflectionClass $runtime, ReflectionClass $declaring): ?ReflectionClass
+    {
+        return match ($name->toLowerString()) {
+            'self' => $declaring,
+            'static' => $runtime,
+            'parent' => $declaring->getParentClass() ?: null,
+            default => null,
+        };
+    }
+
+    /**
+     * Whether a body run on an object the container fills only assumes its class: unless the class is final, the
+     * container may bind a subclass in its place.
+     */
+    public static function assumesInjected(bool $isFinal): bool
+    {
+        return ! $isFinal;
     }
 
     /**
@@ -476,6 +561,7 @@ final class AnalysisScope
     public function rebase(ReflectionClass $subject, ?string $modelClass): void
     {
         $this->subjectReflection = $subject;
+        $this->runtimeReflection = $subject;
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -515,6 +601,90 @@ final class AnalysisScope
     public function hasResourceProxy(): bool
     {
         return $this->subjectReflection->isSubclassOf(JsonResource::class);
+    }
+
+    /**
+     * The class whose declaration `$this->$member` reaches from the body under analysis: the declaring class when it
+     * declares that member private, since PHP binds a private member to the calling scope, else the runtime class.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function thisMemberClass(string $member, bool $isMethod): ReflectionClass
+    {
+        return self::memberClassOf($this->declaringClass, $this->runtimeReflection, $member, $isMethod);
+    }
+
+    /**
+     * The class `self`, `static` or `parent` names in the body under analysis; see relativeClassOf().
+     *
+     * @return ReflectionClass<object>|null
+     */
+    public function relativeClass(Name $name): ?ReflectionClass
+    {
+        return self::relativeClassOf($name, $this->runtimeReflection, $this->declaringClass);
+    }
+
+    /**
+     * The class a static-syntax call on the subject reaches from the body under analysis: `$this::` and `static::`
+     * the runtime class, since PHP looks such a call up there with no private rule; `self::` the declaring class,
+     * `parent::` its parent, or the subject where it has none; a name the subject.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function staticCallClass(StaticCall $call): ReflectionClass
+    {
+        $class = $call->class;
+
+        return match (true) {
+            $class instanceof Variable => $class->name === 'this' ? $this->runtimeReflection : $this->subjectReflection,
+            $class instanceof Name => $this->relativeClass($class) ?? $this->subjectReflection,
+            default => $this->subjectReflection,
+        };
+    }
+
+    /**
+     * Whether a static-syntax call hands its callee the runtime class as `static`: `self::`, `static::` and `parent::`
+     * forward it, and PHP runs a non-static method named through the runtime class or an ancestor on `$this`.
+     */
+    public function forwardsRuntimeClass(StaticCall $call, string $className, string $methodName): bool
+    {
+        if (! $call->class instanceof Name) {
+            return false;
+        }
+
+        return $call->class->isSpecialClassName()
+            || (method_exists($className, $methodName)
+                && ! new ReflectionMethod($className, $methodName)->isStatic()
+                && is_a($this->runtimeReflection->getName(), $className, true));
+    }
+
+    /**
+     * Whether the body a call reaches only assumes its runtime class: one the call runs on this scope's runtime
+     * instance keeps this scope's flag, and any other is assumed.
+     */
+    public function assumesCallee(bool $onRuntimeInstance): bool
+    {
+        return ! $onRuntimeInstance || $this->assumesRuntime;
+    }
+
+    /**
+     * Whether a body run on an instance of a class this scope builds only assumes it: a build is exact, unless the
+     * class is the one an assumed scope's `static` stands for.
+     */
+    public function assumesBuilt(string $class): bool
+    {
+        return $this->assumesRuntime && $class === $this->runtimeReflection->getName();
+    }
+
+    /**
+     * The runtime class where the scope knows it, null where it only assumes it; which is which:
+     * docs/components/ast-engine.md § Known or assumed runtime class.
+     *
+     * @return ReflectionClass<object>|null
+     */
+    public function knownRuntime(): ?ReflectionClass
+    {
+        return $this->assumesRuntime ? null : $this->runtimeReflection;
     }
 
     /**
@@ -838,14 +1008,22 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read the subject's own method $method, as within()'s $enter: no caller name
-     * reaches its body, which reads `$this` as the subject from its own file, and only $proofs of `$this` reads hold.
+     * Whether a method's body is already on the stack as a spread or helper read, so reading it again would recurse.
+     */
+    public function readsSpreadMethod(ReflectionMethod $method): bool
+    {
+        return isset($this->visitedSpreadMethods[self::spreadMethodKey($method)]);
+    }
+
+    /**
+     * Set the caller's state aside to read $method, a method `$this` reaches, as within()'s $enter: no caller name
+     * reaches its body, which reads its own file's imports and its own declaring class, and only $proofs of `$this`
+     * reads hold.
      *
-     * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
      */
-    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, array $rewritten = []): void
+    public function enterSubjectMethod(ReflectionMethod $method, array $proofs, array $rewritten = []): void
     {
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
@@ -855,11 +1033,12 @@ final class AnalysisScope
             fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
         ));
 
-        $this->visitedSpreadMethods[$method] = true;
+        $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        $this->declaringFileClass = $declaringFileClass;
+        $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        $this->declaringClass = $method->getDeclaringClass();
     }
 
     /**
@@ -1067,6 +1246,14 @@ final class AnalysisScope
     }
 
     /**
+     * The visitedSpreadMethods key of a method, by declaring class: a namesake on another class is another body.
+     */
+    private static function spreadMethodKey(ReflectionMethod $method): string
+    {
+        return $method->getDeclaringClass()->getName().'::'.$method->getName();
+    }
+
+    /**
      * The resolvingLocalVars key of a variable's binding to an expression.
      */
     private static function resolvingKey(string $name, Expr $bound): string
@@ -1262,6 +1449,8 @@ final class AnalysisScope
             'modelClass' => $this->modelClass,
             'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
             'declaringFileClass' => $this->declaringFileClass,
+            'declaringClass' => $this->declaringClass,
+            'runtimeReflection' => $this->runtimeReflection,
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
@@ -1284,6 +1473,8 @@ final class AnalysisScope
         $this->modelClass = $state['modelClass'];
         $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];
         $this->declaringFileClass = $state['declaringFileClass'];
+        $this->declaringClass = $state['declaringClass'];
+        $this->runtimeReflection = $state['runtimeReflection'];
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];

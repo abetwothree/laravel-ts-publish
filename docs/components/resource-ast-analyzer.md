@@ -82,18 +82,23 @@ every profile, the order handlers run in decides which one answers; see
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
-  written in a branch publishing optional. A local written once reads as its value (`writtenLocal()`), and the walk
-  names a key such a local holds (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name
-  leaves the variable not read completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a
-  local it assigns shadows the method's of its name. A closure's returns and a method's read as a value share the walk
-  (`ResolvesReturnedValues::resolveReturned()`), and so does a value read of a local built by keys (`walkedLocal()`).
+  written in a branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=`
+  included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
+  destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
+  object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
+  A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
+  (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
+  completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
+  method's of its name. A closure's returns and a method's read as a value share the walk through
+  `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
+  binding; a value read of a local built by keys shares it through `walkedLocal()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
   spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
   the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
-  `readingLocals` guards. It re-derives `requestVarNames` and `declaringFileClass`, binds the method's parameters, and
-  what the call passes them through `CallSite::passedTo()`, as
+  `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's
+  parameters, and what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
@@ -625,11 +630,12 @@ Three answers are possible, and only the last is right. Do not change it to the 
 | `unknown` | The floor. True, but it tells the frontend nothing. |
 | `{ id: number }`, the method body | Right. `FluentSelfResource::summary(): array` returns `['id' => $this->id]`. |
 
-Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyze only methods of
-`$scope->subjectReflection`. A foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown`
-floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
-exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+Only a class the body builds as itself is in scope: `spreadAnalysis()` reads the method on that class, with `$this` as
+it, the declaring class for `new self` and the runtime class for `new static`, `static::make()` and `self::make()`. A
+foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown` floor instead of the analyzer's own
+same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is exempt, since it is Laravel's
+serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as `SomeResource::make($x)->resolve()` does,
+never with the wrapped value's `| null`.
 
 ## Numeric keys
 
@@ -751,7 +757,7 @@ value degrades to `unknown`.
 | Reflected shape | Accepted? | Dispatch channel |
 | --- | --- | --- |
 | Primitives and their unions (`string`, `int \| null`) | yes | none needed |
-| One enum | yes | `directEnumFqcn` |
+| One enum | yes | `directEnumFqcn`; an enum channel carries the enum behind each `…Type` or `…Kind` token |
 | Several enums (`Status\|Priority`) | yes | `embeddedEnumFqcns` |
 | One `Model` subclass | yes; a method return then declines an abstract, `Illuminate\` or unpublished model | `modelFqcn` |
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |

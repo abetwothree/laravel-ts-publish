@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -139,6 +140,7 @@ class InertiaSharedDataAnalyzer
         );
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
+        SharedEnumKinds::spellApart($analysis);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);

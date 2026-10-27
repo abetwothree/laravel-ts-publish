@@ -1,3 +1,5 @@
+import type { MediaTypeKind, MediaTypeType } from '../../enums';
+
 /**
  * Resource using a positive instanceof guard (not negated).
  * Also includes inline arrays with optional keys and an empty inline array
@@ -7,8 +9,8 @@
  */
 export interface MediaTypePositiveInstanceOfResource
 {
-    name?: string;
-    value?: string;
+    name?: MediaTypeKind;
+    value?: MediaTypeType;
     meta?: { label?: string };
     empty?: never[];
 }

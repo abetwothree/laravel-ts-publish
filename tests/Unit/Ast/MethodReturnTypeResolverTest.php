@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyStampingChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
@@ -18,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
@@ -26,6 +29,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Release;
 use Workbench\App\Services\PayloadDecoratorService;
 use Workbench\App\Services\PostStatsService;
+use Workbench\App\ValueObjects\GuardedLinkPayload;
 
 test('a vague array signature falls back to the literal body', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ServiceReturnResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -250,7 +254,7 @@ test('a returned parameter the body only writes keys into publishes an open shap
     'a static method' => ['decorateStatic', '{ seen: boolean; [key: string]: unknown }'],
     'an untyped parameter' => ['untyped', '{ seen: boolean; [key: string]: unknown }'],
     'a whole write replacing the parameter first' => ['rebuilt', '{ id: number; seen: boolean }'],
-    'no key write' => ['passThrough', 'unknown[]'],
+    'no key write' => ['passThrough', 'Record<string, unknown>'],
     'a += of the parameter' => ['merged', '{ seen: boolean }'],
     'a precise @return' => ['declared', '{ seen: boolean }'],
 ]);
@@ -267,4 +271,90 @@ test('every call path publishes a returned key-written parameter open', function
         'passed_through' => 'Record<string, string> | never[]',
         'rebuilt' => '{ id: number; seen: boolean }',
     ]);
+});
+
+test('keeps the open signature only for a parameter bound to nothing it can read', function () {
+    $values = analyzedKeyTypes(GuardedLinkPayload::class, 'values');
+
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'guard')['type'] ?? null)
+        ->toBe('{ url?: null; disabled?: boolean; [key: string]: unknown }')
+        ->and($values['opaque'])->toBe('{ url?: null; disabled?: boolean; [key: string]: unknown }')
+        ->and($values['nested'])->toBe('{ id: number; url: string | null; disabled: boolean }')
+        ->and(json_encode(new GuardedLinkPayload()->values()['opaque']))->toBe('[]');
+});
+
+// The parent's body is read in an analyzer of its own, which binds nothing the child passes, so it seeds nothing.
+test('keeps a parent:: helper that writes keys into its parameter open through the child', function () {
+    $child = new KeyStampingChild;
+
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(KeyStampingChild::class, 'stamped')['type'] ?? null)
+        ->toBe('{ x: number; [key: string]: unknown }')
+        ->and(resolve(MethodReturnTypeResolver::class)->resolve(KeyStampingChild::class, 'extended')['type'] ?? null)
+        ->toBe('{ x: number; y: number; [key: string]: unknown }')
+        ->and(json_encode($child->stamped(['id' => 1])))->toBe('{"id":1,"x":1}')
+        ->and(json_encode($child->extended(['id' => 1])))->toBe('{"id":1,"x":1,"y":2}');
+});
+
+test('lets a seeded shape win over a vague @return array<string, mixed>', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'declared'))
+        ->toBe(['type' => '{ id: number; name: string; extra: boolean }', 'optional' => false])
+        ->and(json_encode(new GuardedLinkPayload()->values()['declared']))->toBe('{"id":1,"name":"x","extra":true}');
+});
+
+it('publishes a value-read shape open when its base is unread', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class))->toBe([
+        'unread_local' => '{ x: number; [key: string]: unknown }',
+        'untouched' => 'Record<string, unknown>',
+    ])->and(json_encode($payload->toArray()))->toBe('{"unread_local":{"a":1,"x":1},"untouched":{"k":1}}');
+});
+
+test('keeps a seeded parameter open where the body writes a key the walk cannot name', function () {
+    $values = new UnreadBasePayload(Request::create('/'))->values();
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'extended' => '{ id: number; seen: boolean; [key: string]: unknown }',
+        'appended' => '{ id: number; [key: string]: unknown }',
+        'nested_key' => '{ id: number; [key: string]: unknown }',
+    ])->and(json_encode($values['extended']))->toBe('{"id":1,"k":true,"seen":true}')
+        ->and(json_encode($values['appended']))->toBe('{"id":1,"0":5}')
+        ->and(json_encode($values['nested_key']))->toBe('{"id":1,"a":{"b":1}}');
+});
+
+test('publishes a value-read shape open over a helper or a spread the walk cannot read', function () {
+    $values = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]))->values();
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'raw_base' => '{ x: number; [key: string]: unknown }',
+        'raw_spread' => '{ x: number; [key: string]: unknown }',
+        'null_base' => '{ x: number }',
+    ])->and(json_encode($values['raw_base']))->toBe('{"a":1,"x":1}')
+        ->and(json_encode($values['raw_spread']))->toBe('{"a":1,"x":1}')
+        ->and(json_encode($values['null_base']))->toBe('{"x":1}');
+});
+
+test('publishes a string-keyed parameter returned untouched as a record where its argument reads as a list', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+    $filled = new UnreadBasePayload(Request::create('/'));
+    $filled->extra = ['b' => 2];
+    $filled->either = ['a' => 1];
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'request_untouched' => 'Record<string, unknown>',
+        'maybe_untouched' => 'Record<string, unknown> | null',
+        'either_untouched' => 'Record<string, unknown> | string',
+    ])->and(json_encode($payload->values()['request_untouched']))->toBe('{"a":1}')
+        ->and(json_encode($payload->values()['maybe_untouched']))->toBe('null')
+        ->and(json_encode($filled->values()['maybe_untouched']))->toBe('{"b":2}')
+        ->and(json_encode($payload->values()['either_untouched']))->toBe('"none"')
+        ->and(json_encode($filled->values()['either_untouched']))->toBe('{"a":1}');
+});
+
+test('publishes a value-read shape open where a += adds an array the walk cannot read', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['topped_up'])
+        ->toBe('{ x: number; [key: string]: unknown }')
+        ->and(json_encode($payload->values()['topped_up']))->toBe('{"x":1,"a":1}');
 });

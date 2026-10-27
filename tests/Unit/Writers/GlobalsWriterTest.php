@@ -33,6 +33,18 @@ test('writes globals content when enabled', function () {
         ->toContain('export namespace workbench.app.enums');
 });
 
+test('qualifies a resource\'s Kind name in the globals file', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)->toMatch('/interface MediaTypeResource \{\s*name: workbench\.app\.enums\.MediaTypeKind;/');
+});
+
 test('a multi-word namespace segment is declared and referenced as an identifier', function () {
     config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);

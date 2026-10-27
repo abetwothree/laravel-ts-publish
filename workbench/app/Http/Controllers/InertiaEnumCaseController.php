@@ -11,8 +11,8 @@ use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\ShiftClockReading;
 
 /**
- * Renders bare enum cases and a `new` value as page props. One `Status` only: two same-named enums in one route file
- * import one name twice.
+ * Renders bare enum cases, a case name and a `new` value as page props. One `Status` only: two same-named enums in one
+ * route file import one name twice.
  */
 class InertiaEnumCaseController
 {
@@ -21,6 +21,7 @@ class InertiaEnumCaseController
         return Inertia::render('Posts/EnumCase', [
             'status' => Status::Published,
             'kept' => $post->status ?? Status::Draft,
+            'status_name' => $post->status->name,
             'nested' => ['status' => Status::Draft],
             'cases' => [Status::Draft, Status::Published],
             'reading' => new ShiftClockReading,

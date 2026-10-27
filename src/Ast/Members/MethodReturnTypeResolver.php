@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
@@ -22,16 +21,13 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ConstFetch;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Declare_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
@@ -45,8 +41,8 @@ use ReflectionMethod;
 
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
- * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`
- * and what the call binds; the rules are in docs/components/receiver-types.md § Following a method's return type.
+ * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
+ * known or assumed runtime class, and bindings; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -67,10 +63,20 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
+     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body and
+     *                                                 whose model `$this` reads, as PHP forwards it through `self::`
+     *                                                 and a private `$this->` call
+     * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class, as a receiver's does
      * @return ValueExpressionResult|null
      */
-    public function resolve(string $class, string $methodName, ?CallSite $site = null, ?string $backing = null): ?array
-    {
+    public function resolve(
+        string $class,
+        string $methodName,
+        ?CallSite $site = null,
+        ?string $backing = null,
+        ?ReflectionClass $runtime = null,
+        bool $assumesRuntime = false,
+    ): ?array {
         if (! method_exists($class, $methodName)) {
             return null;
         }
@@ -79,9 +85,10 @@ final class MethodReturnTypeResolver
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
 
         return resolve(AnalysisMemo::class)->remember(
-            'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing),
-            function () use ($class, $methodName, $passed, $backing): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing);
+            'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
+                .AnalysisMemo::runtimeKey($class, $runtime, $assumesRuntime),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $assumesRuntime): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $assumesRuntime);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -115,15 +122,23 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The precise reflected return type, else the body's shape beside the declaration's other arms, else its value.
+     * The precise reflected return type, else the body's shape beside the declaration's other arms, else its value,
+     * unless the declaration spells as a string-keyed `Record` the vague list that value reads as.
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  ReflectionClass<object>|null  $runtime
      * @return ValueExpressionResult|null
      */
-    private function reflectOrReadBody(string $class, string $methodName, array $passed, ?string $backing): ?array
-    {
+    private function reflectOrReadBody(
+        string $class,
+        string $methodName,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): ?array {
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
 
@@ -131,14 +146,30 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing)
-            ?? $this->bodyValue($class, $methodName, $passed, $backing)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $assumesRuntime)
+            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime, $assumesRuntime), $reflected)
             ?? $reflected;
     }
 
     /**
-     * The inline object a method's literal return body spells, beside every non-array arm its declaration names; null
-     * when a return the shape does not describe is left over, or the shape spells nothing importable.
+     * A body value, or the declaration where it spells that value's vague list as a `Record`, as
+     * LaravelTsPublish::methodOrDocblockReturnTypes() prefers it: a string-keyed array encodes as an object.
+     *
+     * @param  ValueExpressionResult|null  $value
+     * @param  ValueExpressionResult|null  $reflected
+     * @return ValueExpressionResult|null
+     */
+    private function declaredOverVagueList(?array $value, ?array $reflected): ?array
+    {
+        return $value !== null && $reflected !== null && TsTypeString::spellsListAsRecord($value['type'], $reflected['type'])
+            ? $reflected
+            : $value;
+    }
+
+    /**
+     * The inline object a method's literal return body spells, beside every non-array arm its declaration names, open
+     * where it holds keys the analysis never read; null when a return the shape does not describe is left over, or
+     * the shape spells nothing importable.
      *
      * The cycle guard stays per method, whatever the call passes, so a recursion passing a new value each time still
      * stops at its first repeat.
@@ -147,10 +178,18 @@ final class MethodReturnTypeResolver
      * @param  ValueExpressionResult|null  $reflected
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  ReflectionClass<object>|null  $runtime
      * @return ValueExpressionResult|null
      */
-    private function bodyType(string $class, string $methodName, ?array $reflected, array $passed, ?string $backing): ?array
-    {
+    private function bodyType(
+        string $class,
+        string $methodName,
+        ?array $reflected,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
         $context = resolve(MethodLocator::class)->locate($class, $methodName);
@@ -167,14 +206,18 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $runs = $runtime?->getName() ?? $class;
+
         try {
             $analysis = resolve(AstEngine::class)->analyzeMethod(
                 $class,
                 $methodName,
-                $backing ?? (is_a($class, Model::class, true) ? $class : null),
+                $backing ?? (is_a($runs, Model::class, true) ? $runs : null),
                 carriesImports: false,
                 passed: $passed,
                 readsCall: true,
+                runtime: $runtime,
+                assumesRuntime: $assumesRuntime,
             );
         } finally {
             $memo->leave($key);
@@ -191,10 +234,8 @@ final class MethodReturnTypeResolver
             }
         }
 
-        $subject = new ReflectionClass($class);
-
-        // A caller's keys reach a returned parameter the body only writes keys into unseen, so the shape stays open.
-        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection)) {
+        // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.
+        if ($analysis->holdsUnreadKeys) {
             $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
 
             if ($signature === false) {
@@ -217,10 +258,17 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  ReflectionClass<object>|null  $runtime
      * @return ValueExpressionResult|null
      */
-    private function bodyValue(string $class, string $methodName, array $passed, ?string $backing): ?array
-    {
+    private function bodyValue(
+        string $class,
+        string $methodName,
+        array $passed,
+        ?string $backing,
+        ?ReflectionClass $runtime,
+        bool $assumesRuntime,
+    ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
         $memo = resolve(AnalysisMemo::class);
@@ -231,7 +279,7 @@ final class MethodReturnTypeResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing);
+            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $assumesRuntime);
         } finally {
             $memo->leave($key);
         }
@@ -298,47 +346,6 @@ final class MethodReturnTypeResolver
         }
 
         return $readsAny;
-    }
-
-    /**
-     * Whether the method returns a parameter its body writes only through its keys, so whatever the caller passed in it
-     * reaches the return without the body seeing it.
-     *
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration
-     */
-    private function returnsKeyWrittenParameter(ClassMethod $method, ReflectionClass $subject, ReflectionClass $declaration): bool
-    {
-        $stmts = $method->stmts ?? [];
-        $parameters = [];
-        $returned = [];
-
-        foreach ($method->params as $param) {
-            if ($param->var instanceof Variable && is_string($param->var->name)) {
-                $parameters[] = $param->var->name;
-            }
-        }
-
-        foreach ($this->ownReturns($stmts) ?? [] as [$return]) {
-            if ($return->expr instanceof Variable && in_array($return->expr->name, $parameters, true)) {
-                $returned[$return->expr->name] = false;
-            }
-        }
-
-        foreach ($returned === [] ? [] : VariableWrites::of($stmts, $subject, $declaration) as [$name, , $target]) {
-            if (! isset($returned[$name])) {
-                continue;
-            }
-
-            if (! $target instanceof ArrayDimFetch) {
-                // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
-                unset($returned[$name]);
-            } elseif (VariableWrites::rootVariable($target) === $name) {
-                $returned[$name] = true;
-            }
-        }
-
-        return in_array(true, $returned, true);
     }
 
     /**

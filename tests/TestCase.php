@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -66,6 +67,7 @@ class TestCase extends Orchestra
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
         CallArguments::reset();
+        ValueResult::forgetEnumSpellings();
         CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(

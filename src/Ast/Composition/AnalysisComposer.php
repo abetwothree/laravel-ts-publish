@@ -106,6 +106,7 @@ final class AnalysisComposer
                 $fqcns,
                 $nameMap,
                 $this->importAliases,
+                $this->siblingImportNames,
             );
         }
     }
@@ -242,6 +243,8 @@ final class AnalysisComposer
                 $constRegistry->register($fqcn, $constName);
             }
         }
+
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->propertyFqcnQueues);
 
         $this->applyImportNameRegistries(
             $registry,

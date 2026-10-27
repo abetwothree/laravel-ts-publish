@@ -39,9 +39,9 @@ use ReflectionMethod;
 use stdClass;
 
 /**
- * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.) typed from its reflected return type,
- * `array_filter()` as its array, and Laravel helpers whose shape is knowable: `config('literal')`, `config()->get()`
- * and its typed accessors, `auth()->user()`/`auth()->id()`, `now()`, `today()`, `str()`, `url()` and `collect()`.
+ * A call to a known PHP built-in function typed from its reflected return type, `array_filter()` and `array_values()`
+ * as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`, `now()`,
+ * `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -77,6 +77,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'array_filter') {
                 return $this->arrayFilterRule(CallArguments::for($expr, new ReflectionFunction('array_filter')), $engine);
+            }
+
+            if ($name === 'array_values') {
+                return $this->arrayValuesRule(CallArguments::for($expr, new ReflectionFunction('array_values')), $engine);
             }
 
             $helper = $this->valueHelperRule($name, $expr, $scope, $engine);
@@ -284,16 +288,79 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
+     * `array_values($array)` as the list of its values, arm by arm: a list or tuple as itself, a Record as its values,
+     * an object literal as a list of its member types. A `null` arm is left out, as PHP throws a TypeError on null;
+     * null when another arm leaves the array unread.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function arrayValuesRule(CallArguments $args, ExpressionEngine $engine): ?array
+    {
+        $array = $args->named('array')?->value;
+
+        if ($array === null || $args->hasUnpack()) {
+            return null;
+        }
+
+        $result = $engine->resolve($array);
+        $arms = [];
+
+        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            if ($arm === 'null') {
+                continue;
+            }
+
+            $values = $this->valuesOfArm($arm);
+
+            if ($values === null) {
+                return null;
+            }
+
+            $arms[] = $values;
+        }
+
+        if ($arms === []) {
+            return null;
+        }
+
+        unset($result['keepsKeys']);
+
+        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+    }
+
+    /**
+     * What array_values() makes of one arm of its array; null for an arm it cannot read.
+     */
+    private function valuesOfArm(string $arm): ?string
+    {
+        if ($arm === 'never[]' || TsTypeShape::isWrapped($arm, '[', ']')) {
+            return $arm;
+        }
+
+        $record = TsTypeShape::recordArguments($arm);
+
+        if ($record !== null) {
+            return TsTypeShape::listType([$record[1]]);
+        }
+
+        $members = TsTypeShape::members($arm);
+
+        if ($members !== null) {
+            return TsTypeShape::listType(array_column($members, 1));
+        }
+
+        return TsTypeShape::elementType($arm) === null ? null : $arm;
+    }
+
+    /**
      * What array_filter() leaves of one arm of its array: a Record as itself, a list as itself or the object its gaps
      * make, each value without its `null` arm where the filter drops nulls; null for any other arm.
      */
     private function filteredArm(string $arm, bool $dropsNull): ?string
     {
-        $record = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
-            ? TsTypeShape::splitTopLevel(substr($arm, strlen('Record<'), -1), [','])
-            : [];
+        $record = TsTypeShape::recordArguments($arm);
 
-        if (count($record) === 2) {
+        if ($record !== null) {
             return 'Record<'.$record[0].', '.$this->filteredValue($record[1], $dropsNull).'>';
         }
 

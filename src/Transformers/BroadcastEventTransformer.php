@@ -204,7 +204,7 @@ class BroadcastEventTransformer extends CoreTransformer
             }
         }
 
-        return $map;
+        return $map + $this->siblingGlobalAliases();
     }
 
     /**
@@ -532,9 +532,13 @@ class BroadcastEventTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName);
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->propertyFqcns);
+        $resolved = $registry->resolve();
+
         $this->applyResolvedImportNames(
-            $registry->resolve(),
+            $resolved,
             $this->enumFqcnMap + $this->modelFqcnMap,
+            siblings: $registry->resolveSiblings($resolved),
         );
 
         return $this;
@@ -574,6 +578,7 @@ class BroadcastEventTransformer extends CoreTransformer
                 $this->propertyFqcns[$key] ?? [],
                 $nameMap,
                 $this->importAliases,
+                $this->siblingImportNames,
             );
         }
     }
@@ -601,6 +606,14 @@ class BroadcastEventTransformer extends CoreTransformer
             // Only a name a type still spells is imported, as ResourceTransformer::pruneUnspelledImports() keeps it.
             if (TsTypeString::typeNameOccursIn($this->localImportName($fqcn, $typeName), ...$types)) {
                 $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+            }
+
+            foreach ($this->siblingImportNames[$fqcn] ?? [] as $name => $local) {
+                $aliasable[$importPath][$name] = true;
+
+                if (TsTypeString::typeNameOccursIn($local, ...$types)) {
+                    $imports[$importPath][] = $this->formatSiblingImportName($name, $local);
+                }
             }
         }
 

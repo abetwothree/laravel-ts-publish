@@ -297,7 +297,7 @@ class ModelTransformer extends CoreTransformer
             }
         }
 
-        return $map;
+        return $map + $this->siblingGlobalAliases();
     }
 
     /**
@@ -859,6 +859,10 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->columns, $this->columnFqcns);
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->mutators, $this->mutatorFqcns);
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->appends, $this->appendsFqcns);
+
         $this->applyImportNameRegistries(
             $registry,
             $constRegistry,
@@ -878,25 +882,25 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($this->columns as $key => $entry) {
             $this->columns[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->mutators as $key => $entry) {
             $this->mutators[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->appends as $key => $entry) {
             $this->appends[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->relations as $key => $entry) {
             $this->relations[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
     }
@@ -924,19 +928,27 @@ class ModelTransformer extends CoreTransformer
             ARRAY_FILTER_USE_BOTH,
         );
 
+        $ownTypes = [
+            ...$this->tsExtends,
+            ...array_column($this->columns, 'type'),
+            ...array_column($this->mutators, 'type'),
+            ...array_column($this->appends, 'type'),
+            ...array_column($this->relations, 'type'),
+        ];
+
         $typeImports = [
-            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->enumFqcnMap, $ownTypes),
             ...$this->collectModularTypeImports($modelFqcnMap),
         ];
 
         $types = $this->combinedTypes();
-        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
-            $this->localImportName($fqcn, $typeName),
-            ...$types,
+        $spelled = fn (string $typeName, string $fqcn): bool => array_any(
+            $this->localImportNames($fqcn, $typeName),
+            static fn (string $local): bool => TsTypeString::typeNameOccursIn($local, ...$types),
         );
 
         $combinedTypeImports = [
-            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH), $types),
             ...$this->collectModularTypeImports(array_filter($modelFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
         ];
 

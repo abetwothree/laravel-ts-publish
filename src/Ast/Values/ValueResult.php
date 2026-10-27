@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -17,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -35,11 +38,15 @@ use ReflectionClass;
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool
  * }
+ * @phpstan-type EnumSpelling = array{string, string}
  *
  * @internal
  */
 final class ValueResult
 {
+    /** @var array<string, EnumSpelling> enum FQCN => its type name and its const name, read once per run */
+    private static array $enumSpellings = [];
+
     /**
      * The fallback result for an expression that resolves to no useful type.
      *
@@ -153,7 +160,7 @@ final class ValueResult
         }
 
         foreach (self::modelChannelFqcns($result) as $model) {
-            if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
+            if (FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract()) {
                 return false;
             }
         }
@@ -336,7 +343,7 @@ final class ValueResult
 
         foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
             $wraps = isset($arm['enumFqcn']);
-            $reads = isset($arm['directEnumFqcn']);
+            $reads = isset($arm['directEnumFqcn']) && ! self::readsEnumKind($arm);
 
             // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
             if ($wraps && $reads) {
@@ -393,7 +400,95 @@ final class ValueResult
      */
     public static function enumTypeName(string $fqcn): string
     {
-        return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+        return self::enumSpelling($fqcn)[0];
+    }
+
+    /**
+     * The name a backed enum's case-name union is spelled with: its published const name and `Kind`.
+     */
+    public static function enumKindName(string $fqcn): string
+    {
+        return self::enumSpelling($fqcn)[1].'Kind';
+    }
+
+    /**
+     * The names beside its type name that an enum's tokens are spelled with: a backed enum's `…Kind`.
+     *
+     * An import channel carries the enum behind each of these tokens too, so a queue reads them as the enum's own.
+     *
+     * @return list<string>
+     */
+    public static function enumSiblingNames(string $fqcn): array
+    {
+        return enum_exists($fqcn) && is_a($fqcn, BackedEnum::class, true) ? [self::enumKindName($fqcn)] : [];
+    }
+
+    /**
+     * Every name an enum's tokens are spelled with: its type name, then each sibling name.
+     *
+     * @return non-empty-list<string>
+     */
+    public static function enumNames(string $fqcn): array
+    {
+        return [self::enumTypeName($fqcn), ...self::enumSiblingNames($fqcn)];
+    }
+
+    /**
+     * The classes behind a result's tokens, one queue per kind: its models, its resources and its enums read directly.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return array{ClassTokenQueue, ClassTokenQueue, ClassTokenQueue}
+     */
+    public static function tokenQueues(array $result): array
+    {
+        return [
+            new ClassTokenQueue(self::modelChannelFqcns($result), class_basename(...)),
+            new ClassTokenQueue(
+                self::resourceChannelFqcns($result),
+                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
+            ),
+            self::enumTokens(self::directEnumChannelFqcns($result)),
+        ];
+    }
+
+    /**
+     * A queue of enum classes, each read by every name its tokens spell.
+     *
+     * @param  list<class-string>  $enums
+     */
+    public static function enumTokens(array $enums): ClassTokenQueue
+    {
+        return new ClassTokenQueue($enums, self::enumTypeName(...), self::enumSiblingNames(...));
+    }
+
+    /**
+     * Forget each enum's spelling, so a run reads its enums and `custom_ts_mappings` afresh.
+     */
+    public static function forgetEnumSpellings(): void
+    {
+        self::$enumSpellings = [];
+    }
+
+    /**
+     * An enum's type name and const name, as toTsType() spells them, read once per run.
+     *
+     * @return EnumSpelling
+     */
+    private static function enumSpelling(string $fqcn): array
+    {
+        if (! isset(self::$enumSpellings[$fqcn])) {
+            $info = LaravelTsPublish::toTsType($fqcn);
+
+            return self::$enumSpellings[$fqcn] = [
+                $info['enumTypes'][0] ?? class_basename($fqcn).'Type',
+                $info['enums'][0] ?? class_basename($fqcn),
+            ];
+        }
+
+        // toTsType() records the enum's files as it reads them, so a spelling read again records them too.
+        DependencyRecorder::recordClass($fqcn);
+
+        return self::$enumSpellings[$fqcn];
     }
 
     /**
@@ -474,6 +569,19 @@ final class ValueResult
     }
 
     /**
+     * Whether a result reads its enum by the enum's `…Kind`, a name no EnumResource wrap of the enum spells.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function readsEnumKind(array $result): bool
+    {
+        return isset($result['directEnumFqcn']) && array_any(
+            self::enumSiblingNames($result['directEnumFqcn']),
+            fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $result['type']),
+        );
+    }
+
+    /**
      * Whether an arm wraps an enum resource. Its token holds no queue entry, since the AsEnum rewrite spells it by its
      * own import channel, so the union's enums cannot be read by class.
      *
@@ -509,6 +617,10 @@ final class ValueResult
         $enumResourceFqcns = [];
         /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
         $enumDirectFqcns = [];
+        /** @var list<class-string> $enumTypeReadFqcns the direct branches that spell their enum's type name */
+        $enumTypeReadFqcns = [];
+        /** @var list<class-string> $enumKindReadFqcns the direct branches that spell their enum's `…Kind` */
+        $enumKindReadFqcns = [];
         // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
@@ -536,6 +648,12 @@ final class ValueResult
 
             if (isset($inner['directEnumFqcn'])) {
                 $enumDirectFqcns[] = $inner['directEnumFqcn'];
+
+                if (self::readsEnumKind($inner)) {
+                    $enumKindReadFqcns[] = $inner['directEnumFqcn'];
+                } else {
+                    $enumTypeReadFqcns[] = $inner['directEnumFqcn'];
+                }
             }
 
             if (isset($inner['embeddedEnumFqcns'])) {
@@ -577,6 +695,9 @@ final class ValueResult
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {
+            // A `…Kind` arm does not read the type the AsEnum rewrite replaces, so it rides the embedded queue.
+            $enumDirectFqcns = array_values(array_unique($enumTypeReadFqcns));
+            $embeddedEnumFqcns = [...$enumKindReadFqcns, ...$embeddedEnumFqcns];
             $allBranchFqcns = array_values(array_unique([...$enumResourceFqcns, ...$enumDirectFqcns]));
 
             if ($enumDirectFqcns === [] && count($enumResourceFqcns) === 1) {
@@ -658,12 +779,8 @@ final class ValueResult
         $wraps = self::wrapsAnEnum($arms);
 
         foreach ($arms as $arm) {
-            $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
-            $resources = new ClassTokenQueue(
-                self::resourceChannelFqcns($arm),
-                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
-            );
-            $enums = new ClassTokenQueue($wraps ? [] : self::directEnumChannelFqcns($arm), self::enumTypeName(...));
+            [$models, $resources, $enums] = self::tokenQueues($arm);
+            $enums = $wraps ? self::enumTokens([]) : $enums;
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
                 if ($member === 'null') {

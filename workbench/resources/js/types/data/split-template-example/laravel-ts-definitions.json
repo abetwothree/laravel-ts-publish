@@ -302,6 +302,11 @@
                     "name": "kept",
                     "type": "AppStatusType",
                     "optional": false
+                },
+                {
+                    "name": "status_name",
+                    "type": "AppStatusKind",
+                    "optional": false
                 }
             ]
         },
@@ -10814,6 +10819,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BaseNoticeResource": {
+            "name": "BaseNoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BaseSharedResource": {
             "name": "BaseSharedResource",
             "properties": []
@@ -13471,7 +13501,7 @@
                 },
                 {
                     "name": "stage_name",
-                    "type": "string",
+                    "type": "StatusKind",
                     "optional": true
                 }
             ]
@@ -13820,7 +13850,7 @@
             "properties": [
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 }
             ]
@@ -15500,12 +15530,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15520,12 +15550,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15545,12 +15575,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": false
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 },
                 {
@@ -15897,6 +15927,21 @@
                     "name": "currency",
                     "type": "CurrencyType",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MergedPostResource": {
+            "name": "MergedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },
@@ -16330,6 +16375,36 @@
             "properties": [
                 {
                     "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NoticeResource": {
+            "name": "NoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "child_only",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "meta",
                     "type": "number",
                     "optional": false
                 }
@@ -17293,12 +17368,12 @@
                 },
                 {
                     "name": "status_label",
-                    "type": "{ label: string; value: number }",
+                    "type": "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
                     "optional": false
                 },
                 {
                     "name": "status_payload",
-                    "type": "{ payload_status: unknown; payload_name: string }",
+                    "type": "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
                     "optional": false
                 },
                 {
@@ -17308,7 +17383,7 @@
                 },
                 {
                     "name": "payload_name",
-                    "type": "string",
+                    "type": "StatusKind",
                     "optional": false
                 }
             ]
@@ -20730,6 +20805,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TieredNoticeResource": {
+            "name": "TieredNoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ToArrayCastsResource": {
             "name": "ToArrayCastsResource",
             "properties": [
@@ -20975,7 +21075,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "VisibilityType",
                     "optional": false
                 },
                 {

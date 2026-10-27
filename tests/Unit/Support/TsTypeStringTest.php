@@ -1173,3 +1173,16 @@ describe('isVagueTsType', function () {
             ->and($this->service->isVagueTsType('Record<string, string>'))->toBeFalse();
     });
 });
+
+describe('spellsListAsRecord', function () {
+    test('reads a Record arm as the unknown[] a list type spells, every other arm matching', function (string $list, string $record, bool $spells) {
+        expect($this->service->spellsListAsRecord($list, $record))->toBe($spells);
+    })->with([
+        'one Record' => ['unknown[]', 'Record<string, unknown>', true],
+        'beside null' => ['unknown[] | null', 'null | Record<string, unknown[]>', true],
+        'a null only one side holds' => ['unknown[] | null', 'Record<string, unknown>', false],
+        'a list beside the Record' => ['unknown[]', 'unknown[] | Record<string, unknown>', false],
+        'a list of Records' => ['unknown[]', 'Record<string, unknown>[]', false],
+        'no Record at all' => ['unknown[] | null', 'null | unknown[]', false],
+    ]);
+});

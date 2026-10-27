@@ -75,6 +75,10 @@ _Avoid_: metadata
 One of the built-in functions a published enum gets, such as `.from()`, `.tryFrom()`, and `.cases()`.
 _Avoid_: helper
 
+**Published enum**:
+An enum a run writes a file for, because enum publishing is on and the configured enum collector lists it. A `->value` or `->name` read publishes an enum's alias only for a published enum, since only its file can be imported.
+_Avoid_: collected enum, exported enum
+
 **Route helper**:
 The published function for one controller action, which builds its URL and binds its parameters.
 _Avoid_: helper
@@ -107,8 +111,12 @@ _Avoid_: signature key, pattern key
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
 **Runtime class**:
-The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
+The class `$this` and `static` are when a body runs; for a collection, the one Laravel instantiates. Where it is known and where only assumed: [AST engine § Known or assumed runtime class](docs/components/ast-engine.md#known-or-assumed-runtime-class).
 _Avoid_: leaf, publishing collection, called class
+
+**Declaring class**:
+The class that declares the method body being read, which `self` names and whose parent `parent` names; for a trait's method, the class that uses the trait. See [AST engine § AnalysisScope](docs/components/ast-engine.md#analysisscope).
+_Avoid_: defining class, lexical class, scope class
 
 **Resource proxy**:
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.

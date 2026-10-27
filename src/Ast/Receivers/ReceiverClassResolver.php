@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -50,6 +51,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 use ReflectionClass;
+use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionProperty;
 use Throwable;
@@ -132,6 +134,7 @@ final class ReceiverClassResolver
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
             $expr instanceof New_ => $this->fromNew($expr, $scope),
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
+            $expr instanceof ClassConstFetch => $this->fromEnumCase($expr, $scope),
             $expr instanceof Ternary => $this->fromArms(
                 [$expr->if ?? $expr->cond, $expr->else],
                 $scope,
@@ -196,7 +199,7 @@ final class ReceiverClassResolver
         $method = $call->name->toString();
 
         if ($this->sendsToSubjectCall($call, $scope)) {
-            return $this->fromThisMethodCall($method, $scope);
+            return $this->fromThisMethodCall($method, $scope, $scope->staticCallClass($call));
         }
 
         $receiver = $this->resolveStaticReceiver($call, $scope);
@@ -210,7 +213,7 @@ final class ReceiverClassResolver
         return $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
-                    ? $this->modelFactory($class, $method, $call) ?? $this->returned($class, $method)
+                    ? $this->modelFactory($class, $method, $call) ?? $this->forwardedReturn($call, $class, $method, $scope)
                     : $this->forwardedStaticQuery($class, $method),
                 $receiver->classes,
             ),
@@ -220,23 +223,27 @@ final class ReceiverClassResolver
 
     /**
      * Whether PHP sends a static-syntax call to the subject's `__call()`, where a macro or the resource proxy answers
-     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the subject lacks.
+     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the class it reaches lacks.
      */
     public function sendsToSubjectCall(StaticCall $call, AnalysisScope $scope): bool
     {
-        $subject = $scope->subjectReflection;
-
-        if (! $call->name instanceof Identifier || $subject->hasMethod($call->name->toString())) {
+        if (! $call->name instanceof Identifier) {
             return false;
         }
 
+        $method = $call->name->toString();
+        $reached = $scope->staticCallClass($call);
         $class = $call->class;
-        $onSubject = $class instanceof Variable
-            ? $class->name === 'this'
-            : $class instanceof Name && $this->subjectClassName($class, $subject) === $subject->getName();
+        $onSubject = match (true) {
+            $class instanceof Variable => $class->name === 'this',
+            ! $class instanceof Name => false,
+            $class->isSpecialClassName() => $class->toLowerString() !== 'parent',
+            default => $class->toString() === $scope->subjectReflection->getName(),
+        };
 
         return $onSubject
-            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($subject, $call->name->toString()));
+            && ! $reached->hasMethod($method)
+            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($reached, $method));
     }
 
     /**
@@ -283,16 +290,19 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when the subject neither declares `m` nor has a macro by that name: what
-     * `$this->resource` holds, since `JsonResource::__call()` forwards it there. The scope carries which subjects
-     * forward, so this resolver keeps to plain PHP semantics rather than one framework class's magic.
+     * The class a bare `$this->m()` runs on when the class it reaches neither declares `m` nor has a macro by that
+     * name: what `$this->resource` holds, since `JsonResource::__call()` forwards it there. The scope carries which
+     * subjects forward, so this resolver keeps to plain PHP semantics rather than one framework class's magic.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`, which reaches
+     *                                            AnalysisScope::thisMemberClass()
      */
-    public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
+    public function forwardedThisReceiver(string $method, AnalysisScope $scope, ?ReflectionClass $on = null): ?ReceiverType
     {
+        $class = $on ?? $scope->thisMemberClass($method, true);
+
         // `__call()` runs a macro registered under the name before it forwards anything.
-        if ($scope->subjectReflection->hasMethod($method)
-            || resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $method)
-        ) {
+        if ($class->hasMethod($method) || resolve(MacroCallResolver::class)->runsMacro($class, $method)) {
             return null;
         }
 
@@ -386,13 +396,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The model a bare `$this` is when the subject under analysis is itself a model, as in its own method or accessor.
+     * The model a bare `$this` is when the runtime class is itself a model, as in its own method or accessor.
      */
     public function modelSubject(AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
+        $runtime = $scope->runtimeReflection;
 
-        return $subject->isSubclassOf(Model::class) ? ReceiverType::of($subject->getName()) : null;
+        return $runtime->isSubclassOf(Model::class) ? ReceiverType::of($runtime->getName()) : null;
     }
 
     /**
@@ -580,7 +590,7 @@ final class ReceiverClassResolver
      */
     private function declaredClasses(array $span, AnalysisScope $scope): ?array
     {
-        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->subjectReflection->getName(), $span['context']->getName());
+        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->runtimeReflection->getName(), $span['context']->getName());
     }
 
     /**
@@ -796,29 +806,30 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve `$this->prop`: a subject-declared property first, because PHP reads it before any `__get()` forwarding.
+     * Resolve `$this->prop`: a declared property first, because PHP reads it before any `__get()` forwarding, on the
+     * class AnalysisScope::thisMemberClass() names.
      */
     private function fromThisProperty(string $name, AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
-
         if ($name === 'resource' && $scope->hasResourceProxy()) {
             return $this->proxyHeld($scope);
         }
 
-        if (! $subject->hasProperty($name)) {
+        $owner = $scope->thisMemberClass($name, false);
+
+        if (! $owner->hasProperty($name)) {
             return $this->forwardedMember($name, $scope);
         }
 
-        $property = $subject->getProperty($name);
+        $property = $owner->getProperty($name);
 
         if ($property->isStatic()) {
             return null;
         }
 
-        return str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
+        return FrameworkClasses::is($property->getDeclaringClass()->getName())
             ? null
-            : $this->typeOf($this->propertyClasses($property, $subject->getName()));
+            : $this->typeOf($this->propertyClasses($property, $scope->runtimeReflection->getName()));
     }
 
     /**
@@ -932,23 +943,30 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve `$this->m()`: the subject's own method, else that of what `$this->resource` holds, since JsonResource
-     * forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it returns.
+     * Resolve `$this->m()`: the method of the class the call reaches, else that of what `$this->resource` holds, since
+     * JsonResource forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it
+     * returns.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`, which reaches
+     *                                            AnalysisScope::thisMemberClass()
      */
-    private function fromThisMethodCall(string $method, AnalysisScope $scope): ?ReceiverType
+    private function fromThisMethodCall(string $method, AnalysisScope $scope, ?ReflectionClass $on = null): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
+        $owner = $on ?? $scope->thisMemberClass($method, true);
 
-        if ($subject->hasMethod($method)) {
-            return $this->memberMethod($subject->getName(), $method, true);
+        if ($owner->hasMethod($method)) {
+            // PHP's `static` is the runtime class even in a private method of an ancestor, so a declared one names it.
+            $held = $this->memberMethod($owner->getName(), $method, true, staticClass: $scope->runtimeReflection->getName());
+
+            return $held !== null && DeclaredClasses::returnsStatic($owner->getName(), $method) ? $held->asRuntimeInstance() : $held;
         }
 
-        $forwarded = $this->forwardedThisReceiver($method, $scope);
+        $forwarded = $this->forwardedThisReceiver($method, $scope, $owner);
 
         if ($forwarded === null) {
-            $macro = resolve(MacroCallResolver::class)->macroFor($subject, $method);
+            $macro = resolve(MacroCallResolver::class)->macroFor($owner, $method);
 
-            return $this->typeOf($this->macroReturnClasses($macro, $subject->getName()));
+            return $this->typeOf($this->macroReturnClasses($macro, $owner->getName()));
         }
 
         return $this->merge(
@@ -985,6 +1003,22 @@ final class ReceiverClassResolver
         return $docblock === null || $context === null
             ? null
             : DeclaredClasses::docblockClasses($docblock, $context, $subjectClass, $subjectClass);
+    }
+
+    /**
+     * Resolve `E::Case`, `self::Case` or `static::Case` to its enum; a constant that is no case declines.
+     */
+    private function fromEnumCase(ClassConstFetch $fetch, AnalysisScope $scope): ?ReceiverType
+    {
+        if (! $fetch->class instanceof Name || ! $fetch->name instanceof Identifier) {
+            return null;
+        }
+
+        $class = $this->scopeClassName($fetch->class, $scope);
+
+        return enum_exists($class) && new ReflectionEnum($class)->hasCase($fetch->name->toString())
+            ? ReceiverType::of($class)
+            : null;
     }
 
     /**
@@ -1281,9 +1315,15 @@ final class ReceiverClassResolver
      *
      * @param  bool  $fromInside  the call is on `$this`, so a non-public method is reachable
      * @param  class-string<Model>|null  $queried  the model the receiver, a query, relation or factory, builds
+     * @param  class-string|null  $staticClass  the caller's runtime class, which a declared `static` names
      */
-    private function memberMethod(string $class, string $method, bool $fromInside, ?string $queried = null): ?ReceiverType
-    {
+    private function memberMethod(
+        string $class,
+        string $method,
+        bool $fromInside,
+        ?string $queried = null,
+        ?string $staticClass = null,
+    ): ?ReceiverType {
         if (! $this->isCallable($class, $method, $fromInside)) {
             return $this->forwardedQueryMethod($class, $method, $queried);
         }
@@ -1302,7 +1342,7 @@ final class ReceiverClassResolver
             return new ReceiverType(DeclaredClasses::returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
         }
 
-        return $this->returned($class, $method);
+        return $this->returned($class, $method, $staticClass);
     }
 
     /**
@@ -1335,12 +1375,25 @@ final class ReceiverClassResolver
     }
 
     /**
+     * What a static call to a method of one class returns: a call that forwards the runtime class reads a declared
+     * `static` return as that class, as `static::m()` reads it; any other reads it as the class called.
+     */
+    private function forwardedReturn(StaticCall $call, string $class, string $method, AnalysisScope $scope): ?ReceiverType
+    {
+        $static = $scope->forwardsRuntimeClass($call, $class, $method) ? $scope->runtimeReflection->getName() : null;
+
+        return $this->returned($class, $method, $static);
+    }
+
+    /**
      * What a method returns on one class, remembering the model a model's own query builds, as `query()`'s
      * `Builder<static>` does, and the model `all()`'s `Collection<int, static>` lists.
+     *
+     * @param  class-string|null  $staticClass  the caller's runtime class, which a declared `static` names
      */
-    private function returned(string $class, string $method): ?ReceiverType
+    private function returned(string $class, string $method, ?string $staticClass = null): ?ReceiverType
     {
-        $classes = DeclaredClasses::returnClasses($class, $method);
+        $classes = DeclaredClasses::returnClasses($class, $method, $staticClass);
 
         if ($classes === [EloquentCollection::class] && ReceiverType::isConcreteModel($class)) {
             $declared = $this->declaredReturn($class, $method);
@@ -1494,25 +1547,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a `self`, `static`, `parent`, or fully-qualified name refers to, from inside the subject.
+     * The class a `self`, `static`, `parent`, or fully-qualified name refers to in the body under read.
      */
     private function namedClass(Name $name, AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
-        $parent = $subject->getParentClass();
+        $class = $this->scopeClassName($name, $scope);
 
-        // self/parent bind to the class declaring the body, and an inherited body is analyzed under the child;
-        // only with no user-land ancestor is that class always the subject.
-        $bodyIsSubjects = $parent === false || str_starts_with($parent->getName(), 'Illuminate\\');
-
-        $class = match ($name->toLowerString()) {
-            'static' => $subject->getName(),
-            'self' => $bodyIsSubjects ? $subject->getName() : null,
-            'parent' => $bodyIsSubjects && $parent !== false ? $parent->getName() : null,
-            default => $name->toString(),
-        };
-
-        return $class !== null && DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
+        return DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
     }
 
     /**
@@ -1583,7 +1624,7 @@ final class ReceiverClassResolver
         $declaring = $property->getDeclaringClass();
 
         // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $docComment = str_starts_with($declaring->getName(), 'Illuminate\\') ? false : $property->getDocComment();
+        $docComment = FrameworkClasses::is($declaring->getName()) ? false : $property->getDocComment();
         $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
 
         if ($declared === null || $declared === '') {

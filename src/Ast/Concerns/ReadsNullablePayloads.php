@@ -95,7 +95,7 @@ trait ReadsNullablePayloads
     }
 
     /**
-     * Whether a static call's class is a resource, `self` and `static` reading as the subject.
+     * Whether a static call's class is a resource, `self` and `static` read by scopeClassName().
      */
     private function callsResourceClass(StaticCall $call, AnalysisScope $scope): bool
     {
@@ -103,6 +103,6 @@ trait ReadsNullablePayloads
             return false;
         }
 
-        return $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
+        return $this->isResourceClass($this->scopeClassName($call->class, $scope));
     }
 }

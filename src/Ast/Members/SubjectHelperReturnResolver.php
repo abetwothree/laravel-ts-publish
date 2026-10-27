@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -25,7 +24,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * The value a subject's own `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
+ * The value a `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
  * `null`: no declared return type names the enum a wrap holds, so the helper's body is read in its own bindings.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -54,14 +53,19 @@ final class SubjectHelperReturnResolver
         }
 
         $name = $call->name->toString();
-        $subject = $scope->subjectReflection;
+        $class = $scope->thisMemberClass($name, true);
 
-        if (! $subject->hasMethod($name) || isset($scope->visitedSpreadMethods[$name])) {
+        if (! $class->hasMethod($name)) {
             return null;
         }
 
-        $method = $subject->getMethod($name);
-        $declaration = resolve(MethodLocator::class)->locate($subject->getName(), $name)?->method;
+        $method = $class->getMethod($name);
+
+        if ($scope->readsSpreadMethod($method)) {
+            return null;
+        }
+
+        $declaration = resolve(MethodLocator::class)->locate($class->getName(), $name)?->method;
         $stmts = $declaration->stmts ?? [];
         $returns = $this->collectReturnExpressions($stmts);
 
@@ -78,8 +82,8 @@ final class SubjectHelperReturnResolver
         $proofs = $this->proofsAcrossCall($scope, $call);
         $rewritten = $this->rewrittenThisPaths($stmts, $scope);
 
-        $result = $scope->within(function () use ($scope, $name, $method, $proofs, $rewritten, $passed, $stmts): void {
-            $scope->enterSubjectMethod($name, LaravelTsPublish::methodDeclaringFileClass($method), $proofs, $rewritten);
+        $result = $scope->within(function () use ($scope, $method, $proofs, $rewritten, $passed, $stmts): void {
+            $scope->enterSubjectMethod($method, $proofs, $rewritten);
             resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
             $this->seedBody($stmts, $scope);
         }, fn (): array => ValueResult::analyzeClosureUnion($returns, $engine, $scope));

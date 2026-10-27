@@ -4,17 +4,26 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -24,6 +33,9 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
+use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BinaryOp\Minus;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\PostDec;
@@ -32,8 +44,13 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
@@ -44,10 +61,16 @@ use WeakMap;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
- * type second, an untyped default no method rewrites third — and answer whether the class declares it at all, and
- * whether a read still holds its default.
+ * type second, an untyped default joined with the values its writes assign third — and answer whether the class
+ * declares it at all, and whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, ClassLike, string}
+ * @phpstan-type PropertyWrites list<PropertyWrite>
+ * @phpstan-type ElementWrite array{key: string|null, value: Expr}
+ * @phpstan-type KeyedValue array{string, ValueExpressionResult}
+ * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
  *
  * @internal
  */
@@ -71,9 +94,12 @@ final class SubjectPropertyTypeResolver
      * yields a type whose tokens can be imported.
      *
      * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, where the runtime class
+     *                                                      is known; null where it is only assumed, which declines such
+     *                                                      a write
      * @return ValueExpressionResult|null
      */
-    public function resolve(ReflectionClass $subject, string $name): ?array
+    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $knownRuntime = null): ?array
     {
         if (! $subject->hasProperty($name)) {
             return null;
@@ -83,7 +109,7 @@ final class SubjectPropertyTypeResolver
 
         return resolve(PropertyDocblockTypeReader::class)->read($property)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property);
+            ?? $this->defaultValueType($subject, $property, $knownRuntime);
     }
 
     /**
@@ -102,7 +128,7 @@ final class SubjectPropertyTypeResolver
 
         $property = $subject->getProperty($name);
 
-        if ($property->isStatic() || str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')) {
+        if ($property->isStatic() || FrameworkClasses::is($property->getDeclaringClass()->getName())) {
             return false;
         }
 
@@ -180,13 +206,15 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The type of an untyped property's default, typed as a parameter default's value is, while no method the class
-     * runs writes the property, so a read still holds the default.
+     * The type of an untyped property's default, typed as a parameter default's value is, joined with the value each
+     * write a method the class runs assigns; null when a write assigns a value the engine cannot type, or writes the
+     * property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, if known
      * @return ValueExpressionResult|null
      */
-    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property): ?array
+    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $knownRuntime): ?array
     {
         if ($property->getType() !== null || ! $property->hasDefaultValue()) {
             return null;
@@ -205,23 +233,306 @@ final class SubjectPropertyTypeResolver
         }
 
         $result = resolve(ValueResolver::class)->resolveConstantValue($value);
+        $writes = $result === null ? null : $this->propertyWrites($subject, $property->getName());
 
-        return $result === null || $this->writesProperty($subject, $property->getName()) ? null : $result;
+        if ($result === null || $writes === null) {
+            return null;
+        }
+
+        $written = [];
+        $computed = [];
+
+        foreach ($writes as $write) {
+            $assigned = $this->assignedConstant($write[0], $property->getName(), $knownRuntime, $write[1]);
+
+            if ($assigned !== null) {
+                $written[] = $assigned;
+            } elseif ($this->writtenValue($write[0], $property->getName()) !== null
+                || $this->elementWrite($write[0], $property->getName()) !== null) {
+                $computed[] = $write;
+            } else {
+                return null;
+            }
+        }
+
+        $known = $written === [] ? $result : ValueResult::unionResults([$result, ...$written]);
+
+        if ($computed === []) {
+            return $known;
+        }
+
+        $key = 'property-type:'.$subject->getName().'::'.$property->getName()
+            .AnalysisMemo::runtimeKey($subject->getName(), $knownRuntime, $knownRuntime === null);
+
+        return resolve(AnalysisMemo::class)->remember(
+            $key,
+            fn (): ?array => $this->withComputedWrites($known, $computed, $subject, $property, $knownRuntime),
+        );
     }
 
     /**
-     * Whether any method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or application
-     * code writes a property whose name it computes.
+     * The known type joined with the value each computed write assigns, each appended element folded into its list and
+     * each key written into its object; the known type alone while the property is already being typed, and null where
+     * a write's value is one the engine cannot type, or its elements fit no single shape.
      *
-     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
+     * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
+     * @param  PropertyWrites  $computed  the whole, compound and element writes no constant evaluation types
+     * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $knownRuntime
+     * @return ValueExpressionResult|null
+     */
+    private function withComputedWrites(
+        array $known,
+        array $computed,
+        ReflectionClass $subject,
+        ReflectionProperty $property,
+        ?ReflectionClass $knownRuntime,
+    ): ?array {
+        $memo = resolve(AnalysisMemo::class);
+        $guard = 'typing-property:'.$property->getDeclaringClass()->getName().'::'.$property->getName();
+
+        // A write reading the property it writes, as `$this->count + 1` does, reads what the property held before it.
+        if (! $memo->enter($guard)) {
+            return $known;
+        }
+
+        try {
+            $typed = [];
+            $appended = [];
+            $keyed = [];
+
+            foreach ($computed as $write) {
+                $element = $this->elementWrite($write[0], $property->getName());
+                $expr = $element['value'] ?? $this->writtenValue($write[0], $property->getName());
+                $value = $expr === null ? null : $this->computedWrite($write, $expr, $subject, $knownRuntime);
+
+                if ($value === null || $value['type'] === 'unknown') {
+                    return null;
+                }
+
+                if ($element === null) {
+                    $typed[] = $value;
+                } elseif ($element['key'] === null) {
+                    $appended[] = $value;
+                } else {
+                    $keyed[] = [$element['key'], $value];
+                }
+            }
+        } finally {
+            $memo->leave($guard);
+        }
+
+        $whole = ValueResult::unionResults([$known, ...$typed]);
+
+        // Appends beside a key write leave a list keyed by name, an object no list or literal shape describes.
+        return match (true) {
+            $appended !== [] && $keyed !== [] => null,
+            $appended !== [] => $this->withAppended($whole, $appended),
+            $keyed !== [] => $this->withKeys($whole, $keyed),
+            default => $whole,
+        };
+    }
+
+    /**
+     * A list of each element type the property's lists hold and each appended value's type; null where an arm is no
+     * list, such as `null` or an object, whose appended value lands under a key the type cannot name.
+     *
+     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
+     * @param  non-empty-list<ValueExpressionResult>  $appended
+     * @return ValueExpressionResult|null
+     */
+    private function withAppended(array $whole, array $appended): ?array
+    {
+        $elements = [];
+
+        foreach (TsTypeShape::splitTopLevel($whole['type'], ['|']) as $arm) {
+            $element = TsTypeShape::elementType($arm);
+
+            if ($element === null) {
+                return null;
+            }
+
+            $elements[] = $element;
+        }
+
+        $members = array_merge(...array_map(
+            fn (string $type): array => TsTypeShape::splitTopLevel($type, ['|']),
+            [...$elements, ...array_column($appended, 'type')],
+        ));
+
+        return [
+            ...ValueResult::unionResults([$whole, ...$appended]),
+            'type' => TsTypeShape::listType(array_values(array_diff($members, ['never']))),
+        ];
+    }
+
+    /**
+     * The property's one object shape with each key written into it: a key it holds joined with each value written, and
+     * a new one optional, since its write may not run; null where the type is not one object literal.
+     *
+     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
+     * @param  non-empty-list<KeyedValue>  $keyed
+     * @return ValueExpressionResult|null
+     */
+    private function withKeys(array $whole, array $keyed): ?array
+    {
+        $members = TsTypeShape::members($whole['type']);
+
+        if ($members === null) {
+            return null;
+        }
+
+        $shape = [];
+
+        foreach ($members as [$key, $type]) {
+            $optional = str_ends_with($key, '?');
+            $shape[$optional ? substr($key, 0, -1) : $key] = [$optional, $type];
+        }
+
+        foreach ($keyed as [$key, $value]) {
+            $printed = JsEmitter::validJsObjectKey($key);
+            $held = $shape[$printed] ?? null;
+            $joined = $held === null
+                ? $value
+                : ValueResult::unionResults([[...ValueResult::unknown(), 'type' => $held[1]], $value]);
+            $shape[$printed] = [$held[0] ?? true, $joined['type']];
+        }
+
+        $printed = array_map(
+            fn (int|string $key, array $member): string => $key.($member[0] ? '?' : '').': '.$member[1],
+            array_keys($shape),
+            $shape,
+        );
+
+        return [
+            ...ValueResult::unionResults([$whole, ...array_column($keyed, 1)]),
+            'type' => '{ '.implode('; ', $printed).' }',
+        ];
+    }
+
+    /**
+     * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it;
+     * null where no method holds it, a function inside it holds the write, the class runs another body under that
+     * method's name, or the value names `static` and the runtime class is only assumed.
+     *
+     * @param  PropertyWrite  $write
+     * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $knownRuntime
+     * @return ValueExpressionResult|null
+     */
+    private function computedWrite(array $write, Expr $value, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    {
+        [$site, $self, $class, $file] = $write;
+        $method = array_find($class->getMethods(), fn (ClassMethod $method): bool => StatementBlocks::encloses($method, $site));
+        $methodName = $method?->name->toString() ?? '';
+
+        // A trait's method the class overrides never runs as written, and the override's parameters are not its own.
+        if ($method === null || ! $self->hasMethod($methodName)
+            || $this->functionHolds($method, $site)
+            || $self->getMethod($methodName)->getFileName() !== $file
+            || ($knownRuntime === null && $this->namesStatic($value))
+        ) {
+            return null;
+        }
+
+        return resolve(AstEngine::class)->analyzeExpressionValue(
+            new MethodContext($self, $method, resolve(AstParser::class)->parseFile($file)),
+            $value,
+            $knownRuntime ?? $subject,
+            assumesRuntime: $knownRuntime === null,
+        );
+    }
+
+    /**
+     * The key and value an element write `$this->{$name}[] = value` or `$this->{$name}['key'] = value` gives the
+     * property, the key null for an append; null for any other write, a computed or nested key included.
+     *
+     * @return ElementWrite|null
+     */
+    private function elementWrite(Node $site, string $name): ?array
+    {
+        if (! $site instanceof Assign || ! $site->var instanceof ArrayDimFetch) {
+            return null;
+        }
+
+        $element = $site->var;
+        $property = $element->var;
+        $key = $element->dim;
+
+        if (! $property instanceof PropertyFetch || ! $property->name instanceof Identifier
+            || $property->name->toString() !== $name || ($key !== null && ! $key instanceof String_)) {
+            return null;
+        }
+
+        return ['key' => $key?->value, 'value' => $site->expr];
+    }
+
+    /**
+     * Whether a closure, an arrow function or a nested class's method inside a method holds a node, binding names of
+     * its own over the method's.
+     */
+    private function functionHolds(ClassMethod $method, Node $site): bool
+    {
+        return new NodeFinder()->findFirst(
+            $method->stmts ?? [],
+            fn (Node $node): bool => $node instanceof FunctionLike && StatementBlocks::encloses($node, $site),
+        ) !== null;
+    }
+
+    /**
+     * The value a whole or compound write gives `$this->{$name}`: a compound one as the operation it abbreviates, and
+     * an increment or a decrement as its `+ 1` or `- 1`; null for any other write.
+     */
+    private function writtenValue(Node $site, string $name): ?Expr
+    {
+        $target = match (true) {
+            $site instanceof Assign, $site instanceof AssignOp, $site instanceof PreInc, $site instanceof PreDec,
+            $site instanceof PostInc, $site instanceof PostDec => $site->var,
+            default => null,
+        };
+
+        if (! $target instanceof PropertyFetch || ! $target->name instanceof Identifier || $target->name->toString() !== $name) {
+            return null;
+        }
+
+        $operation = BinaryOp::class.'\\'.class_basename($site);
+
+        return match (true) {
+            $site instanceof Assign => $site->expr,
+            $site instanceof AssignOp => is_subclass_of($operation, BinaryOp::class)
+                ? new $operation($target, $site->expr, $site->getAttributes())
+                : null,
+            $site instanceof PreInc, $site instanceof PostInc => new Plus($target, new Int_(1), $site->getAttributes()),
+            default => new Minus($target, new Int_(1), $site->getAttributes()),
+        };
+    }
+
+    /**
+     * Whether any method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`.
      *
      * @param  ReflectionClass<object>  $class
      */
     private function writesProperty(ReflectionClass $class, string $name): bool
     {
-        $finder = new NodeFinder;
+        return $this->propertyWrites($class, $name) !== [];
+    }
 
-        foreach ($this->declarations($class) as $declaration) {
+    /**
+     * Each node where a method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or where
+     * application code writes a property whose name it computes, with the class `self` names there, the class body
+     * holding it and its file; null when a declaration cannot be read, since it may write anything.
+     *
+     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return PropertyWrites|null
+     */
+    private function propertyWrites(ReflectionClass $class, string $name): ?array
+    {
+        $finder = new NodeFinder;
+        $writes = [];
+
+        foreach ($this->declarations($class) as [$declaration, $self]) {
             $file = $declaration->getFileName();
 
             // An internal class's code cannot name a property its user-land subclass declares.
@@ -229,7 +540,7 @@ final class SubjectPropertyTypeResolver
                 continue;
             }
 
-            $computedNames = ! str_starts_with($declaration->getName(), 'Illuminate\\');
+            $computedNames = ! FrameworkClasses::is($declaration->getName());
 
             // A framework body counts only a write that spells the name, so a source that never does is not walked.
             if (! $computedNames && ! $this->spellsName($file, $name)) {
@@ -244,17 +555,64 @@ final class SubjectPropertyTypeResolver
 
             // A class whose declaration cannot be read may write anything.
             if (! $node instanceof ClassLike) {
-                return true;
+                return null;
             }
 
             foreach (self::writeSites($node) as [$site, $targets]) {
-                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $declaration)) {
-                    return true;
+                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
+                    $writes[] = [$site, $self, $node, $file];
                 }
             }
         }
 
-        return false;
+        return $writes;
+    }
+
+    /**
+     * The value a write assigns `$this->{$name}` whole, evaluated as a constant expression in the body that holds it;
+     * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
+     * name, an unset, an iteration, a reference or a call that may take it by reference.
+     *
+     * @param  ReflectionClass<object>|null  $knownRuntime  the class the object is, which `static` names; null
+     *                                                      declines a value naming `static`, since a subclass may give
+     *                                                      it another type
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the write
+     * @return ValueExpressionResult|null
+     */
+    private function assignedConstant(Node $site, string $name, ?ReflectionClass $knownRuntime, ReflectionClass $self): ?array
+    {
+        if (! $site instanceof Assign
+            || ! $site->var instanceof PropertyFetch
+            || ! $site->var->name instanceof Identifier
+            || $site->var->name->toString() !== $name
+        ) {
+            return null;
+        }
+
+        if ($knownRuntime === null && $this->namesStatic($site->expr)) {
+            return null;
+        }
+
+        $scope = new AnalysisScope($self);
+        $scope->runtimeReflection = $knownRuntime ?? $self;
+        $values = resolve(ValueResolver::class);
+
+        try {
+            return $values->resolveConstantValue($values->evaluateConstantExpression($site->expr, $scope));
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether an expression names `static`, which a subclass may give another type, anywhere within it.
+     */
+    private function namesStatic(Expr $expr): bool
+    {
+        return new NodeFinder()->findFirst(
+            $expr,
+            fn (Node $node): bool => $node instanceof Name && $node->toLowerString() === 'static',
+        ) !== null;
     }
 
     /**
@@ -269,21 +627,23 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The class, then each ancestor, each followed by every trait it uses, transitively.
+     * The class, then each ancestor, each followed by every trait it uses, transitively, each with the class `self`
+     * names in its body: a class itself, a trait the class that uses it.
      *
      * @param  ReflectionClass<object>  $class
-     * @return list<ReflectionClass<object>>
+     * @return list<Declaration>
      */
     private function declarations(ReflectionClass $class): array
     {
         $declarations = [];
-        $pending = [$class];
+        $pending = [[$class, $class]];
 
         while ($pending !== []) {
-            $declaration = array_shift($pending);
-            $declarations[] = $declaration;
+            [$declaration, $self] = array_shift($pending);
+            $declarations[] = [$declaration, $self];
             $parent = $declaration->getParentClass();
-            $pending = [...array_values($declaration->getTraits()), ...$pending, ...($parent === false ? [] : [$parent])];
+            $traits = array_map(fn (ReflectionClass $trait): array => [$trait, $self], array_values($declaration->getTraits()));
+            $pending = [...$traits, ...$pending, ...($parent === false ? [] : [[$parent, $parent]])];
         }
 
         return $declarations;
@@ -294,16 +654,16 @@ final class SubjectPropertyTypeResolver
      * unsets, iterates into, takes a reference to or passes it to a by-reference parameter.
      *
      * @param  list<Expr|Arg>  $targets  what writeTargets() returned for the node
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the node
+     * @param  ReflectionClass<object>  $runtime  the class read through, which `$this` and `static` name
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the node
      */
     private function writesTo(
         Node $node,
         array $targets,
         string $name,
         bool $computedNames,
-        ReflectionClass $subject,
-        ReflectionClass $declaration,
+        ReflectionClass $runtime,
+        ReflectionClass $self,
     ): bool {
         $hits = array_filter(
             $targets,
@@ -316,7 +676,7 @@ final class SubjectPropertyTypeResolver
 
         // Only a call passing the property pays for reflecting its callee.
         /** @var list<Arg> $hits */
-        return resolve(ByReferenceArguments::class)->of($node, $hits, $subject, $declaration) !== [];
+        return resolve(ByReferenceArguments::class)->of($node, $hits, $runtime, $self) !== [];
     }
 
     /**

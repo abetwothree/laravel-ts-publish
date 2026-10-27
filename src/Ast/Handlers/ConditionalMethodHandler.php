@@ -612,14 +612,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a static call is `collection()` on an API resource class, `self` and `static` naming the subject.
+     * Whether a static call is `collection()` on an API resource class, `self` and `static` read by scopeClassName().
      */
     private function isResourceCollectionCall(StaticCall $call, AnalysisScope $scope): bool
     {
         return $call->name instanceof Identifier
             && $call->name->toLowerString() === 'collection'
             && $call->class instanceof Name
-            && $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
+            && $this->isResourceClass($this->scopeClassName($call->class, $scope));
     }
 
     /**

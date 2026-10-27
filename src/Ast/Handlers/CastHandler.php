@@ -7,6 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\Cast;
@@ -14,10 +18,19 @@ use PhpParser\Node\Expr\Cast\Array_ as CastArray_;
 use PhpParser\Node\Expr\Cast\Bool_ as CastBool;
 use PhpParser\Node\Expr\Cast\Double as CastDouble;
 use PhpParser\Node\Expr\Cast\Int_ as CastInt;
+use PhpParser\Node\Expr\Cast\Object_ as CastObject;
 use PhpParser\Node\Expr\Cast\String_ as CastString;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Scalar\Float_;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 
 /**
- * PHP cast operators — the cast alone determines the type, not the inner expression.
+ * PHP cast operators: a scalar cast alone sets the type, while `(object)` and `(array)` keep what the operand holds.
+ *
+ * `(object)` returns an object unchanged and builds a stdClass of an array or a scalar literal, which an API resource's
+ * filter never enters. `(array)` keeps an array, and types an object as `unknown[]`: its array form mangles non-public
+ * member keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -34,29 +47,140 @@ final class CastHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($expr instanceof CastBool) {
-            return ['type' => 'boolean', 'optional' => false];
-        }
+        return match (true) {
+            $expr instanceof CastBool => ['type' => 'boolean', 'optional' => false],
+            $expr instanceof CastInt, $expr instanceof CastDouble => ['type' => 'number', 'optional' => false],
+            $expr instanceof CastString => ['type' => 'string', 'optional' => false],
+            $expr instanceof CastObject => $this->objectCast($expr->expr, $scope, $engine),
+            $expr instanceof CastArray_ => $this->arrayCast($expr->expr, $scope, $engine),
+            default => null,
+        };
+    }
 
-        if ($expr instanceof CastInt || $expr instanceof CastDouble) {
-            return ['type' => 'number', 'optional' => false];
-        }
+    /**
+     * `(object) $operand`: an object the receiver resolver names as itself, any other value as the stdClass PHP builds
+     * of each arm, null among them; null where an arm cannot be read.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function objectCast(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
+        $literalOperand = $this->isScalarLiteral($operand);
+        $result = $engine->resolve($operand);
+        $arms = [];
 
-        if ($expr instanceof CastString) {
-            return ['type' => 'string', 'optional' => false];
-        }
+        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            $built = match (true) {
+                $arm === 'unknown' => null,
+                $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
+                $isObject => $arm,
+                default => $this->builtObject($arm, $literalOperand),
+            };
 
-        if ($expr instanceof CastArray_) {
-            // A cast of an array literal is the identity — the shape survives. Any other operand
-            // (e.g. a scalar, which PHP wraps into a single-element list) stays the flat fallback.
-            if ($expr->expr instanceof Array_) {
-                return $engine->resolve($expr->expr);
+            if ($built === null) {
+                return null;
             }
 
-            return ['type' => 'unknown[]', 'optional' => false];
+            $arms[] = $built;
         }
 
-        // (object)/(unset) casts: the legacy chain never matched these, so decline to preserve fall-through.
-        return null;
+        if ($arms === []) {
+            return null;
+        }
+
+        // Two arms of an object stay apart: two same-named classes spell one token, each with its own import.
+        $type = implode(' | ', $isObject ? $arms : array_values(array_unique($arms)));
+
+        return [...$result, 'type' => $type, 'keepsKeys' => true];
+    }
+
+    /**
+     * `(array) $operand`: an array literal or an operand typed as an array as itself, which an API resource's filter
+     * enters again; any other value, an object the receiver resolver names among them, as `unknown[]`.
+     *
+     * @return ValueExpressionResult
+     */
+    private function arrayCast(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        if ($operand instanceof Array_) {
+            return $engine->resolve($operand);
+        }
+
+        if (resolve(ReceiverClassResolver::class)->resolve($operand, $scope) === null) {
+            $result = $engine->resolve($operand);
+            $arms = TsTypeString::splitTopLevelUnion($result['type']);
+
+            if ($arms !== [] && array_all($arms, $this->isArray(...))) {
+                unset($result['keepsKeys']);
+
+                return $result;
+            }
+        }
+
+        return ['type' => 'unknown[]', 'optional' => false];
+    }
+
+    /**
+     * The stdClass `(object)` builds of one arm that holds no object: a keyed array as itself, a list or tuple keyed by
+     * index, a scalar under `scalar` where the operand or the arm is a literal; null for any other arm.
+     */
+    private function builtObject(string $arm, bool $literalOperand): ?string
+    {
+        if ($this->isKeyedArray($arm)) {
+            return $arm;
+        }
+
+        $element = TsTypeShape::isWrapped($arm, '[', ']') ? $this->tupleValues($arm) : TsTypeShape::elementType($arm);
+
+        if ($element !== null) {
+            return 'Record<string, '.$element.'>';
+        }
+
+        // An object the resolver cannot name may type as `string`, as a Carbon date does; PHP returns it as is.
+        $isScalar = TsTypeShape::isScalar($arm)
+            && ($literalOperand || ! in_array($arm, ['string', 'number', 'boolean'], true));
+
+        return $isScalar ? '{ scalar: '.$arm.' }' : null;
+    }
+
+    /**
+     * Every member type of a tuple as one union, or `never` for the empty tuple.
+     */
+    private function tupleValues(string $tuple): string
+    {
+        $members = TsTypeShape::tupleMembers($tuple);
+
+        return $members === [] ? 'never' : TsTypeString::hoistNull($members);
+    }
+
+    /**
+     * Whether the operand is a string, int, float or boolean literal, which no object can be.
+     */
+    private function isScalarLiteral(Expr $operand): bool
+    {
+        return $operand instanceof String_
+            || $operand instanceof Int_
+            || $operand instanceof Float_
+            || ($operand instanceof ConstFetch && in_array($operand->name->toLowerString(), ['true', 'false'], true));
+    }
+
+    /**
+     * Whether one arm is an array: a list, a tuple, or a keyed array.
+     */
+    private function isArray(string $arm): bool
+    {
+        return TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null || $this->isKeyedArray($arm);
+    }
+
+    /**
+     * Whether one arm is a Record or an object literal, or an intersection of them.
+     */
+    private function isKeyedArray(string $arm): bool
+    {
+        return array_all(
+            TsTypeShape::splitTopLevel($arm, ['&']),
+            static fn (string $part): bool => TsTypeShape::members($part) !== null || TsTypeShape::recordArguments($part) !== null,
+        );
     }
 }
