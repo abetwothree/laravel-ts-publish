@@ -105,10 +105,11 @@ test('reads an inherited provide()\'s static:: read and write as the provider\'s
         ->and(new NinthTierMetadataProvider()->provide(new Post))->toBe(['tier' => 9, 'constant' => 9]);
 });
 
-// The locator places no node in a file the parser cannot read, which this locator stands in for.
+// Pins the runtime class the fallback passes; with an unreadable file the real locator leaves the keys undeclared.
 test('reads an inherited provide() the locator cannot place through the provider\'s parent walk', function () {
     app()->instance(MethodLocator::class, new class(resolve(AstParser::class)) extends MethodLocator
     {
+        /** Decline NinthTierMetadataProvider's provide(), then locate as usual. */
         public function locate(string $class, string $method): ?MethodContext
         {
             return $class === NinthTierMetadataProvider::class && $method === 'provide'

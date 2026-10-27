@@ -40,7 +40,8 @@ class ModelMetadataAnalyzer
     /**
      * Resolve every type the provider can emit, keeping inferred types only for keys the payload returned.
      *
-     * @param  class-string<ModelMetadataProvider>  $providerClass
+     * @param  class-string<ModelMetadataProvider>  $providerClass  the class of the instance whose payload was
+     *                                                              collected, which an inherited provide() runs as
      * @param  list<string>  $payloadKeys
      */
     public function analyze(string $providerClass, array $payloadKeys, string $namespacePath = ''): ModelMetadataAnalysis
