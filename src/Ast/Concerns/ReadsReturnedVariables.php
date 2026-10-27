@@ -310,6 +310,8 @@ trait ReadsReturnedVariables
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  TAnalysis  $into
+     * @param  bool  $nested  whether the statements sit in a block the walk's top level holds, where a whole write
+     *                        the walk cannot read may not run, so leaves each key held before it optional
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -317,13 +319,25 @@ trait ReadsReturnedVariables
         bool $isConditional,
         MethodAnalysis $into,
         bool $topLevel = true,
+        bool $nested = false,
     ): void {
         foreach ($stmts as $stmt) {
+            $rewrites = $nested && $this->rewritesWhole([$stmt], $varName);
+
             if ($stmt instanceof TryCatch || $stmt instanceof Switch_
                 || $stmt instanceof Block || $stmt instanceof Do_) {
                 $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
 
+                // Its own write, a `do` condition or a `catch` variable, lands after a block it holds has run.
+                if ($rewrites) {
+                    $this->loosenHeldKeys($into, bringsKeys: true);
+                }
+
                 continue;
+            }
+
+            if ($rewrites) {
+                $this->loosenHeldKeys($into, bringsKeys: ! $stmt instanceof Unset_);
             }
 
             $appendedValue = $this->appendedValue($stmt, $varName);
@@ -363,6 +377,12 @@ trait ReadsReturnedVariables
             // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
             if ($assigned !== null) {
                 $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
+
+                if ($baseAnalysis === null && $nested) {
+                    $this->loosenHeldKeys($into, bringsKeys: true);
+
+                    continue;
+                }
 
                 if ($baseAnalysis === null) {
                     $into->holdUnreadKeys();
@@ -684,9 +704,9 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a top-level statement writes the whole variable other than by its own `=`, `+=` or `??=`, as an embedded
+     * Whether a statement writes the whole variable other than by its own `=`, `+=` or `??=`, as an embedded
      * assignment, destructuring, a by-reference argument, a `foreach` target or unset() does, so the walk cannot tell
-     * which keys it still holds. A write inside a block the statement holds may not run.
+     * which keys it still holds. A write inside a block the statement holds may not run, so the walk judges it there.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -876,7 +896,7 @@ trait ReadsReturnedVariables
         foreach ($bodies as $body) {
             $this->untypedKeyWrites = $before;
             $branch = clone $into;
-            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
+            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel, nested: true);
             $branches[] = $branch;
             $notes[] = $this->untypedKeyWrites;
             array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
@@ -1033,7 +1053,8 @@ trait ReadsReturnedVariables
         bool $topLevel,
     ): void {
         if ($stmt instanceof Block) {
-            $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+            $block = $stmt->stmts;
+            $this->collectVariableArrayAssignments($block, $varName, $isConditional, $into, $topLevel, nested: true);
 
             return;
         }
@@ -1042,29 +1063,31 @@ trait ReadsReturnedVariables
             $body = array_values($stmt->stmts);
             $jump = array_find_key($body, $this->holdsBreakOrContinue(...)) ?? count($body);
             $head = array_slice($body, 0, $jump);
+            $tail = array_slice($body, $jump);
 
-            $this->collectVariableArrayAssignments($head, $varName, $isConditional, $into, $topLevel);
-            $this->collectVariableArrayAssignments(array_slice($body, $jump), $varName, true, $into, $topLevel);
+            $this->collectVariableArrayAssignments($head, $varName, $isConditional, $into, $topLevel, nested: true);
+            $this->collectVariableArrayAssignments($tail, $varName, true, $into, $topLevel, nested: true);
 
             return;
         }
 
         if ($stmt instanceof Switch_) {
             foreach ($stmt->cases as $case) {
-                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel);
+                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel, nested: true);
             }
 
             return;
         }
 
-        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel, nested: true);
 
         foreach ($stmt->catches as $catch) {
-            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel);
+            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel, nested: true);
         }
 
         if ($stmt->finally !== null) {
-            $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
+            $finally = $stmt->finally->stmts;
+            $this->collectVariableArrayAssignments($finally, $varName, $isConditional, $into, $topLevel, nested: true);
         }
     }
 
@@ -1183,6 +1206,22 @@ trait ReadsReturnedVariables
                 $into->properties,
                 fn (array $property): bool => $property['name'] !== $key,
             ));
+        }
+    }
+
+    /**
+     * Make each key the variable holds optional before a whole write the walk cannot read, which may replace them all,
+     * and leave the keys it may bring unread; an unset() brings none.
+     */
+    private function loosenHeldKeys(MethodAnalysis $into, bool $bringsKeys): void
+    {
+        $into->properties = array_map(
+            fn (array $property): array => [...$property, 'optional' => true],
+            $into->properties,
+        );
+
+        if ($bringsKeys) {
+            $into->holdUnreadKeys();
         }
     }
 

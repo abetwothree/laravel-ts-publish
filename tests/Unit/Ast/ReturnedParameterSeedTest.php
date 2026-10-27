@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeRewrittenParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReplacedParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SeededEnumMembers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SeededRows;
@@ -76,17 +77,48 @@ it('seeds nothing past an array_splice(), whose keys publish open', function () 
         ->and(json_encode(new ReplacedParameter()->values()['spliced']))->toBe('{"0":5,"id":1,"x":1}');
 });
 
-// The walk still keeps `id` required past the unset() that may not run, though it removes the key where it runs.
+// The unset() that may not run leaves `id` optional, as an unset() of `id` alone in a block would.
 it('keeps the seed past a key-keeping sort, an unset() of one key, an unset() that may not run, a ??= and an array_push()', function () {
+    $cleared = new ReplacedParameter;
+    $cleared->clear = true;
+
     expect(analyzedKeyTypes(ReplacedParameter::class, 'kept'))->toBe([
         'ksorted' => '{ id: number; x: number }',
         'trimmed' => '{ id: number; x: number }',
-        'maybeCleared' => '{ id: number; x: number }',
+        'maybeCleared' => '{ id?: number; x: number }',
         'coalesced' => '{ id: number; x: number }',
         'pushed' => '{ id: number; x: number; [key: string]: unknown }',
     ])->and(json_encode(new ReplacedParameter()->kept()))->toBe(
         '{"ksorted":{"id":1,"x":1},"trimmed":{"id":1,"x":1},"maybeCleared":{"id":1,"x":1},"coalesced":{"id":1,"x":1},'
         .'"pushed":{"id":1,"0":5,"x":1}}',
+    )->and(json_encode($cleared->kept()['maybeCleared']))->toBe('{"x":1}');
+});
+
+// An unset() takes every key and brings none; each other write may bring keys the walk never names. A `do` loop's
+// condition runs after its body.
+it('makes the keys held before a whole rewrite in a block optional, and opens the shape where it brings keys', function () {
+    $rewritten = new MaybeRewrittenParameter;
+    $rewritten->rewrite = true;
+
+    expect(analyzedKeyTypes(MaybeRewrittenParameter::class))->toBe([
+        'unset' => '{ id?: number; x: number }',
+        'sorted' => '{ id?: number; x: number; [key: string]: unknown }',
+        'looped' => '{ id?: number; x: number; [key: string]: unknown }',
+        'destructured' => '{ id?: number; x: number; [key: string]: unknown }',
+        'matched' => '{ id?: number; x: number; [key: string]: unknown }',
+        'filtered' => '{ id?: number; name?: string; url: string; [key: string]: unknown }',
+        'excepted' => '{ id?: number; name?: string; x: number; [key: string]: unknown }',
+        'local' => '{ id?: number; x: number }',
+        'resorted' => '{ id?: number; k?: number; x: number; [key: string]: unknown }',
+        'signed' => '{ id?: number; [key: `k_${string}`]: number | undefined; x: number; [key: string]: unknown }',
+    ])->and(json_encode(new MaybeRewrittenParameter()->toArray()))->toBe(
+        '{"unset":{"id":1,"x":1},"sorted":{"id":1,"x":1},"looped":{"id":1,"x":1},"destructured":{"id":1,"x":1},'
+        .'"matched":{"id":1,"x":1},"filtered":{"id":0,"name":"n","url":"\/x"},"excepted":{"id":1,"name":"n","x":1},'
+        .'"local":{"id":1,"x":1},"resorted":{"id":1,"k":2,"x":1},"signed":{"id":1,"k_a":1,"x":1}}',
+    )->and(json_encode($rewritten->toArray()))->toBe(
+        '{"unset":{"x":1},"sorted":{"0":1,"x":1},"looped":{"k":1,"x":1},"destructured":{"k":1,"x":1},'
+        .'"matched":{"0":"a","k":"a","1":"a","x":1},"filtered":{"name":"n","url":"\/x"},"excepted":{"name":"n","x":1},'
+        .'"local":{"x":1},"resorted":{"0":1,"1":1,"x":1},"signed":{"0":1,"1":1,"x":1}}',
     );
 });
 
