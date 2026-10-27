@@ -61,7 +61,7 @@ final class SubjectHelperReturnResolver
 
         $method = $class->getMethod($name);
 
-        if (isset($scope->visitedSpreadMethods[$method->getName()])) {
+        if ($scope->readsSpreadMethod($method)) {
             return null;
         }
 

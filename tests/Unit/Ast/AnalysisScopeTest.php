@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -537,6 +539,8 @@ it('restores every field a subject method read sets aside', function () {
                 $scope->resolvingLocalVars,
                 $scope->declaringFileClass->getName(),
                 $scope->visitedSpreadMethods,
+                $scope->readsSpreadMethod(new ReflectionMethod(DraftPost::class, 'publishable')),
+                $scope->readsSpreadMethod(new ReflectionMethod(StaticSyntaxResource::class, 'publishable')),
             ];
 
             $scope->localVarBindings['inner'] = new Variable('body');
@@ -546,7 +550,9 @@ it('restores every field a subject method read sets aside', function () {
         },
     );
 
-    expect($inside)->toBe([[...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, ['publishable' => true]])
+    expect($inside)->toBe([
+        [...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, [Post::class.'::publishable' => true], true, false,
+    ])
         ->and($scope->nameBindings())->toBe($before)
         ->and($scope->resolvingLocalVars)->toBe(['item' => true])
         ->and($scope->declaringFileClass)->toBe($declaring)

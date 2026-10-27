@@ -398,8 +398,8 @@ final class AnalysisScope
     public array $readingLocals = [];
 
     /**
-     * Spread methods currently on the analysis stack, by declared name, so a method that spreads itself — directly or
-     * through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
+     * Spread methods currently on the analysis stack, by declaring class and name, so a method that spreads itself —
+     * directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
      *
      * @var array<string, true>
      */
@@ -1007,6 +1007,14 @@ final class AnalysisScope
     }
 
     /**
+     * Whether a method's body is already on the stack as a spread or helper read, so reading it again would recurse.
+     */
+    public function readsSpreadMethod(ReflectionMethod $method): bool
+    {
+        return isset($this->visitedSpreadMethods[self::spreadMethodKey($method)]);
+    }
+
+    /**
      * Set the caller's state aside to read $method, a method `$this` reaches, as within()'s $enter: no caller name
      * reaches its body, which reads its own file's imports and its own declaring class, and only $proofs of `$this`
      * reads hold.
@@ -1024,7 +1032,7 @@ final class AnalysisScope
             fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
         ));
 
-        $this->visitedSpreadMethods[$method->getName()] = true;
+        $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
@@ -1234,6 +1242,14 @@ final class AnalysisScope
     public function literalLocalBinding(string $name): ?Expr
     {
         return isset($this->byReferenceForms[$name]) ? null : ($this->localVarBindings[$name] ?? null);
+    }
+
+    /**
+     * The visitedSpreadMethods key of a method, by declaring class: a namesake on another class is another body.
+     */
+    private static function spreadMethodKey(ReflectionMethod $method): string
+    {
+        return $method->getDeclaringClass()->getName().'::'.$method->getName();
     }
 
     /**

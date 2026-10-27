@@ -888,7 +888,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $class->getMethod($methodName);
 
-        if (isset($this->scope->visitedSpreadMethods[$method->getName()])) {
+        if ($this->scope->readsSpreadMethod($method)) {
             return null;
         }
 
