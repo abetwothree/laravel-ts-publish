@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
@@ -63,6 +64,16 @@ use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
+use Workbench\App\Packages\Ui\Badge as UiBadge;
+use Workbench\App\Packages\Ui\Chart as UiChart;
+use Workbench\App\Packages\Ui\Dial as UiDial;
+use Workbench\App\Packages\Ui\Gauge as UiGauge;
+use Workbench\App\Packages\Ui\HasIcon as UiHasIcon;
+use Workbench\App\Packages\Ui\Node as UiNodeBase;
+use Workbench\App\Packages\Ui\Panel as UiPanel;
+use Workbench\App\Packages\Ui\Pennies as UiPennies;
+use Workbench\App\Packages\Ui\Plain as UiPlain;
+use Workbench\App\Packages\Ui\Spark as UiSpark;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\CapabilitiesDto;
 use Workbench\App\ValueObjects\Coordinate;
@@ -149,6 +160,23 @@ describe('toTsType', function () {
         expect($result['type'])->toBe('InlineCustomType')
             ->and($result['customImports'])->toBeEmpty();
     });
+
+    test('toTsType publishes a class override from the class, its traits, parents and interfaces', function (string $class, string $type) {
+        ClassTypeOverride::flush();
+
+        expect($this->service->toTsType($class)['type'])->toBe($type);
+    })->with([
+        'its own' => [UiNodeBase::class, 'UiNode'],
+        'a parent\'s' => [UiPanel::class, 'UiNode'],
+        'an interface itself' => [UiHasIcon::class, 'UiIcon'],
+        'an interface\'s' => [UiBadge::class, 'UiIcon'],
+        'a trait\'s, an interface\'s and a parent\'s, composed' => [UiChart::class, 'ChartType'],
+        'its own and a parent\'s, composed' => [UiDial::class, 'DialType'],
+        'its own with inherit: false' => [UiGauge::class, 'UiGauge'],
+        'its own, which cannot be extended' => [UiSpark::class, 'string'],
+        'a plain parent\'s' => [UiPennies::class, 'UiAmount'],
+        'none, the control' => [UiPlain::class, '{ a: number }'],
+    ]);
 
     test('toTsType resolves enum class to Type alias', function () {
         $result = $this->service->toTsType(Status::class);
@@ -3214,8 +3242,8 @@ class SelfTypedTraitNode
 #[TsType('ParentTypedBase')]
 class ParentTypedBase {}
 
-/** Types members as `parent` and `self`, which PHP 8.4 reflects as written. */
-#[TsType('ParentTypedChild')]
+/** Types members as `parent` and `self`, which PHP 8.4 reflects as written; its own override stands alone. */
+#[TsType('ParentTypedChild', inherit: false)]
 class ParentTypedChild extends ParentTypedBase
 {
     public ?parent $origin = null;

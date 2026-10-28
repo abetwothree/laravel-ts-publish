@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -66,6 +68,8 @@ class TestCase extends Orchestra
         PublishedResourceRegistry::reset();
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
+        ClassTypeOverride::flush();
+        ComposedClassTypes::flush();
         CallArguments::reset();
         ValueResult::forgetEnumSpellings();
         CoreCollector::flushClassMapCache();

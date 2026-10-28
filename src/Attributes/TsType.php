@@ -20,10 +20,15 @@ use Attribute;
  * ```php
  * #[TsType(['type' => 'MyType', 'import' => '@js/types'])]
  * ```
+ *
+ * @phpstan-type TsTypeValue = string|array{type: string, import?: string}
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class TsType
 {
-    /** @param string|array{type: string, import?: string} $type */
-    public function __construct(public string|array $type) {}
+    /**
+     * @param  TsTypeValue  $type
+     * @param  bool  $inherit  False to publish this override alone, without the ones it would inherit.
+     */
+    public function __construct(public string|array $type, public bool $inherit = true) {}
 }

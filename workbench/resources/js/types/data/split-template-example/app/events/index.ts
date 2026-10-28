@@ -21,6 +21,7 @@ export * from './ServerCreated';
 export * from './TaggedPayloadEvent';
 export * from './TeamMessageSent';
 export * from './TeamRosterSynced';
+export * from './UiBoardUpdated';
 export * from './UserNotification';
 export * from './UserRegisteredEvent';
 export * from './UserSynced';

@@ -12,6 +12,7 @@ import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
+import type { UiAmount, UiGauge, UiIcon, UiNode } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
@@ -6564,6 +6565,13 @@ declare global {
         }
         export interface TeamRosterSynced {
             team: app.http.resources.TeamResource;
+        }
+        export interface UiBoardUpdated {
+            panel: UiNode;
+            gauge: UiGauge;
+            pennies: UiAmount;
+            badge: UiIcon;
+            maybe: UiNode | null;
         }
         export interface UserNotification extends HasTimestamps {
             userId: number;

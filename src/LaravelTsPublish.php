@@ -9,12 +9,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -275,29 +276,17 @@ class LaravelTsPublish
             }
         }
 
-        // 2. #[TsType] explicit override, ahead of every automatic resolution
-        if (class_exists($phpType)) {
-            // This step and every later one read the class's own declarations, so its files decide the type.
-            DependencyRecorder::recordClass($phpType);
+        // 2. #[TsType] explicit override, ahead of every automatic resolution: the class's own, its traits', its
+        //    interfaces' and its parents'. resolve() records the class's files, which this and every later step read.
+        if (class_exists($phpType) || interface_exists($phpType)) {
+            $override = ClassTypeOverride::resolve($phpType);
 
-            $attrs = (new ReflectionClass($phpType))->getAttributes(TsType::class);
-            if ($attrs) {
-                $tsType = $attrs[0]->newInstance()->type;
-
-                if (is_array($tsType)) {
-                    /** @var array{type: string, import?: string} $tsType */
-                    $result['type'] = $tsType['type'];
-
-                    if (isset($tsType['import'])) {
-                        foreach (TsTypeString::extractImportableTypes($tsType['type']) as $importName) {
-                            $result['customImports'][$tsType['import']][] = $importName;
-                        }
-                    }
-                } else {
-                    $result['type'] = $tsType;
+            if ($override !== null) {
+                if ($override['composed']) {
+                    ComposedClassTypes::register($phpType);
                 }
 
-                return $result;
+                return [...$result, 'type' => $override['type'], 'customImports' => $override['customImports']];
             }
         }
 

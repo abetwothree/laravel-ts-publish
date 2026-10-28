@@ -22,6 +22,7 @@ import type { StatusSynced } from './workbench/crm/events/StatusSynced';
 import type { TaggedPayloadEvent } from './workbench/app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
+import type { UiBoardUpdated } from './workbench/app/events/UiBoardUpdated';
 import type { UserNotification } from './workbench/app/events/UserNotification';
 import type { UserRegisteredEvent } from './workbench/app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './workbench/app/events/UserSynced';
@@ -52,6 +53,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.TaggedPayloadEvent'
     | '.Workbench.App.Events.TeamMessageSent'
     | '.Workbench.App.Events.TeamRosterSynced'
+    | '.Workbench.App.Events.UiBoardUpdated'
     | '.Workbench.App.Events.UserNotification'
     | '.Workbench.App.Events.UserRegisteredEvent'
     | '.Workbench.App.Events.UserSynced'
@@ -82,6 +84,7 @@ export const BroadcastEvents = Object.freeze({
     TaggedPayloadEvent: '.Workbench.App.Events.TaggedPayloadEvent',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
     TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
+    UiBoardUpdated: '.Workbench.App.Events.UiBoardUpdated',
     UserNotification: '.Workbench.App.Events.UserNotification',
     UserRegisteredEvent: '.Workbench.App.Events.UserRegisteredEvent',
     AppUserSynced: '.Workbench.App.Events.UserSynced',
@@ -113,6 +116,7 @@ export type {
     TaggedPayloadEvent,
     TeamMessageSent,
     TeamRosterSynced,
+    UiBoardUpdated,
     UserNotification,
     UserRegisteredEvent,
     AppUserSynced,

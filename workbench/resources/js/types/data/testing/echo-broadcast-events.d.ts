@@ -22,6 +22,7 @@ import type { StatusSynced } from './workbench/crm/events/StatusSynced';
 import type { TaggedPayloadEvent } from './workbench/app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
+import type { UiBoardUpdated } from './workbench/app/events/UiBoardUpdated';
 import type { UserNotification } from './workbench/app/events/UserNotification';
 import type { UserRegisteredEvent } from './workbench/app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './workbench/app/events/UserSynced';
@@ -53,6 +54,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.TaggedPayloadEvent": TaggedPayloadEvent;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;
         ".Workbench.App.Events.TeamRosterSynced": TeamRosterSynced;
+        ".Workbench.App.Events.UiBoardUpdated": UiBoardUpdated;
         ".Workbench.App.Events.UserNotification": UserNotification;
         ".Workbench.App.Events.UserRegisteredEvent": UserRegisteredEvent;
         ".Workbench.App.Events.UserSynced": AppUserSynced;

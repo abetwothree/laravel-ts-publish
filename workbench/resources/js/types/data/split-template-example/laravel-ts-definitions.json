@@ -441,6 +441,38 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\UiBoardUpdated": {
+            "name": "UiBoardUpdated",
+            "eventName": "UiBoardUpdated",
+            "broadcastName": ".Workbench.App.Events.UiBoardUpdated",
+            "properties": [
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "gauge",
+                    "type": "UiGauge",
+                    "optional": false
+                },
+                {
+                    "name": "pennies",
+                    "type": "UiAmount",
+                    "optional": false
+                },
+                {
+                    "name": "badge",
+                    "type": "UiIcon",
+                    "optional": false
+                },
+                {
+                    "name": "maybe",
+                    "type": "UiNode | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\UserNotification": {
             "name": "UserNotification",
             "eventName": "UserNotification",
