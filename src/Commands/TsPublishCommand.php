@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -46,7 +47,7 @@ use Throwable;
  * @phpstan-import-type AnalysisWarning from AnalysisWarnings
  *
  * @phpstan-type PublishFlags = array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool, 7: bool, 8: bool}
- * @phpstan-type PublishType = array{config: string, option: string, label: string, functional: bool, default?: bool}
+ * @phpstan-type PublishType = array{enabled: bool, option: string, label: string, functional: bool}
  */
 class TsPublishCommand extends Command
 {
@@ -309,16 +310,16 @@ class TsPublishCommand extends Command
         // Enums, routes, metadata and both broadcast index files are the ones that emit runtime values.
         /** @var array<string, PublishType> $types */
         $types = [
-            'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
-            'broadcast_events' => ['config' => 'ts-publish.broadcast_events.enabled', 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
+            'broadcast_channels' => ['enabled' => Config::boolean('ts-publish.broadcast_channels.enabled', false), 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
+            'broadcast_events' => ['enabled' => Config::boolean('ts-publish.broadcast_events.enabled', false), 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
             // Kept for the reason form requests are: a file another phase writes can import a composed module.
-            'class_types' => ['config' => 'ts-publish.class_types.enabled', 'option' => 'only-class-types', 'label' => 'class types', 'functional' => true, 'default' => true],
-            'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
-            'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
-            'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
-            'model_metadata' => ['config' => 'ts-publish.model_metadata.enabled', 'option' => 'only-model-metadata', 'label' => 'model metadata', 'functional' => true],
-            'resources' => ['config' => 'ts-publish.resources.enabled', 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
-            'routes' => ['config' => 'ts-publish.routes.enabled', 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
+            'class_types' => ['enabled' => ComposedClassTypes::enabled(), 'option' => 'only-class-types', 'label' => 'class types', 'functional' => true],
+            'form_requests' => ['enabled' => Config::boolean('ts-publish.form_requests.enabled', false), 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
+            'enums' => ['enabled' => Config::boolean('ts-publish.enums.enabled', false), 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
+            'models' => ['enabled' => Config::boolean('ts-publish.models.enabled', false), 'option' => 'only-models', 'label' => 'models', 'functional' => false],
+            'model_metadata' => ['enabled' => Config::boolean('ts-publish.model_metadata.enabled', false), 'option' => 'only-model-metadata', 'label' => 'model metadata', 'functional' => true],
+            'resources' => ['enabled' => Config::boolean('ts-publish.resources.enabled', false), 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
+            'routes' => ['enabled' => Config::boolean('ts-publish.routes.enabled', false), 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
         ];
 
         /** @var array<string, bool> $flags */
@@ -327,7 +328,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config'], $type['default'] ?? false);
+                : $type['enabled'];
         }
 
         if ($onlyFunctional) {
@@ -359,7 +360,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'], $activeType['default'] ?? false)) {
+            if ($activeType['enabled']) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);

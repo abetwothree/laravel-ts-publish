@@ -60,6 +60,7 @@ use function Orchestra\Testbench\workbench_path;
 use Workbench\App\Events\UiBoardUpdated;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
+use Workbench\App\Models\User;
 use Workbench\App\Models\UiBoard;
 use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Chart;
@@ -781,6 +782,27 @@ describe('the generation cache', function () {
             ->and(ComposedClassTypes::registered())->toBe([])
             ->and(file_get_contents("$directory/gadget.ts"))->toBe($module)
             ->and(file_get_contents("$directory/index.ts"))->toBe("export * from './gadget';");
+    });
+
+    it('rebuilds no module when an only-class-types run comes between two full runs', function () {
+        Config::set('ts-publish.resources.enabled', false);
+        Config::set('ts-publish.models.enabled', true);
+        Config::set('ts-publish.models.included', [User::class]);
+        // Retaining a skipped feature for these files builds the model set, which would hide the run that does not.
+        Config::set('ts-publish.globals.enabled', false);
+        Config::set('ts-publish.json.enabled', false);
+
+        $builds = 0;
+        $this->app->resolving(ClassTypeGenerator::class, function () use (&$builds): void {
+            $builds++;
+        });
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2)
+            ->and(Artisan::call('ts:publish', ['--only-class-types' => true, '--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2)
+            ->and(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2);
     });
 
     it('keeps the composed-class order when a consumer is edited', function () {

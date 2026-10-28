@@ -303,13 +303,13 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Whether a phase after the model phase runs: each can name a model, and each caches under the published set.
-     * The Inertia config always runs when it is on, and types the shared data through the same engine.
+     * Whether a phase after the model phase runs: each caches under the published set, and all but class types can
+     * name a model. The Inertia config always runs when it is on, and types the shared data through the same engine.
      */
     protected function publishesAfterModels(): bool
     {
         return $this->shouldPublishModelMetadata || $this->shouldPublishResources || $this->shouldPublishRoutes
-            || $this->shouldPublishFormRequests || $this->shouldPublishBroadcastEvents
+            || $this->shouldPublishFormRequests || $this->shouldPublishBroadcastEvents || $this->shouldPublishClassTypes
             || Config::boolean('ts-publish.inertia.enabled');
     }
 
@@ -879,22 +879,22 @@ class Runner extends BaseRunner
      */
     private function skippedFeatureGenerators(): array
     {
-        // Each feature's generator, and what a missing `enabled` key reads as.
+        // Each feature's flag, generator and whether config enables it.
         $features = [
-            'enums' => [$this->shouldPublishEnums, EnumGenerator::class, false],
-            'models' => [$this->shouldPublishModels, ModelGenerator::class, false],
-            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class, false],
-            'resources' => [$this->shouldPublishResources, ResourceGenerator::class, false],
-            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class, false],
-            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class, false],
-            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class, false],
-            'class_types' => [$this->shouldPublishClassTypes, ClassTypeGenerator::class, true],
+            'enums' => [$this->shouldPublishEnums, EnumGenerator::class, Config::boolean('ts-publish.enums.enabled', false)],
+            'models' => [$this->shouldPublishModels, ModelGenerator::class, Config::boolean('ts-publish.models.enabled', false)],
+            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class, Config::boolean('ts-publish.model_metadata.enabled', false)],
+            'resources' => [$this->shouldPublishResources, ResourceGenerator::class, Config::boolean('ts-publish.resources.enabled', false)],
+            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class, Config::boolean('ts-publish.routes.enabled', false)],
+            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class, Config::boolean('ts-publish.form_requests.enabled', false)],
+            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class, Config::boolean('ts-publish.broadcast_events.enabled', false)],
+            'class_types' => [$this->shouldPublishClassTypes, ClassTypeGenerator::class, ComposedClassTypes::enabled()],
         ];
 
         $skipped = [];
 
-        foreach ($features as $feature => [$published, $defaultGenerator, $enabledByDefault]) {
-            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", $enabledByDefault)) {
+        foreach ($features as $feature => [$published, $defaultGenerator, $enabled]) {
+            if (! $published && $enabled) {
                 $skipped[$feature] = Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator);
             }
         }

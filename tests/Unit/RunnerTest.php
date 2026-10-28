@@ -1121,6 +1121,7 @@ describe('PublishedModelRegistry run boundary', function () {
         $secondRunner->shouldPublishRoutes = false;
         $secondRunner->shouldPublishFormRequests = false;
         $secondRunner->shouldPublishBroadcastEvents = false;
+        $secondRunner->shouldPublishClassTypes = false;
         $secondRunner->run();
 
         expect(PublishedModelRegistry::isEmpty())->toBeTrue();
@@ -1146,6 +1147,7 @@ describe('PublishedModelRegistry run boundary', function () {
         $runner->shouldPublishRoutes = false;
         $runner->shouldPublishFormRequests = false;
         $runner->shouldPublishBroadcastEvents = false;
+        $runner->shouldPublishClassTypes = false;
 
         return $runner;
     };
