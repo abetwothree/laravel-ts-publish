@@ -1157,8 +1157,10 @@ describe('isExtendable', function () {
     })->with([
         'an identifier' => ['UiNode', true],
         'a dotted name' => ['Acme.Ui.Node', true],
-        'a generic' => ['Record<string, Chart>', true],
+        'a generic' => ['Partial<Chart>', true],
         'a nested generic' => ['Map<string, Array<(a: string) => void>>', true],
+        'a record' => ['Record<string, Chart>', false],
+        'a record of a record' => ['Record<string, Record<string, Chart>>', false],
         'a keyword' => ['string', false],
         'another keyword' => ['unknown', false],
         'true' => ['true', false],

@@ -377,7 +377,7 @@ class TsTypeString
 
     /**
      * Whether a type can join an interface's `extends` list: one type reference, optionally dotted or generic, and
-     * never a keyword type.
+     * never a keyword type or a `Record<…>`.
      */
     public function isExtendable(string $type): bool
     {
@@ -385,7 +385,8 @@ class TsTypeString
         $open = strpos($type, '<');
         $name = $open === false ? $type : rtrim(substr($type, 0, $open));
 
-        if (in_array($name, static::KEYWORD_TYPES, true)
+        // A record's index signature fails beside another contributor's named member of a different type (TS2411).
+        if (in_array($name, [...static::KEYWORD_TYPES, 'Record'], true)
             || ($open !== false && ! TsTypeShape::isWrapped(substr($type, $open), '<', '>'))) {
             return false;
         }
