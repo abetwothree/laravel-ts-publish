@@ -811,7 +811,7 @@ describe("an overridden member of a value object's shape", function () {
         expect($this->service->toTsType(UiBoard::class))->toMatchArray([
             'type' => '{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }',
             'customImports' => [
-                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
             ],
             'keepsKeys' => true,
@@ -862,7 +862,7 @@ describe("an overridden member of a value object's shape", function () {
             'type' => '{ owner: unknown; owners: unknown[]; node: UiNode; board: { panel: UiNode; chart: ChartType; '
                 .'gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; tags: string[] }',
             'customImports' => [
-                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
             ],
         ]);
@@ -921,8 +921,8 @@ describe('an overridden member of a docblock shape', function () {
         expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiPanelResource::class), 'shaped'))->toMatchArray([
             'type' => '{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }',
             'customImports' => [
+                '@js/types/ui' => ['UiGauge', 'UiNode'],
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
-                '@js/types/ui' => ['UiNode', 'UiGauge'],
             ],
         ]);
     });
@@ -932,7 +932,7 @@ describe('an overridden member of a docblock shape', function () {
             'type' => '{ board: { panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; '
                 .'title: string }',
             'customImports' => [
-                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
             ],
         ]);

@@ -9,13 +9,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -81,7 +81,6 @@ use UnitEnum;
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
- * @phpstan-import-type TypesImportMap from Datable
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -1950,7 +1949,7 @@ class LaravelTsPublish
             $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$member['type'];
         }
 
-        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
     }
 
     /**
@@ -1995,7 +1994,7 @@ class LaravelTsPublish
             unset($this->shapeExpansionStack[$guard]);
         }
 
-        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
+        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
     }
 
     /**
@@ -2708,7 +2707,7 @@ class LaravelTsPublish
                     : $type;
             }
 
-            return ['type' => '['.implode(', ', $members).']', 'customImports' => $this->mergeShapeImports($imports)];
+            return ['type' => '['.implode(', ', $members).']', 'customImports' => ImportMaps::merge(...$imports)];
         }
 
         if ($parsed['entries'] === []) {
@@ -2722,7 +2721,7 @@ class LaravelTsPublish
             $parts[$entry['key']] = $key.': '.$member($entry['type']);
         }
 
-        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
     }
 
     /**
@@ -2755,25 +2754,6 @@ class LaravelTsPublish
     }
 
     /**
-     * The custom imports of a shape's members, each name once per module.
-     *
-     * @param  list<TypesImportMap>  $imports
-     * @return TypesImportMap
-     */
-    protected function mergeShapeImports(array $imports): array
-    {
-        $merged = [];
-
-        foreach ($imports as $import) {
-            foreach ($import as $path => $names) {
-                $merged[$path] = array_values(array_unique([...$merged[$path] ?? [], ...$names]));
-            }
-        }
-
-        return $merged;
-    }
-
-    /**
      * Resolve a PHPDoc type string, nested array shapes included, to its TypeScript type and the custom imports of each
      * override it spells.
      *
@@ -2797,7 +2777,7 @@ class LaravelTsPublish
 
             return [
                 'type' => implode(' | ', array_column($infos, 'type')),
-                'customImports' => $covered ? $this->mergeShapeImports(array_column($infos, 'customImports')) : [],
+                'customImports' => $covered ? ImportMaps::merge(...array_column($infos, 'customImports')) : [],
             ];
         }
 

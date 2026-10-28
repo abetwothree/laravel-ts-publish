@@ -300,7 +300,7 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
         'type' => "{ board: {$board}; label: string }",
         'optional' => false,
         'customImports' => [
-            '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+            '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
             ComposedClassTypes::marker(Chart::class) => ['ChartType'],
         ],
     ]);

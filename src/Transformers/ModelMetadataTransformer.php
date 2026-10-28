@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -108,13 +109,7 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function data(): TsModelMetadataDto
     {
-        $typeImports = ComposedClassTypes::resolveImports($this->typeImports, $this->namespacePath);
-        $typeImports = array_map(static function (array $names): array {
-            sort($names);
-
-            return $names;
-        }, $typeImports);
-        ksort($typeImports);
+        $typeImports = ImportMaps::merge(ComposedClassTypes::resolveImports($this->typeImports, $this->namespacePath));
 
         return new TsModelMetadataDto(
             modelName: $this->modelName,
@@ -246,16 +241,11 @@ class ModelMetadataTransformer extends CoreTransformer
             $this->propertyTypes[$property] = $resolved['overrides'][$property];
         }
 
-        $typeImports = $resolved['typeImports'];
-
-        foreach ([$this->analysis->typeImports, ...array_values(array_intersect_key($this->analysis->docblockImports, $this->metadata))] as $imports) {
-            foreach ($imports as $path => $names) {
-                $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
-                sort($typeImports[$path]);
-            }
-        }
-
-        ksort($typeImports);
+        $typeImports = ImportMaps::merge(
+            $resolved['typeImports'],
+            $this->analysis->typeImports,
+            ...array_values(array_intersect_key($this->analysis->docblockImports, $this->metadata)),
+        );
 
         $seen = [];
 

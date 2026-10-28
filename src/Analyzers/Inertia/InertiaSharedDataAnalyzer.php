@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -161,7 +162,7 @@ class InertiaSharedDataAnalyzer
         return [
             'sharedPageProps' => $propsType,
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
-            'typeImports' => $this->mergeTypeImports(
+            'typeImports' => ImportMaps::merge(
                 CastChannels::withoutOtherPaths($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
                 $resolvedTsCasts['typeImports'],
             ),
@@ -243,31 +244,6 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Merge type import maps and keep their paths and names deterministic.
-     *
-     * @param  TypesImportMap  ...$maps
-     * @return TypesImportMap
-     */
-    protected function mergeTypeImports(array ...$maps): array
-    {
-        $imports = [];
-
-        foreach ($maps as $map) {
-            foreach ($map as $path => $types) {
-                $imports[$path] = array_values(array_unique([
-                    ...($imports[$path] ?? []),
-                    ...$types,
-                ]));
-                sort($imports[$path]);
-            }
-        }
-
-        ksort($imports);
-
-        return $imports;
-    }
-
-    /**
      * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
      *
      * @param  SharedPropMap  $overrides
@@ -334,14 +310,16 @@ class InertiaSharedDataAnalyzer
      */
     protected function carryDocblockImports(MethodAnalysis $analysis, array $docblock, array $castOverrides): void
     {
-        foreach ($docblock as $key => $info) {
-            if (array_key_exists(rtrim((string) $key, '?'), $castOverrides)) {
-                continue;
-            }
+        $imports = [];
 
-            foreach ($info['customImports'] as $path => $names) {
-                $analysis->customImports[$path] = [...$analysis->customImports[$path] ?? [], ...$names];
+        foreach ($docblock as $key => $info) {
+            if (! array_key_exists(rtrim((string) $key, '?'), $castOverrides) && $info['customImports'] !== []) {
+                $imports[] = $info['customImports'];
             }
+        }
+
+        if ($imports !== []) {
+            $analysis->customImports = ImportMaps::merge($analysis->customImports, ...$imports);
         }
     }
 

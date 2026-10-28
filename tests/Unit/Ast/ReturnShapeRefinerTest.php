@@ -80,8 +80,8 @@ test('a shape value naming an overridden class fills with the override and bring
         'nested' => '{ panel: UiNode; n: number }',
         'owner' => 'unknown',
     ])->and($analysis->customImports)->toBe([
-        ComposedClassTypes::marker(Chart::class) => ['ChartType'],
         '@js/types/ui' => ['UiNode'],
+        ComposedClassTypes::marker(Chart::class) => ['ChartType'],
     ]);
 });
 

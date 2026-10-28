@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use ReflectionMethod;
 
 /**
@@ -64,14 +65,10 @@ final class ReturnShapeRefiner
         }
 
         unset($property);
+        $imports = array_filter($imports);
 
-        foreach ($imports as $import) {
-            foreach ($import as $path => $names) {
-                $analysis->customImports[$path] = array_values(array_unique([
-                    ...$analysis->customImports[$path] ?? [],
-                    ...$names,
-                ]));
-            }
+        if ($imports !== []) {
+            $analysis->customImports = ImportMaps::merge($analysis->customImports, ...$imports);
         }
     }
 
