@@ -187,7 +187,7 @@ abstract class BaseRunner
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
         RoutedControllers::flush();
-        ValueResult::forgetEnumSpellings();
+        ValueResult::forgetEnumNames();
         RelationMap::reset();
         $this->forgetRenderedViews();
     }

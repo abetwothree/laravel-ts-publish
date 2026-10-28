@@ -471,9 +471,9 @@ final class ValueResult
     }
 
     /**
-     * Forget each enum's spelling, so a run reads each enum's name afresh.
+     * Forget each enum's name, so a run reads every enum's `#[TsEnum]` afresh.
      */
-    public static function forgetEnumSpellings(): void
+    public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
     }

@@ -883,14 +883,15 @@ where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that
 `RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
 the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEnum` only for a type that spells it.
 
-### An enum with an override publishes it as a value, and its own names in a wrap
+### An enum `toTsType()` names no enum for publishes that type as a value, and its own names in a wrap
 
-`toTsType()` answers an enum carrying `#[TsType]` with its override, so a case, a constant holding one, a declared type,
-a cast or an accessor publishes the override with its `customImports` and no enum channel
-(`ValueResolver::resolveConstantValue()`). An `EnumResource` sends the enum itself, so its payload takes
-`ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
-names, from `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and from the payload's receiver class or
-constant's case otherwise. `->value` and `->name` keep the enum's names through `EnumValueTypes`.
+`toTsType()` answers an enum carrying `#[TsType]` with its override, and one keyed in `custom_ts_mappings` with the
+mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
+an override with its `customImports`, and no enum channel (`ValueResolver::resolveConstantValue()`). An `EnumResource`
+sends the enum itself, so its payload takes `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The
+enum comes from the class a case or `from()` names, from `ModelAttributeResolver::resolveAttributeClass()` for an
+attribute, and otherwise from the payload itself (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and
+`->name` keep the enum's names through `EnumValueTypes`.
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 

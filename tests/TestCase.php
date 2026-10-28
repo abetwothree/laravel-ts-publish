@@ -73,7 +73,7 @@ class TestCase extends Orchestra
         ComposedClassTypes::flush();
         RoutedControllers::flush();
         CallArguments::reset();
-        ValueResult::forgetEnumSpellings();
+        ValueResult::forgetEnumNames();
         CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(

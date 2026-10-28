@@ -1131,7 +1131,8 @@ final class AnalysisScope
                 $this->varValueBindings[$param->var->name] = $held;
             }
 
-            // An overridden enum's case value names no enum, so its parameter binds the enum as a declared class.
+            // A case of an enum toTsType() names no enum for, an override or a `custom_ts_mappings` entry answering its
+            // type, holds no enum channel, so its parameter binds the enum as a declared class.
             $enum = $held !== null && ! isset($held['directEnumFqcn']) && $param->default instanceof ClassConstFetch
                 ? new ValueResolver()->caseEnum($param->default, $this)
                 : null;

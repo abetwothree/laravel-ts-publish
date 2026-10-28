@@ -26,6 +26,11 @@ use PhpParser\Node\Name;
  * enum a resolved payload holds, for both resource-construction shapes: `EnumResource::make()`/`::collection()` and
  * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
  * fallback would drop its whole shape for the enum either names.
+ *
+ * A wrap sends the enum itself, so it always takes the enum's own type name, which the `AsEnum` rewrite replaces. That
+ * holds where `toTsType()` names no enum for it, an override or a `custom_ts_mappings` entry answering its type first:
+ * such an enum's values carry no enum channel, so the enum is read from the payload itself.
+ *
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -92,7 +97,6 @@ trait ResolvesEnumPropertyArgTypes
                 $enumClassName = $argExpr->class->toString();
             }
 
-            // The wrap sends the enum itself, so it keeps the enum's own type name, which an override never replaces.
             if ($enumClassName !== null && enum_exists($enumClassName)) {
                 return [
                     ...$result,
@@ -181,7 +185,7 @@ trait ResolvesEnumPropertyArgTypes
         ]));
 
         $enum = match (count($fqcns)) {
-            0 => $this->overriddenPayloadEnum($payload, $scope),
+            0 => $this->retypedPayloadEnum($payload, $scope),
             1 => $fqcns[0],
             default => null,
         };
@@ -192,14 +196,12 @@ trait ResolvesEnumPropertyArgTypes
 
         $enumType = LaravelTsPublish::toTsType($enum)['type'];
         $held = ValueResult::stripNullArm($resolved['type']);
-        $isList = $held !== $enumType;
 
-        if ($isList && (! $allowsList || $held !== $enumType.'[]')) {
+        if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
         }
 
-        // An override spells the payload, but the wrap sends the enum, so it keeps the enum's own type name.
-        $type = $fqcns === [] ? ValueResult::enumTypeName($enum).($isList ? '[]' : '') : $resolved['type'];
+        $type = $fqcns === [] ? ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]') : $resolved['type'];
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
@@ -241,10 +243,8 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * Resolve the enum a model attribute holds, as an EnumResource wrap reads it.
-     *
-     * An override answers the attribute's type first, but the wrap sends the enum whatever #[TsType] it carries, so it
-     * then takes the enum's own type name and keeps the attribute's null arm.
+     * Resolve the enum a model attribute holds, as an EnumResource wrap reads it: by its attribute type, or for an enum
+     * `toTsType()` names no enum for, by the class the attribute holds and the attribute's null arm.
      *
      * @return ValueExpressionResult|null
      */
@@ -274,11 +274,12 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum a payload holds whose value names none, as an overridden enum's: its one class, or a constant's case.
+     * The one enum a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings` entry
+     * answering its type: its one class, or a constant's case.
      *
      * @return class-string|null
      */
-    private function overriddenPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
+    private function retypedPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
     {
         $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
         $enum = match (true) {
