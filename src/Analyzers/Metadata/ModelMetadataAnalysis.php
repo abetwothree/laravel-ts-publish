@@ -20,7 +20,7 @@ final readonly class ModelMetadataAnalysis
      * @param  array<string, TypeSource>  $sources  which source won each key
      * @param  array<string, true>  $requiredKeys  keys the docblock shape or #[TsCasts] declare as required
      * @param  array<string, string>  $importPaths  #[TsCasts] import path per key
-     * @param  TypesImportMap  $typeImports  imports the inferred types need, relative to the companion file
+     * @param  TypesImportMap  $typeImports  imports the inferred and docblock types need, relative to the companion
      */
     public function __construct(
         public array $types,

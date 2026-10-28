@@ -28,9 +28,8 @@ use Throwable;
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     optionalKeys: array<string, true>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>,
+ *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
 class ModelMetadataAnalyzer
@@ -69,7 +68,10 @@ class ModelMetadataAnalyzer
             $result->sources,
             $result->requiredKeys,
             $result->importPaths,
-            $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
+            $this->mergedImports(
+                $result->typeImports,
+                $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
+            ),
         );
     }
 
@@ -213,21 +215,24 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Parse the optional `@return array{...}` shape; a trailing `?` marks an optional key.
+     * Parse the optional `@return array{...}` shape, with the custom imports of the overrides each key spells; a
+     * trailing `?` marks an optional key.
      *
      * @return DeclaredTypes
      */
     protected function parseDeclaredTypes(ReflectionMethod $method): array
     {
         $types = [];
+        $imports = [];
         $requiredKeys = [];
         $optionalKeys = [];
 
-        foreach (LaravelTsPublish::parseDocblockReturnArrayShape($method) as $property => $type) {
+        foreach (LaravelTsPublish::docblockReturnShapeInfos($method) as $property => $info) {
             $property = (string) $property;
             $optional = str_ends_with($property, '?');
             $property = $optional ? substr($property, 0, -1) : $property;
-            $types[$property] = $type;
+            $types[$property] = $info['type'];
+            $imports[$property] = $info['customImports'];
 
             if ($optional) {
                 $optionalKeys[$property] = true;
@@ -236,7 +241,12 @@ class ModelMetadataAnalyzer
             }
         }
 
-        return ['overrides' => $types, 'requiredKeys' => $requiredKeys, 'optionalKeys' => $optionalKeys];
+        return [
+            'overrides' => $types,
+            'imports' => $imports,
+            'requiredKeys' => $requiredKeys,
+            'optionalKeys' => $optionalKeys,
+        ];
     }
 
     /**
@@ -285,6 +295,32 @@ class ModelMetadataAnalyzer
             }
         }
 
-        return new ModelMetadataAnalysis($types, $sources, $requiredKeys, $casts['importPaths']);
+        // A key the docblock still types brings its overrides' custom imports; one a cast replaces brings none.
+        $docblockKeys = array_filter($sources, fn (string $source): bool => $source === 'docblock');
+        $docblockImports = $this->mergedImports(...array_values(array_intersect_key($declared['imports'], $docblockKeys)));
+
+        return new ModelMetadataAnalysis($types, $sources, $requiredKeys, $casts['importPaths'], $docblockImports);
+    }
+
+    /**
+     * Join import maps, each name once per path, names and paths sorted.
+     *
+     * @param  TypesImportMap  ...$maps
+     * @return TypesImportMap
+     */
+    protected function mergedImports(array ...$maps): array
+    {
+        $merged = [];
+
+        foreach ($maps as $map) {
+            foreach ($map as $path => $names) {
+                $merged[$path] = array_values(array_unique([...$merged[$path] ?? [], ...$names]));
+                sort($merged[$path]);
+            }
+        }
+
+        ksort($merged);
+
+        return $merged;
     }
 }

@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiDocblockShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -348,6 +349,30 @@ it('keeps unknown in an untyped array for an enum spelled like a composed class 
         ->and(sentAsJson(new UiUntypedChartKindResource(null)->resolve(request()))->kinds)
         ->kind->toBe('bar')
         ->chart->toBeObject();
+});
+
+it("keeps an overridden member and its import in share()'s docblock shape, and none for an entry a cast replaces", function () {
+    $shared = analyzeSharedDataFor(UiDocblockShareMiddleware::class);
+
+    expect($shared['sharedPageProps'])
+        ->toBe('{ chart: ChartType, nested: { panel: UiNode; n: number }, cast: UiGauge, dial: DialType }')
+        ->and($shared['typeImports'])->toBe([
+            './workbench/app/packages/ui' => ['ChartType'],
+            '@acme/ui' => ['UiGauge'],
+            '@js/types/ui' => ['UiNode'],
+        ]);
+});
+
+it("sends share()'s docblock shape of overridden members in the shape it publishes", function () {
+    app()->bind('ui.nested', fn (): array => ['panel' => new Panel, 'n' => 1]);
+    app()->bind('ui.gauge', fn (): Gauge => new Gauge);
+
+    expect(sentAsJson(new UiDocblockShareMiddleware()->share(request())))
+        ->chart->toBeObject()
+        ->nested->panel->toBeObject()
+        ->nested->n->toBe(1)
+        ->cast->toBeObject()
+        ->dial->toBeObject();
 });
 
 describe('a nullable class-cast column whose value object holds an overridden nullable member', function () {

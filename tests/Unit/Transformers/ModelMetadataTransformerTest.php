@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedMod
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
@@ -289,6 +290,21 @@ test('requires TsCasts for inferred types whose imports cannot be inferred', fun
             InvalidArgumentException::class,
             'model [Workbench\\App\\Models\\User] property [role] has type [RoleType] whose import cannot be inferred',
         );
+});
+
+test('imports an override a docblock shape names, at its top level and nested, and none for a key a cast replaces', function () {
+    config()->set('ts-publish.model_metadata.provider_class', OverriddenShapeMetadataProvider::class);
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'chart' => 'ChartType',
+        'nested' => '{ panel: UiNode; n: number }',
+        'label' => 'string',
+        'gauge' => 'string',
+    ])->and($data->typeImports)->toBe([
+        '../packages/ui' => ['ChartType'],
+        '@js/types/ui' => ['UiNode'],
+    ])->and($data->properties['nested']['n'])->toBe(1);
 });
 
 test('normalizes supported nested metadata values', function () {

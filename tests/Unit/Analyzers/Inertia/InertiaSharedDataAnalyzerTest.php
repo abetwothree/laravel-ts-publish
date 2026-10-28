@@ -302,7 +302,7 @@ test('an override drops the type import the displaced type kept alive', function
         ->shouldAllowMockingProtectedMethods();
 
     $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(StarterKitArrayMergeMiddleware::class);
-    $analyzer->shouldReceive('parseDocblockFromMiddleware')->andReturn(['auth' => '{ user: null }']);
+    $analyzer->shouldReceive('parseDocblockFromMiddleware')->andReturn(['auth' => ['type' => '{ user: null }', 'customImports' => []]]);
 
     $result = $analyzer->analyze();
 
