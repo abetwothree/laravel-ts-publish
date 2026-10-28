@@ -523,6 +523,8 @@ final class Chart extends Node implements HasIcon {}
 A `Panel` publishes `UiNode`. A `Chart` inherits two overrides, so the package writes a composed interface for it:
 
 ```typescript
+import type { UiIcon, UiNode } from '@js/types/ui';
+
 export interface ChartType extends UiIcon, UiNode {}
 ```
 
