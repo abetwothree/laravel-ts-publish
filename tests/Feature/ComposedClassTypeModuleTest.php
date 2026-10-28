@@ -60,8 +60,8 @@ use function Orchestra\Testbench\workbench_path;
 use Workbench\App\Events\UiBoardUpdated;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
-use Workbench\App\Models\User;
 use Workbench\App\Models\UiBoard;
+use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Concerns\AnnouncesHello;
@@ -250,6 +250,22 @@ it('drops a module export a run with no skipped phase no longer writes', functio
     $runner->run();
 
     expect(file_get_contents("$directory/index.ts"))->toBe("export * from './chart';\nexport * from './dial';");
+});
+
+it('drops a stale export another phase wrote a file of that name for in another namespace', function () {
+    disableBarrelPhasesBut('models');
+    Config::set('ts-publish.models.included', [User::class]);
+
+    $directory = $this->out.'/workbench/app/packages/ui';
+    mkdir($directory, recursive: true);
+    file_put_contents("$directory/index.ts", "export * from './chart';\nexport * from './user';");
+
+    $runner = classTypesOnlyRunner();
+    $runner->shouldPublishModels = true;
+    $runner->run();
+
+    expect(file_exists($this->out.'/workbench/app/models/user.ts'))->toBeTrue()
+        ->and(file_get_contents("$directory/index.ts"))->toBe("export * from './chart';\nexport * from './dial';");
 });
 
 it('keeps every existing export while a flag skips a phase that writes barrels', function () {

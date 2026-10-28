@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
@@ -462,11 +463,12 @@ class Runner extends BaseRunner
     }
 
     /**
-     * The companion filename of each model whose metadata threw, as the configured transformer names it.
+     * The companion filename of each model whose metadata threw, as the configured transformer names it; only those of
+     * models in `$namespacePath` when one is given.
      *
      * @return list<string>
      */
-    protected function failedMetadataFilenames(): array
+    protected function failedMetadataFilenames(?string $namespacePath = null): array
     {
         /** @var class-string<ModelMetadataTransformer> $transformerClass */
         $transformerClass = Config::string(
@@ -474,10 +476,16 @@ class Runner extends BaseRunner
             ModelMetadataTransformer::class,
         );
 
-        return array_map(
-            static fn (array $failure): string => $transformerClass::filenameFor($failure['subject']),
+        $failures = array_filter(
             $this->modelMetadataFailures,
+            static fn (array $failure): bool => $namespacePath === null
+                || TsNaming::namespaceToPath($failure['subject']) === $namespacePath,
         );
+
+        return array_values(array_map(
+            static fn (array $failure): string => $transformerClass::filenameFor($failure['subject']),
+            $failures,
+        ));
     }
 
     protected function generateResources(): void
@@ -719,10 +727,15 @@ class Runner extends BaseRunner
 
         $this->classTypeGenerators = $generators;
 
-        $this->classTypeModularBarrels = $generators->isEmpty() ? [] : $this->barrelWriter->writeModularPreserving(
-            $generators,
-            $this->preservedClassTypeBarrelExports(),
-        );
+        // One write per namespace, so each barrel keeps only the exports other phases wrote in that directory.
+        $barrels = [];
+
+        foreach ($generators->groupBy(static fn (ClassTypeGenerator $generator): string => $generator->namespacePath()) as $namespacePath => $group) {
+            $barrels += $this->barrelWriter->writeModularPreserving($group, $this->preservedClassTypeBarrelExports((string) $namespacePath));
+        }
+
+        ksort($barrels);
+        $this->classTypeModularBarrels = $barrels;
         $this->warnOfSharedRouteBarrels($generators);
         $this->logger?->success('Class types — '.$generators->count());
     }
@@ -797,23 +810,25 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Which existing class-type barrel exports outlive this run. While a flag skips a phase that writes `export *`
-     * barrels, every one does, since this phase cannot tell that phase's from its own stale ones; otherwise only those
-     * another phase wrote this run, so a class that stopped composing drops out.
+     * Which existing exports of one namespace's class-type barrel outlive this run. While a flag skips a phase that
+     * writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own stale ones;
+     * otherwise only those another phase wrote in that namespace this run, so a class that stopped composing drops out.
      *
      * @return Closure(string): bool
      */
-    protected function preservedClassTypeBarrelExports(): Closure
+    protected function preservedClassTypeBarrelExports(string $namespacePath): Closure
     {
         if (array_diff_key($this->skippedFeatureGenerators(), ['routes' => true, 'class_types' => true]) !== []) {
             return static fn (string $filename): bool => true;
         }
 
-        $written = array_fill_keys($this->failedMetadataFilenames(), true);
+        $written = array_fill_keys($this->failedMetadataFilenames($namespacePath), true);
 
         foreach ($this->publishedGenerators() as $generators) {
             foreach ($generators as $generator) {
-                $written[$generator->filename()] = true;
+                if ($generator->namespacePath() === $namespacePath) {
+                    $written[$generator->filename()] = true;
+                }
             }
         }
 
