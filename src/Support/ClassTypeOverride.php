@@ -29,6 +29,12 @@ final class ClassTypeOverride
     /** The classes another publisher writes a file for, so a composed module would take that file's name. */
     private const array OWNED = [Model::class, JsonResource::class, ShouldBroadcast::class, FormRequest::class];
 
+    /**
+     * The classes a `new` of publishes as itself, not by its override: a model's JSON depends on its runtime
+     * attributes, casts and hidden fields, and an API resource publishes its own type. OWNED's others keep theirs.
+     */
+    private const array PUBLISHED_AS_ITSELF = [Model::class, JsonResource::class];
+
     /** @var array<string, list<Contributor>> */
     private static array $contributors = [];
 
@@ -106,6 +112,15 @@ final class ClassTypeOverride
         }
 
         return self::$resolved[$class] = self::$resolved[$declared];
+    }
+
+    /**
+     * Whether a `new` of a class publishes the class's override: it has one and is none of PUBLISHED_AS_ITSELF.
+     */
+    public static function appliesToNew(string $class): bool
+    {
+        return ! array_any(self::PUBLISHED_AS_ITSELF, static fn (string $itself): bool => is_a($class, $itself, true))
+            && self::resolve($class) !== null;
     }
 
     /**

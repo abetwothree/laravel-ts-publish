@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -20,7 +21,6 @@ use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
@@ -264,7 +264,7 @@ final class ValueResolver
     {
         $class = $new->class instanceof Name ? $new->class->toString() : null;
 
-        $result = $class !== null && $this->publishesOverride($class)
+        $result = $class !== null && ClassTypeOverride::appliesToNew($class)
             ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
             : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
 
@@ -286,17 +286,6 @@ final class ValueResolver
         return $arg instanceof Arg && ! $arg->unpack
             ? new FuncCall(new Name('collect'), [new Arg($arg->value)], $new->getAttributes())
             : null;
-    }
-
-    /**
-     * Whether a `new` of a class publishes the class's override: not a model's, whose JSON depends on its attributes,
-     * nor an API resource's, which publishes as itself.
-     */
-    private function publishesOverride(string $class): bool
-    {
-        return ! is_a($class, Model::class, true)
-            && ! is_a($class, JsonResource::class, true)
-            && ClassTypeOverride::resolve($class) !== null;
     }
 
     /**
@@ -405,7 +394,7 @@ final class ValueResolver
 
             $types[$identity] = $itemResult['type'];
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$itemFqcns];
-            $customImports = $this->withItemImports($customImports, $itemResult);
+            $customImports = ImportMaps::merge($customImports, $itemResult['customImports'] ?? []);
         }
 
         // Joined first, since listType() would keep one of two elements that print alike.
@@ -441,7 +430,7 @@ final class ValueResolver
             $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
-            $customImports = $this->withItemImports($customImports, $itemResult);
+            $customImports = ImportMaps::merge($customImports, $itemResult['customImports'] ?? []);
         }
 
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
@@ -453,22 +442,6 @@ final class ValueResolver
         }
 
         return $customImports === [] ? $result : [...$result, 'customImports' => $customImports];
-    }
-
-    /**
-     * Add a constant element's custom imports to those its array gathered, as an overridden enum's case carries one.
-     *
-     * @param  TypesImportMap  $customImports
-     * @param  ValueExpressionResult  $itemResult
-     * @return TypesImportMap
-     */
-    private function withItemImports(array $customImports, array $itemResult): array
-    {
-        foreach ($itemResult['customImports'] ?? [] as $path => $names) {
-            $customImports[$path] = array_values(array_unique([...($customImports[$path] ?? []), ...$names]));
-        }
-
-        return $customImports;
     }
 
     /**

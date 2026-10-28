@@ -193,16 +193,17 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $enumType = LaravelTsPublish::toTsType($enum)['type'];
+        $retyped = LaravelTsPublish::retypedEnumType($enum);
+        $enumType = $retyped ?? ValueResult::enumTypeName($enum);
         $held = ValueResult::stripNullArm($resolved['type']);
 
         if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
         }
 
-        $type = LaravelTsPublish::toTsType($enum)['enumFqcns'] === []
-            ? ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]')
-            : $resolved['type'];
+        $type = $retyped === null
+            ? $resolved['type']
+            : ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]');
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
@@ -284,8 +285,6 @@ trait ResolvesEnumPropertyArgTypes
     {
         $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
 
-        return count($classes) === 1 && enum_exists($classes[0]) && LaravelTsPublish::toTsType($classes[0])['enumFqcns'] === []
-            ? $classes[0]
-            : null;
+        return count($classes) === 1 && LaravelTsPublish::retypedEnumType($classes[0]) !== null ? $classes[0] : null;
     }
 }

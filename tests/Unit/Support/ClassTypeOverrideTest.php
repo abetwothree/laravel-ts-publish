@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\IconShade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiPanelPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AnnouncingDraft;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AnnouncingPost;
@@ -213,6 +214,15 @@ it("leaves out a trait's override on an owned class with none of its own", funct
                 .'a model, API resource, broadcast event, form request, route controller or enum publishes only its own or a parent class\'s.',
         ]]);
 });
+
+it('applies to a new of a class with an override, but not of a model or an API resource', function (string $class, bool $applies) {
+    expect(ClassTypeOverride::appliesToNew($class))->toBe($applies);
+})->with([
+    'an overridden class' => [Panel::class, true],
+    'a class with no override' => [Plain::class, false],
+    'a model with an override' => [InheritingChildModel::class, false],
+    'an API resource with an override' => [UiNodeResource::class, false],
+]);
 
 it('reads a mis-cased owned class as its declared name', function () {
     class_exists(OverridingChildModel::class);

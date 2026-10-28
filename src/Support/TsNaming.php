@@ -88,7 +88,6 @@ class TsNaming
      * Resolve the name an enum's file exports its const under, and its `…Type` and `…Kind` after.
      *
      * Read from #[TsEnum(name:)] alone, never via toTsType(), whose #[TsType] step answers an overridden enum first.
-     * EnumTransformer::initInstance() is the same rule.
      */
     public function enumName(string $fqcn): string
     {

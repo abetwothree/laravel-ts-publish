@@ -119,18 +119,11 @@ class EnumTransformer extends CoreTransformer
         $this->reflectionEnum = new ReflectionEnum($this->findable);
         $this->backed = $this->reflectionEnum->isBacked();
 
-        $tsEnumAttrs = $this->reflectionEnum->getAttributes(TsEnum::class);
-
-        if ($tsEnumAttrs) {
-            $tsEnumInstance = $tsEnumAttrs[0]->newInstance();
-            $this->enumName = $tsEnumInstance->name;
-            $this->description = $tsEnumInstance->description !== ''
-                ? $tsEnumInstance->description
-                : JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
-        } else {
-            $this->enumName = $this->reflectionEnum->getShortName();
-            $this->description = JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
-        }
+        $tsEnum = ($this->reflectionEnum->getAttributes(TsEnum::class)[0] ?? null)?->newInstance();
+        $this->enumName = TsNaming::enumName($this->findable);
+        $this->description = $tsEnum !== null && $tsEnum->description !== ''
+            ? $tsEnum->description
+            : JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
         $this->namespacePath = TsNaming::namespaceToPath($this->findable);

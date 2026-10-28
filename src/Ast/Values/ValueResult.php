@@ -433,6 +433,17 @@ final class ValueResult
     }
 
     /**
+     * Whether a result spells its enum's `…Type`, the name the AsEnum rewrite of a wrap of the enum replaces.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function readsEnumType(array $result): bool
+    {
+        return isset($result['directEnumFqcn'])
+            && TsTypeString::typeNameOccursIn(self::enumTypeName($result['directEnumFqcn']), $result['type']);
+    }
+
+    /**
      * Every name an enum's tokens are spelled with: its type name, then each sibling name.
      *
      * @return non-empty-list<string>
@@ -553,17 +564,6 @@ final class ValueResult
     private static function directEnumChannelFqcns(array $result): array
     {
         return [...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...($result['embeddedEnumFqcns'] ?? [])];
-    }
-
-    /**
-     * Whether a result spells its enum's `…Type`, the name the AsEnum rewrite of a wrap of the enum replaces.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    private static function readsEnumType(array $result): bool
-    {
-        return isset($result['directEnumFqcn'])
-            && TsTypeString::typeNameOccursIn(self::enumTypeName($result['directEnumFqcn']), $result['type']);
     }
 
     /**
