@@ -570,8 +570,8 @@ describe('imports a composed type from its module in each publisher', function (
         $broadcast = new BroadcastEvent($event);
         $payload = sentAsJson(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
 
-        expect(array_slice(array_map(fn (array $property): string => $property['type'], $transformer->properties), 5, 4))
-            ->toBe(['chart' => 'ChartType', 'dial' => 'DialType', 'maybeChart' => 'ChartType | null', 'charts' => 'ChartType[]'])
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+            ->toMatchArray(['chart' => 'ChartType', 'dial' => 'DialType', 'maybeChart' => 'ChartType | null', 'charts' => 'ChartType[]'])
             ->and($transformer->typeImports)->toBe([
                 '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiIcon', 'UiNode'],
                 '../packages/ui' => ['ChartType', 'DialType'],
