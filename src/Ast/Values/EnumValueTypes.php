@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
+use JsonSerializable;
 use ReflectionEnum;
 use ReflectionEnumUnitCase;
 use UnitEnum;
@@ -117,7 +118,8 @@ final class EnumValueTypes
     {
         DependencyRecorder::recordClass($case::class);
 
-        if (! $case instanceof BackedEnum) {
+        // json_encode() sends a JsonSerializable case's jsonSerialize(), not its value.
+        if (! $case instanceof BackedEnum || $case instanceof JsonSerializable) {
             return null;
         }
 

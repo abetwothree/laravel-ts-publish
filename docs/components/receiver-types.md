@@ -385,7 +385,8 @@ method rather than per member: against the whole method's custom imports and the
 `unknown`, and its siblings keep their types. `UiUntypedChartKindResource` pins an enum spelled like a composed class
 beside it. In a scope that carries no import, `ValueResolver::resolveClassConstant()` types a plain backed enum's case
 as the literal it sends (`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes
-`'bar' | UiToneDto`, and drops a pure enum's case, which `json_encode()` cannot write. A case of an enum
+`'bar' | UiToneDto`, and drops a pure enum's case, which `json_encode()` cannot write. A `JsonSerializable` enum keeps
+`unknown`, since `json_encode()` sends its `jsonSerialize()`, not its value. A case of an enum
 `LaravelTsPublish::retypedEnumType()` answers for keeps its override and brings no name of its own. A case an accessor's
 getter returns, or one passed to a helper that returns it, types the same way as a case written in place. Any other read
 of an enum, such as a cast attribute or a list of a plain enum's cases, is `unknown`.
