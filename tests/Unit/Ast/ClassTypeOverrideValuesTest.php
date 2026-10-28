@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiBoardShapesPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTonePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTypedClosurePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedLevelReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiAccessorResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
@@ -598,7 +599,9 @@ it('imports an accessor override a resource reads', function () {
     $sent = sentAsJson(new UiPanelResource(new UiBoard)->resolve(request()));
 
     expect(resourceProps(UiPanelResource::class))->toMatchArray(['gauge_attr' => 'UiGauge'])
-        ->and(new ResourceTransformer(UiPanelResource::class)->typeImports['@js/types/ui'])->toBe(['UiAmount', 'UiGauge', 'UiNode', 'UiToneDto'])
+        ->and(resourceProps(UiAccessorResource::class))->toBe(['renamed' => 'UiGauge'])
+        ->and(new ResourceTransformer(UiAccessorResource::class)->typeImports)->toBe(['@js/types/ui' => ['UiGauge']])
         ->and($sent->gauge_attr)->toBeObject()
+        ->and(sentAsJson(new UiAccessorResource(new UiBoard)->resolve(request()))->renamed)->toBeObject()
         ->and(AnalysisWarnings::all())->toBe([]);
 });

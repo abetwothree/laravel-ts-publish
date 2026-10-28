@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
@@ -817,7 +818,8 @@ it("imports a docblock-typed accessor's class and override on a page", function 
 
     expect($data['pageType'])->toContain('uploader: User | null, gauge_from_docblock: UiGauge }')
         ->and($data['externalImports']['@js/types/ui'])->toContain('UiGauge')
-        ->and(collect($data['externalImports']['@js/types/ui'])->countBy()->max())->toBe(1)
+        ->and($data['externalImports']['@js/types/ui'])->toBe(['UiNode', 'UiGauge', 'UiAmount'])
+        ->and(new RouteTransformer(UiDashboardController::class)->typeImports['../../models'])->toBe(['User'])
         ->and($sent->uploader)->toBeNull()
         ->and($sent->gauge_from_docblock)->toBeObject()->kind->toBe('node')
         ->and(AnalysisWarnings::all())->toBe([]);
