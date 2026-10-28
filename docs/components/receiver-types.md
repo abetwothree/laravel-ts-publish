@@ -378,9 +378,11 @@ that calls itself terminates, whatever each call passes. An int key publishes qu
 then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
 `ServiceReturnResource.tiers` publishes `string[]`.
 
-The inline type is a plain string with no FQCN channel, so a body whose shape names an enum or a model could never
-import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore publishes each member whose type names a
-token as `unknown`, and its siblings keep their types.
+The inline type carries custom imports but no FQCN channel, so a member keeps its type only where no FQCN channel names
+a class in it and the analysis's custom imports bring in every name it spells (`TsTypeString::importsCover()`). An
+override, such as `'chart' => new Chart`, keeps `ChartType` and its import; an enum or a model is `unknown`, and its
+siblings keep their types. The channel test keeps an enum whose type is spelled like a composed class beside it, such as
+`UiUntypedChartKindResource`'s, from taking that class's import.
 
 Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
 `carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:

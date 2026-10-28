@@ -210,7 +210,7 @@ read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeSc
 
 - **Shapes in the value slot**: an `array{...}` value resolves through `resolveArrayShapeString()`, the resolver the
   top-level docblock paths use, so a nested shape publishes `{ key: string }[]`, not `unknown[][]`. A shape key that
-  names a class or enum degrades to `unknown` on its own.
+  names a model or enum degrades to `unknown` on its own; one whose class has an override keeps it and its import.
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So
@@ -244,7 +244,7 @@ appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `
 For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()` reports the using class, though the
 file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
 so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
-use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `parseDocblockReturnArrayShape()` and
+use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
 `ModelAttributeResolver::morphToGenericMembers()`.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching

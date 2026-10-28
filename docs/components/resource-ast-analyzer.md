@@ -120,8 +120,9 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 ### What the method's `@return` may fill
 
 `ReturnShapeRefiner` reads a `@return array{…}` shape per key, or a `@return array<string, V>` value type for every
-unfilled key. A `key?:` entry also marks the key optional. It skips a value whose token needs an import, since the
-shape map holds strings and cannot carry the FQCN (`TsTypeString::shapeValueHasUnimportableToken()`).
+unfilled key. A `key?:` entry also marks the key optional. It fills a value only where the custom imports read with it
+bring in every name it spells (`TsTypeString::importsCover()`), and adds them to the analysis, so an override fills
+with its import, while a model or an enum, whose FQCN the shape cannot carry, is skipped.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`

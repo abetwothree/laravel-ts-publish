@@ -86,7 +86,8 @@ in a closure.
 
 ## A reader that carries no import
 
-A method body reached by the body fallback carries no import, so it drops any shape that names a token; see
+A method body reached by the body fallback carries no FQCN channel, so it drops any shape that names a model or an enum;
+see
 [The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel). When such a
 scope reads an accessor, `analyze()` takes `carriesImports: false`, and `analyzeModelClosure()` sets it on the
 getter's scope. The getter's filters then publish what they would inside the method body: an inline shape with

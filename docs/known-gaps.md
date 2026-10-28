@@ -426,18 +426,17 @@ resource with no backing model for two or more models still publishes `null` for
 
 ### A shape whose values name a class loses those values, in one of two ways
 
-Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
-shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock
-shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member,
-`list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole.
-Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+The method-body fallback, a docblock array shape and a value object's own shape carry an override's import, but no
+model's or enum's. Each keeps a member naming a class with an override, such as `chart: Chart`, or a value object whose
+shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body fallback
+(`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape, as
+[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
+degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
+`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
+an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
 
-A value object's own shape, read from its public properties, keeps a member whose class has an override, with its
-import, and publishes a member naming any other class, such as a model, as `unknown`. A member whose override names a
-type with no import, such as `#[TsType('UiLocal')]`, is `unknown` there too, though it publishes as written elsewhere;
-give the override an `import`. A value object that keeps an override is itself a value that names a class, so the body
-fallback and a docblock shape publish it as `unknown`.
+A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in all three, though
+it publishes as written elsewhere; give the override an `import`.
 
 ### An open shape publishes only its named keys
 

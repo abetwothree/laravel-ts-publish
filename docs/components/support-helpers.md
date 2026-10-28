@@ -178,10 +178,14 @@ What stays is the engine, what only the engine uses, and the delegations. The do
 remaining block and the obvious next candidate, but it cannot move the way the three helpers did, because it and
 `toTsType()` are mutually recursive. Five calls close the cycle:
 
-- **Docblock to engine**: `resolveDocblockTypePart()`, `resolveDocblockContainerValue()` and `resolvePhpDocTypeToTs()`
-  each call `toTsType()`.
-- **Engine to docblock**: `arrayableShapeType()` calls `parseDocblockReturnArrayShape()`, and
+- **Docblock to engine**: `resolveDocblockTypePart()`, `resolveDocblockContainerValue()` and
+  `resolvePhpDocTypeToInfo()` each call `toTsType()`.
+- **Engine to docblock**: `arrayableShapeType()` calls `docblockReturnShapeInfos()`, and
   `methodOrDocblockReturnTypes()` calls `docblockReturnTypes()`.
+
+`resolvePhpDocTypeToTs()`, `parseArrayShapeToTsTypes()` and `parseDocblockReturnArrayShape()` return a type string, so
+they read through `withoutShapeImports()`: a shape keeps no member only an import makes valid, and each answers as
+before shapes carried custom imports. Every caller in the package reads their info siblings instead.
 
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical

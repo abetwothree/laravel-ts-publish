@@ -40,9 +40,10 @@ For each key, `#[TsCasts]` on `provide()` beats the `@return array{...}` shape, 
   overrides that, a cast without the flag keeps the docblock's answer, and a cast on a key the docblock omits is
   required. So a cast on a key some payloads leave out fails every model that leaves it out, unless the cast says
   `optional: true` or the docblock says `key?:`.
-- **Imports**: a docblock string carries no FQCN, so a class or enum named there has no import and fails the token
-  check unless a cast covers it. `ModelMetadataAnalysis::importFreeKeys()` returns every key no cast typed, and the
-  token check runs over those.
+- **Imports**: a docblock carries no FQCN, so a model or enum named there has no import and fails the token check
+  unless a cast covers it. A class with an override brings its own import, which `mergeTypes()` keeps for each key
+  the docblock still types. `ModelMetadataAnalysis::importFreeKeys()` returns every key no cast typed, and the token
+  check runs over those.
 - **Inference**: body inference keeps only the keys the payload returned and discards any type containing `unknown`.
   Such a key then needs a docblock or a cast, or the run fails naming it.
 - **Numeric keys**: a numeric `@return` shape key is read on its own key; a payload with an int key is rejected before it.
