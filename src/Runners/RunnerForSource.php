@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -55,6 +56,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
         $broadcastEventGenerators = collect();
         $this->broadcastEventGenerators = $broadcastEventGenerators;
+
+        /** @var Collection<int, ClassTypeGenerator> $classTypeGenerators */
+        $classTypeGenerators = collect();
+        $this->classTypeGenerators = $classTypeGenerators;
     }
 
     /**
@@ -141,8 +146,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateBroadcastEvent($fqcn);
+        } elseif ($this->validateClassType($reflection)) {
+            if (! $this->shouldPublishClassTypes) {
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: class types are disabled");
+            }
+
+            $this->generateClassType($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, or broadcast event: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
         }
     }
 
@@ -268,5 +279,21 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->broadcastEventGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a composed class's module from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified name of a class whose override composes.
+     */
+    protected function generateClassType(string $fqcn): void
+    {
+        /** @var ClassTypeGenerator $generator */
+        $generator = resolve(
+            Config::string('ts-publish.class_types.generator_class', ClassTypeGenerator::class),
+            ['findable' => $fqcn],
+        );
+
+        $this->classTypeGenerators = collect([$generator]);
     }
 }

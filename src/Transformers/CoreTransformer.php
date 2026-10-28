@@ -49,6 +49,17 @@ abstract class CoreTransformer
         return TsNaming::globalNamespace($this->findable);
     }
 
+    /**
+     * The composed classes whose module this class's file imports. A cache hit runs no transform, so each publisher
+     * reads them from the custom imports it keeps, which its snapshot carries.
+     *
+     * @return list<class-string>
+     */
+    public function composedClassTypes(): array
+    {
+        return [];
+    }
+
     protected function resolveRelativePath(string $absolutePath): string
     {
         return TsNaming::resolveRelativePath($absolutePath);

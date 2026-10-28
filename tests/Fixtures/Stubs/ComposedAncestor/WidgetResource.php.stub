@@ -1,0 +1,32 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ComposedAncestor;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * Publishes a value of the composed Widget__SUFFIX__.
+ */
+final class WidgetResource__SUFFIX__ extends JsonResource
+{
+    /**
+     * Publishes one widget.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        return ['widget' => $this->widget()];
+    }
+
+    /**
+     * A widget, by its declared class.
+     */
+    protected function widget(): Widget__SUFFIX__
+    {
+        return new Widget__SUFFIX__;
+    }
+}

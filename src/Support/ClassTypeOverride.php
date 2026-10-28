@@ -109,6 +109,19 @@ final class ClassTypeOverride
     }
 
     /**
+     * The custom imports one contributor's override brings: its import path with the names its type spells.
+     *
+     * @param  Contributor  $contributor
+     * @return array<string, list<string>>
+     */
+    public static function importsOf(array $contributor): array
+    {
+        $names = $contributor['import'] === null ? [] : TsTypeString::extractImportableTypes($contributor['type']);
+
+        return $contributor['import'] === null || $names === [] ? [] : [$contributor['import'] => $names];
+    }
+
+    /**
      * Forget every memoized answer, at the start of a run.
      */
     public static function flush(): void
@@ -245,12 +258,10 @@ final class ClassTypeOverride
      */
     private static function asWritten(string $class, array $contributor, array $leftOut): array
     {
-        $names = $contributor['import'] === null ? [] : TsTypeString::extractImportableTypes($contributor['type']);
-
         return [
             'class' => $class,
             'type' => $contributor['type'],
-            'customImports' => $contributor['import'] === null || $names === [] ? [] : [$contributor['import'] => $names],
+            'customImports' => self::importsOf($contributor),
             'contributors' => [$contributor],
             'composed' => false,
             'leftOut' => $leftOut,

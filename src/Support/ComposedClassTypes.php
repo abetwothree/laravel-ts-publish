@@ -52,6 +52,30 @@ final class ComposedClassTypes
     }
 
     /**
+     * The composed classes the marker keys of these import maps stand for, in first-seen order.
+     *
+     * @param  array<string, list<string>>  ...$importMaps
+     * @return list<class-string>
+     */
+    public static function classesIn(array ...$importMaps): array
+    {
+        $classes = [];
+
+        foreach ($importMaps as $imports) {
+            foreach (array_keys($imports) as $path) {
+                $class = self::classOf((string) $path);
+
+                if ($class !== null) {
+                    $classes[$class] = true;
+                }
+            }
+        }
+
+        /** @var list<class-string> */
+        return array_keys($classes);
+    }
+
+    /**
      * Record a composed class a published value reached, by its declared name, so its module is written.
      *
      * @param  class-string  $fqcn

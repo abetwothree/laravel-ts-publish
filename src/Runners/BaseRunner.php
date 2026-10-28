@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -62,6 +63,8 @@ abstract class BaseRunner
     public bool $shouldPublishBroadcastChannels = true;
 
     public bool $shouldPublishBroadcastEvents = true;
+
+    public bool $shouldPublishClassTypes = true;
 
     /** @var Collection<int, EnumGenerator> */
     public protected(set) Collection $enumGenerators;
@@ -110,6 +113,12 @@ abstract class BaseRunner
     public protected(set) string $broadcastEventsIndexContent = '';
 
     public protected(set) string $broadcastEventsEchoContent = '';
+
+    /** @var Collection<int, ClassTypeGenerator> */
+    public protected(set) Collection $classTypeGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $classTypeModularBarrels = [];
 
     /** Cross-cutting outputs */
     public protected(set) string $globalsContent = '';

@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
@@ -126,6 +127,17 @@ class RouteTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->controllerName);
+    }
+
+    /**
+     * The composed classes whose module a page type of this controller imports, read from its pages' imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn(...$this->actionExternalImports);
     }
 
     /** @return list<string> */

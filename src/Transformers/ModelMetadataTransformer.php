@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -125,6 +126,17 @@ class ModelMetadataTransformer extends CoreTransformer
         // Dispatched on the runtime class so a transformer_class that overrides filenameFor() names the files
         // it writes the same way Runner::preservedModelBarrelExports() asks which exports the phase owns.
         return static::filenameFor($this->findable);
+    }
+
+    /**
+     * The composed classes whose module this companion imports, read from its type imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->typeImports);
     }
 
     /**

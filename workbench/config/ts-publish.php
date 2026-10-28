@@ -383,6 +383,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Composed Class Types
+    |--------------------------------------------------------------------------
+    |
+    | A class that inherits two or more #[TsType] overrides from its traits,
+    | parents and interfaces publishes `{ClassName}Type`, an interface that
+    | extends them all, in a module that follows the class's namespace.
+    |
+    | A module is written for every composed class a published value
+    | reaches, and for each one in 'additional_directories', even when no
+    | value uses it yet. No directory is scanned by default.
+    */
+
+    'class_types' => [
+        'enabled' => true,
+        'template' => 'laravel-ts-publish::class-type',
+        'output_directory' => null,
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => ClassTypesCollector::class,
+        // 'generator_class' => ClassTypeGenerator::class,
+        // 'transformer_class' => ClassTypeTransformer::class,
+        // 'writer_class' => ClassTypeWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Inertia Page Types
     |--------------------------------------------------------------------------
     |

@@ -461,6 +461,8 @@
     "app\/Models\/Venue.php",
     "app\/Models\/VenueReview.php",
     "app\/Models\/Warehouse.php",
+    "app\/Packages\/Ui\/Chart.php",
+    "app\/Packages\/Ui\/Dial.php",
     "app\/Providers\/AstInferredModelMetadataProvider.php",
     "modules\/Accounting\/Enums\/DueAtNotice.php",
     "modules\/Accounting\/Enums\/InvoiceStatus.php",

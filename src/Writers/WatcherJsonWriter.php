@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
@@ -49,6 +50,7 @@ class WatcherJsonWriter
             ...$this->collectRoutePaths(),
             ...$this->collectFormRequestPaths(),
             ...$this->collectBroadcastEventPaths(),
+            ...$this->collectClassTypePaths(),
         ]));
 
         sort($paths, SORT_STRING);
@@ -238,6 +240,31 @@ class WatcherJsonWriter
 
         /** @var BroadcastEventsCollector $collector */
         $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class', BroadcastEventsCollector::class));
+
+        return array_values(
+            $collector->collect()
+                ->map(function (string $fqcn): string {
+                    $reflection = new ReflectionClass($fqcn);
+
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * The scanned composed classes' files. A class only a value reaches is republished with the file that reaches it.
+     *
+     * @return list<string>
+     */
+    protected function collectClassTypePaths(): array
+    {
+        if (! Config::boolean('ts-publish.class_types.enabled', false)) {
+            return [];
+        }
+
+        /** @var ClassTypesCollector $collector */
+        $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
 
         return array_values(
             $collector->collect()

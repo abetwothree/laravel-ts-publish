@@ -1,0 +1,13 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ComposedAncestor;
+
+use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
+
+/**
+ * Its own override joins Base__SUFFIX__'s, so it publishes a composed type.
+ */
+#[TsType(['type' => 'UiDial', 'import' => '@js/types/ui'])]
+final class Widget__SUFFIX__ extends Base__SUFFIX__ {}

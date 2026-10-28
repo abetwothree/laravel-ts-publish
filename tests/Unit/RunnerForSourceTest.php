@@ -35,6 +35,7 @@ use Workbench\App\Models\ExcludedModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Laravel13Connection;
 use Workbench\App\Packages\Audit\Models\AuditTrail;
+use Workbench\App\Packages\Ui\Dial;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
@@ -151,7 +152,22 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class');
+
+test('generates a composed class module from its FQCN, with no barrel', function () {
+    $runner = new RunnerForSource(Dial::class);
+    $runner->run();
+
+    expect($runner->classTypeGenerators)->toHaveCount(1)
+        ->and($runner->classTypeGenerators->first()->transformer->typeName)->toBe('DialType')
+        ->and($runner->classTypeModularBarrels)->toBe([]);
+});
+
+test('throws for a composed class when class type publishing is disabled', function () {
+    $runner = new RunnerForSource(Dial::class);
+    $runner->shouldPublishClassTypes = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\App\Packages\Ui\Dial: class types are disabled');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));
@@ -259,7 +275,7 @@ test('throws when route publishing is disabled', function () {
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class');
 
 test('generates single broadcast event from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');

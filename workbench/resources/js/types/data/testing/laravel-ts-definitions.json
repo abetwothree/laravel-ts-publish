@@ -564,6 +564,23 @@
             ]
         }
     },
+    "classTypes": {
+        "Workbench\\App\\Packages\\Ui\\Chart": {
+            "name": "ChartType",
+            "extends": [
+                "UiHello",
+                "UiIcon",
+                "UiNode"
+            ]
+        },
+        "Workbench\\App\\Packages\\Ui\\Dial": {
+            "name": "DialType",
+            "extends": [
+                "UiDial",
+                "UiNode"
+            ]
+        }
+    },
     "enums": {
         "Workbench\\Accounting\\Enums\\DueAtNotice": {
             "name": "DueAtNotice",

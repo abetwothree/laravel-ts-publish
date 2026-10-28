@@ -1494,6 +1494,8 @@ describe('class type override run boundary', function () {
     test('a run forgets the composed classes and the override lookup the run before left', function () {
         config()->set('ts-publish.output_to_files', false);
         config()->set('ts-publish.models.included', [User::class]);
+        // A scan would resolve Spark during the run and raise the warning this test expects only a flushed memo to.
+        config()->set('ts-publish.class_types.additional_directories', []);
         ClassTypeOverride::resolve(Spark::class);
         ComposedClassTypes::register(Chart::class);
 

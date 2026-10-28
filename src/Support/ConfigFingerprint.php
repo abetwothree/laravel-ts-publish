@@ -27,6 +27,7 @@ class ConfigFingerprint
         'routes.template' => null,
         'form_requests.template' => null,
         'broadcast_events.template' => null,
+        'class_types.template' => 'laravel-ts-publish::class-type',
     ];
 
     /**
