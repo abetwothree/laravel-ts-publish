@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -355,6 +357,39 @@ class MethodAnalysis
             || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
             || isset($this->enumResourceArmShapes[$name]);
+    }
+
+    /**
+     * The names the classes on a property's import channels publish under: each enum's type, sibling names and const,
+     * each model's name and each resource's type. An enum the value holds that LaravelTsPublish::retypedEnumType()
+     * answers for brings none, as the value spells that type instead.
+     *
+     * @return list<string>
+     */
+    public function channelNames(string $name): array
+    {
+        $held = array_filter(
+            [...(isset($this->directEnumFqcns[$name]) ? [$this->directEnumFqcns[$name]] : []), ...$this->inlineEnumFqcns[$name] ?? []],
+            static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
+        );
+        $wrapped = [
+            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
+            ...$this->multiEnumResourceFqcns[$name] ?? [],
+            ...$this->inlineEnumResourceFqcns[$name] ?? [],
+        ];
+        $models = [...(isset($this->modelFqcns[$name]) ? [$this->modelFqcns[$name]] : []), ...$this->inlineModelFqcns[$name] ?? []];
+        $resources = [...(isset($this->nestedResources[$name]) ? [$this->nestedResources[$name]] : []), ...$this->inlineResourceFqcns[$name] ?? []];
+
+        $names = [
+            ...array_map(class_basename(...), $models),
+            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
+        ];
+
+        foreach ([...$held, ...$wrapped] as $enum) {
+            array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**

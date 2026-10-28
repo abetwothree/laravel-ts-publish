@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
@@ -45,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyCon
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -71,6 +73,7 @@ use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
@@ -369,6 +372,19 @@ describe('toTsType', function () {
 
     test('toTsType resolves void to void', function () {
         expect($this->service->toTsType('void')['type'])->toBe('void');
+    });
+});
+
+describe('retypedEnumType', function () {
+    test('answers the type an override or a custom_ts_mappings entry gives an enum, and null otherwise', function () {
+        config()->set('ts-publish.custom_ts_mappings', [MappedLevel::class => 'string']);
+        TypeScriptMap::reset();
+
+        expect($this->service->retypedEnumType(UiTone::class))->toBe('UiToneDto')
+            ->and($this->service->retypedEnumType(MappedLevel::class))->toBe('string')
+            ->and($this->service->retypedEnumType(Status::class))->toBeNull()
+            ->and($this->service->retypedEnumType(UiGauge::class))->toBeNull()
+            ->and($this->service->retypedEnumType('Missing\\Enum'))->toBeNull();
     });
 });
 

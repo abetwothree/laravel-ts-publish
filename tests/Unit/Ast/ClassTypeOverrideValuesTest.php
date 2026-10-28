@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedToneHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GaugeCardHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MappedLevelHolder;
@@ -223,6 +224,17 @@ it('publishes a new an untyped helper returns as its override, with its import',
     expect(resourceProps(UiUntypedHelperResource::class))->toBe(['panel' => 'UiNode'])
         ->and(new ResourceTransformer(UiUntypedHelperResource::class)->typeImports)->toBe(['@js/types/ui' => ['UiNode']])
         ->and(sentAsJson(new UiUntypedHelperResource(null)->resolve(request()))->panel)->toBeObject();
+});
+
+it("publishes an overridden enum's case in an untyped helper's array as its override, with its import", function () {
+    expect(resourceProps(UiUntypedToneHelperResource::class))
+        ->toBe(['picked' => '{ tone: UiToneDto; gauge: UiGauge; n: number }'])
+        ->and(new ResourceTransformer(UiUntypedToneHelperResource::class)->typeImports)
+        ->toBe(['@js/types/ui' => ['UiGauge', 'UiToneDto']])
+        ->and(sentAsJson(new UiUntypedToneHelperResource(null)->resolve(request()))->picked)
+        ->tone->toBe('bright')
+        ->gauge->toBeObject()
+        ->n->toBe(1);
 });
 
 it("keeps an overridden member of a value object's shape and its import in an event and a resource", function () {

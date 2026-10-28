@@ -230,10 +230,12 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        // The inline type carries custom imports and no FQCN channel, so a member keeps its type only where no channel
-        // names a class in it and the imports bring in every name it spells; any other is `unknown`, its siblings stay.
+        // The inline type carries custom imports and no FQCN channel, so a member keeps its type only where the imports
+        // bring in every name it spells and no class on its channels publishes under one; any other is `unknown`.
+        $imported = ImportMaps::localNames($analysis->customImports);
+
         foreach ($analysis->properties as $index => $property) {
-            if ($analysis->hasFqcnChannel($property['name'])
+            if (array_intersect($analysis->channelNames($property['name']), $imported) !== []
                 || ! TsTypeString::importsCover($property['type'], $analysis->customImports)) {
                 $analysis->properties[$index]['type'] = 'unknown';
             }

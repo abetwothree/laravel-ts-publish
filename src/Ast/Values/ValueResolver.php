@@ -111,8 +111,10 @@ final class ValueResolver
 
         $constantReflection = $classReflection->getReflectionConstant($constName);
 
-        // A scope that carries no import cannot import the enum, and the body fallback would drop the shape holding it.
-        if ($constantReflection === false || ($constantReflection->isEnumCase() && ! $scope->carriesImports)) {
+        // A scope that carries no import cannot import an enum's own names, only a retyped enum's custom import.
+        if ($constantReflection === false
+            || ($constantReflection->isEnumCase() && ! $scope->carriesImports && LaravelTsPublish::retypedEnumType($className) === null)
+        ) {
             return null;
         }
 

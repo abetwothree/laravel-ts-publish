@@ -458,6 +458,23 @@ class LaravelTsPublish
     }
 
     /**
+     * The type toTsType() publishes an enum as where it names no enum, as an override or a `custom_ts_mappings` entry
+     * answers it; null for any other enum, or a class that is no enum.
+     *
+     * A value of such an enum spells that type, not the enum's names, though its channels may still carry the enum.
+     */
+    public function retypedEnumType(string $class): ?string
+    {
+        if (! enum_exists($class)) {
+            return null;
+        }
+
+        $info = $this->toTsType($class);
+
+        return $info['enumFqcns'] === [] ? $info['type'] : null;
+    }
+
+    /**
      * Resolve the TypeScript type of an Eloquent cast's value: a cast name is not the column type it spells.
      *
      * Reads the cast as `HasAttributes::getCastType()` does: `decimal:N` by its case-sensitive prefix as `decimal`, a
