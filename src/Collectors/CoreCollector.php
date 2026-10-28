@@ -53,7 +53,7 @@ abstract class CoreCollector
             ->values();
 
         $additionalClasses = collect($settings['additional_directories'])
-            ->filter(self::isClassOrInterface(...))
+            ->filter($this->exists(...))
             ->values();
 
         $included = $settings['included'];
@@ -127,13 +127,23 @@ abstract class CoreCollector
     }
 
     /**
-     * Whether a class or interface exists, passes this collector's class filter and carries no #[TsExclude].
+     * Whether a name is a class this collector's filter can decide.
+     *
+     * @phpstan-assert-if-true class-string $class
+     */
+    protected function exists(string $class): bool
+    {
+        return class_exists($class);
+    }
+
+    /**
+     * Whether a class exists, passes this collector's class filter and carries no #[TsExclude].
      *
      * @phpstan-assert-if-true class-string $class
      */
     protected function passesClassFilter(string $class): bool
     {
-        if (! self::isClassOrInterface($class)) {
+        if (! $this->exists($class)) {
             return false;
         }
 
@@ -149,17 +159,6 @@ abstract class CoreCollector
     protected function sanitizeAllowSetting(array $setting): array
     {
         return array_values(array_filter($setting, 'is_string'));
-    }
-
-    /**
-     * Whether a name is a class or an interface: each class filter decides an interface as it does a class, since one
-     * can compose a type of its own.
-     *
-     * @phpstan-assert-if-true class-string $class
-     */
-    private static function isClassOrInterface(string $class): bool
-    {
-        return class_exists($class) || interface_exists($class);
     }
 
     /**

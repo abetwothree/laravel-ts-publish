@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use Illuminate\Support\Facades\Config;
+use Override;
 use ReflectionClass;
 
 /**
@@ -20,6 +21,17 @@ class ClassTypesCollector extends CoreCollector
     protected function defaultDirectory(): string
     {
         return '';
+    }
+
+    /**
+     * A class or an interface, since an interface can compose a type of its own.
+     *
+     * @phpstan-assert-if-true class-string $class
+     */
+    #[Override]
+    protected function exists(string $class): bool
+    {
+        return class_exists($class) || interface_exists($class);
     }
 
     /** @param ReflectionClass<object> $reflection */

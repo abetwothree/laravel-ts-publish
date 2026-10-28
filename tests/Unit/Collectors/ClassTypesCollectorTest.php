@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AnnouncingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
@@ -11,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGreets;
 
 use function Orchestra\Testbench\workbench_path;
 
+use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
 use Workbench\App\Packages\Ui\HasIcon;
@@ -39,6 +41,41 @@ it('collects an interface whose override composes, as it would a class', functio
 
     // HiddenGreets is #[TsExclude], and HasIcon's one override does not compose.
     expect(resolve(ClassTypesCollector::class)->collect()->all())->toBe([Greets::class]);
+});
+
+it('leaves interfaces out of every other collector\'s scan', function () {
+    $collector = new class extends CoreCollector
+    {
+        /**
+         * None: only the Ui package is scanned.
+         */
+        protected function defaultDirectory(): string
+        {
+            return '';
+        }
+
+        /**
+         * Whatever implements HasIcon, which an interface extending it also does.
+         *
+         * @param  ReflectionClass<object>  $reflection
+         */
+        protected function classFilter(ReflectionClass $reflection): bool
+        {
+            return $reflection->implementsInterface(HasIcon::class);
+        }
+
+        /**
+         * The Ui package's directory alone.
+         *
+         * @return array{included: list<string>, excluded: list<string>, additional_directories: list<string>}
+         */
+        protected function finderSettings(): array
+        {
+            return ['included' => [], 'excluded' => [], 'additional_directories' => [workbench_path('app/Packages/Ui')]];
+        }
+    };
+
+    expect($collector->collect()->all())->toBe([Badge::class, Chart::class]);
 });
 
 it('narrows the scan by included and excluded entries', function () {
