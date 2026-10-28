@@ -890,7 +890,8 @@ mapping, naming no enum. So a case, a constant holding one, a declared type, a c
 an override with its `customImports`, and no enum channel (`ValueResolver::resolveConstantValue()`). An `EnumResource`
 sends the enum itself, so its payload takes `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The
 enum comes from the class a case or `from()` names, from `ModelAttributeResolver::resolveAttributeClass()` for an
-attribute, and otherwise from the payload itself (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and
+attribute, and otherwise from the payload itself (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`): its receiver
+class, a constant's case or list of cases, a list literal's items, a `match`'s arms or a local's write. `->value` and
 `->name` keep the enum's names through `EnumValueTypes`.
 
 ### The inline wrap's own const token is aliased by the transformer, not here

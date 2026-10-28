@@ -253,13 +253,23 @@ describe("an overridden enum's own names", function () {
                 'name' => 'UiToneKind',
                 'shade_name' => 'ShadeKind',
                 'default_value?' => 'UiToneType',
+                'coalesce_resource' => 'AsEnum<typeof UiTone>',
+                'constant_resource' => 'AsEnum<typeof UiTone>',
+                'helper_resource' => 'AsEnum<typeof UiTone>',
+                'default_resource?' => 'AsEnum<typeof UiTone>',
+                'constant_list' => 'AsEnum<typeof UiTone>[]',
+                'literal_list' => 'AsEnum<typeof UiTone>[]',
+                'local_list' => 'AsEnum<typeof UiTone>[]',
+                'matched_resource' => 'AsEnum<typeof UiTone>',
             ]);
     });
 
     it('sends the shapes they publish', function () {
         $holder = UiToneHolder::query()->create(['tone' => UiTone::Bright, 'shade' => RenamedTone::Dark])->fresh();
         $body = fn (array $query): stdClass => sentAsJson(new UiToneReadsResource($holder)->resolve(Request::create('/', 'GET', $query)));
-        $sent = $body(['wrap' => 1, 'value' => 1]);
+        $sent = $body(['wrap' => 1, 'value' => 1, 'pick' => 1]);
+        $bright = (object) ['name' => 'Bright', 'value' => 'bright', 'backed' => true];
+        $dim = (object) ['name' => 'Dim', 'value' => 'dim', 'backed' => true];
 
         expect($sent)
             ->tone->toBe('dim')
@@ -275,9 +285,19 @@ describe("an overridden enum's own names", function () {
             ->name->toBe('Bright')
             ->shade_name->toBe('Dark')
             ->default_value->toBe('dim')
+            ->coalesce_resource->toEqual($dim)
+            ->constant_resource->toEqual($dim)
+            ->helper_resource->toEqual($bright)
+            ->default_resource->toEqual($dim)
+            ->constant_list->toEqual([$bright, $dim])
+            ->literal_list->toEqual([$bright, $dim])
+            ->local_list->toEqual([$dim, $bright])
+            ->matched_resource->toEqual($bright)
             ->and($body([]))
             ->either->toBe('dim')
-            ->not->toHaveProperty('default_value');
+            ->matched_resource->toEqual($dim)
+            ->not->toHaveProperty('default_value')
+            ->not->toHaveProperty('default_resource');
     });
 });
 

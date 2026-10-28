@@ -181,13 +181,31 @@ final class ValueResolver
      */
     public function caseEnum(ClassConstFetch $fetch, AnalysisScope $scope): ?string
     {
-        try {
-            $value = $this->evaluateConstantExpression($fetch, $scope);
-        } catch (ConstExprEvaluationException) {
-            return null;
-        }
+        $value = $this->readableConstant($fetch, $scope);
 
         return $value instanceof UnitEnum ? $value::class : null;
+    }
+
+    /**
+     * The enum of each case a class constant expression holds: its one case, or every item of a list of cases; null
+     * for any other value.
+     *
+     * @return list<class-string>|null
+     */
+    public function caseEnums(ClassConstFetch $fetch, AnalysisScope $scope): ?array
+    {
+        $value = $this->readableConstant($fetch, $scope);
+        $enums = [];
+
+        foreach (is_array($value) && array_is_list($value) ? $value : [$value] as $case) {
+            if (! $case instanceof UnitEnum) {
+                return null;
+            }
+
+            $enums[] = $case::class;
+        }
+
+        return $enums;
     }
 
     /**
@@ -590,6 +608,18 @@ final class ValueResolver
         }
 
         return $deepest;
+    }
+
+    /**
+     * A class constant expression's value, or null where it cannot be read.
+     */
+    private function readableConstant(ClassConstFetch $fetch, AnalysisScope $scope): mixed
+    {
+        try {
+            return $this->evaluateConstantExpression($fetch, $scope);
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
     }
 
     /**

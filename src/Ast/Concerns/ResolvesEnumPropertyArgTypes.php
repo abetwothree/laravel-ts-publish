@@ -13,12 +13,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 
 /**
@@ -275,21 +280,82 @@ trait ResolvesEnumPropertyArgTypes
 
     /**
      * The one enum a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings` entry
-     * answering its type: its one class, or a constant's case.
+     * answering its type.
      *
      * @return class-string|null
      */
     private function retypedPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
     {
-        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
-        $enum = match (true) {
-            count($classes) === 1 => $classes[0],
-            $payload instanceof ClassConstFetch => new ValueResolver()->caseEnum($payload, $scope),
+        $enums = array_values(array_unique($this->payloadCaseEnums($payload, $scope) ?? []));
+
+        return count($enums) === 1 && enum_exists($enums[0]) && LaravelTsPublish::toTsType($enums[0])['enumFqcns'] === []
+            ? $enums[0]
+            : null;
+    }
+
+    /**
+     * The class of each case a payload holds: its receiver class, a constant's case or list of cases, each item of a
+     * list literal, each arm of a `match` or a local's one write; null where a part holds a value none of these read.
+     *
+     * @return list<class-string>|null
+     */
+    private function payloadCaseEnums(Expr $payload, AnalysisScope $scope): ?array
+    {
+        if ($payload instanceof ConstFetch && $payload->name->toLowerString() === 'null') {
+            return [];
+        }
+
+        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? null;
+
+        return $classes ?? match (true) {
+            $payload instanceof Variable && is_string($payload->name) => $this->localCaseEnums($payload->name, $scope),
+            $payload instanceof ClassConstFetch => new ValueResolver()->caseEnums($payload, $scope),
+            $payload instanceof Array_ => $this->partsCaseEnums(
+                array_map(fn (ArrayItem $item): ?Expr => $item->byRef ? null : $item->value, $payload->items),
+                $scope,
+            ),
+            $payload instanceof Match_ => $this->partsCaseEnums(
+                array_map(fn (MatchArm $arm): Expr => $arm->body, $payload->arms),
+                $scope,
+            ),
             default => null,
         };
+    }
 
-        return $enum !== null && enum_exists($enum) && LaravelTsPublish::toTsType($enum)['enumFqcns'] === []
-            ? $enum
-            : null;
+    /**
+     * The class of each case a local's one write holds, or null for a local that has none or is mid-resolution.
+     *
+     * @return list<class-string>|null
+     */
+    private function localCaseEnums(string $name, AnalysisScope $scope): ?array
+    {
+        $local = $scope->literalLocalBinding($name);
+
+        return $local === null
+            ? null
+            : $scope->resolvingBinding($name, $local, fn (): ?array => $this->payloadCaseEnums($local, $scope));
+    }
+
+    /**
+     * The class of each case every part holds, or null when one part holds a value no case reading names.
+     *
+     * @param  array<Expr|null>  $parts
+     * @return list<class-string>|null
+     */
+    private function partsCaseEnums(array $parts, AnalysisScope $scope): ?array
+    {
+        $enums = [];
+
+        foreach ($parts as $part) {
+            $held = $part === null ? null : $this->payloadCaseEnums($part, $scope);
+
+            if ($held === null) {
+                return null;
+            }
+
+            array_push($enums, ...$held);
+        }
+
+        return $enums;
     }
 }

@@ -13,17 +13,24 @@ use Workbench\App\Enums\UiTone;
 
 /**
  * Reads of enums with an override that publish the enum's own names: an `EnumResource` of a case, a cast column, an
- * accessor or a renamed enum, and a case's `->value` and `->name`, beside the override a case or a cast column takes.
+ * accessor, a renamed enum, a coalesce, a constant, a helper, a closure default, a list or a `match`, and a case's
+ * `->value` and `->name`, beside the override a case or a cast column takes.
  *
  * @mixin UiToneHolder
  */
 class UiToneReadsResource extends JsonResource
 {
+    public const UiTone DEFAULT = UiTone::Dim;
+
+    public const array TONES = [UiTone::Bright, UiTone::Dim];
+
     /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
     {
+        $tones = [UiTone::Dim, UiTone::Bright];
+
         return [
             'tone' => UiTone::Dim,
             'column' => $this->tone,
@@ -38,6 +45,25 @@ class UiToneReadsResource extends JsonResource
             'name' => $this->tone->name,
             'shade_name' => RenamedTone::Dark->name,
             'default_value' => $this->when($request->boolean('value'), fn ($tone = UiTone::Dim) => $tone->value),
+            'coalesce_resource' => EnumResource::make($this->maybe_tone ?? UiTone::Dim),
+            'constant_resource' => EnumResource::make(self::DEFAULT),
+            'helper_resource' => EnumResource::make($this->picked()),
+            'default_resource' => $this->when($request->boolean('value'), fn ($tone = UiTone::Dim) => EnumResource::make($tone)),
+            'constant_list' => EnumResource::collection(self::TONES),
+            'literal_list' => EnumResource::collection([UiTone::Bright, UiTone::Dim]),
+            'local_list' => EnumResource::collection($tones),
+            'matched_resource' => EnumResource::make(match ($request->integer('pick')) {
+                1 => UiTone::Bright,
+                default => UiTone::Dim,
+            }),
         ];
+    }
+
+    /**
+     * The tone a helper's declared return names.
+     */
+    protected function picked(): UiTone
+    {
+        return UiTone::Bright;
     }
 }
