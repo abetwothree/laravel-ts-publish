@@ -11,8 +11,6 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Routing\Route;
-use Illuminate\Routing\Router;
 use ReflectionClass;
 
 /**
@@ -184,27 +182,13 @@ final class ClassTypeOverride
 
     /**
      * Whether another publisher writes this class's file, so its own override stands alone. A routed controller's file
-     * is the routes publisher's, at the path its module would take.
+     * is the routes publisher's, at the path its module would take, whatever the routes filters say.
      */
     private static function isOwned(string $class): bool
     {
         return enum_exists($class)
             || array_any(self::OWNED, static fn (string $owned): bool => is_a($class, $owned, true))
-            || self::isRouted($class);
-    }
-
-    /**
-     * Whether a registered route dispatches to the class.
-     */
-    private static function isRouted(string $class): bool
-    {
-        /** @var Router $router */
-        $router = resolve(Router::class);
-
-        return array_any(
-            $router->getRoutes()->getRoutes(),
-            static fn (Route $route): bool => ltrim((string) $route->getControllerClass(), '\\') === $class,
-        );
+            || RoutedControllers::has($class);
     }
 
     /**

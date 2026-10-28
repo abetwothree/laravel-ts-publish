@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
@@ -185,6 +186,7 @@ abstract class BaseRunner
         TypeScriptMap::reset();
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
+        RoutedControllers::flush();
         ValueResult::forgetEnumSpellings();
         RelationMap::reset();
         $this->forgetRenderedViews();

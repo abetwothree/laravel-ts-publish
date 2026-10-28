@@ -453,6 +453,14 @@ describe('a controller the routes publisher writes', function () {
         'whose parent class declares one' => [UiNodeController::class, 'UiNode'],
     ]);
 
+    it('stays owned while the routes filters leave it out', function () {
+        Config::set('ts-publish.routes.only', ['ui.node']);
+        Config::set('ts-publish.routes.except', ['ui.hello']);
+
+        expect(ClassTypeOverride::resolve(UiHelloController::class))->toBeNull()
+            ->and(LaravelTsPublish::toTsType(UiHelloController::class)['type'])->not->toBe('UiHelloControllerType');
+    });
+
     it('writes no module at its route file\'s path', function () {
         disableBarrelPhasesBut();
         Config::set('ts-publish.routes.enabled', true);
@@ -469,6 +477,12 @@ describe('a controller the routes publisher writes', function () {
             ->and(file_get_contents("$directory/ui-hello-controller.ts"))->toContain('ui-hello')->not->toContain('export interface')
             ->and(file_get_contents("$directory/ui-node-controller.ts"))->toContain('ui-node')->not->toContain('export interface');
     });
+});
+
+it('owns a controller a route names in another case', function () {
+    Route::get('ui-hello-cased', strtolower(UiHelloController::class).'@index');
+
+    expect(ClassTypeOverride::resolve(UiHelloController::class))->toBeNull();
 });
 
 describe('imports a composed type from its module in each publisher', function () {
