@@ -30,7 +30,7 @@ final class ClassTypeOverride
     private const array OWNED = [Model::class, JsonResource::class, ShouldBroadcast::class, FormRequest::class];
 
     /**
-     * The classes a `new` of publishes as itself, not by its override: a model's JSON depends on its runtime
+     * The classes whose `new` publishes the class itself, not its override: a model's JSON depends on its runtime
      * attributes, casts and hidden fields, and an API resource publishes its own type. OWNED's others keep theirs.
      */
     private const array PUBLISHED_AS_ITSELF = [Model::class, JsonResource::class];

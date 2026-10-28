@@ -372,16 +372,15 @@ class MethodAnalysis
     public function channelNames(string $name): array
     {
         $held = array_filter(
-            [...(isset($this->directEnumFqcns[$name]) ? [$this->directEnumFqcns[$name]] : []), ...$this->inlineEnumFqcns[$name] ?? []],
+            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
         $wrapped = [
-            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
-            ...$this->multiEnumResourceFqcns[$name] ?? [],
+            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
             ...$this->inlineEnumResourceFqcns[$name] ?? [],
         ];
-        $models = [...(isset($this->modelFqcns[$name]) ? [$this->modelFqcns[$name]] : []), ...$this->inlineModelFqcns[$name] ?? []];
-        $resources = [...(isset($this->nestedResources[$name]) ? [$this->nestedResources[$name]] : []), ...$this->inlineResourceFqcns[$name] ?? []];
+        $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
+        $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
 
         $names = [
             ...array_map(class_basename(...), $models),
@@ -517,6 +516,18 @@ class MethodAnalysis
         }
 
         return $queues;
+    }
+
+    /**
+     * The classes a property's single-entry channel and its list channel of one kind hold, in that order.
+     *
+     * @param  ClassMapType  $single
+     * @param  FqcnQueueMap  $listed
+     * @return list<class-string>
+     */
+    private function channelClasses(string $name, array $single, array $listed): array
+    {
+        return [...(isset($single[$name]) ? [$single[$name]] : []), ...$listed[$name] ?? []];
     }
 
     /**

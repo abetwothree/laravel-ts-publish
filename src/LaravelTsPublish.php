@@ -43,13 +43,11 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
-use PhpParser\Node\PropertyItem;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\GroupUse;
 use PhpParser\Node\Stmt\Namespace_;
-use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
@@ -462,6 +460,8 @@ class LaravelTsPublish
      * answers it; null for any other enum, or a class that is no enum.
      *
      * A value of such an enum spells that type, not the enum's names, though its channels may still carry the enum.
+     *
+     * @internal
      */
     public function retypedEnumType(string $class): ?string
     {
@@ -3156,13 +3156,8 @@ class LaravelTsPublish
             return false; // @codeCoverageIgnore
         }
 
-        $promoted = $node->getMethod('__construct')->params ?? [];
-
-        return array_any(
-            $node->getProperties(),
-            fn (Property $statement): bool => array_any($statement->props, fn (PropertyItem $item): bool => $item->name->toString() === $name),
-        ) || array_any(
-            $promoted,
+        return $node->getProperty($name) !== null || array_any(
+            $node->getMethod('__construct')->params ?? [],
             fn (Param $param): bool => $param->isPromoted() && $param->var instanceof Variable && $param->var->name === $name,
         );
     }
