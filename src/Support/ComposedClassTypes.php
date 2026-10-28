@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use Illuminate\Support\Facades\Config;
+
 /**
  * The classes whose override is composed from two or more, and the name and marker a value of one publishes with.
  *
@@ -18,6 +22,32 @@ final class ComposedClassTypes
 
     /** @var array<class-string, true> */
     private static array $registered = [];
+
+    /**
+     * Whether class types publish, a missing setting reading as the documented default.
+     */
+    public static function enabled(): bool
+    {
+        return Config::boolean('ts-publish.class_types.enabled', true);
+    }
+
+    /**
+     * Whether a class may publish a composed type: class types are enabled, and the class-types collector's filters
+     * and `#[TsExclude]` admit it. The collector and the composer both ask, so no value imports a module never written.
+     *
+     * @param  class-string  $class
+     */
+    public static function composes(string $class): bool
+    {
+        if (! self::enabled()) {
+            return false;
+        }
+
+        $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
+
+        // A project's own collector need only offer collect(), so only a CoreCollector can say what it filters out.
+        return ! $collector instanceof CoreCollector || $collector->admits($class);
+    }
 
     /**
      * The interface name a composed class publishes as: its basename, suffixed `Type`.

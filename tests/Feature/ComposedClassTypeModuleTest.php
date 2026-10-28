@@ -2,18 +2,24 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\UiGadgetBroadcast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetWidget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiGadgetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiGadgetHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGadget;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\SelfNamed;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\TwoPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Unimported;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ClassTypeTransformer;
@@ -25,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
@@ -161,7 +168,7 @@ it('writes a module for a composed class a value reaches outside the scan', func
     $module = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/ui/gadget.ts';
 
     expect($runner->classTypeGenerators->map(fn (ClassTypeGenerator $generator): string => $generator->findable)->all())
-        ->toBe([Chart::class, Dial::class, Gadget::class])
+        ->toBe([Gadget::class, Chart::class, Dial::class])
         ->and(ComposedClassTypes::registered())->toBe([Gadget::class])
         ->and(file_get_contents($module))->toBe(<<<'TS'
             import type { UiIcon, UiNode } from '@js/types/ui';
@@ -226,7 +233,7 @@ it('lists the composed classes in the JSON output', function () {
     ]);
 });
 
-it('lists the scanned composed classes in the watcher file, and no class only a value reaches', function () {
+it('lists the scanned composed classes and their contributors in the watcher file, and no class only a value reaches', function () {
     Config::set('ts-publish.output_to_files', false);
     Config::set('ts-publish.watcher.enabled', true);
 
@@ -239,6 +246,9 @@ it('lists the scanned composed classes in the watcher file, and no class only a 
     expect($paths)
         ->toContain('app/Packages/Ui/Chart.php')
         ->toContain('app/Packages/Ui/Dial.php')
+        ->toContain('app/Packages/Ui/Node.php')
+        ->toContain('app/Packages/Ui/HasIcon.php')
+        ->toContain('app/Packages/Ui/Concerns/AnnouncesHello.php')
         ->not->toContain('app/Packages/Ui/Spark.php')
         ->and(array_filter($paths, fn (string $path): bool => str_ends_with($path, 'Ui/Gadget.php')))->toBe([]);
 });
@@ -275,6 +285,99 @@ it('writes modules to the class types output directory when one is set', functio
     expect(file_exists("$classTypesOut/workbench/app/packages/ui/chart.ts"))->toBeTrue()
         ->and(file_exists("$classTypesOut/workbench/app/packages/ui/index.ts"))->toBeTrue()
         ->and(file_exists($this->out.'/workbench/app/packages/ui/chart.ts'))->toBeFalse();
+});
+
+it('warns when a module shares the directory of a route barrel', function () {
+    disableBarrelPhasesBut();
+    Config::set('ts-publish.routes.enabled', true);
+    Config::set('ts-publish.routes.only', ['ui.gadget']);
+    Config::set('ts-publish.class_types.additional_directories', [UiGadgetWidget::class]);
+    Route::get('ui-gadget', [UiGadgetPageController::class, 'show'])->name('ui.gadget');
+
+    $runner = classTypesOnlyRunner();
+    $runner->shouldPublishRoutes = true;
+    $runner->run();
+
+    expect(array_column(AnalysisWarnings::all(), 'message', 'subject'))
+        ->toHaveKey(UiGadgetWidget::class)
+        ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[UiGadgetWidget::class])
+        ->toContain('abe-two-three/laravel-ts-publish/tests/fixtures/http/controllers')
+        ->toContain('route');
+});
+
+it('warns when an override with no import spells the composed name', function () {
+    expect(composedModule(SelfNamed::class))->toContain('export interface SelfNamedType extends SelfNamedType, UiNode {}')
+        ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[SelfNamed::class] ?? '')->toContain('TS2310');
+});
+
+it('warns when two overrides import one name from two modules', function () {
+    expect(composedModule(TwoPaths::class))->toBe(<<<'TS'
+        import type { UiNode } from '@js/types/ui';
+        import type { UiNode } from '@js/types/ui-next';
+
+        export interface TwoPathsType extends UiNode {}
+
+        TS)
+        ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[TwoPaths::class] ?? '')->toContain('TS2300');
+});
+
+describe('a class that may not compose', function () {
+    it('does not compose when class types are disabled', function () {
+        Config::set('ts-publish.class_types.enabled', false);
+
+        expect(LaravelTsPublish::toTsType(Chart::class))
+            ->toMatchArray(['type' => 'UiHello', 'customImports' => ['@js/types/ui' => ['UiHello']]])
+            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[Chart::class] ?? '')
+            ->toContain('Publishes the #[TsType] [UiHello] alone and leaves out [UiIcon]');
+
+        disableBarrelPhasesBut('resources');
+        Config::set('ts-publish.resources.included', [UiGadgetResource::class]);
+        Config::set('ts-publish.resources.additional_directories', [UiGadgetResource::class]);
+
+        $runner = classTypesOnlyRunner();
+        $runner->shouldPublishResources = true;
+        $runner->run();
+
+        $resource = (string) file_get_contents($this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/http/resources/ui-gadget-resource.ts');
+
+        expect($runner->classTypeGenerators)->toBeEmpty()
+            ->and(ComposedClassTypes::registered())->toBe([])
+            ->and(file_exists($this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/ui/gadget.ts'))->toBeFalse()
+            ->and($resource)->toContain("import type { UiIcon } from '@js/types/ui';")
+            ->toContain('gadget: UiIcon;')
+            ->not->toContain('GadgetType')
+            ->not->toContain('ts-publish:');
+    });
+
+    it('reads a missing class_types block as enabled', function () {
+        Config::set('ts-publish', Arr::except(Config::array('ts-publish'), 'class_types'));
+        disableBarrelPhasesBut('resources');
+        Config::set('ts-publish.routes.enabled', false);
+        Config::set('ts-publish.broadcast_channels.enabled', false);
+        Config::set('ts-publish.resources.included', [UiGadgetResource::class]);
+        Config::set('ts-publish.resources.additional_directories', [UiGadgetResource::class]);
+
+        expect(Config::has('ts-publish.class_types'))->toBeFalse()
+            ->and(ComposedClassTypes::composes(Chart::class))->toBeTrue()
+            ->and(LaravelTsPublish::toTsType(Chart::class)['type'])->toBe('ChartType')
+            ->and(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_exists($this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/ui/gadget.ts'))->toBeTrue();
+    });
+
+    it('does not compose an excluded class', function (string $class, array $config) {
+        foreach ($config as $key => $value) {
+            Config::set("ts-publish.class_types.{$key}", $value);
+        }
+
+        expect(ComposedClassTypes::composes($class))->toBeFalse()
+            ->and(LaravelTsPublish::toTsType($class))
+            ->toMatchArray(['type' => 'UiIcon', 'customImports' => ['@js/types/ui' => ['UiIcon']]])
+            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[$class] ?? '')->toContain('leaves out [UiNode]');
+    })->with([
+        'listed in class_types.excluded' => [Gadget::class, ['excluded' => [Gadget::class]]],
+        'outside class_types.included' => [Gadget::class, ['included' => [Dial::class]]],
+        'marked #[TsExclude]' => [HiddenGadget::class, []],
+    ]);
 });
 
 describe('each publisher reports the composed classes its file imports', function () {
@@ -405,6 +508,43 @@ describe('the generation cache', function () {
             ->and(file_get_contents("$directory/index.ts"))->toBe("export * from './gadget';");
     });
 
+    it('keeps the composed-class order when a consumer is edited', function () {
+        // PHP cannot reload a class, so each reader is a temp copy the test can edit.
+        $suffix = bin2hex(random_bytes(4));
+        $sources = "$this->cacheDir-src";
+        $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\ComposedOrder\\';
+        $readers = [$namespace.'GadgetReader'.$suffix, $namespace.'UnimportedReader'.$suffix];
+
+        Config::set('ts-publish.json.enabled', true);
+        Config::set('ts-publish.resources.additional_directories', $readers);
+        Config::set('ts-publish.resources.included', $readers);
+        Config::set('ts-publish.class_types.additional_directories', []);
+        $json = $this->out.'/'.Config::string('ts-publish.json.filename');
+
+        try {
+            mkdir($sources);
+
+            foreach (['GadgetReader', 'UnimportedReader'] as $name) {
+                $stub = (string) file_get_contents(__DIR__.'/../Fixtures/Stubs/ComposedOrder/'.$name.'.php.stub');
+                file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
+                require_once $sources.'/'.$name.'.php';
+            }
+
+            expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+            $published = (string) file_get_contents($json);
+
+            // Only the second reader rebuilds, so it alone registers its class this run.
+            file_put_contents($sources.'/UnimportedReader.php', "\n// edited\n", FILE_APPEND);
+
+            expect(array_keys(json_decode($published, true)['classTypes']))->toBe([Gadget::class, Unimported::class])
+                ->and(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+                ->and(file_get_contents($json))->toBe($published);
+        } finally {
+            array_map(unlink(...), glob($sources.'/*.php') ?: []);
+            @rmdir($sources);
+        }
+    });
+
     it('lists every composed class a partial run skips or republishes as the last full run did', function (string $flag) {
         Config::set('ts-publish.json.enabled', true);
         Config::set('ts-publish.resources.included', [UiGadgetResource::class]);
@@ -414,7 +554,7 @@ describe('the generation cache', function () {
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
         $classTypes = json_decode((string) file_get_contents($json), true)['classTypes'];
 
-        expect(array_keys($classTypes))->toBe([Chart::class, Dial::class, Gadget::class]);
+        expect(array_keys($classTypes))->toBe([Gadget::class, Chart::class, Dial::class]);
 
         expect(Artisan::call('ts:publish', [$flag => true, '--quiet' => true]))->toBe(0)
             ->and(json_decode((string) file_get_contents($json), true)['classTypes'])->toBe($classTypes)

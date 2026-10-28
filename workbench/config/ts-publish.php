@@ -392,7 +392,10 @@ return [
     |
     | A module is written for every composed class a published value
     | reaches, and for each one in 'additional_directories', even when no
-    | value uses it yet. No directory is scanned by default.
+    | value uses it yet. No directory is scanned by default. A class that
+    | 'excluded' or #[TsExclude] leaves out, or one outside 'included',
+    | does not compose, nor does any class while this is disabled: its
+    | values publish the nearest override instead.
     */
 
     'class_types' => [

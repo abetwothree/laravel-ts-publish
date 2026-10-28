@@ -214,7 +214,7 @@ final class ClassTypeOverride
     }
 
     /**
-     * The composed type when every contributor can be extended, else the nearest contributor as written.
+     * The composed type when every contributor can be extended and the class may compose, else the nearest contributor.
      *
      * @param  class-string  $class
      * @param  non-empty-list<Contributor>  $contributors
@@ -228,7 +228,7 @@ final class ClassTypeOverride
 
         $unextendable = array_find($contributors, static fn (array $contributor): bool => ! TsTypeString::isExtendable($contributor['type']));
 
-        if ($unextendable === null) {
+        if ($unextendable === null && ComposedClassTypes::composes($class)) {
             $typeName = ComposedClassTypes::typeName($class);
 
             return [
@@ -242,8 +242,11 @@ final class ClassTypeOverride
         }
 
         $leftOut = array_slice($contributors, 1);
+        $reason = $unextendable === null
+            ? 'class types are disabled, or their filters or #[TsExclude] leave the class out'
+            : "a composed type cannot extend [{$unextendable['type']}]";
 
-        self::warnLeftOut($class, $contributors[0], $leftOut, "a composed type cannot extend [{$unextendable['type']}]");
+        self::warnLeftOut($class, $contributors[0], $leftOut, $reason);
 
         return self::asWritten($class, $contributors[0], $leftOut);
     }

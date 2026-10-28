@@ -46,6 +46,7 @@ use Throwable;
  * @phpstan-import-type AnalysisWarning from AnalysisWarnings
  *
  * @phpstan-type PublishFlags = array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool, 7: bool, 8: bool}
+ * @phpstan-type PublishType = array{config: string, option: string, label: string, functional: bool, default?: bool}
  */
 class TsPublishCommand extends Command
 {
@@ -306,12 +307,12 @@ class TsPublishCommand extends Command
         // set because a route's annotateRequestPayload<T>() import follows form_requests.enabled rather
         // than this run's flag, so skipping the phase leaves that import pointing at a file no run wrote.
         // Enums, routes, metadata and both broadcast index files are the ones that emit runtime values.
-        /** @var array<string, array{config: string, option: string, label: string, functional: bool}> $types */
+        /** @var array<string, PublishType> $types */
         $types = [
             'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
             'broadcast_events' => ['config' => 'ts-publish.broadcast_events.enabled', 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
             // Kept for the reason form requests are: a file another phase writes can import a composed module.
-            'class_types' => ['config' => 'ts-publish.class_types.enabled', 'option' => 'only-class-types', 'label' => 'class types', 'functional' => true],
+            'class_types' => ['config' => 'ts-publish.class_types.enabled', 'option' => 'only-class-types', 'label' => 'class types', 'functional' => true, 'default' => true],
             'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
             'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
             'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
@@ -326,7 +327,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config'], false);
+                : Config::boolean($type['config'], $type['default'] ?? false);
         }
 
         if ($onlyFunctional) {
@@ -358,7 +359,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'], false)) {
+            if (Config::boolean($activeType['config'], $activeType['default'] ?? false)) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);

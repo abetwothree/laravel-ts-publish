@@ -104,6 +104,16 @@ abstract class CoreCollector
     }
 
     /**
+     * Whether the include and exclude filters admit a class with no #[TsExclude], whatever the class filter says.
+     *
+     * @param  class-string  $class
+     */
+    public function admits(string $class): bool
+    {
+        return $this->allows($class) && (! class_exists($class) || ! $this->excluded(new ReflectionClass($class)));
+    }
+
+    /**
      * Whether a class the scan did not find would still be published when named.
      */
     public function accepts(string $class): bool

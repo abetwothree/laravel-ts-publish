@@ -700,7 +700,7 @@ class Runner extends BaseRunner
         /** @var Collection<int, ClassTypeGenerator> $generators */
         $generators = collect();
 
-        if (! $this->shouldPublishClassTypes || ! Config::boolean('ts-publish.class_types.enabled', false)) {
+        if (! $this->shouldPublishClassTypes || ! ComposedClassTypes::enabled()) {
             $this->classTypeGenerators = $generators;
             $this->classTypeModularBarrels = [];
 
@@ -719,12 +719,40 @@ class Runner extends BaseRunner
         $this->classTypeGenerators = $generators;
 
         $outputPath = Config::get('ts-publish.class_types.output_directory');
+        $outputPath = is_string($outputPath) && $outputPath !== '' ? $outputPath : null;
+
         $this->classTypeModularBarrels = $generators->isEmpty() ? [] : $this->barrelWriter->writeModularPreserving(
             $generators,
             $this->preservedClassTypeBarrelExports(),
-            is_string($outputPath) ? $outputPath : null,
+            $outputPath,
         );
+        $this->warnOfSharedRouteBarrels($generators, $outputPath ?? Config::string('ts-publish.output_directory'));
         $this->logger?->success('Class types — '.$generators->count());
+    }
+
+    /**
+     * Warn of each module written where route controllers publish: their barrel re-exports defaults, and this phase's
+     * write keeps only `export *` lines, so the directory's barrel drops the controllers' exports.
+     *
+     * @param  Collection<int, ClassTypeGenerator>  $generators
+     */
+    protected function warnOfSharedRouteBarrels(Collection $generators, string $classTypesBase): void
+    {
+        $routesBase = Config::get('ts-publish.routes.output_directory');
+        $routesBase = is_string($routesBase) && $routesBase !== '' ? $routesBase : Config::string('ts-publish.output_directory');
+
+        if (rtrim($routesBase, '/') !== rtrim($classTypesBase, '/')) {
+            return;
+        }
+
+        foreach ($generators as $generator) {
+            if (isset($this->routeModularBarrels[$generator->namespacePath()])) {
+                AnalysisWarnings::addOnce($generator->findable, sprintf(
+                    'Publishes its composed type in [%s], where route controllers publish too, so that directory\'s barrel drops their default exports. Move the class to a namespace of its own.',
+                    $generator->namespacePath(),
+                ));
+            }
+        }
     }
 
     /**
@@ -747,10 +775,15 @@ class Runner extends BaseRunner
         }
 
         // A snapshot names its classes as they composed when it was built; a module for one that no longer does throws.
-        return array_values(array_filter(
+        $classes = array_values(array_filter(
             array_unique($classes),
             static fn (string $class): bool => ClassTypeOverride::resolve($class)['composed'] ?? false,
         ));
+
+        // Which files the cache served decides the order classes are reached in, so sort to keep the output stable.
+        sort($classes, SORT_STRING);
+
+        return $classes;
     }
 
     /**
@@ -836,21 +869,22 @@ class Runner extends BaseRunner
      */
     private function skippedFeatureGenerators(): array
     {
+        // Each feature's generator, and what a missing `enabled` key reads as.
         $features = [
-            'enums' => [$this->shouldPublishEnums, EnumGenerator::class],
-            'models' => [$this->shouldPublishModels, ModelGenerator::class],
-            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class],
-            'resources' => [$this->shouldPublishResources, ResourceGenerator::class],
-            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class],
-            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class],
-            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class],
-            'class_types' => [$this->shouldPublishClassTypes, ClassTypeGenerator::class],
+            'enums' => [$this->shouldPublishEnums, EnumGenerator::class, false],
+            'models' => [$this->shouldPublishModels, ModelGenerator::class, false],
+            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class, false],
+            'resources' => [$this->shouldPublishResources, ResourceGenerator::class, false],
+            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class, false],
+            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class, false],
+            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class, false],
+            'class_types' => [$this->shouldPublishClassTypes, ClassTypeGenerator::class, true],
         ];
 
         $skipped = [];
 
-        foreach ($features as $feature => [$published, $defaultGenerator]) {
-            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", false)) {
+        foreach ($features as $feature => [$published, $defaultGenerator, $enabledByDefault]) {
+            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", $enabledByDefault)) {
                 $skipped[$feature] = Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator);
             }
         }

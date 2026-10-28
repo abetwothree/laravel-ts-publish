@@ -15,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use BackedEnum;
@@ -253,27 +255,30 @@ class WatcherJsonWriter
     }
 
     /**
-     * The scanned composed classes' files. A class only a value reaches is republished with the file that reaches it.
+     * The file of each scanned composed class and of each override it composes, since editing one changes its module.
      *
      * @return list<string>
      */
     protected function collectClassTypePaths(): array
     {
-        if (! Config::boolean('ts-publish.class_types.enabled', false)) {
+        if (! ComposedClassTypes::enabled()) {
             return [];
         }
 
         /** @var ClassTypesCollector $collector */
         $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
 
-        return array_values(
-            $collector->collect()
-                ->map(function (string $fqcn): string {
-                    $reflection = new ReflectionClass($fqcn);
+        $classes = [];
 
-                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
-                })
-                ->all()
-        );
+        foreach ($collector->collect() as $fqcn) {
+            $contributors = ClassTypeOverride::resolve($fqcn)['contributors'] ?? [];
+
+            array_push($classes, $fqcn, ...array_column($contributors, 'declaredBy'));
+        }
+
+        return array_values(array_map(
+            static fn (string $class): string => TsNaming::resolveRelativePath((string) new ReflectionClass($class)->getFileName()),
+            array_unique($classes),
+        ));
     }
 }

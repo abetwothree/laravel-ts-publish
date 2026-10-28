@@ -1115,13 +1115,13 @@ test('ts:publish --source with a composed class publishes its module alone', fun
     }
 });
 
-test('ts:publish --source with a composed class fails when class types are disabled', function () {
+test('ts:publish --source with a class that composes only while class types are enabled fails when they are not', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.class_types.enabled', false);
 
     $this->artisan('ts:publish', ['--source' => 'Workbench\App\Packages\Ui\Chart', '--quiet' => true])
         ->assertFailed()
-        ->expectsOutputToContain('Nothing to publish for Workbench\App\Packages\Ui\Chart: class types are disabled');
+        ->expectsOutputToContain('or composed class: Workbench\App\Packages\Ui\Chart');
 });
 
 test('ts:publish --source with a class whose override does not compose reports it is not publishable', function () {

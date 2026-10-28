@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsClassTypeDto;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -87,7 +88,7 @@ class ClassTypeTransformer extends CoreTransformer
      *
      * @param  list<Contributor>  $contributors
      */
-    protected function resolveContributors(array $contributors): void
+    private function resolveContributors(array $contributors): void
     {
         $alias = $this->typeName.'Base';
         $imports = [];
@@ -118,5 +119,40 @@ class ClassTypeTransformer extends CoreTransformer
 
         $this->extends = array_values(array_unique($extends));
         $this->typeImports = TsNaming::sortImportPaths($imports);
+
+        $this->warnOfUncompilableNames();
+    }
+
+    /**
+     * Warn when the module cannot compile: an unimported override spelling the interface's own name, which it then
+     * extends, or one name imported from two modules.
+     */
+    private function warnOfUncompilableNames(): void
+    {
+        if (TsTypeString::typeNameOccursIn($this->typeName, ...$this->extends)) {
+            AnalysisWarnings::addOnce($this->findable, sprintf(
+                'Composes [%s] from an override that spells that name with no import, so the interface extends itself (TS2310). Give that #[TsType] an import, or another name.',
+                $this->typeName,
+            ));
+        }
+
+        $paths = [];
+
+        foreach ($this->typeImports as $path => $names) {
+            foreach ($names as $name) {
+                $paths[Str::afterLast($name, ' as ')][] = $path;
+            }
+        }
+
+        foreach ($paths as $name => $from) {
+            if (count($from) > 1) {
+                AnalysisWarnings::addOnce($this->findable, sprintf(
+                    'Composes [%s] from overrides that import [%s] from both [%s], so its module imports one name twice (TS2300). Rename one of the types.',
+                    $this->typeName,
+                    $name,
+                    implode('] and [', $from),
+                ));
+            }
+        }
     }
 }
