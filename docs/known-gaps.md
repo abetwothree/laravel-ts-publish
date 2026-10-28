@@ -272,6 +272,22 @@ A custom `models.collector_class` that narrows `collect()` must narrow `accepts(
 to are published on demand. Add the model's class or directory to `models.additional_directories` to publish it like
 any other model.
 
+### A composed class only a value reaches is not watched
+
+A composed class outside `class_types.additional_directories` gets its module when a published value reaches it, but
+`WatcherJsonWriter` lists the scanned classes only, as it does for models. Editing that class, or an ancestor's
+`#[TsType]`, therefore triggers no publish on its own; the next publish rebuilds the module, which is cached against
+those files. Add the class or its directory to `class_types.additional_directories` to watch it.
+
+### A composed class beside another publisher's files can lose its barrel export
+
+A composed class's module shares its namespace's `index.ts` with any model, enum, API resource, form request or
+broadcast event there. Those phases rebuild the barrel from their own files and the class-type phase, which runs after
+them, adds its modules back, so a run that skips class types (`--only-enums`, say) leaves the module's export out, and
+a file importing `{Basename}Type` from that barrel fails `tsc` until the next full publish. A composed class in a
+controller's namespace replaces the route barrel's `export { default … }` lines with its own. Keep composed classes in
+a namespace of their own.
+
 ### A model class name containing an underscore can collide with a metadata companion
 
 A companion is named `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never adds an underscore, so no other

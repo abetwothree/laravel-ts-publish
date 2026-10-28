@@ -110,7 +110,7 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
 - **The marker**: a composed type rides `customImports` under a
   [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
   spell, so every carrier moves it unchanged to the code that writes import lines. Step 2 registers the class for its
-  module.
+  module, which the class-type phase writes ([generation cache](generation-cache.md#composed-class-modules)).
 
 `resolve()` reads a class by its declared name, however a type spells it. `BaseRunner::resetRunState()` flushes the
 lookup's memo and the registry at each run. `resolve()` records the class's files, its traits', interfaces' and
