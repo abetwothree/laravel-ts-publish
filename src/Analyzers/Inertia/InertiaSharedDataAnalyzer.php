@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
@@ -21,7 +22,6 @@ use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
-use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
@@ -162,7 +162,7 @@ class InertiaSharedDataAnalyzer
             'sharedPageProps' => $propsType,
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
             'typeImports' => $this->mergeTypeImports(
-                $this->withoutNamesCastsBring($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
+                CastChannels::withoutOtherPaths($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
                 $resolvedTsCasts['typeImports'],
             ),
             'valueImports' => $inferredImports['valueImports'],
@@ -265,39 +265,6 @@ class InertiaSharedDataAnalyzer
         ksort($imports);
 
         return $imports;
-    }
-
-    /**
-     * Drop each inferred import of a name a #[TsCasts] entry brings from another path, so a name is imported once.
-     *
-     * @param  TypesImportMap  $inferred
-     * @param  TypesImportMap  $casts
-     * @return TypesImportMap
-     */
-    protected function withoutNamesCastsBring(array $inferred, array $casts): array
-    {
-        $brought = [];
-
-        foreach ($casts as $path => $names) {
-            foreach ($names as $name) {
-                $brought[Str::afterLast($name, ' as ')][] = $path;
-            }
-        }
-
-        foreach ($inferred as $path => $names) {
-            $kept = array_values(array_filter(
-                $names,
-                fn (string $name): bool => in_array($path, $brought[Str::afterLast($name, ' as ')] ?? [$path], true),
-            ));
-
-            if ($kept === []) {
-                unset($inferred[$path]);
-            } else {
-                $inferred[$path] = $kept;
-            }
-        }
-
-        return $inferred;
     }
 
     /**

@@ -6,10 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Closure;
+use Illuminate\Support\Str;
 
 /**
  * Fits each key a `#[TsCasts]` entry retypes to the text that entry publishes.
@@ -19,6 +21,7 @@ use Closure;
  *
  * @phpstan-import-type CastInForce from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -52,6 +55,41 @@ final class CastChannels
         ));
 
         return new ClassTokenQueue($queue, $nameOf)->take($type);
+    }
+
+    /**
+     * Drop each import of a name `$bound` brings from another path, so the file binds that name once, to `$bound`'s
+     * import. Names compare as the file binds them: `X as Y` binds `Y`.
+     *
+     * @param  TypesImportMap  $imports
+     * @param  TypesImportMap  $bound  the imports that win each name they bring, such as a cast's
+     * @return TypesImportMap
+     */
+    public static function withoutOtherPaths(array $imports, array $bound): array
+    {
+        $paths = [];
+
+        foreach ($bound as $path => $names) {
+            foreach ($names as $name) {
+                $paths[Str::afterLast($name, ' as ')][] = (string) $path;
+            }
+        }
+
+        foreach ($imports as $path => $names) {
+            $path = (string) $path;
+            $kept = array_values(array_filter(
+                $names,
+                fn (string $name): bool => in_array($path, $paths[Str::afterLast($name, ' as ')] ?? [$path], true),
+            ));
+
+            if ($kept === []) {
+                unset($imports[$path]);
+            } else {
+                $imports[$path] = $kept;
+            }
+        }
+
+        return $imports;
     }
 
     /**
@@ -258,26 +296,15 @@ final class CastChannels
      */
     private function unbindOtherPaths(MethodAnalysis $analysis, array $casts): void
     {
-        $paths = [];
+        $bound = [];
 
         foreach ($casts as $cast) {
-            foreach (self::brings($cast) as $name) {
-                $paths[$name][] = $cast['import'];
+            if ($cast['import'] !== null) {
+                $bound[$cast['import']] = [...$bound[$cast['import']] ?? [], ...self::brings($cast)];
             }
         }
 
-        foreach ($analysis->customImports as $path => $names) {
-            $bound = array_values(array_filter(
-                $names,
-                fn (string $name): bool => ! isset($paths[$name]) || in_array($path, $paths[$name], true),
-            ));
-
-            if ($bound === []) {
-                unset($analysis->customImports[$path]);
-            } else {
-                $analysis->customImports[$path] = $bound;
-            }
-        }
+        $analysis->customImports = self::withoutOtherPaths($analysis->customImports, $bound);
     }
 
     /**

@@ -691,6 +691,18 @@ describe('CastChannels', function () {
         expect($analysis->customImports)->toBe(['@js/types/settings' => ['Other'], '@js/types/menu' => ['MenuSettingsType']]);
     });
 
+    it('drops an import of a name another map brings from another path, reading each name as the file binds it', function (array $imports, array $bound, array $expected) {
+        expect(CastChannels::withoutOtherPaths($imports, $bound))->toBe($expected);
+    })->with([
+        'a name bound elsewhere, beside one that is not' => [
+            ['@ui' => ['Gauge', 'Other'], '@acme' => ['Gauge']], ['@acme' => ['Gauge']], ['@ui' => ['Other'], '@acme' => ['Gauge']],
+        ],
+        'a path left empty' => [['@ui' => ['Gauge']], ['@acme' => ['Gauge']], []],
+        'an alias binding the name' => [['@ui' => ['Gauge']], ['@acme' => ['AcmeGauge as Gauge']], []],
+        'an aliased import of the name' => [['@ui' => ['UiGauge as Gauge']], ['@acme' => ['Gauge']], []],
+        'an alias binding another name' => [['@ui' => ['Gauge']], ['@acme' => ['Gauge as AcmeGauge']], ['@ui' => ['Gauge']]],
+    ]);
+
     it('fits a numeric cast key, which PHP stores as an int', function () {
         $analysis = new MethodAnalysis(
             properties: [['name' => '6', 'type' => 'StatusType', 'optional' => false, 'description' => '']],
