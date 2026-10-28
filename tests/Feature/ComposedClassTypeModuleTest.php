@@ -9,12 +9,15 @@ use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\UiChartKindBroadcast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\UiGadgetBroadcast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiChartKindPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetWidget;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiHelloController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiNodeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiGadgetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperResource;
@@ -58,8 +61,10 @@ use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\UiBoard;
 use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Concerns\AnnouncesHello;
 use Workbench\App\Packages\Ui\Dial;
 use Workbench\App\Packages\Ui\Gauge;
+use Workbench\App\Packages\Ui\HasIcon;
 use Workbench\App\Packages\Ui\Panel;
 use Workbench\App\Packages\Ui\Pennies;
 
@@ -390,6 +395,43 @@ describe('a class that may not compose', function () {
         'outside class_types.included' => [Gadget::class, ['included' => [Dial::class]]],
         'marked #[TsExclude]' => [HiddenGadget::class, []],
     ]);
+});
+
+describe('a controller the routes publisher writes', function () {
+    beforeEach(function () {
+        Route::get('ui-hello', [UiHelloController::class, 'index'])->name('ui.hello');
+        Route::get('ui-node', [UiNodeController::class, 'index'])->name('ui.node');
+    });
+
+    it('publishes its nearest class-chain override, or nothing, and leaves a trait\'s and an interface\'s out', function (string $controller, ?string $type) {
+        $override = ClassTypeOverride::resolve($controller);
+
+        expect($override['type'] ?? null)->toBe($type)
+            ->and($override['composed'] ?? false)->toBeFalse()
+            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[$controller] ?? '')
+            ->toContain('leaves out [UiHello] from ['.AnnouncesHello::class.'], [UiIcon] from ['.HasIcon::class.']')
+            ->toContain('route controller');
+    })->with([
+        'with no override on its class chain' => [UiHelloController::class, null],
+        'whose parent class declares one' => [UiNodeController::class, 'UiNode'],
+    ]);
+
+    it('writes no module at its route file\'s path', function () {
+        disableBarrelPhasesBut();
+        Config::set('ts-publish.routes.enabled', true);
+        Config::set('ts-publish.routes.only', ['ui.hello', 'ui.node']);
+        Config::set('ts-publish.class_types.additional_directories', [UiHelloController::class, UiNodeController::class]);
+
+        $runner = classTypesOnlyRunner();
+        $runner->shouldPublishRoutes = true;
+        $runner->run();
+
+        $directory = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/http/controllers';
+
+        expect($runner->classTypeGenerators)->toBeEmpty()
+            ->and(file_get_contents("$directory/ui-hello-controller.ts"))->toContain('ui-hello')->not->toContain('export interface')
+            ->and(file_get_contents("$directory/ui-node-controller.ts"))->toContain('ui-node')->not->toContain('export interface');
+    });
 });
 
 describe('imports a composed type from its module in each publisher', function () {

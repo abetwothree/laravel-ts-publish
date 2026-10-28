@@ -186,7 +186,7 @@ it("leaves a trait's or interface's override on an owned class out, with the war
         ->and(AnalysisWarnings::all())->toBe([[
             'subject' => $class,
             'message' => "Publishes the #[TsType] [UiNode] alone and leaves out [{$leftOut}] from [{$declaredBy}]: "
-                .'a model, API resource, broadcast event, form request or enum publishes only its own or a parent class\'s.',
+                .'a model, API resource, broadcast event, form request, route controller or enum publishes only its own or a parent class\'s.',
         ]]);
 })->with([
     'a model using a trait' => [AnnouncingPost::class, 'UiHello', AnnouncesHello::class],
@@ -199,7 +199,7 @@ it("leaves out a trait's override on an owned class with none of its own", funct
         ->and(AnalysisWarnings::all())->toBe([[
             'subject' => AnnouncingDraft::class,
             'message' => 'Publishes no #[TsType] and leaves out [UiHello] from ['.AnnouncesHello::class.']: '
-                .'a model, API resource, broadcast event, form request or enum publishes only its own or a parent class\'s.',
+                .'a model, API resource, broadcast event, form request, route controller or enum publishes only its own or a parent class\'s.',
         ]]);
 });
 
