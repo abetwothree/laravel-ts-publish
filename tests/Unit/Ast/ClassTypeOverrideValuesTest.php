@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\IconShade;
@@ -19,14 +20,17 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GaugeCardHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MappedLevelHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
@@ -247,6 +251,30 @@ it("sends a value object's overridden members from an event and a resource in th
         ->total->toBeObject()
         ->charts->toBeArray()->toHaveCount(2)
         ->and($resource->board->charts[0])->toBeObject();
+});
+
+describe('a nullable class-cast column whose value object holds an overridden nullable member', function () {
+    beforeEach(function () {
+        Schema::dropIfExists('gauge_card_holders');
+        Schema::create('gauge_card_holders', function (Blueprint $table) {
+            $table->id();
+            $table->text('card')->nullable();
+        });
+    });
+
+    it("keeps the column's null beside the member's", function () {
+        $card = '{ gauge: UiGauge | null; count: number } | null';
+
+        expect(new ModelTransformer(GaugeCardHolder::class)->data()->toArray()['columns']['card']['type'])->toBe($card)
+            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(GaugeCardHolder::class, 'card')['type'])->toBe($card);
+    });
+
+    it('sends null for a NULL column and the card otherwise', function () {
+        expect(sentAsJson(GaugeCardHolder::query()->create()->fresh()?->toArray())->card)->toBeNull()
+            ->and(sentAsJson(GaugeCardHolder::query()->create(['card' => new GaugeCard])->fresh()?->toArray())->card)
+            ->gauge->toBeObject()
+            ->count->toBe(1);
+    });
 });
 
 it("imports an overridden enum case's type", function () {

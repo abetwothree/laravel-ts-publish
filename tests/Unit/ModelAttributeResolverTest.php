@@ -54,6 +54,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCardCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
@@ -814,7 +816,29 @@ test('a cast sends a NULL column as null only when it is a database type, a prim
     'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
 ]);
 
-test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on another class cast', function (string $column, string $type) {
+test('a type holds a nullable column\'s null by a top-level arm, or by any null under an accessor or a non-null get()', function (?string $cast, bool $nestedHolds) {
+    expect(ModelAttributeResolver::typeHoldsNull('{ a: number | null }', $cast))->toBe($nestedHolds)
+        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number } | null', $cast))->toBeTrue()
+        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number }', $cast))->toBeFalse();
+})->with([
+    'no cast' => [null, false],
+    'an empty cast' => ['', false],
+    'array' => ['array', false],
+    'collection' => ['collection', false],
+    'a dated cast' => ['date:Y-m-d', false],
+    'a decimal cast' => ['decimal:2', false],
+    'an enum' => [Status::class, false],
+    'an attribute accessor' => ['attribute', true],
+    'a plain accessor' => ['accessor', true],
+    'AsCollection' => [AsCollection::class, false],
+    'AsCollection::of() a class' => [AsCollection::of(MaybeNode::class), false],
+    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false],
+    'a CastsAttributes class whose get() declares a non-null type' => [ConsignmentLegsCast::class, true],
+    'a CastsAttributes class whose get() may return null' => [GaugeCardCast::class, false],
+    'a Castable class' => [GaugeCard::class, false],
+]);
+
+test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on a class cast whose get() declares a non-null type', function (string $column, string $type) {
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NestedNullShapeModel::class, $column)['type'])->toBe($type);
 })->with([
     'a primitive cast' => ['owner_snapshot', '{ a: number | null } | null'],
