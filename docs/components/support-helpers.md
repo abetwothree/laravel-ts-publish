@@ -35,9 +35,9 @@ The helpers and the test that pins them live in these files:
   `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
   `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.
 - [`Support\ComposedClassTypes`](../../src/Support/ComposedClassTypes.php): a composed type's name and custom-import
-  marker, the path a file imports its module from, the composed classes values reached this run, and whether a class
-  may compose at all. That last asks the configured class-types collector, so the scan and the composer share one
-  filter. Static and `@internal`.
+  marker, the path a file imports its module from, the composed classes values reached this run or the scan found,
+  and whether a class may compose at all. That last asks the configured class-types collector, so the scan and the
+  composer share one filter. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -154,6 +154,15 @@ class's declarations, and `JsEmitter::jsonValue()` from a live value.
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay
 internal needs the same entry.
+
+### `ComposedClassTypes`
+
+`ComposedClassTypes` is the one Support class that asks a collector, which
+[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins. The class-types collector's filter
+asks `ClassTypeOverride::resolve()`, which asks `composes()`, which asks the collector's `admits()`. Only `admits()`
+ends that loop, by reading the filters and `#[TsExclude]` and never the class filter, so a project's collector whose
+`admits()` or `allows()` calls `collect()` recurses. `scanned()` is the one list of scanned composed classes and the
+files their overrides come from: the watcher lists those files, and `--source` on one republishes each module.
 
 ## What stayed on `LaravelTsPublish`, and why the docblock engine could not follow
 

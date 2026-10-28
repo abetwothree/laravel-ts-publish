@@ -50,8 +50,10 @@ Each transformer therefore answers `composedClassTypes()` from the custom import
 snapshot carries; a publisher resolves a marker into a path only as it writes its import lines, so the marker stays. The
 class-type phase writes the union of the scanned classes, the registered ones and every built, cached or retained
 generator's answer, each through `cachedGenerate()`. It runs after the skipped features are retained, so their files'
-modules are written too. A module's entry records the class with its traits, interfaces and parents, so editing an
-ancestor's `#[TsType]` rebuilds the module and every file whose value is the class.
+modules are written too, but a run retains them only while globals or JSON is on; otherwise a skipped feature's files
+import the modules the last run that reached them wrote. A module's entry records the class with its traits,
+interfaces and parents, so editing an ancestor's `#[TsType]` rebuilds the module and every file whose value is the
+class. A module names no model but caches under the published set too, so a class-types-only run builds that set.
 
 ## What is recorded
 

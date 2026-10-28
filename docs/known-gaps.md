@@ -296,6 +296,14 @@ A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with
 itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
 make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
 
+### A composed type fails `tsc` when a contributor is not an object type, or two contributors disagree on a member
+
+The package reads only an override's spelling, so it cannot tell what the type it names holds. An override naming an
+alias of a primitive or a union, such as `type Money = number`, fails the composed interface with TS2312; two
+contributors declaring one member at different types fail it with TS2320; and an index-signature type beside a named
+member of another type fails it with TS2411. A `Record<…>` override is never composed for that reason, but an alias of
+one is. Give the class a `#[TsType]` of its own with `inherit: false`, so it publishes that override alone.
+
 ### A run that skips class types can import a composed module no run has written
 
 A run whose `--only-*` flag skips class types, or a `--source` run on a file whose value is a composed class, writes

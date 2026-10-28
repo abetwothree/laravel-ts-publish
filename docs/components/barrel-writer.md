@@ -15,8 +15,8 @@ Barrel writing spans these classes:
   has no caller in the runners.
 - [`Runner::preservedModelBarrelExports()`](../../src/Runners/Runner.php): builds that predicate for the model barrel,
   the one barrel two phases always share.
-- [`Runner::preservedClassTypeBarrelExports()`](../../src/Runners/Runner.php): builds it for a composed class's
-  barrel, which any other phase's namespace directory can hold.
+- [`Runner::preservedClassTypeBarrelExports()`](../../src/Runners/Runner.php): builds it for one namespace's
+  composed-class barrel, which any other phase's namespace directory can hold.
 - [`ModelMetadataTransformer`](../../src/Transformers/ModelMetadataTransformer.php): `filenameFor()` names a metadata
   companion and `isMetadataFilename()` recognizes one.
 - [`RouteWriter::writeRouteBarrels()`](../../src/Writers/RouteWriter.php): writes route barrels instead, because they
@@ -80,7 +80,7 @@ phase runs after all of them and writes through `writeModularPreserving()`:
 | Run state | Existing exports kept |
 | --- | --- |
 | A flag skips another `export *` barrel phase that config enables | All: this phase cannot tell its stale ones apart |
-| Otherwise | Each another phase wrote this run, or a failed metadata companion |
+| Otherwise | Each another phase wrote in that directory this run, or a failed metadata companion there |
 
 A full run drops the export of a class that stopped composing only while another composed module remains in that
 directory: one with no module this run is not written at all, so its stale export stays.

@@ -101,14 +101,16 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
   under an `inherit: false` there: see
   [known gaps](../known-gaps.md#a-classs-override-skips-an-interface-it-repeats-from-its-parent-or-beside-an-interface-that-extends-it).
 - **Composition**: one contributor publishes as written, with its import. Two or more publish the composed
-  `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword
-  (`TsTypeString::isExtendable()`), and `ComposedClassTypes::composes()` holds: class types are enabled and the
-  class-types collector's filters and `#[TsExclude]` admit the class, the same question that decides its module.
-  Otherwise the nearest wins. The run warns which were left out only when one cannot be extended: turning class types
-  off or filtering the class out is the project's choice.
-- **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes its own
-  override, else its nearest parent class's, and never composes, since its publisher writes the file a composed module
-  would take. A trait's or interface's override on it is left out with the same warning.
+  `{Basename}Type` when each is one type reference, optionally dotted or generic, and neither a keyword nor a
+  `Record<…>` (`TsTypeString::isExtendable()`), and `ComposedClassTypes::composes()` holds: class types are enabled
+  and the class-types collector's filters and `#[TsExclude]` admit the class, the same question that decides its
+  module. Otherwise the nearest wins. The run warns which were left out only when one cannot be extended: turning
+  class types off or filtering the class out is the project's choice. A composition `tsc` rejects is
+  [a known gap](../known-gaps.md#a-composed-type-fails-tsc-when-a-contributor-is-not-an-object-type-or-two-contributors-disagree-on-a-member).
+- **Classes another publisher owns**: a model, API resource, broadcast event, form request, enum or a class a
+  registered route dispatches to publishes its own override, else its nearest parent class's, and never composes,
+  since its publisher writes the file a composed module would take. A trait's or interface's override on it is left
+  out with the same warning.
 - **The marker**: a composed type rides `customImports` under a
   [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
   spell, so every carrier moves it unchanged to the code that writes import lines, which turns it into the path of the
