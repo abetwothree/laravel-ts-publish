@@ -25,6 +25,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequir
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenShapeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionListMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
@@ -316,6 +318,17 @@ test("checks a docblock key against its own imports, never another key's", funct
         'model [Workbench\\App\\Models\\User] property [either] has type [User | User] whose import cannot be inferred',
     );
 });
+
+test('imports both arms of a docblock union of an override and an enum, which spell no shared name', function (string $provider, string $key, string $type) {
+    config()->set('ts-publish.model_metadata.provider_class', $provider);
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([$key => $type, 'status' => 'StatusType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType'], '@js/types/ui' => ['UiNode']]);
+})->with([
+    'bare' => [OverriddenUnionMetadataProvider::class, 'either', 'UiNode | StatusType'],
+    'listed' => [OverriddenUnionListMetadataProvider::class, 'listed', '(UiNode | StatusType)[]'],
+]);
 
 test('normalizes supported nested metadata values', function () {
     $provider = new ConfigurableModelMetadataProvider([

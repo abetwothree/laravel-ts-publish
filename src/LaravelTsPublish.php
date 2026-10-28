@@ -2719,17 +2719,42 @@ class LaravelTsPublish
     }
 
     /**
-     * A resolved type as a shape carries it: with its custom imports only where no FQCN channel names a class in it, as
-     * a shape carries none, so a model or enum spelled like an override's name never borrows that override's import.
+     * A resolved type as a shape carries it: with its custom imports, unless one brings a name a model, enum or other
+     * class in it publishes as, since a shape carries no FQCN channel and that class would bind to the import instead.
      *
      * @param  TypeScriptTypeInfo  $info
      * @return ShapeTypeInfo
      */
     protected function shapeTypeInfo(array $info): array
     {
-        $channels = $info['classFqcns'] !== [] || $info['enumFqcns'] !== [];
+        $imported = array_map(
+            fn (string $name): string => Str::afterLast($name, ' as '),
+            array_merge(...array_values($info['customImports'])),
+        );
+        $collides = array_intersect([...$info['classes'], ...$info['enumTypes']], $imported) !== [];
 
-        return ['type' => $info['type'], 'customImports' => $channels ? [] : $info['customImports']];
+        return ['type' => $info['type'], 'customImports' => $collides ? [] : $info['customImports']];
+    }
+
+    /**
+     * Whether a docblock union's arm its own imports do not cover spells a name only a sibling arm's imports bring, as
+     * a model spelled like the override beside it does, so the union must take none of them.
+     *
+     * @param  ShapeTypeInfo  $arm
+     * @param  array<string, list<string>>  $merged  every arm's imports
+     */
+    protected function borrowsImport(array $arm, array $merged): bool
+    {
+        if (TsTypeString::importsCover($arm['type'], $arm['customImports'])) {
+            return false;
+        }
+
+        $own = array_merge(...array_values($arm['customImports']));
+
+        return array_any(
+            array_diff(array_merge(...array_values($merged)), $own),
+            fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $arm['type']),
+        );
     }
 
     /**
@@ -2751,13 +2776,10 @@ class LaravelTsPublish
                 fn (string $part): array => $this->resolvePhpDocTypeToInfo($part, $useMap, $namespace),
                 $unionParts,
             );
-            // An arm its own imports do not cover, such as a model spelled like a sibling's override, borrows none.
-            $covered = array_all($infos, fn (array $info): bool => TsTypeString::importsCover($info['type'], $info['customImports']));
+            $merged = ImportMaps::merge(...array_column($infos, 'customImports'));
+            $borrows = array_any($infos, fn (array $info): bool => $this->borrowsImport($info, $merged));
 
-            return [
-                'type' => implode(' | ', array_column($infos, 'type')),
-                'customImports' => $covered ? ImportMaps::merge(...array_column($infos, 'customImports')) : [],
-            ];
+            return ['type' => implode(' | ', array_column($infos, 'type')), 'customImports' => $borrows ? [] : $merged];
         }
 
         if ($this->isParenthesizedGroup($phpType)) {

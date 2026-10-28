@@ -34,6 +34,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiDocblockShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiUnionListShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiUnionShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -373,6 +375,28 @@ it("sends share()'s docblock shape of overridden members in the shape it publish
         ->nested->n->toBe(1)
         ->cast->toBeObject()
         ->dial->toBeObject();
+});
+
+it("imports both arms of share()'s docblock union of an override and a model, which spell no shared name", function (string $middleware, string $props) {
+    $shared = analyzeSharedDataFor($middleware);
+
+    expect($shared['sharedPageProps'])->toBe($props)
+        ->and($shared['typeImports'])->toBe(['./workbench/app/models' => ['User'], '@js/types/ui' => ['UiNode']]);
+})->with([
+    'bare' => [UiUnionShareMiddleware::class, '{ either: UiNode | User, owner: User }'],
+    'listed' => [UiUnionListShareMiddleware::class, '{ listed: (UiNode | User)[], owner: User }'],
+]);
+
+it("sends share()'s docblock union of an override and a model in the shape it publishes", function () {
+    app()->bind('ui.either', fn (): Panel => new Panel);
+    app()->bind('ui.listed', fn (): array => [new Panel]);
+
+    expect(sentAsJson(new UiUnionShareMiddleware()->share(request())))
+        ->either->toBeObject()
+        ->owner->toBeObject()
+        ->and(sentAsJson(new UiUnionListShareMiddleware()->share(request())))
+        ->listed->toBeArray()->toHaveCount(1)
+        ->owner->toBeObject();
 });
 
 describe('a nullable class-cast column whose value object holds an overridden nullable member', function () {
