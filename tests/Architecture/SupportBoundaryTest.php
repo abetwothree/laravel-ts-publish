@@ -14,3 +14,9 @@ arch('the Support helpers depend on none of the code that calls them')
         'AbeTwoThree\LaravelTsPublish\Transformers',
         'AbeTwoThree\LaravelTsPublish\Concerns',
     ]);
+
+// docs/components/support-helpers.md: a collector's filter asks ClassTypeOverride, so one Support class asks back.
+arch('only ComposedClassTypes asks a collector')
+    ->expect('AbeTwoThree\LaravelTsPublish\Support')
+    ->not->toUse('AbeTwoThree\LaravelTsPublish\Collectors')
+    ->ignoring('AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes');

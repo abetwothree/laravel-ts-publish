@@ -93,17 +93,13 @@ trait ValidatesCollectorFiles
     }
 
     /**
-     * Whether a class's override composes, so it publishes a module of its own. A class another publisher owns never
-     * composes, so its own file is never taken.
+     * Whether a class's or interface's override composes, so it publishes a module of its own. resolve() already keeps
+     * an owned or opted-out class from composing, so neither is checked twice.
      *
      * @param  ReflectionClass<object>  $reflection
      */
     protected function validateClassType(ReflectionClass $reflection): bool
     {
-        if ($this->excluded($reflection) || $reflection->isInterface() || $reflection->isTrait() || $reflection->isEnum()) {
-            return false;
-        }
-
         return ClassTypeOverride::resolve($reflection->getName())['composed'] ?? false;
     }
 

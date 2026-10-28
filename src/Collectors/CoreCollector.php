@@ -53,7 +53,7 @@ abstract class CoreCollector
             ->values();
 
         $additionalClasses = collect($settings['additional_directories'])
-            ->filter(fn (string $dir) => class_exists($dir))
+            ->filter(self::isClassOrInterface(...))
             ->values();
 
         $included = $settings['included'];
@@ -104,13 +104,18 @@ abstract class CoreCollector
     }
 
     /**
-     * Whether the include and exclude filters admit a class with no #[TsExclude], whatever the class filter says.
+     * Whether the include and exclude filters admit a class or interface with no #[TsExclude], whatever the class
+     * filter says.
      *
      * @param  class-string  $class
      */
     public function admits(string $class): bool
     {
-        return $this->allows($class) && (! class_exists($class) || ! $this->excluded(new ReflectionClass($class)));
+        if (! $this->allows($class)) {
+            return false;
+        }
+
+        return (! class_exists($class) && ! interface_exists($class)) || ! $this->excluded(new ReflectionClass($class));
     }
 
     /**
@@ -122,13 +127,13 @@ abstract class CoreCollector
     }
 
     /**
-     * Whether a class exists, passes this collector's class filter and carries no #[TsExclude].
+     * Whether a class or interface exists, passes this collector's class filter and carries no #[TsExclude].
      *
      * @phpstan-assert-if-true class-string $class
      */
     protected function passesClassFilter(string $class): bool
     {
-        if (! class_exists($class)) {
+        if (! self::isClassOrInterface($class)) {
             return false;
         }
 
@@ -144,6 +149,17 @@ abstract class CoreCollector
     protected function sanitizeAllowSetting(array $setting): array
     {
         return array_values(array_filter($setting, 'is_string'));
+    }
+
+    /**
+     * Whether a name is a class or an interface: each class filter decides an interface as it does a class, since one
+     * can compose a type of its own.
+     *
+     * @phpstan-assert-if-true class-string $class
+     */
+    private static function isClassOrInterface(string $class): bool
+    {
+        return class_exists($class) || interface_exists($class);
     }
 
     /**

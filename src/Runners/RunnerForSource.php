@@ -74,7 +74,7 @@ class RunnerForSource extends BaseRunner
 
         $fqcn = $this->resolveSourceToFqcn();
 
-        // The watcher lists the trait and interface files a composed class reads its override from, so they publish too.
+        // An interface can compose, and a trait's or interface's override can decide a composed class's module.
         if (! class_exists($fqcn) && ! interface_exists($fqcn) && ! trait_exists($fqcn)) {
             throw new InvalidArgumentException("Class does not exist: {$fqcn}");
         }

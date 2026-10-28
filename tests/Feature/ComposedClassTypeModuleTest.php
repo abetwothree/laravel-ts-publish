@@ -30,7 +30,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartZoneMe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Greets;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGadget;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGreets;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\SelfNamed;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\TwoPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
@@ -153,6 +155,17 @@ it('aliases an extended name equal to the composed name', function () {
         export interface ChartType extends ChartTypeBase, UiNode {}
 
         TS);
+});
+
+it('writes an interface\'s module as it would a class\'s', function () {
+    expect(LaravelTsPublish::toTsType(Greets::class))
+        ->toMatchArray(['type' => 'GreetsType', 'customImports' => [ComposedClassTypes::marker(Greets::class) => ['GreetsType']]])
+        ->and(composedModule(Greets::class))->toBe(<<<'TS'
+            import type { UiHello, UiIcon } from '@js/types/ui';
+
+            export interface GreetsType extends UiHello, UiIcon {}
+
+            TS);
 });
 
 it('writes a module for a scanned class no value uses', function () {
@@ -395,6 +408,13 @@ describe('a class that may not compose', function () {
         'outside class_types.included' => [Gadget::class, ['included' => [Dial::class]]],
         'marked #[TsExclude]' => [HiddenGadget::class, []],
     ]);
+
+    it('does not compose an interface marked #[TsExclude]', function () {
+        expect(ComposedClassTypes::composes(HiddenGreets::class))->toBeFalse()
+            ->and(LaravelTsPublish::toTsType(HiddenGreets::class))
+            ->toMatchArray(['type' => 'UiHello', 'customImports' => ['@js/types/ui' => ['UiHello']]])
+            ->and(ComposedClassTypes::registered())->toBe([]);
+    });
 });
 
 describe('a controller the routes publisher writes', function () {

@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Greets;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
@@ -182,6 +183,14 @@ test('republishes each scanned composed class a source lends its override to', f
     'a trait' => [AnnouncesHello::class, [Chart::class]],
     'a composed class declaring its own' => [Dial::class, [Dial::class]],
 ]);
+
+test('generates a composed interface module from its FQCN', function () {
+    $runner = new RunnerForSource(Greets::class);
+    $runner->run();
+
+    expect($runner->classTypeGenerators)->toHaveCount(1)
+        ->and($runner->classTypeGenerators->first()->transformer->typeName)->toBe('GreetsType');
+});
 
 test('throws for an interface no scanned composed class reads an override from', function () {
     $runner = new RunnerForSource(Arrayable::class);
