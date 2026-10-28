@@ -104,14 +104,17 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
   `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword
   (`TsTypeString::isExtendable()`), and `ComposedClassTypes::composes()` holds: class types are enabled and the
   class-types collector's filters and `#[TsExclude]` admit the class, the same question that decides its module.
-  Otherwise the nearest wins and the run warns which were left out.
+  Otherwise the nearest wins. The run warns which were left out only when one cannot be extended: turning class types
+  off or filtering the class out is the project's choice.
 - **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes its own
   override, else its nearest parent class's, and never composes, since its publisher writes the file a composed module
   would take. A trait's or interface's override on it is left out with the same warning.
 - **The marker**: a composed type rides `customImports` under a
   [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
-  spell, so every carrier moves it unchanged to the code that writes import lines. Step 2 registers the class for its
-  module, which the class-type phase writes ([generation cache](generation-cache.md#composed-class-modules)).
+  spell, so every carrier moves it unchanged to the code that writes import lines, which turns it into the path of the
+  class's namespace directory ([dispatch rules](resource-ast-analyzer.md#import-dispatch-rules)). The globals file
+  declares the composed interface in that namespace instead. Step 2 registers the class for its module, which the
+  class-type phase writes ([generation cache](generation-cache.md#composed-class-modules)).
 
 `resolve()` reads a class by its declared name, however a type spells it. `BaseRunner::resetRunState()` flushes the
 lookup's memo and the registry at each run. `resolve()` records the class's files, its traits', interfaces' and

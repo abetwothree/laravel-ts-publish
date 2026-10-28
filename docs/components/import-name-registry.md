@@ -125,6 +125,12 @@ keeps the type and aliases the const, and so does a model `Grade` imported besid
 fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom imports bring
 (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
 
+A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
+[marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the
+same name is aliased and the composed type never is. Inertia pages and shared data run no registry, so a page that
+reads both imports the name twice
+([known gaps](../known-gaps.md#a-page-that-reads-a-composed-type-and-a-class-named-like-it-imports-the-name-twice)).
+
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
 collision, which no alias can settle.

@@ -763,12 +763,18 @@ value degrades to `unknown`.
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |
+| A composed class, whose override joins two or more | yes | `customImports`, keyed by `ComposedClassTypes::marker()` |
 | A non-`Model` class token, one `toTsType()` did not turn into a shape | **no**, `unknown` | none: no published file to import |
 | `void`, `never`, `unknown`, `unknown \| null` or an empty type | **no**, `unknown` | none: no TypeScript shape |
 
 A single-entry channel needs exactly one FQCN of its kind and none of the other kind, so a union of models and enums
 always rides the multi-entry channels. Every class token must be a `Model`, or the whole result is rejected. Keeping
 the enum half of `Order|SomeDto` would still leak the unimportable `SomeDto`.
+
+A composed class's marker is not a module specifier. Every publisher keeps it in the imports it stores, which
+`composedClassTypes()` reads back from a cached snapshot, and turns it into the path of the class's namespace directory
+with `ComposedClassTypes::importPath()` only as it writes its import lines. `AnalysisImports::build()` keeps it too, so
+the event, metadata and shared-data code that calls it resolves it there.
 
 ### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
 

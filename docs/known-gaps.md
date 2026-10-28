@@ -296,6 +296,29 @@ A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with
 itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
 make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
 
+### A run that skips class types can import a composed module no run has written
+
+A run whose `--only-*` flag skips class types, or a `--source` run on a file whose value is a composed class, writes
+that file's import of `{Basename}Type` but not the module. When the class has just started to compose, as a new class
+or one whose ancestor gained a `#[TsType]`, neither the module nor its barrel export exists yet, and the file fails
+`tsc` with TS2305 or TS2307 until the next full publish. A route file importing a form request behaves the same way.
+Run a full `ts:publish` after adding a composed class.
+
+### A page that reads a composed type and a class named like it imports the name twice
+
+An API resource, model or broadcast event aliases an enum or model that spells a composed class's `{Basename}Type`,
+such as an enum `Chart`, whose type is `ChartType`. An Inertia page and shared data alias no import, so a page that
+reads both ships two `import type { ChartType }` lines (TS2300), as with
+[two same-named enums](#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts).
+Give the enum a distinct `#[TsEnum]` name.
+
+### A composed module in `class_types.output_directory` is imported from the top-level output directory
+
+A file imports a composed module by the path from its own namespace directory to the class's, as if both sat under
+`output_directory`. With `class_types.output_directory` set elsewhere, every such import fails with TS2307, as a
+route, form-request or broadcast-event file in its own `output_directory` does for what it imports. Leave
+`class_types.output_directory` unset while files import composed modules.
+
 ### A model class name containing an underscore can collide with a metadata companion
 
 A companion is named `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never adds an underscore, so no other

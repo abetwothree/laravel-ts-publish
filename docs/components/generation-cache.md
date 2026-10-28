@@ -47,11 +47,11 @@ publish, `--fresh`, or a config, template or package change), they are left out.
 
 A value reaching a composed class registers it in `ComposedClassTypes`, but a hit runs no transform and reaches nothing.
 Each transformer therefore answers `composedClassTypes()` from the custom imports it keeps, whose marker keys its
-snapshot carries; a publisher that resolves a marker into a path must keep the marker there. The class-type phase
-writes the union of the scanned classes, the registered ones and every built, cached or retained generator's answer,
-each through `cachedGenerate()`. It runs after the skipped features are retained, so their files' modules are written
-too. A module's entry records the class with its traits, interfaces and parents, so editing an ancestor's `#[TsType]`
-rebuilds the module and every file whose value is the class.
+snapshot carries; a publisher resolves a marker into a path only as it writes its import lines, so the marker stays. The
+class-type phase writes the union of the scanned classes, the registered ones and every built, cached or retained
+generator's answer, each through `cachedGenerate()`. It runs after the skipped features are retained, so their files'
+modules are written too. A module's entry records the class with its traits, interfaces and parents, so editing an
+ancestor's `#[TsType]` rebuilds the module and every file whose value is the class.
 
 ## What is recorded
 
