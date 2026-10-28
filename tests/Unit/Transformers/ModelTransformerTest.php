@@ -1997,7 +1997,7 @@ describe('ModelTransformer with AsCollection::of() a class that has an override'
 
         expect($data['columns']['panels']['type'])->toBe('UiNode[] | null')
             ->and($data['columns']['charts']['type'])->toBe('ChartType[] | null')
-            ->and($data['typeImports'])->toBe(['@js/types/ui' => ['UiNode'], '../packages/ui' => ['ChartType']])
+            ->and($data['typeImports'])->toBe(['@js/types/ui' => ['UiGauge', 'UiNode'], '../packages/ui' => ['ChartType'], '.' => ['User']])
             ->and(sentAsJson($board->fresh()?->toArray()))
             ->panels->toEqual([(object) ['kind' => 'node'], (object) ['kind' => 'node']])
             ->charts->toEqual([(object) ['kind' => 'node']])

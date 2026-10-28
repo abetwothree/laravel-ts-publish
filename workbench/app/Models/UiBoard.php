@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\Panel;
 
 /**
@@ -36,5 +37,33 @@ class UiBoard extends Model
     protected function chart(): Attribute
     {
         return Attribute::make(get: fn (): Chart => new Chart);
+    }
+
+    /**
+     * An uploader, typed only by this docblock.
+     *
+     * @return Attribute<User|null, never>
+     */
+    protected function uploaderFromDocblock(): Attribute
+    {
+        return Attribute::make(get: fn () => null);
+    }
+
+    /**
+     * A gauge, typed only by this docblock.
+     *
+     * @return Attribute<Gauge, never>
+     */
+    protected function gaugeFromDocblock(): Attribute
+    {
+        return Attribute::make(get: fn () => new Gauge);
+    }
+
+    /**
+     * A gauge, by a getter closure that declares its class.
+     */
+    protected function gaugeAttr(): Attribute
+    {
+        return Attribute::make(get: fn (): Gauge => new Gauge);
     }
 }

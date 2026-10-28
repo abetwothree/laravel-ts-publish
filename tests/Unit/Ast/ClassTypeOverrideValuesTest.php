@@ -55,6 +55,7 @@ use Workbench\App\Enums\UiTone;
 use Workbench\App\Events\UiBoardUpdated;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
+use Workbench\App\Models\UiBoard;
 use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Board;
 use Workbench\App\Packages\Ui\Chart;
@@ -72,10 +73,10 @@ it('publishes the issue example as the override, with one import', function () {
     $data = pageData(UiDashboardController::class.'@index');
 
     expect($data['pageType'])->toBe('Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType, '
-        .'shaped: { chart: ChartType; panel: UiNode; gauges: UiGauge[] }, untyped: { panel: UiNode; chart: ChartType } }')
+        .'shaped: { chart: ChartType; panel: UiNode; gauges: UiGauge[] }, untyped: { panel: UiNode; chart: ChartType }, uploader: User | null, gauge_from_docblock: UiGauge }')
         ->and($data['externalImports'])->toMatchArray(['@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount']])
         ->and(new RouteTransformer(UiDashboardController::class)->typeImports)
-        ->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
+        ->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../models' => ['User'], '../../packages/ui' => ['ChartType']])
         ->and(AnalysisWarnings::all())->toBe([]);
 });
 
@@ -161,7 +162,7 @@ it('publishes a new of an overridden class in a resource and in shared data', fu
 });
 
 it('sends a new of an overridden class from a resource and from shared data in the shapes they publish', function () {
-    $body = fn (array $query): stdClass => sentAsJson(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $query)));
+    $body = fn (array $query): stdClass => sentAsJson(new UiPanelResource(new UiBoard)->resolve(Request::create('/', 'GET', $query)));
 
     expect($body(['chart' => 1])->maybe_chart)->toBeObject()
         ->and($body([])->maybe_chart)->toBeNull()
@@ -244,7 +245,7 @@ it("sends a value object's overridden members from an event and a resource in th
     $event = new UiBoardUpdated(new Panel, new Gauge, new Pennies(5), new Badge, board: new Board(gauge: new Gauge));
     $broadcast = new BroadcastEvent($event);
     $payload = sentAsJson(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
-    $resource = sentAsJson(new UiPanelResource(null)->resolve(request()));
+    $resource = sentAsJson(new UiPanelResource(new UiBoard)->resolve(request()));
 
     expect($payload->board)
         ->panel->toBeObject()
@@ -271,7 +272,7 @@ it('keeps an overridden member and its import in a docblock shape and an untyped
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode', 'UiToneDto'],
             '../../packages/ui' => ['ChartType', 'DialType'],
         ])
-        ->and($page['pageType'])->toContain("shaped: {$shaped}, untyped: {$untyped} }")
+        ->and($page['pageType'])->toContain("shaped: {$shaped}, untyped: {$untyped}, uploader: User | null, gauge_from_docblock: UiGauge }")
         ->and($page['externalImports'])->toBe([
             '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
             ComposedClassTypes::marker(Chart::class) => ['ChartType'],
@@ -280,7 +281,7 @@ it('keeps an overridden member and its import in a docblock shape and an untyped
 });
 
 it('sends a docblock shape and an untyped array of overridden members in the shapes they publish', function () {
-    $resource = sentAsJson(new UiPanelResource(null)->resolve(request()));
+    $resource = sentAsJson(new UiPanelResource(new UiBoard)->resolve(request()));
     $page = inertiaProps(new UiDashboardController()->index(request()));
 
     foreach ([$resource, $page] as $sent) {
@@ -440,7 +441,7 @@ it("imports an overridden enum case's type", function () {
 });
 
 it("sends an overridden enum's case in the shape it publishes", function () {
-    expect(sentAsJson(new UiPanelResource(null)->resolve(request()))->tone)->toBe('bright')
+    expect(sentAsJson(new UiPanelResource(new UiBoard)->resolve(request()))->tone)->toBe('bright')
         ->and(inertiaProps(new UiTonePageController()->index()))
         ->tone->toBe('bright')
         ->tones->toBe(['bright', 'dim'])
@@ -591,4 +592,13 @@ it("keeps an enum's own override alone", function () {
                 .'a model, API resource, broadcast event, form request, route controller or enum publishes only its own or a parent class\'s.',
         ]])
         ->and(inertiaProps(new UiTonePageController()->shade())->shade)->toBe('light');
+});
+
+it('imports an accessor override a resource reads', function () {
+    $sent = sentAsJson(new UiPanelResource(new UiBoard)->resolve(request()));
+
+    expect(resourceProps(UiPanelResource::class))->toMatchArray(['gauge_attr' => 'UiGauge'])
+        ->and(new ResourceTransformer(UiPanelResource::class)->typeImports['@js/types/ui'])->toBe(['UiAmount', 'UiGauge', 'UiNode', 'UiToneDto'])
+        ->and($sent->gauge_attr)->toBeObject()
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

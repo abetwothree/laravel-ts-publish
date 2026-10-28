@@ -7,6 +7,7 @@ namespace Workbench\App\Http\Controllers;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Models\UiBoard;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\Panel;
@@ -19,6 +20,8 @@ class UiDashboardController
     {
         // #136's example, a nullable and a collected one, then a composed, an own and an inherited override, two typed
         // closures Inertia sends only when a partial reload asks for them, and a docblock shape and an untyped array.
+        $board = new UiBoard;
+
         return Inertia::render('Ui/Dashboard', [
             'chart' => new Panel,
             'widgets' => [new Panel, new Panel],
@@ -31,6 +34,8 @@ class UiDashboardController
             'optional' => Inertia::optional(fn (): Chart => new Chart),
             'shaped' => $this->shaped(),
             'untyped' => $this->untyped(),
+            'uploader' => $board->uploader_from_docblock,
+            'gauge_from_docblock' => $board->gauge_from_docblock,
         ]);
     }
 

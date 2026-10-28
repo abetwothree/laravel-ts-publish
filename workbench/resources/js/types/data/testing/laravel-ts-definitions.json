@@ -9262,6 +9262,18 @@
                 {
                     "name": "chart",
                     "type": "ChartType"
+                },
+                {
+                    "name": "uploader_from_docblock",
+                    "type": "User | null"
+                },
+                {
+                    "name": "gauge_from_docblock",
+                    "type": "UiGauge"
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge"
                 }
             ]
         },
@@ -21189,6 +21201,11 @@
                 {
                     "name": "untyped",
                     "type": "{ panel: UiNode; chart: ChartType }",
+                    "optional": false
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge",
                     "optional": false
                 }
             ]

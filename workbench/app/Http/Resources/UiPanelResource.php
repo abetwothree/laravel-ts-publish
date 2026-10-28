@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\UiTone;
+use Workbench\App\Models\UiBoard;
 use Workbench\App\Packages\Ui\Board;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
@@ -15,9 +16,11 @@ use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\Panel;
 
 /**
- * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
- * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
- * enum's own name; and a value object, a docblock shape and an untyped array, each keeping its members' overrides.
+ * Fixture: values of overridden classes, through declared helpers, `new` and a mixed-in model's accessor, so the file
+ * imports each override and each composed class's `…Type`; an overridden enum's case and its `EnumResource`; and a
+ * value object, a docblock shape and an untyped array, each keeping its members' overrides.
+ *
+ * @mixin UiBoard
  */
 class UiPanelResource extends JsonResource
 {
@@ -36,6 +39,7 @@ class UiPanelResource extends JsonResource
             'board' => $this->board(),
             'shaped' => $this->shaped(),
             'untyped' => $this->untyped(),
+            'gauge_attr' => $this->gauge_attr,
         ];
     }
 

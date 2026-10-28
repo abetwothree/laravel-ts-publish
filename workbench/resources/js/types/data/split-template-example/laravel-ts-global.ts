@@ -1750,6 +1750,12 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** An uploader, typed only by this docblock. */
+            uploader_from_docblock: User | null;
+            /** A gauge, typed only by this docblock. */
+            gauge_from_docblock: UiGauge;
+            /** A gauge, by a getter closure that declares its class. */
+            gauge_attr: UiGauge;
             /** A chart, by a getter closure that declares its class. */
             chart: app.packages.ui.ChartType;
         }
@@ -5719,9 +5725,9 @@ declare global {
             extra: Record<string, unknown>;
         }
         /**
-         * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
-         * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
-         * enum's own name; and a value object, a docblock shape and an untyped array, each keeping its members' overrides.
+         * Fixture: values of overridden classes, through declared helpers, `new` and a mixed-in model's accessor, so the file
+         * imports each override and each composed class's `…Type`; an overridden enum's case and its `EnumResource`; and a
+         * value object, a docblock shape and an untyped array, each keeping its members' overrides.
          */
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
@@ -5735,6 +5741,7 @@ declare global {
             board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
             shaped: { chart: app.packages.ui.ChartType; panel: UiNode; gauges: UiGauge[] };
             untyped: { panel: UiNode; chart: app.packages.ui.ChartType };
+            gauge_attr: UiGauge;
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.

@@ -586,7 +586,7 @@ describe('imports a composed type from its module in each publisher', function (
 
     it('in an API resource', function () use ($resolvedAndReported) {
         $transformer = new ResourceTransformer(UiPanelResource::class);
-        $body = fn (bool $dial): mixed => sentAsJson(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
+        $body = fn (bool $dial): mixed => sentAsJson(new UiPanelResource(new UiBoard)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
             ->toMatchArray(['chart' => 'ChartType', 'dial' => 'DialType | null', 'maybe_chart' => 'ChartType | null'])
@@ -606,7 +606,7 @@ describe('imports a composed type from its module in each publisher', function (
         $request->headers->set('X-Inertia', 'true');
         $props = sentAsJson(json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), true)['props']);
 
-        expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
+        expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../models' => ['User'], '../../packages/ui' => ['ChartType']])
             ->and($props->chart)->toBeObject()
             ->and($props->composed)->toBeObject();
 
@@ -617,7 +617,7 @@ describe('imports a composed type from its module in each publisher', function (
         $transformer = new ModelTransformer(UiBoard::class);
         $data = $transformer->data()->toArray();
 
-        expect($data['typeImports'])->toBe(['@js/types/ui' => ['UiNode'], '../packages/ui' => ['ChartType']])
+        expect($data['typeImports'])->toBe(['@js/types/ui' => ['UiGauge', 'UiNode'], '../packages/ui' => ['ChartType'], '.' => ['User']])
             ->and($data['appends']['chart']['type'] ?? $data['mutators']['chart']['type'] ?? null)->toBe('ChartType')
             ->and(sentAsJson(UiBoard::query()->create()->fresh()?->toArray())->chart)->toBeObject();
 
