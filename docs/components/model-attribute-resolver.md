@@ -249,7 +249,9 @@ For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()`
 file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
 so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
 use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
-`ModelAttributeResolver::morphToGenericMembers()`.
+`ModelAttributeResolver::morphToGenericMembers()`. A value object's shape reads a property's `@var` the same way,
+through `propertyDeclaringFileClass()`. Reflection reports a trait's property, docblock and all, as the using class's,
+and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
 argument of the consumer's `@use Trait<X>` tag, spelled `@use`, `@phpstan-use` or `@psalm-use`. `traitUseArguments()`
@@ -281,7 +283,7 @@ A nullable column adds `| null` unless the declared type already has a top-level
 `null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
 whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. A native non-null `get()`
 never returns null, so the looser test only leaves out a null PHP never sends. `ModelAttributeResolver::sendsNullAsIs()`
-no longer decides the test.
+no longer decides the test, and is deprecated.
 
 ## Relation discovery
 

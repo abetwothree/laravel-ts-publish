@@ -253,6 +253,19 @@ namespaces nothing collides, because a file that imports both aliases the const
 ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one enum a distinct name,
 such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type.
 
+### An overridden enum's case can publish the enum's own type
+
+A case of an enum with an override keeps the enum's import channel beside the override's import, and two reads still
+take the channel's name:
+
+- An override spelled like the enum's own type, such as `#[TsType(['type' => 'HueType', 'import' => '@acme/dto'])]` on
+  enum `Hue`, publishes the case in an API resource as the enum's own `HueType`, imported from the enum's module under
+  an alias, and drops the override's import. Name the override something else, such as `HueDto`.
+- A constant list holding an overridden enum's case before a case of a same-named plain enum, such as
+  `[Tone::Bright, Other\Tone::A]`, publishes the plain element as the overridden enum's own `ToneType`, imported from
+  that enum's module. The type compiles but names the wrong enum. List the plain enum's cases first, or give it a
+  distinct `#[TsEnum]` name.
+
 ### An empty `[]` under an imported type alias still ships as `[]`
 
 Model metadata writes an empty array as `{}` where the property's type is object-like, but `TsTypeShape::isObjectLike()`
@@ -427,14 +440,14 @@ resource with no backing model for two or more models still publishes `null` for
 ### A shape whose values name a class loses those values, in one of two ways
 
 The method-body fallback, a docblock array shape and a value object's own shape carry an override's import, but no
-model's or enum's. Each keeps a member naming a class with an override, such as `chart: Chart`, or a value object whose
-shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape, as
-[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
+model's or enum's. Each keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value
+object whose shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body
+fallback (`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape,
+as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
 degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
 `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
-an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union
-spells a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
+an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union spells
+a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
 and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another

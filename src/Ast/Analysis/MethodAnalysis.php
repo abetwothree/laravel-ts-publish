@@ -348,7 +348,10 @@ class MethodAnalysis
         }
     }
 
-    /** Whether any FQCN channel carries an entry for this property name, whose tokens are rewritten under it. */
+    /**
+     * Whether any FQCN channel carries an entry for this property name. A direct enum's entry may name an enum whose
+     * override the value spells instead of its `…Type`; channelNames() leaves such an enum out.
+     */
     public function hasFqcnChannel(string $name): bool
     {
         return isset($this->enumResources[$name]) || isset($this->nestedResources[$name])

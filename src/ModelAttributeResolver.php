@@ -138,6 +138,8 @@ class ModelAttributeResolver
      * returns null for null, and both collection casts return null before they map an element, which may hold one.
      *
      * Kept for outside callers; typeHoldsNull() decides the column's null.
+     *
+     * @deprecated No package code reads it, and it no longer states the rule. Use typeHoldsNull() instead.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {

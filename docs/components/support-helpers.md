@@ -32,11 +32,14 @@ The helpers and the test that pins them live in these files:
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
-  and paths sorted. Static and `@internal`. Every merge of import maps added since goes through it; five older inline
-  merges stay as they are, `ComposedClassTypes::resolveImports()` among them, since it keeps key order by contract.
+  and paths sorted, and the name each import binds, `X as Y` binding `Y`. Static and `@internal`. Every merge of import
+  maps added since goes through it; five older inline merges stay as they are, `ComposedClassTypes::resolveImports()`
+  among them, since it keeps key order by contract. Every reader of an import's local name goes through `localName()`
+  or `localNames()`.
 - [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
-  `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
-  `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.
+  `#[TsType]` and its traits', interfaces' and parents', and whether a `new` of the class publishes it. It reads
+  attributes by reflection and never calls `toTsType()`, whose step 2 calls it. Static, memoized per run and
+  `@internal`.
 - [`Support\ComposedClassTypes`](../../src/Support/ComposedClassTypes.php): a composed type's name and custom-import
   marker, the path a file imports its module from, the composed classes values reached this run or the scan found,
   and whether a class may compose at all. That last asks the configured class-types collector, so the scan and the
@@ -63,7 +66,9 @@ Ask what the helper's input domain is, not what calls it:
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is one import map, path => names, made of these? | `ImportMaps` |
+| Which name does this import, or this import map, bind in the file? | `ImportMaps::localName()`, `localNames()` |
 | Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
+| Does a `new` of this class publish its override, or the class itself? | `ClassTypeOverride::appliesToNew()` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
 | Does a registered route dispatch to this class? | `RoutedControllers` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
@@ -125,9 +130,9 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()` and
-`IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to lift out. A new member that wants
-`toTsType()` is not a type-string helper, and would be in the same bind as the
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
+`IndexSignatureKey::PATTERN` and `ImportMaps::localNames()`. That one-way dependency is what made the class safe to lift
+out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
@@ -188,8 +193,9 @@ remaining block and the obvious next candidate, but it cannot move the way the t
   `methodOrDocblockReturnTypes()` calls `docblockReturnTypes()`.
 
 `resolvePhpDocTypeToTs()`, `parseArrayShapeToTsTypes()` and `parseDocblockReturnArrayShape()` return a type string, so
-they read through `withoutShapeImports()`: a shape keeps no member only an import makes valid, and each answers as
-before shapes carried custom imports. Every caller in the package reads their info siblings instead.
+they read through `withoutShapeImports()`: a shape, a docblock's or a value object's, keeps no member only an import
+makes valid (`shapeKeeps()`), and each answers as before shapes carried custom imports. Every caller in the package
+reads their info siblings instead.
 
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical

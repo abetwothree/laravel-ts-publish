@@ -895,7 +895,8 @@ ternary of a wrap and a case keeps the case's override. An `EnumResource` sends 
 `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
 names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
 for a value of a declared type (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and `->name` keep the
-enum's names through `EnumValueTypes`.
+enum's names through `EnumValueTypes`. `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the
+type it publishes as.
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 
