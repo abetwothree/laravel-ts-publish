@@ -393,8 +393,8 @@ return [
     | already publishes the class, such as a model.
     |
     | A module is written for every composed class a published value
-    | reaches, and for each one in 'additional_directories' (none by
-    | default), even when no value uses it yet.
+    | reaches, and for each one in 'additional_directories' or a
+    | non-empty 'included' directory, even when no value uses it yet.
     |
     | A non-empty 'included' is an allowlist of the classes that compose.
     | A class outside it, or one 'excluded' or #[TsExclude] leaves out, gets

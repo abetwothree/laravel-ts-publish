@@ -752,7 +752,8 @@ An override is the type you declare, and every read of the class publishes it. F
 `JsonSerializable`, what is sent takes one of two shapes, depending on where the value sits:
 
 - **Its `toArray()`**: an Inertia prop, and each value inside an array prop; a broadcast event's top-level public
-  property; a model attribute, cast or accessor, and each item of a collection attribute.
+  property; a model attribute, cast or accessor, and each item of a collection attribute; and a `Collection` of the
+  class, wherever it sits, which is sent as each item's `toArray()`.
 - **Its public properties, `{}` when it has none**, as `json_encode()` writes them: a value in an API resource's
   `toArray()` array or in an event's `broadcastWith()` array; a value inside an array or value object an event's
   property holds, such as `UiBoardUpdated`'s `charts` and `board`; and a value inside any value object.
