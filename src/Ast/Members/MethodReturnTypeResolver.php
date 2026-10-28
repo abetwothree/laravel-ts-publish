@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -46,6 +47,7 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type OwnReturn = array{Return_, bool}
  *
@@ -227,9 +229,11 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        // The inline type has no import for a class a member names, so that member is `unknown` and its siblings stay.
+        // The inline type carries custom imports and no FQCN channel, so a member keeps its type only where no channel
+        // names a class in it and the imports bring in every name it spells; any other is `unknown`, its siblings stay.
         foreach ($analysis->properties as $index => $property) {
-            if (TsTypeString::shapeValueHasUnimportableToken($property['type'])) {
+            if ($analysis->hasFqcnChannel($property['name'])
+                || ! TsTypeString::importsCover($property['type'], $analysis->customImports)) {
                 $analysis->properties[$index]['type'] = 'unknown';
             }
         }
@@ -247,9 +251,38 @@ final class MethodReturnTypeResolver
 
         $type = $this->buildInlineObjectType($analysis);
 
-        return TsTypeString::shapeValueHasUnimportableToken($type)
-            ? null
-            : [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull([$type, ...$otherArms])];
+        if (! TsTypeString::importsCover($type, $analysis->customImports)) {
+            return null;
+        }
+
+        $imports = $this->spelledImports($analysis->customImports, $type);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => TsTypeString::hoistNull([$type, ...$otherArms]),
+            ...($imports === [] ? [] : ['customImports' => $imports]),
+        ];
+    }
+
+    /**
+     * The custom imports a shape spells a name of, each name once, so a member left `unknown` brings none.
+     *
+     * @param  TypesImportMap  $imports
+     * @return TypesImportMap
+     */
+    private function spelledImports(array $imports, string $type): array
+    {
+        $spelled = [];
+
+        foreach ($imports as $path => $names) {
+            $kept = array_filter(array_unique($names), fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $type));
+
+            if ($kept !== []) {
+                $spelled[$path] = array_values($kept);
+            }
+        }
+
+        return $spelled;
     }
 
     /**

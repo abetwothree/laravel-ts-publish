@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
  * top-level unions, null hoisting, same-basename aliasing, enum substitution, global qualification.
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -102,6 +105,17 @@ class TsTypeString
         }
 
         return false;
+    }
+
+    /**
+     * Whether a shape value's own custom imports bring in every name it spells, a composed class's marker included, so
+     * a shape that carries custom imports and no FQCN channel may keep it.
+     *
+     * @param  TypesImportMap  $customImports
+     */
+    public function importsCover(string $type, array $customImports): bool
+    {
+        return ! $this->shapeValueHasUnimportableToken($type, array_merge(...array_values($customImports)));
     }
 
     /**

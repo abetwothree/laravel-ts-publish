@@ -5721,7 +5721,7 @@ declare global {
         /**
          * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
          * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
-         * enum's own name; and a value object whose shape keeps each member's override.
+         * enum's own name; and a value object, a docblock shape and an untyped array, each keeping its members' overrides.
          */
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
@@ -5733,6 +5733,8 @@ declare global {
             tone: UiToneDto;
             tone_resource: app.enums.UiToneType;
             board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
+            shaped: { chart: app.packages.ui.ChartType; panel: UiNode; gauges: UiGauge[] };
+            untyped: { panel: UiNode; chart: app.packages.ui.ChartType };
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.

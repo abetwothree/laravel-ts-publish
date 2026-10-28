@@ -20,10 +20,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
@@ -62,6 +64,7 @@ use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
@@ -892,6 +895,84 @@ describe("an overridden member of a value object's shape", function () {
             ->and(sentAsJson(new UiBoard(gauge: new UiGauge, charts: [new UiChart])))
             ->gauge->toBeObject()
             ->charts->toHaveCount(1);
+    });
+});
+
+describe('an overridden member of a docblock shape', function () {
+    test('keeps an overridden member of a docblock shape and its import', function () {
+        expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiPanelResource::class), 'shaped'))->toMatchArray([
+            'type' => '{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }',
+            'customImports' => [
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+                '@js/types/ui' => ['UiNode', 'UiGauge'],
+            ],
+        ]);
+    });
+
+    test('keeps a value object that keeps its members\' overrides in a JsonSerializable\'s docblock shape', function () {
+        expect($this->service->toTsType(BoardJson::class))->toMatchArray([
+            'type' => '{ board: { panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; '
+                .'title: string }',
+            'customImports' => [
+                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+        ]);
+    });
+
+    test('keeps an overridden member in each other docblock shape', function (Closure $fixture, string $type) {
+        expect($this->service->toTsType($fixture()::class))->toMatchArray([
+            'type' => $type,
+            'customImports' => ['@js/types/ui' => ['UiNode']],
+        ]);
+    })->with([
+        "an Arrayable's toArray() shape, beside a published model" => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                /** @return array{panel: UiPanel, owner: User} */
+                public function toArray(): array
+                {
+                    return ['panel' => new UiPanel, 'owner' => new User];
+                }
+            },
+            '{ panel: UiNode; owner: unknown }',
+        ],
+        "an Arrayable's toArray() tuple" => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                /** @return list{UiPanel, int} */
+                public function toArray(): array
+                {
+                    return [new UiPanel, 1];
+                }
+            },
+            '[UiNode, number]',
+        ],
+        "a value object's @var shapes, nested and listed" => [
+            fn (): object => new class
+            {
+                /** @var array{panel: UiPanel, n: int} */
+                public array $meta = [];
+
+                /** @var list<array{panel: UiPanel}> */
+                public array $rows = [];
+            },
+            '{ meta: { panel: UiNode; n: number }; rows: { panel: UiNode }[] }',
+        ],
+    ]);
+
+    test('keeps today\'s unknown for a model member and the type a type-string reader returns', function () {
+        $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
+
+        expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiBoardShapesResource::class), 'documentedOwner'))
+            ->toMatchArray(['type' => '{ owner: unknown; panel: UiNode }', 'customImports' => ['@js/types/ui' => ['UiNode']]])
+            ->and($this->service->resolvePhpDocTypeToTs('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
+            ->toBe('{ panel: unknown; nested: { panel: unknown } }')
+            ->and($this->service->resolvePhpDocTypeToTs('list<array{panel: UiPanel}>', $useMap, ''))->toBe('{ panel: unknown }[]')
+            ->and($this->service->parseArrayShapeToTsTypes('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
+            ->toBe(['panel' => 'UiNode', 'nested' => '{ panel: unknown }'])
+            ->and($this->service->parseDocblockReturnArrayShape(new ReflectionMethod(UiPanelResource::class, 'shaped')))
+            ->toBe(['chart' => 'ChartType', 'panel' => 'UiNode', 'gauges' => 'UiGauge[]']);
     });
 });
 

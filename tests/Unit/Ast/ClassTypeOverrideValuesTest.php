@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
@@ -13,12 +14,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\IconShade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedRank;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiBoardShapesPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTonePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTypedClosurePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedLevelReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GaugeCardHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
@@ -64,7 +68,8 @@ afterEach(function () {
 it('publishes the issue example as the override, with one import', function () {
     $data = pageData(UiDashboardController::class.'@index');
 
-    expect($data['pageType'])->toBe('Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType }')
+    expect($data['pageType'])->toBe('Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType, '
+        .'shaped: { chart: ChartType; panel: UiNode; gauges: UiGauge[] }, untyped: { panel: UiNode; chart: ChartType } }')
         ->and($data['externalImports'])->toMatchArray(['@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount']])
         ->and(new RouteTransformer(UiDashboardController::class)->typeImports)
         ->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
@@ -251,6 +256,98 @@ it("sends a value object's overridden members from an event and a resource in th
         ->total->toBeObject()
         ->charts->toBeArray()->toHaveCount(2)
         ->and($resource->board->charts[0])->toBeObject();
+});
+
+it('keeps an overridden member and its import in a docblock shape and an untyped array, in a resource and a page', function () {
+    $shaped = '{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }';
+    $untyped = '{ panel: UiNode; chart: ChartType }';
+    $page = pageData(UiDashboardController::class.'@index');
+
+    expect(resourceProps(UiPanelResource::class))->toMatchArray(['shaped' => $shaped, 'untyped' => $untyped])
+        ->and(new ResourceTransformer(UiPanelResource::class)->typeImports)->toBe([
+            '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode', 'UiToneDto'],
+            '../../packages/ui' => ['ChartType', 'DialType'],
+        ])
+        ->and($page['pageType'])->toContain("shaped: {$shaped}, untyped: {$untyped} }")
+        ->and($page['externalImports'])->toBe([
+            '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+            ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+        ])
+        ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+it('sends a docblock shape and an untyped array of overridden members in the shapes they publish', function () {
+    $resource = sentAsJson(new UiPanelResource(null)->resolve(request()));
+    $page = inertiaProps(new UiDashboardController()->index(request()));
+
+    foreach ([$resource, $page] as $sent) {
+        expect($sent->shaped)
+            ->chart->toBeObject()
+            ->panel->toBeObject()
+            ->gauges->toBeArray()->toHaveCount(2)
+            ->and($sent->shaped->gauges[0])->toBeObject()
+            ->and($sent->untyped)
+            ->panel->toBeObject()
+            ->chart->toBeObject();
+    }
+});
+
+it("keeps a value object's overridden members in a docblock shape, a JsonSerializable and an untyped helper", function () {
+    $board = '{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }';
+
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(UiBoardShapesResource::class, 'untypedHelper'))->toBe([
+        'type' => "{ board: {$board}; label: string }",
+        'optional' => false,
+        'customImports' => [
+            '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+            ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+        ],
+    ]);
+
+    expect(resourceProps(UiBoardShapesResource::class))->toBe([
+        'doc_shape' => "{ board: {$board}; label: string }",
+        'json' => "{ board: {$board}; title: string }",
+        'untyped_helper' => "{ board: {$board}; label: string }",
+        'doc_owner' => '{ owner: unknown; panel: UiNode }',
+        'untyped_owner' => '{ owner: unknown; panel: UiNode }',
+    ])
+        ->and(new ResourceTransformer(UiBoardShapesResource::class)->typeImports)->toBe([
+            '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+            '../../../../../../workbench/app/packages/ui' => ['ChartType'],
+        ])
+        ->and(pageData(UiBoardShapesPageController::class.'@show')['pageType'])
+        ->toBe("Inertia.SharedData & { shaped: { board: {$board}; label: string }, untyped: { board: {$board}; label: string } }");
+});
+
+it("sends a value object's overridden members from a docblock shape, a JsonSerializable and an untyped helper", function () {
+    $resource = sentAsJson(new UiBoardShapesResource(null)->resolve(request()));
+    $page = inertiaProps(new UiBoardShapesPageController()->show());
+
+    foreach ([$resource->doc_shape->board, $resource->json->board, $resource->untyped_helper->board, $page->shaped->board, $page->untyped->board] as $board) {
+        expect($board)
+            ->panel->toBeObject()
+            ->chart->toBeObject()
+            ->gauge->toBeNull()
+            ->total->toBeObject()
+            ->charts->toBe([]);
+    }
+
+    expect($resource->doc_owner)->owner->toBeObject()->panel->toBeObject()
+        ->and($resource->untyped_owner)->owner->toBeObject()->panel->toBeObject();
+});
+
+it('keeps unknown in an untyped array for an enum spelled like a composed class beside it', function () {
+    Schema::create('ui_chart_kind_holders', function (Blueprint $table) {
+        $table->id();
+        $table->string('kind');
+    });
+
+    expect(resourceProps(UiUntypedChartKindResource::class))->toBe(['kinds' => '{ kind: unknown; chart: ChartType }'])
+        ->and(new ResourceTransformer(UiUntypedChartKindResource::class)->typeImports)
+        ->toBe(['../../../../../../workbench/app/packages/ui' => ['ChartType']])
+        ->and(sentAsJson(new UiUntypedChartKindResource(null)->resolve(request()))->kinds)
+        ->kind->toBe('bar')
+        ->chart->toBeObject();
 });
 
 describe('a nullable class-cast column whose value object holds an overridden nullable member', function () {

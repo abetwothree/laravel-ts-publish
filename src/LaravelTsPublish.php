@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -80,6 +81,7 @@ use UnitEnum;
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -136,6 +138,12 @@ class LaravelTsPublish
      * @var array<string, true>
      */
     protected array $aliasExpansionStack = [];
+
+    /**
+     * Whether a docblock shape keeps a member its own custom imports bring in. Off under a reader that returns a type
+     * string alone, whose caller has nowhere to put an import; see withoutShapeImports().
+     */
+    protected bool $shapesCarryImports = true;
 
     /**
      * Per-class cache of resolved phpstan/psalm type aliases: FQCN => alias name => resolved
@@ -950,10 +958,10 @@ class LaravelTsPublish
         }
 
         if ($this->isPhpDocShape($part)) {
-            $shapeType = $this->resolveArrayShapeString($part, $useMap, $namespace);
+            $shape = $this->resolveArrayShapeString($part, $useMap, $namespace);
 
-            if ($shapeType !== null) {
-                return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
+            if ($shape !== null) {
+                return [...$this->emptyTypeScriptInfo(), ...$shape];
             }
         }
 
@@ -1139,6 +1147,19 @@ class LaravelTsPublish
      */
     public function parseDocblockReturnArrayShape(ReflectionMethod $method): array
     {
+        return $this->withoutShapeImports(fn (): array => array_map(
+            fn (array $info): string => $info['type'],
+            $this->docblockReturnShapeInfos($method),
+        ));
+    }
+
+    /**
+     * parseDocblockReturnArrayShape()'s map, each value with the custom imports of the overrides it spells.
+     *
+     * @return array<string, ShapeTypeInfo>
+     */
+    public function docblockReturnShapeInfos(ReflectionMethod $method): array
+    {
         $docComment = $method->getDocComment();
 
         if ($docComment === false) {
@@ -1157,7 +1178,7 @@ class LaravelTsPublish
 
         return $this->withAliasContext(
             $declaringClass,
-            fn (): array => $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace),
+            fn (): array => $this->parseArrayShapeToInfos($returnType, $useMap, $namespace),
         );
     }
 
@@ -1172,20 +1193,10 @@ class LaravelTsPublish
      */
     public function parseArrayShapeToTsTypes(string $shape, array $useMap, string $namespace): array
     {
-        $parsed = $this->arrayShapeEntries($shape);
-
-        if ($parsed === null || $this->isTupleShape($parsed)) {
-            return [];
-        }
-
-        $result = [];
-
-        foreach ($parsed['entries'] as $entry) {
-            $key = $entry['key'].($entry['optional'] ? '?' : '');
-            $result[$key] = $this->resolvePhpDocTypeToTs($entry['type'], $useMap, $namespace);
-        }
-
-        return $result;
+        return $this->withoutShapeImports(fn (): array => array_map(
+            fn (array $info): string => $info['type'],
+            $this->parseArrayShapeToInfos($shape, $useMap, $namespace),
+        ));
     }
 
     /**
@@ -1257,63 +1268,9 @@ class LaravelTsPublish
      */
     public function resolvePhpDocTypeToTs(string $phpType, array $useMap, string $namespace): string
     {
-        $phpType = trim($phpType);
-
-        // Unions first, so the depth-aware split separates "array{...}" from a trailing "|null"
-        $unionParts = $this->splitPhpDocUnionType($phpType);
-
-        if (count($unionParts) > 1) {
-            $tsParts = array_map(
-                fn (string $part) => $this->resolvePhpDocTypeToTs($part, $useMap, $namespace),
-                $unionParts,
-            );
-
-            return implode(' | ', $tsParts);
-        }
-
-        if ($this->isParenthesizedGroup($phpType)) {
-            return $this->resolvePhpDocTypeToTs(substr($phpType, 1, -1), $useMap, $namespace);
-        }
-
-        $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
-
-        if ($generic !== null) {
-            return $generic['type'];
-        }
-
-        if (str_starts_with($phpType, '?')) {
-            return $this->withNullArm($this->resolvePhpDocTypeToTs(substr($phpType, 1), $useMap, $namespace));
-        }
-
-        // After the union split this is a pure shape
-        if ($this->isPhpDocShape($phpType)) {
-            return $this->resolveArrayShapeString($phpType, $useMap, $namespace)
-                ?? (str_starts_with($phpType, 'array{') ? 'Record<string, unknown>' : 'unknown');
-        }
-
-        $literal = $this->phpDocLiteralType($phpType);
-
-        if ($literal !== null) {
-            return $literal;
-        }
-
-        $alias = $this->docblockAliasType($phpType);
-
-        if ($alias !== null) {
-            return $alias['type'];
-        }
-
-        $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
-
-        // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
-        // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
-        if ($this->isUnreadForm($resolved, '<{(')) {
-            return 'unknown';
-        }
-
-        $info = $this->toTsType($resolved);
-
-        return $info['type'];
+        return $this->withoutShapeImports(
+            fn (): string => $this->resolvePhpDocTypeToInfo($phpType, $useMap, $namespace)['type'],
+        );
     }
 
     /**
@@ -1969,13 +1926,13 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionMethod($fqcn, $method);
             $tuple = $this->docblockReturnTupleType($reflection);
-            $shape = $tuple === null ? $this->parseDocblockReturnArrayShape($reflection) : [];
+            $shape = $tuple === null ? $this->docblockReturnShapeInfos($reflection) : [];
         } finally {
             unset($this->shapeExpansionStack[$key]);
         }
 
         if ($tuple !== null) {
-            return ['type' => $tuple, 'customImports' => []];
+            return $tuple;
         }
 
         if ($shape === []) {
@@ -1983,20 +1940,17 @@ class LaravelTsPublish
         }
 
         $parts = [];
+        $imports = [];
 
-        foreach ($shape as $key => $type) {
-            // The shape map is string-only, so a class- or enum-backed value carries no FQCN and could
-            // never emit an import — degrade that property rather than emit a token nothing imports.
-            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
-                $type = 'unknown';
-            }
-
+        foreach ($shape as $key => $info) {
+            $member = $this->keptShapeMember($info);
+            $imports[] = $member['customImports'];
             $name = (string) $key;
             $optional = str_ends_with($name, '?');
-            $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$type;
+            $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$member['type'];
         }
 
-        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => []];
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
     }
 
     /**
@@ -2021,7 +1975,7 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionClass($fqcn);
             $parts = [];
-            $customImports = [];
+            $imports = [];
 
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
                 if ($property->isStatic()) {
@@ -2029,10 +1983,7 @@ class LaravelTsPublish
                 }
 
                 $member = $this->shapeMemberTypes($reflection, $property);
-
-                foreach ($member['customImports'] as $path => $names) {
-                    $customImports[$path] = array_values(array_unique([...$customImports[$path] ?? [], ...$names]));
-                }
+                $imports[] = $member['customImports'];
 
                 // json_encode() omits a typed property that was never assigned; a promoted or defaulted
                 // one is always present.
@@ -2044,7 +1995,7 @@ class LaravelTsPublish
             unset($this->shapeExpansionStack[$guard]);
         }
 
-        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $customImports];
+        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
     }
 
     /**
@@ -2069,9 +2020,7 @@ class LaravelTsPublish
 
         // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
         foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
-            $imported = array_merge(...array_values($info['customImports']));
-
-            if (! TsTypeString::shapeValueHasUnimportableToken($info['type'], $imported)) {
+            if (TsTypeString::importsCover($info['type'], $info['customImports'])) {
                 return ['type' => $info['type'], 'customImports' => $info['customImports']];
             }
         }
@@ -2448,6 +2397,27 @@ class LaravelTsPublish
     }
 
     /**
+     * Run a docblock read for a caller that keeps only the type string, so a shape keeps no member an import alone
+     * makes valid and the reader answers as it did before shapes carried custom imports.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    protected function withoutShapeImports(Closure $read): mixed
+    {
+        $carried = $this->shapesCarryImports;
+        $this->shapesCarryImports = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->shapesCarryImports = $carried;
+        }
+    }
+
+    /**
      * The type a bare docblock name spells as an alias of the innermost alias context, or null when it is no alias.
      *
      * The definition resolves against the imports and aliases of the class that wrote it. An alias already being
@@ -2568,10 +2538,10 @@ class LaravelTsPublish
         }
 
         if ($this->isPhpDocShape($valueType)) {
-            $shapeType = $this->resolveArrayShapeString($valueType, $useMap, $namespace);
+            $shape = $this->resolveArrayShapeString($valueType, $useMap, $namespace);
 
-            if ($shapeType !== null) {
-                return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
+            if ($shape !== null) {
+                return [...$this->emptyTypeScriptInfo(), ...$shape];
             }
         }
 
@@ -2673,9 +2643,11 @@ class LaravelTsPublish
     /**
      * The tuple a method's `@return` list shape publishes, or null when its `@return` is no list shape.
      *
-     * A list shape has no keys for parseDocblockReturnArrayShape() to map, and json_encode() writes it as an array.
+     * A list shape has no keys for docblockReturnShapeInfos() to map, and json_encode() writes it as an array.
+     *
+     * @return ShapeTypeInfo|null
      */
-    protected function docblockReturnTupleType(ReflectionMethod $method): ?string
+    protected function docblockReturnTupleType(ReflectionMethod $method): ?array
     {
         $returnType = $this->extractReturnTypeFromDocblock((string) $method->getDocComment());
         $shape = $returnType === null ? null : $this->arrayShapeEntries($returnType);
@@ -2686,7 +2658,7 @@ class LaravelTsPublish
 
         $declaringClass = $this->methodDeclaringFileClass($method);
 
-        return $this->withAliasContext($declaringClass, fn (): ?string => $this->resolveArrayShapeString(
+        return $this->withAliasContext($declaringClass, fn (): ?array => $this->resolveArrayShapeString(
             $returnType,
             $this->parseFileUseStatements($declaringClass),
             $declaringClass->getNamespaceName(),
@@ -2694,14 +2666,13 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve a PHPDoc shape string to an inline TS object literal, a tuple for a list shape, or null when malformed.
-     *
-     * A per-key value with an unimportable token (a bare class/enum name) degrades to 'unknown': the
-     * shape map is string-only, so it can never carry the FQCN an import would need.
+     * Resolve a PHPDoc shape string to an inline TS object literal, a tuple for a list shape, or null when malformed,
+     * with the custom imports of the members it keeps, as keptShapeMember() decides each one.
      *
      * @param  array<string, string>  $useMap
+     * @return ShapeTypeInfo|null
      */
-    protected function resolveArrayShapeString(string $phpType, array $useMap, string $namespace): ?string
+    protected function resolveArrayShapeString(string $phpType, array $useMap, string $namespace): ?array
     {
         $parsed = $this->arrayShapeEntries($phpType);
 
@@ -2709,16 +2680,18 @@ class LaravelTsPublish
             return null;
         }
 
-        $member = function (string $type) use ($useMap, $namespace): string {
-            $resolved = $this->resolvePhpDocTypeToTs($type, $useMap, $namespace);
+        $imports = [];
+        $member = function (string $type) use ($useMap, $namespace, &$imports): string {
+            $kept = $this->keptShapeMember($this->resolvePhpDocTypeToInfo($type, $useMap, $namespace));
+            $imports[] = $kept['customImports'];
 
-            return TsTypeString::shapeValueHasUnimportableToken($resolved) ? 'unknown' : $resolved;
+            return $kept['type'];
         };
 
         if ($this->isTupleShape($parsed)) {
             // A list that may hold more members says nothing of the type at each position.
             if (! $parsed['sealed']) {
-                return 'unknown[]';
+                return ['type' => 'unknown[]', 'customImports' => []];
             }
 
             $members = [];
@@ -2733,11 +2706,11 @@ class LaravelTsPublish
                     : $type;
             }
 
-            return '['.implode(', ', $members).']';
+            return ['type' => '['.implode(', ', $members).']', 'customImports' => $this->mergeShapeImports($imports)];
         }
 
         if ($parsed['entries'] === []) {
-            return 'Record<string, unknown>';
+            return ['type' => 'Record<string, unknown>', 'customImports' => []];
         }
 
         $parts = [];
@@ -2747,7 +2720,133 @@ class LaravelTsPublish
             $parts[$entry['key']] = $key.': '.$member($entry['type']);
         }
 
-        return '{ '.implode('; ', $parts).' }';
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => $this->mergeShapeImports($imports)];
+    }
+
+    /**
+     * A docblock shape's member as the shape publishes it: its type where its own custom imports bring in every name
+     * it spells, else `unknown`. Only an override brings custom imports, and the shape carries no FQCN channel, so a
+     * member naming a model or an enum is `unknown`.
+     *
+     * @param  ShapeTypeInfo  $info
+     * @return ShapeTypeInfo
+     */
+    protected function keptShapeMember(array $info): array
+    {
+        return TsTypeString::importsCover($info['type'], $this->shapesCarryImports ? $info['customImports'] : [])
+            ? ['type' => $info['type'], 'customImports' => $info['customImports']]
+            : ['type' => 'unknown', 'customImports' => []];
+    }
+
+    /**
+     * The custom imports of a shape's members, each name once per module.
+     *
+     * @param  list<TypesImportMap>  $imports
+     * @return TypesImportMap
+     */
+    protected function mergeShapeImports(array $imports): array
+    {
+        $merged = [];
+
+        foreach ($imports as $import) {
+            foreach ($import as $path => $names) {
+                $merged[$path] = array_values(array_unique([...$merged[$path] ?? [], ...$names]));
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Resolve a PHPDoc type string, nested array shapes included, to its TypeScript type and the custom imports of each
+     * override it spells.
+     *
+     * @param  array<string, string>  $useMap
+     * @return ShapeTypeInfo
+     */
+    protected function resolvePhpDocTypeToInfo(string $phpType, array $useMap, string $namespace): array
+    {
+        $phpType = trim($phpType);
+
+        // Unions first, so the depth-aware split separates "array{...}" from a trailing "|null"
+        $unionParts = $this->splitPhpDocUnionType($phpType);
+
+        if (count($unionParts) > 1) {
+            $infos = array_map(
+                fn (string $part): array => $this->resolvePhpDocTypeToInfo($part, $useMap, $namespace),
+                $unionParts,
+            );
+
+            return [
+                'type' => implode(' | ', array_column($infos, 'type')),
+                'customImports' => $this->mergeShapeImports(array_column($infos, 'customImports')),
+            ];
+        }
+
+        if ($this->isParenthesizedGroup($phpType)) {
+            return $this->resolvePhpDocTypeToInfo(substr($phpType, 1, -1), $useMap, $namespace);
+        }
+
+        $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
+
+        if ($generic !== null) {
+            return ['type' => $generic['type'], 'customImports' => $generic['customImports']];
+        }
+
+        if (str_starts_with($phpType, '?')) {
+            $inner = $this->resolvePhpDocTypeToInfo(substr($phpType, 1), $useMap, $namespace);
+
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
+        }
+
+        // After the union split this is a pure shape
+        if ($this->isPhpDocShape($phpType)) {
+            $malformed = str_starts_with($phpType, 'array{') ? 'Record<string, unknown>' : 'unknown';
+
+            return $this->resolveArrayShapeString($phpType, $useMap, $namespace) ?? ['type' => $malformed, 'customImports' => []];
+        }
+
+        $literal = $this->phpDocLiteralType($phpType);
+
+        if ($literal !== null) {
+            return ['type' => $literal, 'customImports' => []];
+        }
+
+        $info = $this->docblockAliasType($phpType);
+
+        if ($info === null) {
+            $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+
+            // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
+            // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
+            $info = $this->isUnreadForm($resolved, '<{(') ? $this->emptyTypeScriptInfo() : $this->toTsType($resolved);
+        }
+
+        return ['type' => $info['type'], 'customImports' => $info['customImports']];
+    }
+
+    /**
+     * parseArrayShapeToTsTypes()'s map, each value with the custom imports of the overrides it spells.
+     *
+     * @param  array<string, string>  $useMap
+     * @return array<string, ShapeTypeInfo>
+     */
+    protected function parseArrayShapeToInfos(string $shape, array $useMap, string $namespace): array
+    {
+        $parsed = $this->arrayShapeEntries($shape);
+
+        if ($parsed === null || $this->isTupleShape($parsed)) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($parsed['entries'] as $entry) {
+            $key = $entry['key'].($entry['optional'] ? '?' : '');
+            $result[$key] = $this->resolvePhpDocTypeToInfo($entry['type'], $useMap, $namespace);
+        }
+
+        return $result;
     }
 
     /**

@@ -11,12 +11,13 @@ use Workbench\App\Enums\UiTone;
 use Workbench\App\Packages\Ui\Board;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
+use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\Panel;
 
 /**
  * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
  * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
- * enum's own name; and a value object whose shape keeps each member's override.
+ * enum's own name; and a value object, a docblock shape and an untyped array, each keeping its members' overrides.
  */
 class UiPanelResource extends JsonResource
 {
@@ -33,6 +34,8 @@ class UiPanelResource extends JsonResource
             'tone' => UiTone::Bright,
             'tone_resource' => EnumResource::make(UiTone::Bright),
             'board' => $this->board(),
+            'shaped' => $this->shaped(),
+            'untyped' => $this->untyped(),
         ];
     }
 
@@ -58,5 +61,23 @@ class UiPanelResource extends JsonResource
     protected function board(): Board
     {
         return new Board(charts: [new Chart, new Chart]);
+    }
+
+    /**
+     * A chart, a panel and their gauges, by a docblock shape.
+     *
+     * @return array{chart: Chart, panel: Panel, gauges: list<Gauge>}
+     */
+    protected function shaped(): array
+    {
+        return ['chart' => new Chart, 'panel' => new Panel, 'gauges' => [new Gauge, new Gauge]];
+    }
+
+    /**
+     * A panel and a chart, with no declared return type.
+     */
+    protected function untyped()
+    {
+        return ['panel' => new Panel, 'chart' => new Chart];
     }
 }

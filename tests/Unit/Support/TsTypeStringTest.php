@@ -1121,6 +1121,18 @@ describe('shapeValueHasUnimportableToken', function () {
     ]);
 });
 
+describe('importsCover', function () {
+    test('a shape value is covered when its own custom imports bring in every name it spells', function (string $type, array $imports, bool $expected) {
+        expect($this->service->importsCover($type, $imports))->toBe($expected);
+    })->with([
+        'no name at all' => ['{ a: number }', [], true],
+        'every name, across two modules' => ['{ a: UiNode; b: UiGauge[] }', ['@ui/a' => ['UiNode'], '@ui/b' => ['UiGauge']], true],
+        "a composed class's marker" => ['ChartType | null', ['ts-publish:class-type:App\\Chart' => ['ChartType']], true],
+        'a name no import brings' => ['{ a: UiNode; owner: User }', ['@ui/a' => ['UiNode']], false],
+        'a name with no imports' => ['UiLocal', [], false],
+    ]);
+});
+
 describe('orUndefined', function () {
     test('appends an undefined arm only when the type has no top-level one', function (string $type, string $expected) {
         expect($this->service->orUndefined($type))->toBe($expected);

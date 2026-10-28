@@ -21180,6 +21180,16 @@
                     "name": "board",
                     "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
                     "optional": false
+                },
+                {
+                    "name": "shaped",
+                    "type": "{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped",
+                    "type": "{ panel: UiNode; chart: ChartType }",
+                    "optional": false
                 }
             ]
         },
