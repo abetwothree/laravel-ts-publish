@@ -632,6 +632,15 @@ sent as its `toInertiaProperty()` value. `new Collection($items)` is the excepti
 model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
 publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`.
 
+### A class's override skips an interface it repeats from its parent or beside an interface that extends it
+
+PHP's reflection lists an interface once, so an interface a class repeats contributes its `#[TsType]` only from the
+parent that also implements it, or from the interface that extends it. Where that one declares `inherit: false`, the
+override is dropped: `class Badge implements Muted, HasIcon`, with `Muted extends HasIcon` declaring `inherit: false`,
+publishes `Muted`'s override alone, and so does a class implementing `HasIcon` under an `inherit: false` parent that
+implements it too. Elsewhere only the order of a composed type's `extends` list moves. Declare the interface's type
+in the class's own `#[TsType]`, or drop the `inherit: false`.
+
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
 A Carbon date, and a date a class cast or new-style accessor returns, publishes the `Carbon\Carbon` date-map entry:

@@ -96,21 +96,25 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
 
 - **Contributors, in order**: the class's own `#[TsType]`; each trait's in `use` order, a trait's own traits after it;
   each declared interface's, its parents after it; then the parent class's by the same rule. One reached twice keeps
-  its first place, and one declaring `inherit: false` brings only its own. An interface the parent also implements
-  contributes in the parent's place, since reflection lists it there.
+  its first place, and one declaring `inherit: false` brings only its own. Reflection lists an interface once, so one
+  the class repeats from its parent, or beside an interface extending it, contributes only from there, and is dropped
+  under an `inherit: false` there: see
+  [known gaps](../known-gaps.md#a-classs-override-skips-an-interface-it-repeats-from-its-parent-or-beside-an-interface-that-extends-it).
 - **Composition**: one contributor publishes as written, with its import. Two or more publish the composed
-  `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword (`extendable()`).
+  `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword
+  (`TsTypeString::isExtendable()`).
   Otherwise the nearest wins and the run warns which were left out.
-- **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes only its
-  own override, with the same warning, since its publisher writes the file a composed module would take.
+- **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes its own
+  override, else its nearest parent class's, and never composes, since its publisher writes the file a composed module
+  would take. A trait's or interface's override on it is left out with the same warning.
 - **The marker**: a composed type rides `customImports` under a
   [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
   spell, so every carrier moves it unchanged to the code that writes import lines. Step 2 registers the class for its
   module.
 
-`BaseRunner::resetRunState()` flushes the lookup's memo and the registry at each run. `resolve()` records the class's
-files, its traits', interfaces' and parents' included, on every call, so an edit to an ancestor's override reaches the
-generation cache.
+`resolve()` reads a class by its declared name, however a type spells it. `BaseRunner::resetRunState()` flushes the
+lookup's memo and the registry at each run. `resolve()` records the class's files, its traits', interfaces' and
+parents' included, on every call, memoized or not, since each consumer's cache entry needs them.
 
 ### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
 

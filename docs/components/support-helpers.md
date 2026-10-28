@@ -111,9 +111,9 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()` and `IndexSignatureKey::PATTERN`. That one-way
-dependency is what made the class safe to lift out. A new member that wants `toTsType()` is not a type-string helper,
-and would be in the same bind as the
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()` and
+`IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to lift out. A new member that wants
+`toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
