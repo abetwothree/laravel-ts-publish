@@ -137,7 +137,7 @@ class ModelAttributeResolver
      * `AsCollection` or `AsEnumCollection`. An enum cast passes null through, since getEnumCastableAttributeValue()
      * returns null for null, and both collection casts return null before they map an element, which may hold one.
      *
-     * Nothing in the package reads it since typeHoldsNull() took the class-cast rule; it stays for outside callers.
+     * Kept for outside callers; typeHoldsNull() decides the column's null.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {

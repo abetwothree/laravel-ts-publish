@@ -275,8 +275,9 @@ which lists `ModelInspector`'s attributes.
 
 A nullable column adds `| null` unless the declared type already has a top-level `null`: the column reaches the value as
 `null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
-whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. That type only keeps the
-looser test; it never drops the column's `null`. `ModelAttributeResolver::sendsNullAsIs()` no longer decides the test.
+whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. A native non-null `get()`
+never returns null, so the looser test only leaves out a null PHP never sends. `ModelAttributeResolver::sendsNullAsIs()`
+no longer decides the test.
 
 ## Relation discovery
 
