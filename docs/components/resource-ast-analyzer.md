@@ -887,12 +887,14 @@ the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEn
 
 `toTsType()` answers an enum carrying `#[TsType]` with its override, and one keyed in `custom_ts_mappings` with the
 mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
-an override with its `customImports`, and no enum channel (`ValueResolver::resolveConstantValue()`). An `EnumResource`
-sends the enum itself, so its payload takes `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The
-enum comes from the class a case or `from()` names, from `ModelAttributeResolver::resolveAttributeClass()` for an
-attribute, and otherwise from the payload itself (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`): its receiver
-class, a constant's case or list of cases, a list literal's items, a `match`'s arms or a local's write. `->value` and
-`->name` keep the enum's names through `EnumValueTypes`.
+an override with its `customImports`. A case keeps its enum channel (`ValueResolver::resolveConstantValue()`), so a
+receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the
+text never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a
+ternary of a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
+`ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
+names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
+for a value of a declared type (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and `->name` keep the
+enum's names through `EnumValueTypes`.
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 

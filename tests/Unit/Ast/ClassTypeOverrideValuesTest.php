@@ -266,6 +266,10 @@ describe("an overridden enum's own names", function () {
                 'literal_list' => 'AsEnum<typeof UiTone>[]',
                 'local_list' => 'AsEnum<typeof UiTone>[]',
                 'matched_resource' => 'AsEnum<typeof UiTone>',
+                'untyped_resource' => 'AsEnum<typeof UiTone>',
+                'values_list' => 'AsEnum<typeof UiTone>[]',
+                'collected_list' => 'AsEnum<typeof UiTone>[]',
+                'either_list' => 'AsEnum<typeof UiTone>[]',
             ]);
     });
 
@@ -298,7 +302,12 @@ describe("an overridden enum's own names", function () {
             ->literal_list->toEqual([$bright, $dim])
             ->local_list->toEqual([$dim, $bright])
             ->matched_resource->toEqual($bright)
+            ->untyped_resource->toEqual($bright)
+            ->values_list->toEqual([$bright, $dim])
+            ->collected_list->toEqual([$dim])
+            ->either_list->toEqual([$bright, $dim])
             ->and($body([]))
+            ->either_list->toBe([])
             ->either->toBe('dim')
             ->matched_resource->toEqual($dim)
             ->not->toHaveProperty('default_value')

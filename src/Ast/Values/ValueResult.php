@@ -341,7 +341,7 @@ final class ValueResult
 
         foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
             $wraps = isset($arm['enumFqcn']);
-            $reads = isset($arm['directEnumFqcn']) && ! self::readsEnumKind($arm);
+            $reads = self::readsEnumType($arm);
 
             // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
             if ($wraps && $reads) {
@@ -556,16 +556,14 @@ final class ValueResult
     }
 
     /**
-     * Whether a result reads its enum by the enum's `…Kind`, a name no EnumResource wrap of the enum spells.
+     * Whether a result spells its enum's `…Type`, the name the AsEnum rewrite of a wrap of the enum replaces.
      *
      * @param  ValueExpressionResult  $result
      */
-    private static function readsEnumKind(array $result): bool
+    private static function readsEnumType(array $result): bool
     {
-        return isset($result['directEnumFqcn']) && array_any(
-            self::enumSiblingNames($result['directEnumFqcn']),
-            fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $result['type']),
-        );
+        return isset($result['directEnumFqcn'])
+            && TsTypeString::typeNameOccursIn(self::enumTypeName($result['directEnumFqcn']), $result['type']);
     }
 
     /**
@@ -606,8 +604,8 @@ final class ValueResult
         $enumDirectFqcns = [];
         /** @var list<class-string> $enumTypeReadFqcns the direct branches that spell their enum's type name */
         $enumTypeReadFqcns = [];
-        /** @var list<class-string> $enumKindReadFqcns the direct branches that spell their enum's `…Kind` */
-        $enumKindReadFqcns = [];
+        /** @var list<class-string> $enumOtherReadFqcns the direct branches that spell no `…Type` */
+        $enumOtherReadFqcns = [];
         // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
@@ -636,10 +634,10 @@ final class ValueResult
             if (isset($inner['directEnumFqcn'])) {
                 $enumDirectFqcns[] = $inner['directEnumFqcn'];
 
-                if (self::readsEnumKind($inner)) {
-                    $enumKindReadFqcns[] = $inner['directEnumFqcn'];
-                } else {
+                if (self::readsEnumType($inner)) {
                     $enumTypeReadFqcns[] = $inner['directEnumFqcn'];
+                } else {
+                    $enumOtherReadFqcns[] = $inner['directEnumFqcn'];
                 }
             }
 
@@ -682,9 +680,10 @@ final class ValueResult
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {
-            // A `…Kind` arm does not read the type the AsEnum rewrite replaces, so it rides the embedded queue.
+            // An arm spelling no `…Type`, such as a `…Kind` or an override, reads no type the AsEnum rewrite
+            // replaces, so it rides the embedded queue.
             $enumDirectFqcns = array_values(array_unique($enumTypeReadFqcns));
-            $embeddedEnumFqcns = [...$enumKindReadFqcns, ...$embeddedEnumFqcns];
+            $embeddedEnumFqcns = [...$enumOtherReadFqcns, ...$embeddedEnumFqcns];
             $allBranchFqcns = array_values(array_unique([...$enumResourceFqcns, ...$enumDirectFqcns]));
 
             if ($enumDirectFqcns === [] && count($enumResourceFqcns) === 1) {

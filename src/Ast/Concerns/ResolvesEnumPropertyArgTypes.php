@@ -8,22 +8,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
-use PhpParser\Node\Expr\ConstFetch;
-use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 
 /**
@@ -32,9 +26,9 @@ use PhpParser\Node\Name;
  * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
  * fallback would drop its whole shape for the enum either names.
  *
- * A wrap sends the enum itself, so it always takes the enum's own type name, which the `AsEnum` rewrite replaces. That
- * holds where `toTsType()` names no enum for it, an override or a `custom_ts_mappings` entry answering its type first:
- * such an enum's values carry no enum channel, so the enum is read from the payload itself.
+ * A wrap sends the enum itself, so it takes the enum's own type name, which the `AsEnum` rewrite replaces, even where
+ * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
+ * channel, while a cast, an accessor or a declared type is read from its class.
  *
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
@@ -206,7 +200,9 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $type = $fqcns === [] ? ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]') : $resolved['type'];
+        $type = LaravelTsPublish::toTsType($enum)['enumFqcns'] === []
+            ? ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]')
+            : $resolved['type'];
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
@@ -279,83 +275,17 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The one enum a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings` entry
-     * answering its type.
+     * The one enum class a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings`
+     * entry answering its type, as a value of a type it declares carries no enum channel.
      *
      * @return class-string|null
      */
     private function retypedPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
     {
-        $enums = array_values(array_unique($this->payloadCaseEnums($payload, $scope) ?? []));
+        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
 
-        return count($enums) === 1 && enum_exists($enums[0]) && LaravelTsPublish::toTsType($enums[0])['enumFqcns'] === []
-            ? $enums[0]
+        return count($classes) === 1 && enum_exists($classes[0]) && LaravelTsPublish::toTsType($classes[0])['enumFqcns'] === []
+            ? $classes[0]
             : null;
-    }
-
-    /**
-     * The class of each case a payload holds: its receiver class, a constant's case or list of cases, each item of a
-     * list literal, each arm of a `match` or a local's one write; null where a part holds a value none of these read.
-     *
-     * @return list<class-string>|null
-     */
-    private function payloadCaseEnums(Expr $payload, AnalysisScope $scope): ?array
-    {
-        if ($payload instanceof ConstFetch && $payload->name->toLowerString() === 'null') {
-            return [];
-        }
-
-        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? null;
-
-        return $classes ?? match (true) {
-            $payload instanceof Variable && is_string($payload->name) => $this->localCaseEnums($payload->name, $scope),
-            $payload instanceof ClassConstFetch => new ValueResolver()->caseEnums($payload, $scope),
-            $payload instanceof Array_ => $this->partsCaseEnums(
-                array_map(fn (ArrayItem $item): ?Expr => $item->byRef ? null : $item->value, $payload->items),
-                $scope,
-            ),
-            $payload instanceof Match_ => $this->partsCaseEnums(
-                array_map(fn (MatchArm $arm): Expr => $arm->body, $payload->arms),
-                $scope,
-            ),
-            default => null,
-        };
-    }
-
-    /**
-     * The class of each case a local's one write holds, or null for a local that has none or is mid-resolution.
-     *
-     * @return list<class-string>|null
-     */
-    private function localCaseEnums(string $name, AnalysisScope $scope): ?array
-    {
-        $local = $scope->literalLocalBinding($name);
-
-        return $local === null
-            ? null
-            : $scope->resolvingBinding($name, $local, fn (): ?array => $this->payloadCaseEnums($local, $scope));
-    }
-
-    /**
-     * The class of each case every part holds, or null when one part holds a value no case reading names.
-     *
-     * @param  array<Expr|null>  $parts
-     * @return list<class-string>|null
-     */
-    private function partsCaseEnums(array $parts, AnalysisScope $scope): ?array
-    {
-        $enums = [];
-
-        foreach ($parts as $part) {
-            $held = $part === null ? null : $this->payloadCaseEnums($part, $scope);
-
-            if ($held === null) {
-                return null;
-            }
-
-            array_push($enums, ...$held);
-        }
-
-        return $enums;
     }
 }

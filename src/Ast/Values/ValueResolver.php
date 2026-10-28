@@ -158,11 +158,15 @@ final class ValueResolver
         }
 
         // A constant's initializer may itself be another class's enum case (`Status::Live`), which getValue() hands
-        // back as the enum instance rather than a scalar. An overridden enum's case is its override, with its import.
+        // back as the enum instance rather than a scalar. A case keeps its enum channel beside an override's import:
+        // the channel names the enum for a receiver or a wrap, and a sink drops a name the type never spells.
         if ($value instanceof UnitEnum) {
             $info = LaravelTsPublish::toTsType($value::class);
 
-            return ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info);
+            return [
+                ...ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info),
+                'directEnumFqcn' => $value::class,
+            ];
         }
 
         return match (true) {
@@ -172,40 +176,6 @@ final class ValueResolver
             is_string($value) => ['type' => 'string', 'optional' => false],
             default => null,
         };
-    }
-
-    /**
-     * The enum of the case a class constant expression holds, such as `Status::Live` or a `self::DEFAULT` set to one.
-     *
-     * @return class-string|null
-     */
-    public function caseEnum(ClassConstFetch $fetch, AnalysisScope $scope): ?string
-    {
-        $value = $this->readableConstant($fetch, $scope);
-
-        return $value instanceof UnitEnum ? $value::class : null;
-    }
-
-    /**
-     * The enum of each case a class constant expression holds: its one case, or every item of a list of cases; null
-     * for any other value.
-     *
-     * @return list<class-string>|null
-     */
-    public function caseEnums(ClassConstFetch $fetch, AnalysisScope $scope): ?array
-    {
-        $value = $this->readableConstant($fetch, $scope);
-        $enums = [];
-
-        foreach (is_array($value) && array_is_list($value) ? $value : [$value] as $case) {
-            if (! $case instanceof UnitEnum) {
-                return null;
-            }
-
-            $enums[] = $case::class;
-        }
-
-        return $enums;
     }
 
     /**
@@ -608,18 +578,6 @@ final class ValueResolver
         }
 
         return $deepest;
-    }
-
-    /**
-     * A class constant expression's value, or null where it cannot be read.
-     */
-    private function readableConstant(ClassConstFetch $fetch, AnalysisScope $scope): mixed
-    {
-        try {
-            return $this->evaluateConstantExpression($fetch, $scope);
-        } catch (ConstExprEvaluationException) {
-            return null;
-        }
     }
 
     /**

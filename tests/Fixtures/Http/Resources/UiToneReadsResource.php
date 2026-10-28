@@ -13,8 +13,8 @@ use Workbench\App\Enums\UiTone;
 
 /**
  * Reads of enums with an override that publish the enum's own names: an `EnumResource` of a case, a cast column, an
- * accessor, a renamed enum, a coalesce, a constant, a helper, a closure default, a list or a `match`, and a case's
- * `->value` and `->name`, beside the override a case or a cast column takes.
+ * accessor, a renamed enum, a coalesce, a constant, a helper, a closure default, a list, a `match` or a collection,
+ * and a case's `->value` and `->name`, beside the override a case or a cast column takes.
  *
  * @mixin UiToneHolder
  */
@@ -56,7 +56,19 @@ class UiToneReadsResource extends JsonResource
                 1 => UiTone::Bright,
                 default => UiTone::Dim,
             }),
+            'untyped_resource' => EnumResource::make($this->untypedPick()),
+            'values_list' => EnumResource::collection(array_values(self::TONES)),
+            'collected_list' => EnumResource::collection(collect([UiTone::Dim])),
+            'either_list' => EnumResource::collection($request->boolean('wrap') ? self::TONES : []),
         ];
+    }
+
+    /**
+     * A tone a helper returns with no declared type.
+     */
+    protected function untypedPick()
+    {
+        return UiTone::Bright;
     }
 
     /**

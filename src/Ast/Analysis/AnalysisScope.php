@@ -28,7 +28,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
@@ -1129,16 +1128,6 @@ final class AnalysisScope
 
             if ($held !== null && $held['type'] !== 'unknown') {
                 $this->varValueBindings[$param->var->name] = $held;
-            }
-
-            // A case of an enum toTsType() names no enum for, an override or a `custom_ts_mappings` entry answering its
-            // type, holds no enum channel, so its parameter binds the enum as a declared class.
-            $enum = $held !== null && ! isset($held['directEnumFqcn']) && $param->default instanceof ClassConstFetch
-                ? new ValueResolver()->caseEnum($param->default, $this)
-                : null;
-
-            if ($enum !== null) {
-                $this->varDeclaredBindings[$param->var->name] = [$enum];
             }
 
             // A readable `new` default holds that object, which the receiver resolver reads as one no row backs yet;
