@@ -94,7 +94,11 @@ _Avoid_: accessor
 ### Typing
 
 **Override**:
-A type the application states for a class or property, which replaces whatever the package would infer.
+A type the application states for a class or property, which replaces whatever the package would infer. A class's override comes from itself, its traits, its parents and its interfaces.
+
+**Composed type**:
+The `{Basename}Type` interface a class publishes when two or more overrides reach it, extending each of them.
+_Avoid_: merged type, combined type
 
 **Custom import**:
 An import named inside an override, so a hand-written TypeScript type can be used in published output.

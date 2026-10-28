@@ -90,6 +90,28 @@ Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so
 import. A `SerializesCastableAttributes` caster publishes what its `serialize()` declares instead, since
 `Model::toArray()` writes that; one that declares nothing leaves `get()` to type it.
 
+### Step 2: an override, resolved and composed
+
+Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride.php) for a class or an interface.
+
+- **Contributors, in order**: the class's own `#[TsType]`; each trait's in `use` order, a trait's own traits after it;
+  each declared interface's, its parents after it; then the parent class's by the same rule. One reached twice keeps
+  its first place, and one declaring `inherit: false` brings only its own. An interface the parent also implements
+  contributes in the parent's place, since reflection lists it there.
+- **Composition**: one contributor publishes as written, with its import. Two or more publish the composed
+  `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword (`extendable()`).
+  Otherwise the nearest wins and the run warns which were left out.
+- **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes only its
+  own override, with the same warning, since its publisher writes the file a composed module would take.
+- **The marker**: a composed type rides `customImports` under a
+  [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
+  spell, so every carrier moves it unchanged to the code that writes import lines. Step 2 registers the class for its
+  module.
+
+`BaseRunner::resetRunState()` flushes the lookup's memo and the registry at each run. `resolve()` records the class's
+files, its traits', interfaces' and parents' included, on every call, so an edit to an ancestor's override reaches the
+generation cache.
+
 ### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
 
 - **4b**: a `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes

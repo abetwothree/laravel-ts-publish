@@ -31,6 +31,11 @@ The helpers and the test that pins them live in these files:
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
+- [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
+  `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
+  `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.
+- [`Support\ComposedClassTypes`](../../src/Support/ComposedClassTypes.php): a composed type's name and custom-import
+  marker, and the composed classes values reached this run. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -48,6 +53,8 @@ Ask what the helper's input domain is, not what calls it:
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
+| What is a composed type called, how does a value carry it, and which classes need one? | `ComposedClassTypes` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
