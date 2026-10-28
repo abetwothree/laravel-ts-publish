@@ -259,12 +259,13 @@ A case of an enum with an override keeps the enum's import channel beside the ov
 take the channel's name:
 
 - An override spelled like the enum's own type, such as `#[TsType(['type' => 'HueType', 'import' => '@acme/dto'])]` on
-  enum `Hue`, publishes the case in an API resource as the enum's own `HueType`, imported from the enum's module under
-  an alias, and drops the override's import. Name the override something else, such as `HueDto`.
-- A constant list holding an overridden enum's case before a case of a same-named plain enum, such as
-  `[Tone::Bright, Other\Tone::A]`, publishes the plain element as the overridden enum's own `ToneType`, imported from
-  that enum's module. The type compiles but names the wrong enum. List the plain enum's cases first, or give it a
-  distinct `#[TsEnum]` name.
+  enum `Hue`, publishes a case read directly in an API resource as the enum's own `HueType`, imported from the enum's
+  module under an alias, and drops the override's import. Through an untyped helper's array it publishes the override,
+  so one file can spell both. Name the override something else, such as `HueDto`.
+- An array, a constant's or a literal, holding an overridden enum's case before a case of a same-named plain enum, such
+  as `[Tone::Bright, Other\Tone::A]` or `['a' => Tone::Bright, 'b' => Other\Tone::A]`, publishes the plain element as
+  the overridden enum's own `ToneType`, imported from that enum's module. The type compiles but names the wrong enum.
+  List the plain enum's cases first, or give it a distinct `#[TsEnum]` name.
 
 ### An empty `[]` under an imported type alias still ships as `[]`
 

@@ -381,11 +381,13 @@ then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the l
 The inline type carries custom imports but no FQCN channel, so a member keeps its type only where the analysis's custom
 imports bring in every name it spells (`TsTypeString::importsCover()`) and no class on its channels publishes under one
 of them (`MethodAnalysis::channelNames()`), the collision test a value object's shape applies. An override, such as
-`'chart' => new Chart` or an overridden enum's case, keeps its type and import; another enum or a model is `unknown`,
-and its siblings keep their types. The collision test keeps an enum whose type is spelled like a composed class beside
-it, such as `UiUntypedChartKindResource`'s, from taking that class's import. The case of an enum
-`LaravelTsPublish::retypedEnumType()` answers for passes `ValueResolver::resolveClassConstant()`'s no-import gate and
-brings no name of its own, so it keeps its override.
+`'chart' => new Chart`, keeps its type and import; a model is `unknown`, and its siblings keep their types. The
+collision test keeps an enum whose type is spelled like a composed class beside it, such as
+`UiUntypedChartKindResource`'s, from taking that class's import. In a scope that carries no import,
+`ValueResolver::resolveClassConstant()` types a plain backed enum's case as the literal it sends
+(`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`, and drops a
+pure enum's case, which `json_encode()` cannot write. A case of an enum `LaravelTsPublish::retypedEnumType()` answers
+for keeps its override and brings no name of its own. Any other read of an enum, such as a cast attribute, is `unknown`.
 
 Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
 `carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:
