@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
@@ -843,6 +844,10 @@ describe("an overridden member of a value object's shape", function () {
                 }
             },
             '{ loose: unknown; panel: UiNode }',
+        ],
+        'a nullable member whose override already holds null, its null kept once' => [
+            fn (): MaybeHolder => new MaybeHolder,
+            '{ child: UiNode | null }',
         ],
     ]);
 
