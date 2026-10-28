@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
@@ -860,6 +861,16 @@ describe("an overridden member of a value object's shape", function () {
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
             ],
         ]);
+    });
+
+    test("keeps today's unknown for a member whose override names a type with no import", function () {
+        $holder = new class
+        {
+            public function __construct(public Ambient $local = new Ambient) {}
+        };
+
+        expect($this->service->toTsType(Ambient::class))->toMatchArray(['type' => 'UiLocal', 'customImports' => []])
+            ->and($this->service->toTsType($holder::class))->toMatchArray(['type' => '{ local: unknown }', 'customImports' => []]);
     });
 
     test('sends each member in the shape it publishes', function () {
