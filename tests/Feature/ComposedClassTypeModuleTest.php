@@ -200,6 +200,40 @@ it('scans no directory unless one is configured', function () {
         ->and(is_dir($this->out.'/workbench/app/packages/ui'))->toBeFalse();
 });
 
+it('asks which barrel exports to keep only when a module is written', function () {
+    Config::set('ts-publish.class_types.additional_directories', []);
+
+    $runner = new class extends Runner
+    {
+        public int $asked = 0;
+
+        /**
+         * Count the question, then answer it as the runner does.
+         *
+         * @return Closure(string, string): bool
+         */
+        protected function preservedClassTypeBarrelExports(): Closure
+        {
+            $this->asked++;
+
+            return parent::preservedClassTypeBarrelExports();
+        }
+    };
+    $runner->shouldPublishEnums = false;
+    $runner->shouldPublishModels = false;
+    $runner->shouldPublishModelMetadata = false;
+    $runner->shouldPublishResources = false;
+    $runner->shouldPublishRoutes = false;
+    $runner->shouldPublishFormRequests = false;
+    $runner->shouldPublishBroadcastChannels = false;
+    $runner->shouldPublishBroadcastEvents = false;
+    $runner->run();
+
+    expect($runner->classTypeGenerators)->toBeEmpty()
+        ->and($runner->classTypeModularBarrels)->toBe([])
+        ->and($runner->asked)->toBe(0);
+});
+
 it('writes a module for a composed class a value reaches outside the scan', function () {
     disableBarrelPhasesBut('resources');
     Config::set('ts-publish.resources.included', [UiGadgetResource::class]);

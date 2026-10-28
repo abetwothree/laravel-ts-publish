@@ -723,8 +723,20 @@ class Runner extends BaseRunner
         }
 
         $this->classTypeGenerators = $generators;
+        $this->classTypeModularBarrels = $generators->isEmpty() ? [] : $this->writeClassTypeBarrels($generators);
+        $this->warnOfSharedRouteBarrels($generators);
+        $this->logger?->success('Class types — '.$generators->count());
+    }
 
-        // One write per namespace, so each barrel keeps only the exports other phases wrote in that directory.
+    /**
+     * Write the barrel of each namespace the modules live in, one at a time, so each keeps only the exports other
+     * phases wrote in that directory.
+     *
+     * @param  Collection<int, ClassTypeGenerator>  $generators
+     * @return array<string, string> Barrel contents keyed by namespace path
+     */
+    protected function writeClassTypeBarrels(Collection $generators): array
+    {
         $keep = $this->preservedClassTypeBarrelExports();
         $barrels = [];
 
@@ -737,9 +749,8 @@ class Runner extends BaseRunner
         }
 
         ksort($barrels);
-        $this->classTypeModularBarrels = $barrels;
-        $this->warnOfSharedRouteBarrels($generators);
-        $this->logger?->success('Class types — '.$generators->count());
+
+        return $barrels;
     }
 
     /**
