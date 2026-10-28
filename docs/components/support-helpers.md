@@ -39,8 +39,9 @@ The helpers and the test that pins them live in these files:
   and whether a class may compose at all. That last asks the configured class-types collector, so the scan and the
   composer share one filter. Static and `@internal`.
 - [`Support\RoutedControllers`](../../src/Support/RoutedControllers.php): whether a registered route dispatches to a
-  class, in any case, read from the router once per run. Static and `@internal`, read by the owned-class rule and the
-  controller validator.
+  class, read from the router once per run. `has()` matches in any case, as PHP reads a class name, for the owned-class
+  rule; `dispatchesTo()` matches exactly, as the routes publisher finds a controller's actions, for the controller
+  validator. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
