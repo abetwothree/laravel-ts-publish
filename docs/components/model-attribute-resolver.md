@@ -273,10 +273,10 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
-A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
-`null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
-`AsCollection` and `AsEnumCollection` take the top-level test: they return `null` before they map an element, whose type
-may hold a `null` of its own.
+A nullable column adds `| null` unless the declared type already has a top-level `null`: the column reaches the value as
+`null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
+whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. That type only keeps the
+looser test; it never drops the column's `null`. `ModelAttributeResolver::sendsNullAsIs()` no longer decides the test.
 
 ## Relation discovery
 
