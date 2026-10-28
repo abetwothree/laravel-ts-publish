@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
@@ -2015,6 +2016,7 @@ describe('ModelTransformer with AsCollection::of() a class that has an override'
         'an override already nullable, listed whole' => [MaybeNode::class, '(UiNode | null)[]', ['@js/types/ui' => ['UiNode']]],
         'an override with no import' => [Spark::class, 'string[]', []],
         'a class with no override, which keeps its shape' => [Plain::class, '{ a: number }[]', []],
+        'a model with an inherited override, each element sent by its toArray()' => [InheritingChildModel::class, 'UiNode[]', ['@js/types/ui' => ['UiNode']]],
         'a model with no override, which keeps unknown[]' => [User::class, 'unknown[]', []],
     ]);
 });
