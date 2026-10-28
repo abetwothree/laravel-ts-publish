@@ -1971,7 +1971,7 @@ describe('ModelTransformer with accessors that union two models sharing a name',
 });
 
 describe('a nullable column whose declared type holds a nested null', function () {
-    test('keeps its own null on a primitive or list cast, never on a class cast', function () {
+    test('keeps its own null on a primitive cast or AsCollection, never on another class cast', function () {
         $columns = (new ModelTransformer(NestedNullShapeModel::class))->data()->columns;
 
         expect($columns['owner_snapshot']['type'])->toBe('{ a: number | null } | null')

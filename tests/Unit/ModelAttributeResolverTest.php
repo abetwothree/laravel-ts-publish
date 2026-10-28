@@ -796,7 +796,7 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
 ]);
 
-test('a cast sends a NULL column as null only when it is a database type, a primitive, an enum or a list cast', function (?string $cast, bool $expected) {
+test('a cast sends a NULL column as null only when it is a database type, a primitive, an enum, AsCollection or AsEnumCollection', function (?string $cast, bool $expected) {
     expect(ModelAttributeResolver::sendsNullAsIs($cast))->toBe($expected);
 })->with([
     'no cast' => [null, true],
@@ -814,12 +814,12 @@ test('a cast sends a NULL column as null only when it is a database type, a prim
     'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
 ]);
 
-test('a nullable column keeps its own null beside a nested null on a primitive or list cast, never on a class cast', function (string $column, string $type) {
+test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on another class cast', function (string $column, string $type) {
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NestedNullShapeModel::class, $column)['type'])->toBe($type);
 })->with([
     'a primitive cast' => ['owner_snapshot', '{ a: number | null } | null'],
     'a class cast that never returns null' => ['meta_info', '{ a: number | null }'],
-    'a list cast whose element override holds a null' => ['related_users', '(UiNode | null)[] | null'],
+    'AsCollection of a class whose override holds a null' => ['related_users', '(UiNode | null)[] | null'],
 ]);
 
 test('a @property tag naming a @phpstan-type alias whole, inside a list or inside a shape types its column', function (string $column, string $type) {

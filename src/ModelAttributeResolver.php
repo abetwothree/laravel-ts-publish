@@ -133,9 +133,9 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
-     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast or a
-     * list cast. An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null, and
-     * `AsCollection` and `AsEnumCollection` return null before they map an element, whose type may hold a null.
+     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast,
+     * `AsCollection` or `AsEnumCollection`. An enum cast passes null through, since getEnumCastableAttributeValue()
+     * returns null for null, and both collection casts return null before they map an element, which may hold one.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {
