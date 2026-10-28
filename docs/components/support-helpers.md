@@ -31,6 +31,8 @@ The helpers and the test that pins them live in these files:
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
+- [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
+  and paths sorted. Static and `@internal`; every merge of import maps goes through it.
 - [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
   `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
   `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.
@@ -59,6 +61,7 @@ Ask what the helper's input domain is, not what calls it:
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| What is one import map, path => names, made of these? | `ImportMaps` |
 | Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
 | Does a registered route dispatch to this class? | `RoutedControllers` |

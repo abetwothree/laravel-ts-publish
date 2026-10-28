@@ -72,8 +72,8 @@ for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's mem
 retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
 method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
 cast key's import channels with `forgetChannels()`. Shared data imports an override its `@return` shape names only for a
-key no cast replaces, and drops an inferred import of a name a cast brings from another module
-(`InertiaSharedDataAnalyzer::withoutNamesCastsBring()`).
+key no cast replaces, and drops an inferred import of a name a cast brings from another module, by the rule a resource's
+fit applies too (`CastChannels::withoutOtherPaths()`, which reads `X as Y` as `Y`).
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.

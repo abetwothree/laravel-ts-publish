@@ -433,10 +433,12 @@ shape keeps one, with its imports, and loses a member naming any other class, su
 [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
 degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
 `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
-an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union
+spells a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
 
-A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in all three, though
-it publishes as written elsewhere; give the override an `import`.
+A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
+and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
+member brings for that name, or is `unknown` when none does. Give the override an `import`.
 
 ### An open shape publishes only its named keys
 

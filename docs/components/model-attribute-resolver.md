@@ -146,11 +146,14 @@ class that implements both takes the `Arrayable` path.
 
 A property shape reads public, non-static properties only, each by its `@var` where its declaration is unknown or vague,
 as `methodOrDocblockReturnTypes()` reads `@return`. It marks a property optional when it is neither promoted nor
-defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only where
-its custom imports bring in every name it spells, as an override's do, and the shape carries those imports, a composed
-class's marker included. A `@var` naming any other class, a model or an enum falls back to the declaration, and a
-declaration naming one degrades to `unknown`. `$shapeExpansionStack` guards docblock shapes and property shapes under
-separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of exhausting memory.
+defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only where no
+FQCN channel names a class in it and its custom imports bring in every name it spells, as an override's do
+(`LaravelTsPublish::shapeTypeInfo()`), and the shape carries those imports, a composed class's marker included. A `@var`
+naming any other class, a model or an enum falls back to the declaration, and a declaration naming one degrades to
+`unknown`. A docblock shape's union keeps its arms' imports only where each arm's own imports cover it, so a model
+spelled like an override beside it never borrows that override's import. `$shapeExpansionStack` guards docblock shapes
+and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of
+exhausting memory.
 
 ### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
 
