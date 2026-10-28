@@ -197,6 +197,15 @@ test('throws for an interface no scanned composed class reads an override from',
     $runner->run();
 })->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: '.Arrayable::class);
 
+test('a trait or interface --source run reads no model set', function (string $source) {
+    (new RunnerForSource($source))->run();
+
+    expect(PublishedModelRegistry::isEmpty())->toBeTrue();
+})->with([
+    'an interface' => [HasIcon::class],
+    'a trait' => [AnnouncesHello::class],
+]);
+
 test('throws for a contributor while class type publishing is disabled', function () {
     $runner = new RunnerForSource(Node::class);
     $runner->shouldPublishClassTypes = false;

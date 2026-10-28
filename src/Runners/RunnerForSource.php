@@ -81,8 +81,9 @@ class RunnerForSource extends BaseRunner
 
         $reflection = new ReflectionClass($fqcn);
 
-        // An enum names no model. Any other class may, and reads the same published set a full run does.
-        if (! $reflection->isEnum()
+        // An enum names no model, nor does the class-type module a trait or interface republishes. Any other class may,
+        // and reads the same published set a full run does.
+        if (! $reflection->isEnum() && ! $reflection->isInterface() && ! $reflection->isTrait()
             && ($this->shouldPublishModels || Config::boolean('ts-publish.models.enabled', false))
         ) {
             $this->buildModelMorphTargetMap();
