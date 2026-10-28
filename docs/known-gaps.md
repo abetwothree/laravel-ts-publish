@@ -433,6 +433,10 @@ shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknow
 `list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole.
 Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
 
+A value object's own shape, read from its public properties, keeps a member whose class has an override, with its
+import, and publishes a member naming any other class, such as a model, as `unknown`. A value object that keeps an
+override is itself a value that names a class, so the body fallback and a docblock shape publish it as `unknown`.
+
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
@@ -693,7 +697,7 @@ from the published type. Put the keys in `toArray()`.
 
 `json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties, and an
 abstract class publishes its own properties the same way. In another `__toString()` class, an untyped public property
-publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
+with no `@var` publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
 `Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
 `@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
 `SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says

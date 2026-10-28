@@ -144,23 +144,25 @@ properties. `jsonSerialize()` has no such contract, so inferring from its proper
 An `Arrayable` with neither is `unknown[]`, and a `JsonSerializable` with no shape falls through to the later steps. A
 class that implements both takes the `Arrayable` path.
 
-A property shape reads public, non-static properties only. It marks a property optional when it is neither promoted
-nor defaulted, because `json_encode()` omits a typed property that was never assigned. A property naming a class or
-enum degrades to `unknown`, since a shape string has no import channel. `$shapeExpansionStack` guards docblock shapes
-and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of
-exhausting memory.
+A property shape reads public, non-static properties only, each by its `@var` where its declaration is unknown or vague,
+as `methodOrDocblockReturnTypes()` reads `@return`. It marks a property optional when it is neither promoted nor
+defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only where
+its custom imports bring in every name it spells, as an override's do, and the shape carries those imports, a composed
+class's marker included. A `@var` naming any other class, a model or an enum falls back to the declaration, and a
+declaration naming one degrades to `unknown`. `$shapeExpansionStack` guards docblock shapes and property shapes under
+separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of exhausting memory.
 
 ### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
 
 `json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
 `StringSerialization::jsonStringType()` reads one from `jsonSerialize()`, or where a `jsonSerialize()` declaring `mixed`
-or nothing says so in its `@return`, and PHP's date object where that `@return` names `DateTime`. Step 5d publishes
-the object `stringableObjectType()` reads for a `__toString()` class: its public properties, an untyped one as
-`unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an exception or `HtmlString`, and `Record<string, unknown>`
-where an instance can gain keys, as an `ArrayObject` or a `#[AllowDynamicProperties]` class can. Only a `__toString()`
-class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public properties publishes its
-step 5c shape first, and one whose `jsonSerialize()` declares `array` with no `@return` shape publishes
-`unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
+or nothing says so in its `@return`, and PHP's date object where that `@return` names `DateTime`. Step 5d publishes the
+object `stringableObjectType()` reads for a `__toString()` class: its public properties, an untyped one with no `@var`
+as `unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an exception or `HtmlString`, and
+`Record<string, unknown>` where an instance can gain keys, as an `ArrayObject` or a `#[AllowDynamicProperties]` class
+can. Only a `__toString()` class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public
+properties publishes its step 5c shape first, and one whose `jsonSerialize()` declares `array` with no `@return` shape
+publishes `unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
 
 ### Step 5c inlines a plain class's typed properties
 
