@@ -247,11 +247,12 @@ final class ValueResolver
     /**
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
-     * X's override answers first, whoever serializes X, unless X is a model.
+     * X's override answers first, whoever serializes X, unless X is a model, whose JSON depends on its runtime
+     * attributes, casts and hidden fields, or an API resource, which publishes as itself.
      *
-     * A model declines, since its JSON depends on its runtime attributes, casts and hidden fields. So does a class
-     * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls. The value
-     * is an object, which an API resource's filter never enters, so it keeps its keys.
+     * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
+     * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
+     * never enters, so it keeps its keys.
      *
      * @return ValueExpressionResult|null
      */
@@ -261,7 +262,7 @@ final class ValueResolver
 
         $result = $class !== null && $this->publishesOverride($class)
             ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
-            : $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
+            : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
 
         return $result === null ? null : [...$result, 'keepsKeys' => true];
     }
@@ -284,7 +285,8 @@ final class ValueResolver
     }
 
     /**
-     * Whether a `new` of a class publishes the class's override. A model and an API resource keep their own channels.
+     * Whether a `new` of a class publishes the class's override: not a model's, whose JSON depends on its attributes,
+     * nor an API resource's, which publishes as itself.
      */
     private function publishesOverride(string $class): bool
     {
