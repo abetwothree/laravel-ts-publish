@@ -199,6 +199,15 @@ resource's filter walks into the array `resolve()` returns and re-indexes every 
 method value the published enum holds as `{ "1": 1, "2": 2 }` arrives as `[1, 2]`. The filter never walks into a
 resource object, so return `EnumResource::make(…)` itself and the keys arrive as the type says.
 
+### A broadcast event's `EnumResource` publishes the enum's type, not `AsEnum<typeof X>`
+
+`'role' => EnumResource::make($this->role)` in an event's `broadcastWith()` publishes `RoleType` for every enum, though
+the payload sends the resource object, `{ name, value, backed, … }`. API resources, pages and shared data rewrite such a
+key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. An enum whose
+`#[TsType]` or `custom_ts_mappings` entry types its values still publishes its own `…Type` here. Override the key with
+an import-aware `#[TsCasts]`, typed by a name your own module exports, such as
+`export type RoleResource = AsEnum<typeof Role>`.
+
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 
 Each tree's `laravel-ts-global.ts` carries `app.enums.StatusType[] | app.enums.StatusType[]` twice, from
