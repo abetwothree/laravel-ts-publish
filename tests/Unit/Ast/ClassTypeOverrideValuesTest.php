@@ -9,14 +9,18 @@ use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\IconShade;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedRank;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTonePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTypedClosurePageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedLevelReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MappedLevelHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
@@ -24,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
@@ -298,6 +303,53 @@ describe("an overridden enum's own names", function () {
             ->matched_resource->toEqual($dim)
             ->not->toHaveProperty('default_value')
             ->not->toHaveProperty('default_resource');
+    });
+});
+
+describe("a custom_ts_mappings enum's own names", function () {
+    beforeEach(function () {
+        Schema::dropIfExists('mapped_level_holders');
+        Schema::create('mapped_level_holders', function (Blueprint $table) {
+            $table->id();
+            $table->string('level');
+            $table->string('rank');
+        });
+        config()->set('ts-publish.custom_ts_mappings', [MappedLevel::class => 'string', MappedRank::class => 'string']);
+        TypeScriptMap::reset();
+        $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([MappedLevel::class, MappedRank::class]));
+    });
+
+    it('keeps them where the enum publishes, beside the mapping a case and a column take', function () {
+        expect(resourceProps(MappedLevelReadsResource::class))->toBe([
+            'level' => 'string',
+            'column' => 'string',
+            'case_resource' => 'AsEnum<typeof MappedLevel>',
+            'from_resource' => 'AsEnum<typeof MappedLevel>',
+            'column_resource' => 'AsEnum<typeof MappedLevel>',
+            'maybe_resource' => 'AsEnum<typeof MappedLevel> | null',
+            'value' => 'MappedLevelType',
+            'rank_value' => 'RankType',
+            'rank_resource' => 'AsEnum<typeof Rank>',
+            'rank_column_resource' => 'AsEnum<typeof Rank>',
+        ]);
+    });
+
+    it('sends the shapes they publish', function () {
+        $holder = MappedLevelHolder::query()->create(['level' => MappedLevel::High, 'rank' => MappedRank::Bottom])->fresh();
+        $body = fn (array $query): stdClass => sentAsJson(new MappedLevelReadsResource($holder)->resolve(Request::create('/', 'GET', $query)));
+
+        expect($body([]))
+            ->level->toBe('low')
+            ->column->toBe('high')
+            ->case_resource->toEqual((object) ['name' => 'Low', 'value' => 'low', 'backed' => true])
+            ->from_resource->toEqual((object) ['name' => 'High', 'value' => 'high', 'backed' => true])
+            ->column_resource->toEqual((object) ['name' => 'High', 'value' => 'high', 'backed' => true])
+            ->maybe_resource->toEqual((object) ['name' => 'High', 'value' => 'high', 'backed' => true])
+            ->value->toBe('low')
+            ->rank_value->toBe('top')
+            ->rank_resource->toEqual((object) ['name' => 'Top', 'value' => 'top', 'backed' => true])
+            ->rank_column_resource->toEqual((object) ['name' => 'Bottom', 'value' => 'bottom', 'backed' => true])
+            ->and($body(['none' => 1])->maybe_resource)->toBeNull();
     });
 });
 
