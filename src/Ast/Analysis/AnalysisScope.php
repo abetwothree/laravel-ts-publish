@@ -28,6 +28,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
@@ -1128,6 +1129,15 @@ final class AnalysisScope
 
             if ($held !== null && $held['type'] !== 'unknown') {
                 $this->varValueBindings[$param->var->name] = $held;
+            }
+
+            // An overridden enum's case value names no enum, so its parameter binds the enum as a declared class.
+            $enum = $held !== null && ! isset($held['directEnumFqcn']) && $param->default instanceof ClassConstFetch
+                ? new ValueResolver()->caseEnum($param->default, $this)
+                : null;
+
+            if ($enum !== null) {
+                $this->varDeclaredBindings[$param->var->name] = [$enum];
             }
 
             // A readable `new` default holds that object, which the receiver resolver reads as one no row backs yet;

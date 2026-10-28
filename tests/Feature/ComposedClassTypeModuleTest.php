@@ -590,7 +590,7 @@ describe('imports a composed type from its module in each publisher', function (
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
             ->toMatchArray(['chart' => 'ChartType', 'dial' => 'DialType | null', 'maybe_chart' => 'ChartType | null'])
-            ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType', 'DialType']])
+            ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['UiNode', 'UiToneDto'], '../../packages/ui' => ['ChartType', 'DialType']])
             ->and($body(true)->chart)->toBeObject()
             ->and($body(true)->dial)->toBeObject()
             ->and($body(false)->dial)->toBeNull();
@@ -663,7 +663,7 @@ describe('imports a composed type from its module in each publisher', function (
     it('in analyze()', function () {
         $result = resolve(AstEngine::class)->analyze(UiPanelResource::class, fromNamespacePath: 'workbench/app/http/resources');
 
-        expect($result->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType', 'DialType']]);
+        expect($result->typeImports)->toBe(['@js/types/ui' => ['UiNode', 'UiToneDto'], '../../packages/ui' => ['ChartType', 'DialType']]);
     });
 });
 

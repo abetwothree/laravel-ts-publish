@@ -5,28 +5,40 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\IconShade;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTonePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTypedClosurePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Gauge;
+use Workbench\App\Packages\Ui\HasIcon;
 use Workbench\App\Packages\Ui\Panel;
 use Workbench\App\Packages\Ui\Plain;
 
@@ -186,4 +198,98 @@ it('publishes a new an untyped helper returns as its override, with its import',
     expect(resourceProps(UiUntypedHelperResource::class))->toBe(['panel' => 'UiNode'])
         ->and(new ResourceTransformer(UiUntypedHelperResource::class)->typeImports)->toBe(['@js/types/ui' => ['UiNode']])
         ->and(sentAsJson(new UiUntypedHelperResource(null)->resolve(request()))->panel)->toBeObject();
+});
+
+it("imports an overridden enum case's type", function () {
+    config()->set('ts-publish.output_to_files', false);
+    $page = pageData(UiTonePageController::class.'@index');
+    $palette = pageData(UiTonePageController::class.'@palette');
+
+    expect(resourceProps(UiPanelResource::class))->toMatchArray(['tone' => 'UiToneDto'])
+        ->and(new ResourceWriter(new Filesystem)->write(new ResourceTransformer(UiPanelResource::class)))
+        ->toContain("import type { UiNode, UiToneDto } from '@js/types/ui';")
+        ->toContain('    tone: UiToneDto;')
+        ->and($page['pageType'])->toBe('Inertia.SharedData & { tone: UiToneDto, tones: UiToneDto[] }')
+        ->and($page['externalImports'])->toBe(['@js/types/ui' => ['UiToneDto']])
+        ->and($palette['pageType'])->toBe('Inertia.SharedData & { palette: { main: UiToneDto; muted: UiToneDto[] } }')
+        ->and($palette['externalImports'])->toBe(['@js/types/ui' => ['UiToneDto']])
+        ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+it("sends an overridden enum's case in the shape it publishes", function () {
+    expect(sentAsJson(new UiPanelResource(null)->resolve(request()))->tone)->toBe('bright')
+        ->and(inertiaProps(new UiTonePageController()->index()))
+        ->tone->toBe('bright')
+        ->tones->toBe(['bright', 'dim'])
+        ->and(inertiaProps(new UiTonePageController()->palette())->palette)
+        ->toEqual((object) ['main' => 'bright', 'muted' => ['dim']]);
+});
+
+describe("an overridden enum's own names", function () {
+    beforeEach(function () {
+        Schema::dropIfExists('ui_tone_holders');
+        Schema::create('ui_tone_holders', function (Blueprint $table) {
+            $table->id();
+            $table->string('tone');
+            $table->string('maybe_tone')->nullable();
+            $table->string('shade');
+        });
+        $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([UiTone::class, RenamedTone::class]));
+    });
+
+    it('keeps them where the enum publishes', function () {
+        expect(resourceProps(UiPanelResource::class)['tone_resource'])->toBe('AsEnum<typeof UiTone>')
+            ->and(resourceProps(UiToneReadsResource::class))->toBe([
+                'tone' => 'UiToneDto',
+                'column' => 'UiToneDto',
+                'from' => 'AsEnum<typeof UiTone>',
+                'column_resource' => 'AsEnum<typeof UiTone>',
+                'maybe_resource' => 'AsEnum<typeof UiTone> | null',
+                'accessor_resource' => 'AsEnum<typeof UiTone>',
+                'shade_resource' => 'AsEnum<typeof Shade>',
+                'shade_column_resource' => 'AsEnum<typeof Shade>',
+                'either' => 'AsEnum<typeof UiTone> | UiToneDto',
+                'value' => 'UiToneType',
+                'name' => 'UiToneKind',
+                'shade_name' => 'ShadeKind',
+                'default_value?' => 'UiToneType',
+            ]);
+    });
+
+    it('sends the shapes they publish', function () {
+        $holder = UiToneHolder::query()->create(['tone' => UiTone::Bright, 'shade' => RenamedTone::Dark])->fresh();
+        $body = fn (array $query): stdClass => sentAsJson(new UiToneReadsResource($holder)->resolve(Request::create('/', 'GET', $query)));
+        $sent = $body(['wrap' => 1, 'value' => 1]);
+
+        expect($sent)
+            ->tone->toBe('dim')
+            ->column->toBe('bright')
+            ->from->toEqual((object) ['name' => 'Dim', 'value' => 'dim', 'backed' => true])
+            ->column_resource->toEqual((object) ['name' => 'Bright', 'value' => 'bright', 'backed' => true])
+            ->maybe_resource->toBeNull()
+            ->accessor_resource->toEqual((object) ['name' => 'Dim', 'value' => 'dim', 'backed' => true])
+            ->shade_resource->toEqual((object) ['name' => 'Light', 'value' => 'light', 'backed' => true])
+            ->shade_column_resource->toEqual((object) ['name' => 'Dark', 'value' => 'dark', 'backed' => true])
+            ->either->toEqual((object) ['name' => 'Bright', 'value' => 'bright', 'backed' => true])
+            ->value->toBe('bright')
+            ->name->toBe('Bright')
+            ->shade_name->toBe('Dark')
+            ->default_value->toBe('dim')
+            ->and($body([]))
+            ->either->toBe('dim')
+            ->not->toHaveProperty('default_value');
+    });
+});
+
+it("keeps an enum's own override alone", function () {
+    $page = pageData(UiTonePageController::class.'@shade');
+
+    expect($page['pageType'])->toBe('Inertia.SharedData & { shade: UiNode }')
+        ->and($page['externalImports'])->toBe(['@js/types/ui' => ['UiNode']])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => IconShade::class,
+            'message' => 'Publishes the #[TsType] [UiNode] alone and leaves out [UiIcon] from ['.HasIcon::class.']: '
+                .'a model, API resource, broadcast event, form request, route controller or enum publishes only its own or a parent class\'s.',
+        ]])
+        ->and(inertiaProps(new UiTonePageController()->shade())->shade)->toBe('light');
 });

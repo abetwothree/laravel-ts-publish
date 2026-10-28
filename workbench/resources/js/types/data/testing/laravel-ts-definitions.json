@@ -1735,6 +1735,31 @@
                 }
             }
         },
+        "Workbench\\App\\Enums\\UiTone": {
+            "name": "UiTone",
+            "cases": [
+                {
+                    "name": "Bright",
+                    "value": "bright",
+                    "description": ""
+                },
+                {
+                    "name": "Dim",
+                    "value": "dim",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Bright'",
+                "'Dim'"
+            ],
+            "caseTypes": [
+                "'bright'",
+                "'dim'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
         "Workbench\\App\\Enums\\Visibility": {
             "name": "Visibility",
             "cases": [
@@ -21134,6 +21159,16 @@
                 {
                     "name": "maybe_chart",
                     "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "tone",
+                    "type": "UiToneDto",
+                    "optional": false
+                },
+                {
+                    "name": "tone_resource",
+                    "type": "AsEnum<typeof UiTone>",
                     "optional": false
                 }
             ]

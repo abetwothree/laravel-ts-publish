@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
@@ -45,6 +46,7 @@ use UnitEnum;
  * any other constant expression, such as a parameter default, by evaluating it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -155,16 +157,12 @@ final class ValueResolver
             return $this->analyzeConstantArrayValue($value);
         }
 
-        // A constant's initializer may itself be another class's enum case (`Status::Live`),
-        // which getValue() hands back as the enum instance rather than a scalar.
+        // A constant's initializer may itself be another class's enum case (`Status::Live`), which getValue() hands
+        // back as the enum instance rather than a scalar. An overridden enum's case is its override, with its import.
         if ($value instanceof UnitEnum) {
-            $enumFqcn = $value::class;
+            $info = LaravelTsPublish::toTsType($value::class);
 
-            return [
-                'type' => LaravelTsPublish::toTsType($enumFqcn)['type'],
-                'optional' => false,
-                'directEnumFqcn' => $enumFqcn,
-            ];
+            return ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info);
         }
 
         return match (true) {
@@ -174,6 +172,22 @@ final class ValueResolver
             is_string($value) => ['type' => 'string', 'optional' => false],
             default => null,
         };
+    }
+
+    /**
+     * The enum of the case a class constant expression holds, such as `Status::Live` or a `self::DEFAULT` set to one.
+     *
+     * @return class-string|null
+     */
+    public function caseEnum(ClassConstFetch $fetch, AnalysisScope $scope): ?string
+    {
+        try {
+            $value = $this->evaluateConstantExpression($fetch, $scope);
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
+
+        return $value instanceof UnitEnum ? $value::class : null;
     }
 
     /**
@@ -381,6 +395,8 @@ final class ValueResolver
         /** @var array<string, string> $types identity => type */
         $types = [];
         $embeddedEnumFqcns = [];
+        /** @var TypesImportMap $customImports */
+        $customImports = [];
 
         foreach ($value as $item) {
             $itemResult = $this->resolveConstantValue($item);
@@ -399,6 +415,7 @@ final class ValueResolver
 
             $types[$identity] = $itemResult['type'];
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$itemFqcns];
+            $customImports = $this->withItemImports($customImports, $itemResult);
         }
 
         // Joined first, since listType() would keep one of two elements that print alike.
@@ -409,7 +426,7 @@ final class ValueResolver
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
-        return $result;
+        return $customImports === [] ? $result : [...$result, 'customImports' => $customImports];
     }
 
     /**
@@ -426,12 +443,15 @@ final class ValueResolver
     {
         $parts = [];
         $embeddedEnumFqcns = [];
+        /** @var TypesImportMap $customImports */
+        $customImports = [];
 
         foreach ($value as $key => $item) {
             $itemResult = $this->resolveConstantValue($item) ?? ValueResult::unknown();
             $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
+            $customImports = $this->withItemImports($customImports, $itemResult);
         }
 
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
@@ -442,7 +462,23 @@ final class ValueResolver
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
-        return $result;
+        return $customImports === [] ? $result : [...$result, 'customImports' => $customImports];
+    }
+
+    /**
+     * Add a constant element's custom imports to those its array gathered, as an overridden enum's case carries one.
+     *
+     * @param  TypesImportMap  $customImports
+     * @param  ValueExpressionResult  $itemResult
+     * @return TypesImportMap
+     */
+    private function withItemImports(array $customImports, array $itemResult): array
+    {
+        foreach ($itemResult['customImports'] ?? [] as $path => $names) {
+            $customImports[$path] = array_values(array_unique([...($customImports[$path] ?? []), ...$names]));
+        }
+
+        return $customImports;
     }
 
     /**

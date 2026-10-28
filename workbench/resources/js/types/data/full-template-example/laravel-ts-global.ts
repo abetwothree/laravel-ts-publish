@@ -12,7 +12,7 @@ import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
-import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode } from '@js/types/ui';
+import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode, UiToneDto } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
@@ -2381,6 +2381,18 @@ declare global {
         }
         export type StatusType = 0 | 1;
         export type StatusKind = 'Draft' | 'Published';
+
+        /**
+         * Fixture: an enum with an override, which a value of the enum publishes, while its own file, an `EnumResource`, its
+         * `->value` and its `->name` keep the enum's names.
+         */
+        export interface UiTone
+        {
+            Bright: 'bright',
+            Dim: 'dim',
+        }
+        export type UiToneType = 'bright' | 'dim';
+        export type UiToneKind = 'Bright' | 'Dim';
 
         /**
          * Pure unit enum (no backing type) — tests that the publisher handles unit enums
@@ -5708,7 +5720,8 @@ declare global {
         }
         /**
          * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
-         * and each composed class's `…Type` from its module.
+         * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
+         * enum's own name.
          */
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
@@ -5717,6 +5730,8 @@ declare global {
             panels: UiNode[];
             when_panel?: UiNode;
             maybe_chart: app.packages.ui.ChartType | null;
+            tone: UiToneDto;
+            tone_resource: app.enums.UiToneType;
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.

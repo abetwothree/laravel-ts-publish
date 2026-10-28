@@ -78,7 +78,8 @@ answers:
    or only models with no published file, with the one concrete model a collection generic such as
    `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
    [AST engine § Declared locals](ast-engine.md#declared-locals).
-3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
+3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, or the enum of an
+   overridden enum's case a closure parameter defaults to, whose value names no enum, then
    `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
    `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a
    parameter's default, as that enum.

@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -77,18 +79,7 @@ trait ResolvesEnumPropertyArgTypes
                 && $this->isProxyFetch($argExpr->var, $scope)
                 && $argExpr->name instanceof Identifier
             ) {
-                $propName = $argExpr->name->toString();
-                $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
-
-                if ($info['enumFqcn'] === null) {
-                    return null;
-                }
-
-                return [
-                    ...$result,
-                    'type' => $info['type'],
-                    'enumFqcn' => $info['enumFqcn'],
-                ];
+                return $this->resolveEnumFromAttribute($argExpr->name->toString(), $scope);
             }
 
             // Enum::staticMethod(...) or Enum::Case — resolved from the class name alone. parseAndResolveAst()
@@ -101,12 +92,11 @@ trait ResolvesEnumPropertyArgTypes
                 $enumClassName = $argExpr->class->toString();
             }
 
+            // The wrap sends the enum itself, so it keeps the enum's own type name, which an override never replaces.
             if ($enumClassName !== null && enum_exists($enumClassName)) {
-                $enumTsInfo = LaravelTsPublish::toTsType($enumClassName);
-
                 return [
                     ...$result,
-                    'type' => $enumTsInfo['type'],
+                    'type' => ValueResult::enumTypeName($enumClassName),
                     'enumFqcn' => $enumClassName,
                 ];
             }
@@ -121,17 +111,7 @@ trait ResolvesEnumPropertyArgTypes
             return null; // @codeCoverageIgnore
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
-
-        if ($info['enumFqcn'] === null) {
-            return null;
-        }
-
-        return [
-            ...$result,
-            'type' => $info['type'],
-            'enumFqcn' => $info['enumFqcn'],
-        ];
+        return $this->resolveEnumFromAttribute($propName, $scope);
     }
 
     /**
@@ -200,19 +180,33 @@ trait ResolvesEnumPropertyArgTypes
             ...($resolved['embeddedEnumFqcns'] ?? []),
         ]));
 
-        if (count($fqcns) !== 1) {
+        $enum = match (count($fqcns)) {
+            0 => $this->overriddenPayloadEnum($payload, $scope),
+            1 => $fqcns[0],
+            default => null,
+        };
+
+        if ($enum === null) {
             return null;
         }
 
-        $enumType = LaravelTsPublish::toTsType($fqcns[0])['type'];
+        $enumType = LaravelTsPublish::toTsType($enum)['type'];
         $held = ValueResult::stripNullArm($resolved['type']);
+        $isList = $held !== $enumType;
 
-        if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
+        if ($isList && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
         }
+
+        // An override spells the payload, but the wrap sends the enum, so it keeps the enum's own type name.
+        $type = $fqcns === [] ? ValueResult::enumTypeName($enum).($isList ? '[]' : '') : $resolved['type'];
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
-        return ['type' => $resolved['type'], 'optional' => $resolved['optional'], 'enumFqcn' => $fqcns[0]];
+        return [
+            'type' => ValueResult::hasNullArm($resolved['type']) ? ValueResult::withNullArm($type) : $type,
+            'optional' => $resolved['optional'],
+            'enumFqcn' => $enum,
+        ];
     }
 
     /**
@@ -244,5 +238,57 @@ trait ResolvesEnumPropertyArgTypes
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
+    }
+
+    /**
+     * Resolve the enum a model attribute holds, as an EnumResource wrap reads it.
+     *
+     * An override answers the attribute's type first, but the wrap sends the enum whatever #[TsType] it carries, so it
+     * then takes the enum's own type name and keeps the attribute's null arm.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveEnumFromAttribute(string $attributeName, AnalysisScope $scope): ?array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($attributeName, $scope);
+
+        if ($info['enumFqcn'] !== null) {
+            return [...ValueResult::unknown(), 'type' => $info['type'], 'enumFqcn' => $info['enumFqcn']];
+        }
+
+        $enum = $scope->modelClass === null
+            ? null
+            : resolve(ModelAttributeResolver::class)->resolveAttributeClass($scope->modelClass, $attributeName);
+
+        if ($enum === null || ! enum_exists($enum)) {
+            return null;
+        }
+
+        $type = ValueResult::enumTypeName($enum);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => ValueResult::hasNullArm($info['type']) ? ValueResult::withNullArm($type) : $type,
+            'enumFqcn' => $enum,
+        ];
+    }
+
+    /**
+     * The enum a payload holds whose value names none, as an overridden enum's: its one class, or a constant's case.
+     *
+     * @return class-string|null
+     */
+    private function overriddenPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
+    {
+        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
+        $enum = match (true) {
+            count($classes) === 1 => $classes[0],
+            $payload instanceof ClassConstFetch => new ValueResolver()->caseEnum($payload, $scope),
+            default => null,
+        };
+
+        return $enum !== null && enum_exists($enum) && LaravelTsPublish::toTsType($enum)['enumFqcns'] === []
+            ? $enum
+            : null;
     }
 }
