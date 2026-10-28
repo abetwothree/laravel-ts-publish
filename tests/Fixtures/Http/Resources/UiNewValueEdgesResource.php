@@ -11,10 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Plain;
 
 /**
  * A `new` of an overridden class in the shapes beside the workbench's: a class every serialization rule would answer, a
- * date, a nullable override, a parameter default, a model and an API resource.
+ * date, a nullable override and a parameter default; a model's, an API resource's and a plain class's keep theirs.
  */
 class UiNewValueEdgesResource extends JsonResource
 {
@@ -27,6 +28,7 @@ class UiNewValueEdgesResource extends JsonResource
             'maybe_node' => $request->boolean('node') ? new MaybeNode : null,
             'default_panel' => $this->when(true, fn ($panel = new Panel) => $panel),
             'model' => new InheritingChildModel,
+            'plain' => new Plain,
             'default_resource' => $this->when(true, fn ($node = new UiNodeResource(null)) => $node),
         ];
     }

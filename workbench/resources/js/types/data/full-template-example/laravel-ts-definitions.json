@@ -21127,11 +21127,6 @@
                     "name": "maybe_chart",
                     "type": "ChartType | null",
                     "optional": false
-                },
-                {
-                    "name": "plain",
-                    "type": "unknown",
-                    "optional": false
                 }
             ]
         },

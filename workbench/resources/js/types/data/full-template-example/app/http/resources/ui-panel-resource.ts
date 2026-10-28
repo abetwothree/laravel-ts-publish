@@ -2,7 +2,8 @@ import type { UiNode } from '@js/types/ui';
 import type { ChartType, DialType } from '../../packages/ui';
 
 /**
- * Fixture: values of composed classes through declared helpers, so the file imports their `…Type` from their module.
+ * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
+ * and each composed class's `…Type` from its module.
  *
  * @see Workbench\App\Http\Resources\UiPanelResource
  */
@@ -14,5 +15,4 @@ export interface UiPanelResource
     panels: UiNode[];
     when_panel?: UiNode;
     maybe_chart: ChartType | null;
-    plain: unknown;
 }

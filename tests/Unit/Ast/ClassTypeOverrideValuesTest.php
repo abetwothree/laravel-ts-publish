@@ -99,7 +99,7 @@ it('sends the issue example in the shapes it publishes', function () {
 
 it('publishes a new of an overridden class in a resource and in shared data', function () {
     expect(resourceProps(UiPanelResource::class))->toMatchArray([
-        'panel' => 'UiNode', 'panels' => 'UiNode[]', 'when_panel?' => 'UiNode', 'maybe_chart' => 'ChartType | null', 'plain' => 'unknown',
+        'panel' => 'UiNode', 'panels' => 'UiNode[]', 'when_panel?' => 'UiNode', 'maybe_chart' => 'ChartType | null',
     ])->and(sharedProps(UiShareMiddleware::class))->toMatchArray(['node' => 'UiNode', 'pennies' => 'UiAmount', 'chart' => 'ChartType']);
 });
 
@@ -145,6 +145,7 @@ it('publishes a new of an overridden class in every shape a resource reads it', 
         'maybe_node' => 'UiNode | null',
         'default_panel?' => 'UiNode',
         'model' => 'unknown',
+        'plain' => 'unknown',
         'default_resource?' => 'null',
     ])->and(new ResourceTransformer(UiNewValueEdgesResource::class)->typeImports)
         ->toBe(['@js/types/ui' => ['UiNode', 'UiStamp']]);

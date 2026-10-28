@@ -5704,7 +5704,10 @@ declare global {
             flag?: string | null;
             extra: Record<string, unknown>;
         }
-        /** Fixture: values of composed classes through declared helpers, so the file imports their `…Type` from their module. */
+        /**
+         * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
+         * and each composed class's `…Type` from its module.
+         */
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
             dial: app.packages.ui.DialType | null;
@@ -5712,7 +5715,6 @@ declare global {
             panels: UiNode[];
             when_panel?: UiNode;
             maybe_chart: app.packages.ui.ChartType | null;
-            plain: unknown;
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
