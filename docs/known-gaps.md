@@ -434,8 +434,10 @@ shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknow
 Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
 
 A value object's own shape, read from its public properties, keeps a member whose class has an override, with its
-import, and publishes a member naming any other class, such as a model, as `unknown`. A value object that keeps an
-override is itself a value that names a class, so the body fallback and a docblock shape publish it as `unknown`.
+import, and publishes a member naming any other class, such as a model, as `unknown`. A member whose override names a
+type with no import, such as `#[TsType('UiLocal')]`, is `unknown` there too, though it publishes as written elsewhere;
+give the override an `import`. A value object that keeps an override is itself a value that names a class, so the body
+fallback and a docblock shape publish it as `unknown`.
 
 ### An open shape publishes only its named keys
 
