@@ -378,16 +378,17 @@ that calls itself terminates, whatever each call passes. An int key publishes qu
 then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
 `ServiceReturnResource.tiers` publishes `string[]`.
 
-The inline type carries custom imports but no FQCN channel, so a member keeps its type only where the analysis's custom
-imports bring in every name it spells (`TsTypeString::importsCover()`) and no class on its channels publishes under one
-of them (`MethodAnalysis::channelNames()`), the collision test a value object's shape applies. An override, such as
-`'chart' => new Chart`, keeps its type and import; a model is `unknown`, and its siblings keep their types. The
-collision test keeps an enum whose type is spelled like a composed class beside it, such as
-`UiUntypedChartKindResource`'s, from taking that class's import. In a scope that carries no import,
-`ValueResolver::resolveClassConstant()` types a plain backed enum's case as the literal it sends
-(`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`, and drops a
-pure enum's case, which `json_encode()` cannot write. A case of an enum `LaravelTsPublish::retypedEnumType()` answers
-for keeps its override and brings no name of its own. Any other read of an enum, such as a cast attribute, is `unknown`.
+The inline type follows
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), checked per
+method rather than per member: against the whole method's custom imports and the classes on its channels
+(`MethodAnalysis::channelNames()`). An override, such as `'chart' => new Chart`, keeps its type and import; a model is
+`unknown`, and its siblings keep their types. `UiUntypedChartKindResource` pins an enum spelled like a composed class
+beside it. In a scope that carries no import, `ValueResolver::resolveClassConstant()` types a plain backed enum's case
+as the literal it sends (`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes
+`'bar' | UiToneDto`, and drops a pure enum's case, which `json_encode()` cannot write. A case of an enum
+`LaravelTsPublish::retypedEnumType()` answers for keeps its override and brings no name of its own. A case an accessor's
+getter returns, or one passed to a helper that returns it, types the same way as a case written in place. Any other read
+of an enum, such as a cast attribute or a list of a plain enum's cases, is `unknown`.
 
 Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
 `carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:

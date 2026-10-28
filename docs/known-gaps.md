@@ -267,6 +267,18 @@ take the channel's name:
   the overridden enum's own `ToneType`, imported from that enum's module. The type compiles but names the wrong enum.
   List the plain enum's cases first, or give it a distinct `#[TsEnum]` name.
 
+### Two reads of a column cast to an overridden enum miss its `AsEnum<typeof X>`
+
+An `EnumResource` keeps an overridden enum's own names, but two reads of a column cast to such an enum, here `Tone` with
+the override `ToneDto`, do not:
+
+- `EnumResource::collection($this->tones)` over an `AsEnumCollection::of(Tone::class)` cast publishes `unknown`, where
+  a plain enum's publishes `AsEnum<typeof Status>[]`. Type the key with an import-aware `#[TsCasts]` of
+  `ToneResource[]`, where your own module exports `type ToneResource = AsEnum<typeof Tone>`.
+- A model's `{Model}Resource` interface types the column as the override, `ToneDto` or `ToneDto[]`, where it types a
+  plain enum's as `AsEnum<typeof Status>`. Read the column through an API resource's `EnumResource::make($this->tone)`,
+  which publishes `AsEnum<typeof Tone>`.
+
 ### An empty `[]` under an imported type alias still ships as `[]`
 
 Model metadata writes an empty array as `{}` where the property's type is object-like, but `TsTypeShape::isObjectLike()`
@@ -360,8 +372,9 @@ Give the enum a distinct `#[TsEnum]` name.
 Two composed classes named alike, such as `App\Ui\Chart` and `Vendor\Charts\Chart`, both publish `ChartType`. A
 composed name rides the custom imports, which no file aliases, so a file reading both imports `ChartType` twice
 (TS2300), a metadata companion throws, and the globals file reads both values as the first class's type. `ts:publish`
-warns, naming the file and both classes. Give one of them a `#[TsType]` of its own with `inherit: false`, so it
-publishes that override alone, or read the two in different files.
+warns, naming the file and both classes, except under `--source`, which runs no such check and republishes the file
+silently. Give one of them a `#[TsType]` of its own with `inherit: false`, so it publishes that override alone, or read
+the two in different files.
 
 ### A model class name containing an underscore can collide with a metadata companion
 
@@ -730,16 +743,24 @@ sent as its `toInertiaProperty()` value. `new Collection($items)` is the excepti
 model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
 publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`, or give the
 class a `#[TsType]`: a `new` of a class with an override, its own or an inherited one, publishes the override whoever
-serializes it. A model's override does not apply to a `new` of the model.
+serializes it, as every other read of the class does. A model's override does not apply to a `new` of the model.
+
+The override is the type you declare, not what each context sends. An API resource's key or a `broadcastWith()` key
+holding an `Arrayable` class that is not `JsonSerializable` is sent as `json_encode()` writes it, the class's public
+properties, `{}` when it has none, while Inertia sends its `toArray()`, so a page matches. Implement
+`JsonSerializable` returning `toArray()`, or wrap the value in an API resource, so every context sends one shape.
 
 ### A class's override skips an interface it repeats from its parent or beside an interface that extends it
 
-PHP's reflection lists an interface once, so an interface a class repeats contributes its `#[TsType]` only from the
-parent that also implements it, or from the interface that extends it. Where that one declares `inherit: false`, the
-override is dropped: `class Badge implements Muted, HasIcon`, with `Muted extends HasIcon` declaring `inherit: false`,
-publishes `Muted`'s override alone, and so does a class implementing `HasIcon` under an `inherit: false` parent that
-implements it too. Elsewhere only the order of a composed type's `extends` list moves. Declare the interface's type
-in the class's own `#[TsType]`, or drop the `inherit: false`.
+PHP's reflection lists an interface once, so an interface a class repeats contributes its `#[TsType]` only in the place
+of the parent that also implements it, or of the interface that extends it. Where that one declares `inherit: false`,
+the override is dropped: `class Badge implements Muted, HasIcon`, with `Muted extends HasIcon` declaring
+`inherit: false`, publishes `Muted`'s override alone, and so does a class implementing `HasIcon` under an
+`inherit: false` parent that implements it too. Elsewhere the interface moves down the order, which reorders a composed
+type's `extends` list and, where a contributor cannot be extended, can change which one wins as nearest:
+`class Child extends Base implements HasIcon`, where `Base` also implements `HasIcon` and declares
+`#[TsType('string')]`, publishes `string` with a warning, though `Child` lists `HasIcon` before its parent. Declare the
+interface's type in the class's own `#[TsType]`, or drop the `inherit: false`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 

@@ -146,15 +146,11 @@ class that implements both takes the `Arrayable` path.
 
 A property shape reads public, non-static properties only, each by its `@var` where its declaration is unknown or vague,
 as `methodOrDocblockReturnTypes()` reads `@return`. It marks a property optional when it is neither promoted nor
-defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only where
-its custom imports bring in every name it spells, as an override's do, and none brings a name a model, enum or other
-class in it publishes as (`LaravelTsPublish::shapeTypeInfo()`); the shape carries those imports, a composed class's
-marker included. A `@var` naming any other class, a model or an enum falls back to the declaration, and a declaration
-naming one degrades to `unknown`. A docblock shape's union drops its arms' imports only where an arm its own imports do
-not cover spells a name a sibling arm's imports bring (`borrowsImport()`), so a model spelled like an override beside it
-never borrows that override's import, while `Panel|Status` keeps `UiNode`'s. `$shapeExpansionStack` guards docblock
-shapes and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead
-of exhausting memory.
+defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only by
+[the shape rule](#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), checked per property, and the shape
+carries those imports. A `@var` the rule rejects falls back to the declaration, and a declaration it rejects degrades to
+`unknown`. `$shapeExpansionStack` guards docblock shapes and property shapes under separate keys, so a self-referencing
+or mutual DTO degrades its inner reference instead of exhausting memory.
 
 ### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
 
@@ -205,6 +201,28 @@ A column with no cast resolves the native type string `Schema::getColumns()` rep
 for a MySQL `geometry(subtype: 'point')` column. The schema grammar writes that string, not the migration method, so
 read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeScriptMap` entry.
 
+## A shape keeps a member only where its own imports cover it
+
+A shape carries custom imports but no FQCN channel, so a member keeps its type only where the custom imports it brought
+itself bind every name it spells (`TsTypeString::importsCover()`), and no model, enum or other class in it publishes
+under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an import's local name through
+`ImportMaps::localNames()`, so `X as Y` binds `Y`. An override keeps its type and its import, a composed class's marker
+included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
+test stops an enum spelled like a composed class beside it from taking that class's import.
+
+A union keeps its arms' merged imports unless an arm its own imports do not cover spells a name a sibling arm's imports
+bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
+`Panel|Status` keeps `UiNode`'s.
+
+These readers apply it, each with the scope and the fallback its page gives:
+
+- a value object's shape, steps 5a and 5c ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
+- a docblock `array{…}` shape, nested in a container too ([Generic containers](#generic-containers));
+- the `@return` an API resource's method fills from
+  ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));
+- a model metadata payload, which throws instead ([Model metadata](model-metadata.md#type-precedence));
+- the body fallback, per method ([Receiver types](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)).
+
 ## Docblock types
 
 ### Generic containers
@@ -213,8 +231,8 @@ read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeSc
 `Collection<K, X>` and `X[]`, by these rules:
 
 - **Shapes in the value slot**: an `array{...}` value resolves through `resolveArrayShapeString()`, the resolver the
-  top-level docblock paths use, so a nested shape publishes `{ key: string }[]`, not `unknown[][]`. A shape key that
-  names a model or enum degrades to `unknown` on its own; one whose class has an override keeps it and its import.
+  top-level docblock paths use, so a nested shape publishes `{ key: string }[]`, not `unknown[][]`. Its keys follow
+  [the shape rule](#a-shape-keeps-a-member-only-where-its-own-imports-cover-it).
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So

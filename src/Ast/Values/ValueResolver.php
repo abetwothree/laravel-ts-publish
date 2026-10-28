@@ -81,7 +81,8 @@ final class ValueResolver
      * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
      * Returns null for anything not a resolvable constant.
      *
-     * A case in a scope that carries no import types as the value it sends instead.
+     * A plain enum's case in a scope that carries no import types as the value it sends instead, while a retyped
+     * (overridden) enum's keeps its override, as `LaravelTsPublish::retypedEnumType()` answers.
      *
      * @return ValueExpressionResult|null
      */
