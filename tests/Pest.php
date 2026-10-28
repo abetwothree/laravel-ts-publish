@@ -170,18 +170,25 @@ function sentAsJson(mixed $value): mixed
 }
 
 /**
- * The props Inertia sends for a page on a first visit or, given its component and comma-separated keys, on a partial
- * reload of those keys.
+ * The props Inertia sends for a page in answer to a request, made an Inertia visit: a first visit by default, or
+ * partialReload()'s request.
  */
-function inertiaProps(InertiaResponse $page, string $component = '', string $only = ''): stdClass
+function inertiaProps(InertiaResponse $page, ?Request $request = null): stdClass
 {
-    $request = Request::create('/');
+    $request ??= Request::create('/');
     $request->headers->set('X-Inertia', 'true');
 
-    if ($only !== '') {
-        $request->headers->set('X-Inertia-Partial-Component', $component);
-        $request->headers->set('X-Inertia-Partial-Data', $only);
-    }
-
     return json_decode((string) $page->toResponse($request)->getContent(), false)->props;
+}
+
+/**
+ * A request for a partial reload of a component's comma-separated keys.
+ */
+function partialReload(string $component, string $only): Request
+{
+    $request = Request::create('/');
+    $request->headers->set('X-Inertia-Partial-Component', $component);
+    $request->headers->set('X-Inertia-Partial-Data', $only);
+
+    return $request;
 }

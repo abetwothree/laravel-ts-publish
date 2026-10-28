@@ -47,9 +47,8 @@ it('publishes the issue example as the override, with one import', function () {
 it('sends the issue example in the shapes it publishes', function () {
     $props = function (bool $maybe): stdClass {
         $request = Request::create('/ui/dashboard', 'GET', $maybe ? ['maybe' => 1] : []);
-        $request->headers->set('X-Inertia', 'true');
 
-        return json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), false)->props;
+        return inertiaProps(new UiDashboardController()->index($request), $request);
     };
 
     $sent = $props(true);
@@ -66,7 +65,7 @@ it('sends the issue example in the shapes it publishes', function () {
         ->and($sent->pennies)->toBeObject()
         ->and($sent)->not->toHaveProperty('deferred')
         ->and($sent)->not->toHaveProperty('optional')
-        ->and(inertiaProps(new UiDashboardController()->index(request()), 'Ui/Dashboard', 'deferred,optional'))
+        ->and(inertiaProps(new UiDashboardController()->index(request()), partialReload('Ui/Dashboard', 'deferred,optional')))
         ->deferred->toBeObject()
         ->optional->toBeObject();
 });
@@ -115,7 +114,7 @@ it('sends each typed closure in the shape it publishes', function () {
         ->plain->toEqual((object) ['a' => 1])
         ->and($sent)->not->toHaveProperty('deferred')
         ->and($sent)->not->toHaveProperty('optional')
-        ->and(inertiaProps($page, 'Ui/TypedClosures', 'deferred,optional'))
+        ->and(inertiaProps($page, partialReload('Ui/TypedClosures', 'deferred,optional')))
         ->deferred->toBeObject()
         ->optional->toBeObject();
 });
