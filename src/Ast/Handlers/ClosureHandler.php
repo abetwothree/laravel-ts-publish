@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Closure;
 use PhpParser\Node;
@@ -32,11 +33,13 @@ use PhpParser\Node\NullableType;
  * falling back to the declared return-type annotation when the body itself resolves to `unknown`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type ClosureAnnotationResult = array{
  *      type: string,
  *      directEnumFqcn?: class-string,
- *      modelFqcn?: class-string
+ *      modelFqcn?: class-string,
+ *      customImports?: TypesImportMap
  * }
  *
  * @internal
@@ -185,10 +188,10 @@ final class ClosureHandler implements ExpressionHandler
     }
 
     /**
-     * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult (type + optional FQCN).
+     * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult: the type, with its FQCN or the custom
+     * imports a class's override brings.
      *
-     * Returns null for union/intersection types, void/never/mixed, unresolvable classes, and types
-     * carrying customImports — that import metadata cannot be represented in ValueExpressionResult.
+     * Returns null for union/intersection types, void/never/mixed and unresolvable classes.
      *
      * @return ClosureAnnotationResult|null
      */
@@ -201,7 +204,7 @@ final class ClosureHandler implements ExpressionHandler
                 return null;
             }
 
-            return [...$inner, 'type' => $inner['type'].' | null'];
+            return [...$inner, 'type' => ValueResult::withNullArm($inner['type'])];
         }
 
         if ($typeNode instanceof Identifier) {
@@ -224,12 +227,12 @@ final class ClosureHandler implements ExpressionHandler
                 return null;
             }
 
-            if ($tsInfo['customImports'] !== []) {
-                return null;
-            }
-
             /** @var ClosureAnnotationResult $result */
             $result = ['type' => $tsInfo['type']];
+
+            if ($tsInfo['customImports'] !== []) {
+                $result['customImports'] = $tsInfo['customImports'];
+            }
 
             if ($tsInfo['enumFqcns'] !== []) {
                 $result['directEnumFqcn'] = $tsInfo['enumFqcns'][0];

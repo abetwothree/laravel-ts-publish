@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
@@ -14,8 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Schema\Blueprint;
@@ -59,11 +63,16 @@ use Workbench\App\Models\Tag;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\TrackingEvent;
+use Workbench\App\Models\UiBoard;
 use Workbench\App\Models\UntypedColumn;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Packages\Audit\Models\AuditInspector;
 use Workbench\App\Packages\Audit\Models\AuditTrail;
+use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Plain;
+use Workbench\App\Packages\Ui\Spark;
 use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
 use Workbench\Crm\Models\User as CrmUser;
@@ -1961,11 +1970,13 @@ describe('ModelTransformer with accessors that union two models sharing a name',
 });
 
 describe('a nullable column whose declared type holds a nested null', function () {
-    test('keeps its own null on a primitive cast, never on a class cast', function () {
+    test('keeps its own null on a primitive or list cast, never on a class cast', function () {
         $columns = (new ModelTransformer(NestedNullShapeModel::class))->data()->columns;
 
         expect($columns['owner_snapshot']['type'])->toBe('{ a: number | null } | null')
-            ->and($columns['meta_info']['type'])->toBe('{ a: number | null }');
+            ->and($columns['meta_info']['type'])->toBe('{ a: number | null }')
+            ->and($columns['related_users']['type'])->toBe('(UiNode | null)[] | null')
+            ->and(sentAsJson(NestedNullShapeModel::query()->create()->fresh()?->toArray())->related_users)->toBeNull();
     });
 
     test('leaves a class cast that returns a list on a nullable column as it is', function () {
@@ -1973,4 +1984,37 @@ describe('a nullable column whose declared type holds a nested null', function (
 
         expect($legs)->not->toEndWith('| null');
     });
+});
+
+describe('ModelTransformer with AsCollection::of() a class that has an override', function () {
+    test('publishes AsCollection::of() an overridden class as a list of it', function () {
+        $data = new ModelTransformer(UiBoard::class)->data()->toArray();
+        $board = new UiBoard;
+        $board->setAttribute('panels', collect([new Panel, new Panel]));
+        $board->setAttribute('charts', collect([new Chart]));
+        $board->save();
+
+        expect($data['columns']['panels']['type'])->toBe('UiNode[] | null')
+            ->and($data['columns']['charts']['type'])->toBe('ChartType[] | null')
+            ->and($data['typeImports'])->toBe(['@js/types/ui' => ['UiNode'], '../packages/ui' => ['ChartType']])
+            ->and(sentAsJson($board->fresh()?->toArray()))
+            ->panels->toEqual([(object) ['kind' => 'node'], (object) ['kind' => 'node']])
+            ->charts->toEqual([(object) ['kind' => 'node']])
+            ->and(sentAsJson(UiBoard::query()->create()->fresh()?->toArray()))
+            ->panels->toBeNull()
+            ->charts->toBeNull();
+    });
+
+    test('lists an element by its override, and keeps today\'s answer for one without', function (string $element, string $type, array $imports) {
+        $info = LaravelTsPublish::toTsType(AsCollection::of($element));
+
+        expect($info['type'])->toBe($type)->and($info['customImports'])->toBe($imports);
+    })->with([
+        'an inherited override' => [Panel::class, 'UiNode[]', ['@js/types/ui' => ['UiNode']]],
+        'a composed class, its module named by the marker' => [Chart::class, 'ChartType[]', [ComposedClassTypes::marker(Chart::class) => ['ChartType']]],
+        'an override already nullable, listed whole' => [MaybeNode::class, '(UiNode | null)[]', ['@js/types/ui' => ['UiNode']]],
+        'an override with no import' => [Spark::class, 'string[]', []],
+        'a class with no override, which keeps its shape' => [Plain::class, '{ a: number }[]', []],
+        'a model with no override, which keeps unknown[]' => [User::class, 'unknown[]', []],
+    ]);
 });

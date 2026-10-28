@@ -12,6 +12,8 @@ return new class extends Migration
     {
         Schema::create('ui_boards', function (Blueprint $table) {
             $table->id();
+            $table->json('panels')->nullable();
+            $table->json('charts')->nullable();
             $table->timestamps();
         });
     }

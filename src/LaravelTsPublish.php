@@ -1918,7 +1918,7 @@ class LaravelTsPublish
 
     /**
      * Resolve a "CastClass:args" cast string. AsEnumCollection carries its enum;
-     * AsCollection resolves its mapped element to an inline shape when possible;
+     * AsCollection lists its mapped element by the element's override, inline shape or enum;
      * other cast classes resolve as the bare class (args stripped).
      *
      * @param  list<string>  $args
@@ -1940,6 +1940,11 @@ class LaravelTsPublish
 
             if ($mapClass !== '' && class_exists($mapClass)) {
                 $elementInfo = $this->toTsType($mapClass);
+
+                // An override may be a union, which listType() parenthesizes.
+                if (ClassTypeOverride::resolve($mapClass) !== null) {
+                    return [...$elementInfo, 'type' => TsTypeShape::listType([$elementInfo['type']])];
+                }
 
                 if (str_starts_with($elementInfo['type'], '{')) {
                     $elementInfo['type'] .= '[]';

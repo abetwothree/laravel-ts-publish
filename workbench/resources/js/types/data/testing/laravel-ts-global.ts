@@ -1763,6 +1763,8 @@ declare global {
         export interface UiBoard {
             // Columns
             id: number;
+            panels: UiNode[] | null;
+            charts: workbench.app.packages.ui.ChartType[] | null;
             created_at: string | null;
             updated_at: string | null;
             // Mutators

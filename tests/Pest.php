@@ -10,7 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 
@@ -165,4 +167,21 @@ function sharedProps(string $middleware): array
 function sentAsJson(mixed $value): mixed
 {
     return json_decode((string) json_encode($value), false);
+}
+
+/**
+ * The props Inertia sends for a page on a first visit or, given its component and comma-separated keys, on a partial
+ * reload of those keys.
+ */
+function inertiaProps(InertiaResponse $page, string $component = '', string $only = ''): stdClass
+{
+    $request = Request::create('/');
+    $request->headers->set('X-Inertia', 'true');
+
+    if ($only !== '') {
+        $request->headers->set('X-Inertia-Partial-Component', $component);
+        $request->headers->set('X-Inertia-Partial-Data', $only);
+    }
+
+    return json_decode((string) $page->toResponse($request)->getContent(), false)->props;
 }

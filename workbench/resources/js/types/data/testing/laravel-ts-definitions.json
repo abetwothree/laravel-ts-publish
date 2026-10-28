@@ -9214,6 +9214,14 @@
                     "type": "number"
                 },
                 {
+                    "name": "panels",
+                    "type": "UiNode[] | null"
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[] | null"
+                },
+                {
                     "name": "created_at",
                     "type": "string | null"
                 },

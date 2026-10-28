@@ -17,7 +17,8 @@ class UiDashboardController
 {
     public function index(Request $request): Response
     {
-        // #136's example, a nullable and a collected one, then a composed, an own and an inherited override.
+        // #136's example, a nullable and a collected one, then a composed, an own and an inherited override, and two
+        // typed closures Inertia sends only when a partial reload asks for them.
         return Inertia::render('Ui/Dashboard', [
             'chart' => new Panel,
             'widgets' => [new Panel, new Panel],
@@ -26,6 +27,8 @@ class UiDashboardController
             'composed' => new Chart,
             'gauge' => new Gauge,
             'pennies' => new Pennies(5),
+            'deferred' => Inertia::defer(fn (): Gauge => new Gauge),
+            'optional' => Inertia::optional(fn (): Chart => new Chart),
         ]);
     }
 }

@@ -2,14 +2,18 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiTypedClosurePageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -18,9 +22,12 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Gauge;
+use Workbench\App\Packages\Ui\Panel;
 use Workbench\App\Packages\Ui\Plain;
 
 afterEach(function () {
@@ -30,7 +37,7 @@ afterEach(function () {
 it('publishes the issue example as the override, with one import', function () {
     $data = pageData(UiDashboardController::class.'@index');
 
-    expect($data['pageType'])->toBe('Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount }')
+    expect($data['pageType'])->toBe('Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType }')
         ->and($data['externalImports'])->toMatchArray(['@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount']])
         ->and(new RouteTransformer(UiDashboardController::class)->typeImports)
         ->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
@@ -56,7 +63,61 @@ it('sends the issue example in the shapes it publishes', function () {
         ->and($sent->coll[0])->toBeObject()
         ->and($sent->composed)->toBeObject()
         ->and($sent->gauge)->toBeObject()
-        ->and($sent->pennies)->toBeObject();
+        ->and($sent->pennies)->toBeObject()
+        ->and($sent)->not->toHaveProperty('deferred')
+        ->and($sent)->not->toHaveProperty('optional')
+        ->and(inertiaProps(new UiDashboardController()->index(request()), 'Ui/Dashboard', 'deferred,optional'))
+        ->deferred->toBeObject()
+        ->optional->toBeObject();
+});
+
+it('keeps an override and its import through a typed closure', function () {
+    $data = pageData(UiTypedClosurePageController::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { gauge: UiGauge, deferred?: UiGauge, optional?: ChartType, panel: UiNode | null, maybe: UiNode | null, plain: { a: number } }')
+        ->and($data['externalImports'])->toBe([
+            '@js/types/ui' => ['UiGauge', 'UiNode'],
+            ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+        ])
+        ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+it('keeps each typed closure\'s own override import where only its declared type answers', function (string $declared, array $expected) {
+    $return = new AstParser()->parseSource("<?php return fn (): {$declared} => app('ui.node');")[0];
+
+    expect($return)->toBeInstanceOf(Return_::class)
+        ->and(new ResourceAstAnalyzer(new ReflectionClass(UiNodeResource::class), null)->resolve($return->expr))->toBe($expected);
+})->with([
+    'an own override' => ['\\'.Gauge::class, ['type' => 'UiGauge', 'customImports' => ['@js/types/ui' => ['UiGauge']], 'optional' => false]],
+    'a composed class, its module named by the marker' => [
+        '\\'.Chart::class, ['type' => 'ChartType', 'customImports' => [ComposedClassTypes::marker(Chart::class) => ['ChartType']], 'optional' => false],
+    ],
+    'a nullable inherited override' => ['?\\'.Panel::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false]],
+    'an override already nullable, its null kept once' => [
+        '?\\'.MaybeNode::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false],
+    ],
+    'a class with no override, which keeps its shape' => ['\\'.Plain::class, ['type' => '{ a: number }', 'optional' => false]],
+]);
+
+// The closures read a container id, so the oracle binds each one to a value of its declared class.
+it('sends each typed closure in the shape it publishes', function () {
+    app()->bind('ui.gauge', fn (): Gauge => new Gauge);
+    app()->bind('ui.chart', fn (): Chart => new Chart);
+    app()->bind('ui.panel', fn (): Panel => new Panel);
+    app()->bind('ui.maybe', fn (): MaybeNode => new MaybeNode);
+    app()->bind('ui.plain', fn (): Plain => new Plain);
+    $page = new UiTypedClosurePageController()->index();
+    $sent = inertiaProps($page);
+
+    expect($sent)->gauge->toBeObject()
+        ->panel->toBeObject()
+        ->maybe->toBeObject()
+        ->plain->toEqual((object) ['a' => 1])
+        ->and($sent)->not->toHaveProperty('deferred')
+        ->and($sent)->not->toHaveProperty('optional')
+        ->and(inertiaProps($page, 'Ui/TypedClosures', 'deferred,optional'))
+        ->deferred->toBeObject()
+        ->optional->toBeObject();
 });
 
 it('publishes a new of an overridden class in a resource and in shared data', function () {

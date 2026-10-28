@@ -1,3 +1,4 @@
+import type { UiNode } from '@js/types/ui';
 import type { ChartType } from '../packages/ui';
 
 /**
@@ -8,6 +9,8 @@ import type { ChartType } from '../packages/ui';
 export interface UiBoard
 {
     id: number;
+    panels: UiNode[] | null;
+    charts: ChartType[] | null;
     created_at: string | null;
     updated_at: string | null;
     /** A chart, by a getter closure that declares its class. */

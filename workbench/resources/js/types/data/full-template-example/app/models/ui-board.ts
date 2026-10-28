@@ -1,3 +1,4 @@
+import type { UiNode } from '@js/types/ui';
 import type { ChartType } from '../packages/ui';
 
 /**
@@ -9,6 +10,8 @@ export interface UiBoard
 {
     // Columns
     id: number;
+    panels: UiNode[] | null;
+    charts: ChartType[] | null;
     created_at: string | null;
     updated_at: string | null;
     // Mutators

@@ -24,6 +24,8 @@ use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUniqueStringIds;
 use Illuminate\Database\Eloquent\Model;
@@ -131,8 +133,9 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
-     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive or an enum cast.
-     * An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null.
+     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast or a
+     * list cast. An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null, and
+     * `AsCollection` and `AsEnumCollection` return null before they map an element, whose type may hold a null.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {
@@ -146,7 +149,10 @@ class ModelAttributeResolver
 
         $class = Str::before($cast, ':');
 
-        return enum_exists($class) || ! (class_exists($class) || interface_exists($class));
+        return enum_exists($class)
+            || is_a($class, AsCollection::class, true)
+            || is_a($class, AsEnumCollection::class, true)
+            || ! (class_exists($class) || interface_exists($class));
     }
 
     /**

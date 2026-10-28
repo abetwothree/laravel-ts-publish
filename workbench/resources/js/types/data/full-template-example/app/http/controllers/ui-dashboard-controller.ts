@@ -3,7 +3,7 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 import type { UiAmount, UiGauge, UiNode } from '@js/types/ui';
 import type { ChartType } from '../../packages/ui';
 
-export type IndexPageProps = Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount };
+export type IndexPageProps = Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType };
 
 export const index = annotatePageProps<IndexPageProps>()(defineRoute({
     name: 'ui.dashboard',

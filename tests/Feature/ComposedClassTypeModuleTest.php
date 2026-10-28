@@ -617,7 +617,7 @@ describe('imports a composed type from its module in each publisher', function (
         $transformer = new ModelTransformer(UiBoard::class);
         $data = $transformer->data()->toArray();
 
-        expect($data['typeImports'])->toBe(['../packages/ui' => ['ChartType']])
+        expect($data['typeImports'])->toBe(['@js/types/ui' => ['UiNode'], '../packages/ui' => ['ChartType']])
             ->and($data['appends']['chart']['type'] ?? $data['mutators']['chart']['type'] ?? null)->toBe('ChartType')
             ->and(sentAsJson(UiBoard::query()->create()->fresh()?->toArray())->chart)->toBeObject();
 
