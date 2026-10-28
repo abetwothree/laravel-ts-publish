@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -936,7 +937,7 @@ class ResourceTransformer extends CoreTransformer
         foreach ($this->customImports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$types),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$types),
             ));
 
             if ($kept === []) {

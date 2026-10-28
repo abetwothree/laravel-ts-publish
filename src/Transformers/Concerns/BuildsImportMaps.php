@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
-use Illuminate\Support\Str;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
@@ -55,7 +55,7 @@ trait BuildsImportMaps
             if ($spelledIn !== null && count($names) > 1) {
                 $names = array_filter(
                     $names,
-                    static fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$spelledIn),
+                    static fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$spelledIn),
                 );
             }
 

@@ -18,3 +18,11 @@ it('joins import maps, each name once per path, names and paths sorted', functio
         ['@ui' => ['UiNode'], 'ts-publish:class-type:App\\Chart' => ['ChartType']],
     ],
 ]);
+
+it('reads the names an import map binds, an aliased one by its alias, in the map order', function () {
+    expect(ImportMaps::localName('ChartType as UiChartType'))->toBe('UiChartType')
+        ->and(ImportMaps::localName('UiNode'))->toBe('UiNode')
+        ->and(ImportMaps::localNames([]))->toBe([])
+        ->and(ImportMaps::localNames(['@ui' => ['UiNode', 'ChartType as UiChartType'], '../enums' => ['StatusType']]))
+        ->toBe(['UiNode', 'UiChartType', 'StatusType']);
+});

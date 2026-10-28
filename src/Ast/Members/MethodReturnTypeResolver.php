@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
@@ -275,7 +276,10 @@ final class MethodReturnTypeResolver
         $spelled = [];
 
         foreach ($imports as $path => $names) {
-            $kept = array_filter(array_unique($names), fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $type));
+            $kept = array_filter(
+                array_unique($names),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), $type),
+            );
 
             if ($kept !== []) {
                 $spelled[$path] = array_values($kept);

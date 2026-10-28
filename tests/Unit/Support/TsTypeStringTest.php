@@ -1130,6 +1130,8 @@ describe('importsCover', function () {
         "a composed class's marker" => ['ChartType | null', ['ts-publish:class-type:App\\Chart' => ['ChartType']], true],
         'a name no import brings' => ['{ a: UiNode; owner: User }', ['@ui/a' => ['UiNode']], false],
         'a name with no imports' => ['UiLocal', [], false],
+        'an aliased name, by its alias' => ['UiChartType[]', ['@ui' => ['ChartType as UiChartType']], true],
+        'an aliased name, by the name it aliases' => ['ChartType', ['@ui' => ['ChartType as UiChartType']], false],
     ]);
 });
 

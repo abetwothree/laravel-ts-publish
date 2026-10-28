@@ -115,7 +115,7 @@ class TsTypeString
      */
     public function importsCover(string $type, array $customImports): bool
     {
-        return ! $this->shapeValueHasUnimportableToken($type, array_merge(...array_values($customImports)));
+        return ! $this->shapeValueHasUnimportableToken($type, ImportMaps::localNames($customImports));
     }
 
     /**

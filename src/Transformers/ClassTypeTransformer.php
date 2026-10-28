@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -140,7 +141,7 @@ class ClassTypeTransformer extends CoreTransformer
 
         foreach ($this->typeImports as $path => $names) {
             foreach ($names as $name) {
-                $paths[Str::afterLast($name, ' as ')][] = $path;
+                $paths[ImportMaps::localName($name)][] = $path;
             }
         }
 

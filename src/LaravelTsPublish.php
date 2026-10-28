@@ -72,7 +72,7 @@ use UnitEnum;
  *    type: string,
  *    enums: list<string>,
  *    enumTypes: list<string>,
- *    classes: list<class-string>,
+ *    classes: list<string>,
  *    customImports: array<string, list<string>>,
  *    enumFqcns: list<class-string>,
  *    classFqcns: list<class-string>,
@@ -425,7 +425,6 @@ class LaravelTsPublish
 
         // 5. Any other existing class
         if (class_exists($phpType)) {
-            /** @var class-string $name */
             $name = class_basename($phpType);
             $result['type'] = $name;
             $result['classes'] = [$name];
@@ -2749,11 +2748,10 @@ class LaravelTsPublish
      */
     protected function shapeTypeInfo(array $info): array
     {
-        $imported = array_map(
-            fn (string $name): string => Str::afterLast($name, ' as '),
-            array_merge(...array_values($info['customImports'])),
-        );
-        $collides = array_intersect([...$info['classes'], ...$info['enumTypes']], $imported) !== [];
+        $collides = array_intersect(
+            [...$info['classes'], ...$info['enumTypes']],
+            ImportMaps::localNames($info['customImports']),
+        ) !== [];
 
         return ['type' => $info['type'], 'customImports' => $collides ? [] : $info['customImports']];
     }
@@ -2771,10 +2769,8 @@ class LaravelTsPublish
             return false;
         }
 
-        $own = array_merge(...array_values($arm['customImports']));
-
         return array_any(
-            array_diff(array_merge(...array_values($merged)), $own),
+            array_diff(ImportMaps::localNames($merged), ImportMaps::localNames($arm['customImports'])),
             fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $arm['type']),
         );
     }

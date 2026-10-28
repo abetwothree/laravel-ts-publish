@@ -254,7 +254,7 @@ class ModelMetadataTransformer extends CoreTransformer
             $from = ComposedClassTypes::importPath($path, $this->namespacePath);
 
             foreach ($names as $name) {
-                $local = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+                $local = ImportMaps::localName($name);
 
                 if (isset($seen[$local]) && $seen[$local] !== $from) {
                     throw new InvalidArgumentException(

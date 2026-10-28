@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -429,7 +430,7 @@ final class AnalysisComposer
         foreach ($imports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn($this->localName($name), ...$types),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$types),
             ));
 
             if ($kept === []) {
@@ -442,16 +443,6 @@ final class AnalysisComposer
         }
 
         return $imports;
-    }
-
-    /**
-     * The local name an import specifier binds — the alias when it carries `Original as Alias`.
-     */
-    private function localName(string $specifier): string
-    {
-        $position = strpos($specifier, ' as ');
-
-        return $position === false ? $specifier : substr($specifier, $position + 4);
     }
 
     /**

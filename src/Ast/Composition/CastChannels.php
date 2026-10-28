@@ -10,8 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Closure;
-use Illuminate\Support\Str;
 
 /**
  * Fits each key a `#[TsCasts]` entry retypes to the text that entry publishes.
@@ -71,7 +71,7 @@ final class CastChannels
 
         foreach ($bound as $path => $names) {
             foreach ($names as $name) {
-                $paths[Str::afterLast($name, ' as ')][] = (string) $path;
+                $paths[ImportMaps::localName($name)][] = (string) $path;
             }
         }
 
@@ -79,7 +79,7 @@ final class CastChannels
             $path = (string) $path;
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => in_array($path, $paths[Str::afterLast($name, ' as ')] ?? [$path], true),
+                fn (string $name): bool => in_array($path, $paths[ImportMaps::localName($name)] ?? [$path], true),
             ));
 
             if ($kept === []) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 
 /**
  * Static types for one provider, restricted to what the transformer needs to validate and render a payload.
@@ -40,15 +41,8 @@ final readonly class ModelMetadataAnalysis
      */
     public function importedNames(?string $key = null): array
     {
-        $names = [];
-
-        foreach ([$this->typeImports, $key === null ? [] : $this->docblockImports[$key] ?? []] as $imports) {
-            foreach ($imports as $imported) {
-                foreach ($imported as $name) {
-                    $names[] = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
-                }
-            }
-        }
+        $docblock = $key === null ? [] : $this->docblockImports[$key] ?? [];
+        $names = [...ImportMaps::localNames($this->typeImports), ...ImportMaps::localNames($docblock)];
 
         return array_values(array_unique($names));
     }
