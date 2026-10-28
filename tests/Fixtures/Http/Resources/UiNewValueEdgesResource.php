@@ -10,7 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\Plain;
 
 /**
@@ -26,7 +26,7 @@ class UiNewValueEdgesResource extends JsonResource
             'every_way' => new EveryWayNode,
             'stamp' => new Stamp,
             'maybe_node' => $request->boolean('node') ? new MaybeNode : null,
-            'default_panel' => $this->when(true, fn ($panel = new Panel) => $panel),
+            'default_gauge' => $this->when(true, fn ($gauge = new Gauge) => $gauge),
             'model' => new InheritingChildModel,
             'plain' => new Plain,
             'default_resource' => $this->when(true, fn ($node = new UiNodeResource(null)) => $node),

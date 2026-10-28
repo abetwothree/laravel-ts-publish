@@ -45,15 +45,18 @@ it('sends the issue example in the shapes it publishes', function () {
         return json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), false)->props;
     };
 
-    expect($props(true)->chart)->toBeObject()
-        ->and($props(true)->widgets)->toBeArray()->toHaveCount(2)
-        ->and($props(true)->widgets[0])->toBeObject()
-        ->and($props(true)->maybe)->toBeObject()
+    $sent = $props(true);
+
+    expect($sent->chart)->toBeObject()
+        ->and($sent->widgets)->toBeArray()->toHaveCount(2)
+        ->and($sent->widgets[0])->toBeObject()
+        ->and($sent->maybe)->toBeObject()
         ->and($props(false)->maybe)->toBeNull()
-        ->and($props(true)->coll)->toBeArray()->toHaveCount(2)
-        ->and($props(true)->composed)->toBeObject()
-        ->and($props(true)->gauge)->toBeObject()
-        ->and($props(true)->pennies)->toBeObject();
+        ->and($sent->coll)->toBeArray()->toHaveCount(2)
+        ->and($sent->coll[0])->toBeObject()
+        ->and($sent->composed)->toBeObject()
+        ->and($sent->gauge)->toBeObject()
+        ->and($sent->pennies)->toBeObject();
 });
 
 it('publishes a new of an overridden class in a resource and in shared data', function () {
@@ -102,12 +105,12 @@ it('publishes a new of an overridden class in every shape a resource reads it', 
         'every_way' => 'UiNode',
         'stamp' => 'UiStamp',
         'maybe_node' => 'UiNode | null',
-        'default_panel?' => 'UiNode',
+        'default_gauge?' => 'UiGauge',
         'model' => 'unknown',
         'plain' => 'unknown',
         'default_resource?' => 'null',
     ])->and(new ResourceTransformer(UiNewValueEdgesResource::class)->typeImports)
-        ->toBe(['@js/types/ui' => ['UiNode', 'UiStamp']]);
+        ->toBe(['@js/types/ui' => ['UiGauge', 'UiNode', 'UiStamp']]);
 });
 
 // An override states the frontend's type, so the oracle checks only the shapes a key's publication adds.
@@ -116,7 +119,7 @@ it('sends a new of an overridden class in every shape a resource reads it', func
 
     expect($body(['node' => 1])->maybe_node)->toBeObject()
         ->and($body([])->maybe_node)->toBeNull()
-        ->and($body([])->default_panel)->toBeObject();
+        ->and($body([])->default_gauge)->toBeObject();
 });
 
 it('publishes a new an untyped helper returns as its override, with its import', function () {
