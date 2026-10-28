@@ -812,9 +812,9 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Which existing class-type barrel exports outlive this run, by namespace path and filename. While a flag skips a
-     * phase that writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own stale
-     * ones; otherwise only those another phase wrote in that namespace this run, dropping a class that stopped composing.
+     * Which existing class-type barrel exports outlive this run, by namespace path and filename. While a flag skips
+     * a phase that writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own
+     * stale ones; otherwise only those another phase wrote in that namespace this run, so a stale one drops out.
      *
      * @return Closure(string, string): bool
      */
