@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
@@ -1009,6 +1010,19 @@ describe('an overridden member of a docblock shape', function () {
             ->toBe(['panel' => 'UiNode', 'nested' => '{ panel: unknown }'])
             ->and($this->service->parseDocblockReturnArrayShape(new ReflectionMethod(UiPanelResource::class, 'shaped')))
             ->toBe(['chart' => 'ChartType', 'panel' => 'UiNode', 'gauges' => 'UiGauge[]']);
+
+        // A value object's shape answers as a docblock's does, and the readers leave toTsType()'s own answer alone.
+        $useMap = ['GaugeToneHolder' => GaugeToneHolder::class];
+        $holder = '{ gauge: unknown; tone: unknown; n: number }';
+
+        expect($this->service->resolvePhpDocTypeToTs('array{h: GaugeToneHolder}', $useMap, ''))->toBe("{ h: {$holder} }")
+            ->and($this->service->resolvePhpDocTypeToTs('GaugeToneHolder', $useMap, ''))->toBe($holder)
+            ->and($this->service->resolvePhpDocTypeToTs('list<GaugeToneHolder>', $useMap, ''))->toBe("{$holder}[]")
+            ->and($this->service->parseArrayShapeToTsTypes('array{h: GaugeToneHolder}', $useMap, ''))->toBe(['h' => $holder])
+            ->and($this->service->toTsType(GaugeToneHolder::class))->toMatchArray([
+                'type' => '{ gauge: UiGauge; tone: UiToneDto; n: number }',
+                'customImports' => ['@js/types/ui' => ['UiGauge', 'UiToneDto']],
+            ]);
     });
 });
 

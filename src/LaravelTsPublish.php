@@ -162,8 +162,8 @@ class LaravelTsPublish
     protected array $useStatementsCache = [];
 
     /**
-     * Whether a docblock shape keeps a member its own custom imports bring in. Off under a reader that returns a type
-     * string alone, whose caller has nowhere to put an import; see withoutShapeImports().
+     * Whether a shape, a docblock's or a value object's, keeps a member its own custom imports bring in. Off under a
+     * reader that returns a type string alone, whose caller has nowhere to put an import; see withoutShapeImports().
      */
     private bool $shapesCarryImports = true;
 
@@ -2021,7 +2021,7 @@ class LaravelTsPublish
         foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
             $shape = $this->shapeTypeInfo($info);
 
-            if (TsTypeString::importsCover($shape['type'], $shape['customImports'])) {
+            if ($this->shapeKeeps($shape)) {
                 return $shape;
             }
         }
@@ -2713,7 +2713,7 @@ class LaravelTsPublish
      */
     protected function keptShapeMember(array $info): array
     {
-        return TsTypeString::importsCover($info['type'], $this->shapesCarryImports ? $info['customImports'] : [])
+        return $this->shapeKeeps($info)
             ? ['type' => $info['type'], 'customImports' => $info['customImports']]
             : ['type' => 'unknown', 'customImports' => []];
     }
@@ -3090,6 +3090,17 @@ class LaravelTsPublish
             $fqcn = $prefix.'\\'.$item->name->toString();
             $map[$alias] = $fqcn;
         }
+    }
+
+    /**
+     * Whether a shape, a docblock's or a value object's, keeps a member: its own custom imports bring in every name it
+     * spells, and withoutShapeImports() has not turned them off.
+     *
+     * @param  ShapeTypeInfo  $info
+     */
+    private function shapeKeeps(array $info): bool
+    {
+        return TsTypeString::importsCover($info['type'], $this->shapesCarryImports ? $info['customImports'] : []);
     }
 
     /**
