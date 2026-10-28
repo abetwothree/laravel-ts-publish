@@ -40,11 +40,16 @@ use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Error;
 use PhpParser\Node;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use PhpParser\Node\Param;
+use PhpParser\Node\PropertyItem;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\GroupUse;
 use PhpParser\Node\Stmt\Namespace_;
+use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
@@ -794,13 +799,10 @@ class LaravelTsPublish
             return $declaringClass;
         }
 
-        foreach ($this->flattenTraits($declaringClass) as $trait) {
-            if ($trait->getFileName() === $methodFile) {
-                return $trait;
-            }
-        }
-
-        return $declaringClass; // @codeCoverageIgnore
+        return $this->traitDeclaring(
+            $declaringClass,
+            static fn (ReflectionClass $trait): bool => $trait->getFileName() === $methodFile,
+        ) ?? $declaringClass;
     }
 
     /**
@@ -2014,7 +2016,7 @@ class LaravelTsPublish
         $var = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
         $read = $var === null || $var === '' ? $declared : $this->declaredOrDocblockTypes(
             $declared,
-            fn (): array => $this->resolveDocblockTypeStringAgainst($var, $property->getDeclaringClass()),
+            fn (): array => $this->resolveDocblockTypeStringAgainst($var, $this->propertyDeclaringFileClass($property)),
         );
 
         // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
@@ -2196,6 +2198,26 @@ class LaravelTsPublish
         }
 
         return $traits;
+    }
+
+    /**
+     * The ReflectionClass whose file declares a property, as methodDeclaringFileClass() finds a method's: a trait's
+     * property reports the class using the trait as its declaring class, and the trait's docblock as its own.
+     *
+     * @return ReflectionClass<object>
+     */
+    protected function propertyDeclaringFileClass(ReflectionProperty $property): ReflectionClass
+    {
+        $class = $property->getDeclaringClass();
+        $name = $property->getName();
+
+        // Reflection cannot tell a class's redeclaration of its trait's property from the trait's, docblock included.
+        if ($class->getTraitNames() === [] || $this->declaresProperty($class, $name)) {
+            return $class;
+        }
+
+        return $this->traitDeclaring($class, fn (ReflectionClass $trait): bool => $this->declaresProperty($trait, $name))
+            ?? $class;
     }
 
     /**
@@ -3090,6 +3112,46 @@ class LaravelTsPublish
             $fqcn = $prefix.'\\'.$item->name->toString();
             $map[$alias] = $fqcn;
         }
+    }
+
+    /**
+     * The first of a class's traits, its traits' own traits included, that declares a member by the given test.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  Closure(ReflectionClass<object>): bool  $declares
+     * @return ReflectionClass<object>|null
+     */
+    private function traitDeclaring(ReflectionClass $class, Closure $declares): ?ReflectionClass
+    {
+        return array_find($this->flattenTraits($class), $declares);
+    }
+
+    /**
+     * Whether a class's or trait's own source declares a property, as a property statement or a promoted parameter.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function declaresProperty(ReflectionClass $class, string $name): bool
+    {
+        $file = $class->getFileName();
+        $node = $file === false ? null : new NodeFinder()->findFirst(
+            resolve(AstParser::class)->parseFile($file),
+            fn (Node $node): bool => $node instanceof ClassLike && $node->namespacedName?->toString() === $class->getName(),
+        );
+
+        if (! $node instanceof ClassLike) {
+            return false; // @codeCoverageIgnore
+        }
+
+        $promoted = $node->getMethod('__construct')->params ?? [];
+
+        return array_any(
+            $node->getProperties(),
+            fn (Property $statement): bool => array_any($statement->props, fn (PropertyItem $item): bool => $item->name->toString() === $name),
+        ) || array_any(
+            $promoted,
+            fn (Param $param): bool => $param->isPromoted() && $param->var instanceof Variable && $param->var->name === $name,
+        );
     }
 
     /**

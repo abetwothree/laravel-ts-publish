@@ -27,6 +27,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Gauge as ClashGauge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeBox;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeRack;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeShelf;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeStack;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
@@ -867,6 +872,26 @@ describe("an overridden member of a value object's shape", function () {
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
             ],
         ]);
+    });
+
+    test("reads a property's @var against the file that declares it, a trait's or the class's own", function (string $class, string $type, array $imports) {
+        expect($this->service->toTsType($class))->toMatchArray(['type' => $type, 'customImports' => $imports]);
+    })->with([
+        'a trait the class uses' => [GaugeShelf::class, '{ n: number; gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+        'a trait a trait the class uses uses' => [GaugeStack::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+        "the class's own redeclaration of its trait's" => [GaugeRack::class, '{ gauges: { x: number }[] }', []],
+        "a trait's promoted constructor parameter" => [GaugeBox::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+    ]);
+
+    test("sends a trait property's members in the shape it publishes", function () {
+        $shelf = new GaugeShelf;
+        $shelf->gauges = [new UiGauge];
+        $rack = new GaugeRack;
+        $rack->gauges = [new ClashGauge];
+
+        expect(sentAsJson($shelf))->n->toBe(1)->gauges->toHaveCount(1)
+            ->and(sentAsJson($shelf)->gauges[0])->toBeObject()
+            ->and(sentAsJson($rack)->gauges[0])->x->toBe(1);
     });
 
     test("keeps today's unknown for a member whose override names a type with no import", function () {
