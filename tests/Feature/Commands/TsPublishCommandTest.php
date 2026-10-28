@@ -1115,6 +1115,28 @@ test('ts:publish --source with a composed class publishes its module alone', fun
     }
 });
 
+test('ts:publish --source with a watched contributor file republishes each scanned module composed from it', function (string $file, array $modules) {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-contributor-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    $directory = "$outputDir/workbench/app/packages/ui";
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--source' => workbench_path($file)])
+            ->assertSuccessful();
+
+        expect(array_map(basename(...), glob("$directory/*.ts") ?: []))->toBe($modules)
+            ->and(file_get_contents("$directory/chart.ts"))
+            ->toContain('export interface ChartType extends UiHello, UiIcon, UiNode {}');
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+})->with([
+    'a parent class' => ['app/Packages/Ui/Node.php', ['chart.ts', 'dial.ts']],
+    'an interface' => ['app/Packages/Ui/HasIcon.php', ['chart.ts']],
+    'a trait' => ['app/Packages/Ui/Concerns/AnnouncesHello.php', ['chart.ts']],
+]);
+
 test('ts:publish --source with a class that composes only while class types are enabled fails when they are not', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.class_types.enabled', false);

@@ -54,6 +54,30 @@ final class ComposedClassTypes
     }
 
     /**
+     * Each composed class the class-types collector scans, with the classes, traits and interfaces declaring the
+     * overrides it composes: the watcher lists their files, and publishing one by source republishes the module.
+     *
+     * @return array<class-string, list<class-string>>
+     */
+    public static function scanned(): array
+    {
+        if (! self::enabled()) {
+            return [];
+        }
+
+        /** @var ClassTypesCollector $collector */
+        $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
+
+        $scanned = [];
+
+        foreach ($collector->collect() as $class) {
+            $scanned[$class] = array_column(ClassTypeOverride::resolve($class)['contributors'] ?? [], 'declaredBy');
+        }
+
+        return $scanned;
+    }
+
+    /**
      * The interface name a composed class publishes as: its basename, suffixed `Type`.
      */
     public static function typeName(string $fqcn): string

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
@@ -15,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
-use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
@@ -261,19 +259,10 @@ class WatcherJsonWriter
      */
     protected function collectClassTypePaths(): array
     {
-        if (! ComposedClassTypes::enabled()) {
-            return [];
-        }
-
-        /** @var ClassTypesCollector $collector */
-        $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
-
         $classes = [];
 
-        foreach ($collector->collect() as $fqcn) {
-            $contributors = ClassTypeOverride::resolve($fqcn)['contributors'] ?? [];
-
-            array_push($classes, $fqcn, ...array_column($contributors, 'declaredBy'));
+        foreach (ComposedClassTypes::scanned() as $class => $declaredBy) {
+            array_push($classes, $class, ...$declaredBy);
         }
 
         return array_values(array_map(

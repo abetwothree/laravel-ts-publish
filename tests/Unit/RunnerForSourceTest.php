@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
@@ -22,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 
@@ -35,7 +37,11 @@ use Workbench\App\Models\ExcludedModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Laravel13Connection;
 use Workbench\App\Packages\Audit\Models\AuditTrail;
+use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Concerns\AnnouncesHello;
 use Workbench\App\Packages\Ui\Dial;
+use Workbench\App\Packages\Ui\HasIcon;
+use Workbench\App\Packages\Ui\Node;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
@@ -162,6 +168,31 @@ test('generates a composed class module from its FQCN, with no barrel', function
         ->and($runner->classTypeGenerators->first()->transformer->typeName)->toBe('DialType')
         ->and($runner->classTypeModularBarrels)->toBe([]);
 });
+
+test('republishes each scanned composed class a source lends its override to', function (string $source, array $classes) {
+    $runner = new RunnerForSource($source);
+    $runner->run();
+
+    expect($runner->classTypeGenerators->map(fn (ClassTypeGenerator $generator): string => $generator->findable)->all())
+        ->toBe($classes)
+        ->and($runner->classTypeModularBarrels)->toBe([]);
+})->with([
+    'a parent class' => [Node::class, [Chart::class, Dial::class]],
+    'an interface' => [HasIcon::class, [Chart::class]],
+    'a trait' => [AnnouncesHello::class, [Chart::class]],
+    'a composed class declaring its own' => [Dial::class, [Dial::class]],
+]);
+
+test('throws for an interface no scanned composed class reads an override from', function () {
+    $runner = new RunnerForSource(Arrayable::class);
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: '.Arrayable::class);
+
+test('throws for a contributor while class type publishing is disabled', function () {
+    $runner = new RunnerForSource(Node::class);
+    $runner->shouldPublishClassTypes = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\App\Packages\Ui\Node: class types are disabled');
 
 test('throws for a composed class when class type publishing is disabled', function () {
     $runner = new RunnerForSource(Dial::class);

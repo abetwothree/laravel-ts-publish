@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
@@ -73,7 +74,8 @@ class RunnerForSource extends BaseRunner
 
         $fqcn = $this->resolveSourceToFqcn();
 
-        if (! class_exists($fqcn)) {
+        // The watcher lists the trait and interface files a composed class reads its override from, so they publish too.
+        if (! class_exists($fqcn) && ! interface_exists($fqcn) && ! trait_exists($fqcn)) {
             throw new InvalidArgumentException("Class does not exist: {$fqcn}");
         }
 
@@ -146,14 +148,18 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateBroadcastEvent($fqcn);
-        } elseif ($this->validateClassType($reflection)) {
+        } else {
+            $composed = $this->composedClassesDecidedBy($reflection);
+
+            if ($composed === []) {
+                throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
+            }
+
             if (! $this->shouldPublishClassTypes) {
                 throw new InvalidArgumentException("Nothing to publish for {$fqcn}: class types are disabled");
             }
 
-            $this->generateClassType($fqcn);
-        } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
+            $this->generateClassTypes($composed);
         }
     }
 
@@ -282,18 +288,35 @@ class RunnerForSource extends BaseRunner
     }
 
     /**
-     * Generate a composed class's module from its FQCN.
+     * The composed classes whose module the source decides: the source itself when it composes, and each scanned
+     * composed class reading an override it declares, as the watcher lists its file for them.
      *
-     * @param  class-string  $fqcn  The fully qualified name of a class whose override composes.
+     * @param  ReflectionClass<object>  $reflection
+     * @return list<class-string>
      */
-    protected function generateClassType(string $fqcn): void
+    protected function composedClassesDecidedBy(ReflectionClass $reflection): array
     {
-        /** @var ClassTypeGenerator $generator */
-        $generator = resolve(
-            Config::string('ts-publish.class_types.generator_class', ClassTypeGenerator::class),
-            ['findable' => $fqcn],
-        );
+        $fqcn = $reflection->getName();
+        $readers = array_keys(array_filter(
+            ComposedClassTypes::scanned(),
+            static fn (array $declaredBy): bool => in_array($fqcn, $declaredBy, true),
+        ));
 
-        $this->classTypeGenerators = collect([$generator]);
+        return array_values(array_unique([...($this->validateClassType($reflection) ? [$fqcn] : []), ...$readers]));
+    }
+
+    /**
+     * Generate each composed class's module from its FQCN.
+     *
+     * @param  list<class-string>  $classes  The fully qualified names of classes whose override composes.
+     */
+    protected function generateClassTypes(array $classes): void
+    {
+        $generatorClass = Config::string('ts-publish.class_types.generator_class', ClassTypeGenerator::class);
+
+        /** @var Collection<int, ClassTypeGenerator> $generators */
+        $generators = collect($classes)->map(static fn (string $fqcn): mixed => resolve($generatorClass, ['findable' => $fqcn]));
+
+        $this->classTypeGenerators = $generators;
     }
 }
