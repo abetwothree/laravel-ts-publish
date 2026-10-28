@@ -189,9 +189,9 @@ Laravel's `AsEnumCollection::of()`, `AsCollection::of()` and `AsCollection::usin
 `CastClass:arguments`. Step 1b handles one only when the text before the first colon is an existing class, so
 `decimal:2` and `encrypted:array` fall through to the later steps, though a model's `decimal:2` cast never reaches them:
 `castToTsType()` answers it first. `AsEnumCollection` publishes a list of the enum's type, with the enum's import.
-`AsCollection` publishes a list of its map class when that class resolves to an inline shape or an enum, and `unknown[]`
-otherwise, because a bare class token has no import channel. Any other cast class resolves as the bare class, arguments
-ignored.
+`AsCollection` publishes a list of its map class when that class has an override, with the override's custom imports, or
+resolves to an inline shape or an enum, and `unknown[]` otherwise, because a bare class token has no import channel. Any
+other cast class resolves as the bare class, arguments ignored.
 
 ### Database types come from the schema grammar
 
@@ -273,6 +273,8 @@ which lists `ModelInspector`'s attributes.
 
 A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
 `null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+`AsCollection` and `AsEnumCollection` take the top-level test: they return `null` before they map an element, whose type
+may hold a `null` of its own.
 
 ## Relation discovery
 
