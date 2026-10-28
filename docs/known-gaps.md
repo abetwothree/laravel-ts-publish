@@ -698,7 +698,9 @@ broadcast event writes its public properties, and an Inertia prop its `toArray()
 `Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
 sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
 model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
-publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`.
+publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`, or give the
+class a `#[TsType]`: a `new` of a class with an override, its own or an inherited one, publishes the override whoever
+serializes it. A model's override does not apply to a `new` of the model.
 
 ### A class's override skips an interface it repeats from its parent or beside an interface that extends it
 

@@ -650,7 +650,9 @@ A numeric key goes through two layers:
   `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()`
   and a spread `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a
   key whose result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as
-  does `ValueResolver::resolveSerializedNew()`, and `toTsType()` sets it on a class's own JSON shape, which
+  does `ValueResolver::resolveSerializedNew()` for each `new` it types, a class's override included, which answers
+  ahead of the string and `Arrayable` rules for any class but a model or an API resource. `toTsType()` sets it on a
+  class's own JSON shape, which
   `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable` value as an
   array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
   it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
