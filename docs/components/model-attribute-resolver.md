@@ -102,7 +102,8 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
   [known gaps](../known-gaps.md#a-classs-override-skips-an-interface-it-repeats-from-its-parent-or-beside-an-interface-that-extends-it).
 - **Composition**: one contributor publishes as written, with its import. Two or more publish the composed
   `{Basename}Type` when each is one type reference, optionally dotted or generic, and not a keyword
-  (`TsTypeString::isExtendable()`).
+  (`TsTypeString::isExtendable()`), and `ComposedClassTypes::composes()` holds: class types are enabled and the
+  class-types collector's filters and `#[TsExclude]` admit the class, the same question that decides its module.
   Otherwise the nearest wins and the run warns which were left out.
 - **Classes another publisher owns**: a model, API resource, broadcast event, form request or enum publishes its own
   override, else its nearest parent class's, and never composes, since its publisher writes the file a composed module

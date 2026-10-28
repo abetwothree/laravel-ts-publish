@@ -35,7 +35,8 @@ The helpers and the test that pins them live in these files:
   `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
   `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.
 - [`Support\ComposedClassTypes`](../../src/Support/ComposedClassTypes.php): a composed type's name and custom-import
-  marker, and the composed classes values reached this run. Static and `@internal`.
+  marker, the composed classes values reached this run, and whether a class may compose at all. That last asks the
+  configured class-types collector, so the scan and the composer share one filter. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 

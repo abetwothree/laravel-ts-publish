@@ -274,19 +274,27 @@ any other model.
 
 ### A composed class only a value reaches is not watched
 
-A composed class outside `class_types.additional_directories` gets its module when a published value reaches it, but
-`WatcherJsonWriter` lists the scanned classes only, as it does for models. Editing that class, or an ancestor's
-`#[TsType]`, therefore triggers no publish on its own; the next publish rebuilds the module, which is cached against
-those files. Add the class or its directory to `class_types.additional_directories` to watch it.
+`WatcherJsonWriter` lists each scanned composed class with the files its overrides come from. A composed class outside
+`class_types.additional_directories` gets its module when a published value reaches it, but neither it nor its
+ancestors are listed, as for a model published on demand. Editing one triggers no publish on its own; the next publish
+rebuilds the module, which is cached against those files. Add the class or its directory to
+`class_types.additional_directories` to watch it.
 
 ### A composed class beside another publisher's files can lose its barrel export
 
 A composed class's module shares its namespace's `index.ts` with any model, enum, API resource, form request or
 broadcast event there. Those phases rebuild the barrel from their own files and the class-type phase, which runs after
 them, adds its modules back, so a run that skips class types (`--only-enums`, say) leaves the module's export out, and
-a file importing `{Basename}Type` from that barrel fails `tsc` until the next full publish. A composed class in a
-controller's namespace replaces the route barrel's `export { default … }` lines with its own. Keep composed classes in
-a namespace of their own.
+a file importing `{Basename}Type` from that barrel fails `tsc` until the next full publish. Each full run also writes
+such a barrel twice, once without the module's export and once with it, so its mtime moves when nothing changed. A
+composed class in a controller's namespace replaces the route barrel's `export { default … }` lines with its own, and
+`ts:publish` warns. Keep composed classes in a namespace of their own.
+
+### A composed module that spells its own name, or imports one name twice, fails `tsc`
+
+A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with no import makes the interface extend
+itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
+make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
 
 ### A model class name containing an underscore can collide with a metadata companion
 

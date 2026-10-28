@@ -81,7 +81,8 @@ of them and writes through `writeModularPreserving()`:
 | A flag skips another `export *` barrel phase that config enables | All: this phase cannot tell its stale ones apart |
 | Otherwise | Each another phase wrote this run, or a failed metadata companion |
 
-So a full run drops the export of a class that stopped composing.
+A full run drops the export of a class that stopped composing only while another composed module remains in that
+directory: one with no module this run is not written at all, so its stale export stays.
 
 The other direction is not covered: see
 [known gaps](../known-gaps.md#a-composed-class-beside-another-publishers-files-can-lose-its-barrel-export).
