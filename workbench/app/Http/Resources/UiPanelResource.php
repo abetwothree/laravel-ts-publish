@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\UiTone;
+use Workbench\App\Packages\Ui\Board;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
 use Workbench\App\Packages\Ui\Panel;
@@ -15,7 +16,7 @@ use Workbench\App\Packages\Ui\Panel;
 /**
  * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
  * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
- * enum's own name.
+ * enum's own name; and a value object whose shape keeps each member's override.
  */
 class UiPanelResource extends JsonResource
 {
@@ -31,6 +32,7 @@ class UiPanelResource extends JsonResource
             'maybe_chart' => $request->boolean('chart') ? new Chart : null,
             'tone' => UiTone::Bright,
             'tone_resource' => EnumResource::make(UiTone::Bright),
+            'board' => $this->board(),
         ];
     }
 
@@ -48,5 +50,13 @@ class UiPanelResource extends JsonResource
     protected function dial(bool $flag): ?Dial
     {
         return $flag ? new Dial : null;
+    }
+
+    /**
+     * A board of charts, with no gauge.
+     */
+    protected function board(): Board
+    {
+        return new Board(charts: [new Chart, new Chart]);
     }
 }

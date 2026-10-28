@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
@@ -19,8 +20,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
@@ -65,6 +68,7 @@ use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Badge as UiBadge;
+use Workbench\App\Packages\Ui\Board as UiBoard;
 use Workbench\App\Packages\Ui\Chart as UiChart;
 use Workbench\App\Packages\Ui\Dial as UiDial;
 use Workbench\App\Packages\Ui\Gauge as UiGauge;
@@ -792,6 +796,86 @@ describe('Arrayable property-shape inference', function () {
         expect($type)->toContain('defaulted: number')
             ->and($type)->toContain('uninitialized?: number')
             ->and($type)->toContain('promoted: number');
+    });
+});
+
+describe("an overridden member of a value object's shape", function () {
+    test("keeps an overridden member of a value object's shape and its import", function () {
+        expect($this->service->toTsType(UiBoard::class))->toMatchArray([
+            'type' => '{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }',
+            'customImports' => [
+                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+            'keepsKeys' => true,
+        ]);
+    });
+
+    test('keeps an overridden member in each other shape read from public properties', function (Closure $fixture, string $type) {
+        expect($this->service->toTsType($fixture()::class))->toMatchArray([
+            'type' => $type,
+            'customImports' => ['@js/types/ui' => ['UiNode']],
+        ]);
+    })->with([
+        'an Arrayable with no shape docblock' => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                public function __construct(public UiPanel $panel = new UiPanel) {}
+
+                /** @return array<string, mixed> */
+                public function toArray(): array
+                {
+                    return ['panel' => $this->panel];
+                }
+            },
+            '{ panel: UiNode }',
+        ],
+        'a __toString() class with an untyped property' => [
+            fn (): Stringable => new class implements Stringable
+            {
+                public $loose = 1;
+
+                public function __construct(public UiPanel $panel = new UiPanel) {}
+
+                public function __toString(): string
+                {
+                    return 'panel';
+                }
+            },
+            '{ loose: unknown; panel: UiNode }',
+        ],
+    ]);
+
+    test('keeps today\'s answer for a member no override answers, and a documented list', function () {
+        expect($this->service->toTsType(OwnedBoard::class))->toMatchArray([
+            'type' => '{ owner: unknown; owners: unknown[]; node: UiNode; board: { panel: UiNode; chart: ChartType; '
+                .'gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; tags: string[] }',
+            'customImports' => [
+                '@js/types/ui' => ['UiNode', 'UiGauge', 'UiAmount'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+        ]);
+    });
+
+    test('sends each member in the shape it publishes', function () {
+        $user = new User()->forceFill(['name' => 'Ada']);
+        $sent = sentAsJson(new OwnedBoard($user, [$user], new InheritingChildModel()->forceFill(['id' => 1]), tags: ['a']));
+
+        expect($sent)
+            ->owner->toBeObject()
+            ->owners->toBeArray()->toHaveCount(1)
+            ->node->toBeObject()
+            ->board->toBeObject()
+            ->tags->toBe(['a'])
+            ->and($sent->board)
+            ->panel->toBeObject()
+            ->chart->toBeObject()
+            ->gauge->toBeNull()
+            ->total->toBeObject()
+            ->charts->toBe([])
+            ->and(sentAsJson(new UiBoard(gauge: new UiGauge, charts: [new UiChart])))
+            ->gauge->toBeObject()
+            ->charts->toHaveCount(1);
     });
 });
 

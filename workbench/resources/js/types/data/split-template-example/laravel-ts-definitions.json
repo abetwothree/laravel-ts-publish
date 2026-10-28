@@ -490,6 +490,11 @@
                     "name": "charts",
                     "type": "ChartType[]",
                     "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
+                    "optional": false
                 }
             ]
         },
@@ -21169,6 +21174,11 @@
                 {
                     "name": "tone_resource",
                     "type": "AsEnum<typeof UiTone>",
+                    "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
                     "optional": false
                 }
             ]

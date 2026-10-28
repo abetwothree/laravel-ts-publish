@@ -5721,7 +5721,7 @@ declare global {
         /**
          * Fixture: values of overridden classes, through declared helpers and through `new`, so the file imports each override
          * and each composed class's `…Type` from its module; an overridden enum's case, and its `EnumResource`, which keeps the
-         * enum's own name.
+         * enum's own name; and a value object whose shape keeps each member's override.
          */
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
@@ -5732,6 +5732,7 @@ declare global {
             maybe_chart: app.packages.ui.ChartType | null;
             tone: UiToneDto;
             tone_resource: app.enums.UiToneType;
+            board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
@@ -6615,6 +6616,7 @@ declare global {
             dial: app.packages.ui.DialType;
             maybeChart: app.packages.ui.ChartType | null;
             charts: app.packages.ui.ChartType[];
+            board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
         }
         export interface UserNotification extends HasTimestamps {
             userId: number;

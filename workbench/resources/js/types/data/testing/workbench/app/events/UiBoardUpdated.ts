@@ -12,4 +12,5 @@ export interface UiBoardUpdated {
     dial: DialType;
     maybeChart: ChartType | null;
     charts: ChartType[];
+    board: { panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] };
 }

@@ -26,10 +26,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Broadcasting\BroadcastEvent;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
@@ -39,12 +41,16 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\UiTone;
+use Workbench\App\Events\UiBoardUpdated;
 use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
+use Workbench\App\Packages\Ui\Badge;
+use Workbench\App\Packages\Ui\Board;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Gauge;
 use Workbench\App\Packages\Ui\HasIcon;
 use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Pennies;
 use Workbench\App\Packages\Ui\Plain;
 
 afterEach(function () {
@@ -205,6 +211,44 @@ it('publishes a new an untyped helper returns as its override, with its import',
         ->and(sentAsJson(new UiUntypedHelperResource(null)->resolve(request()))->panel)->toBeObject();
 });
 
+it("keeps an overridden member of a value object's shape and its import in an event and a resource", function () {
+    $board = '{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }';
+    $event = app(BroadcastEventTransformer::class, ['findable' => UiBoardUpdated::class]);
+
+    expect($event->properties['board']['type'])->toBe($board)
+        ->and($event->typeImports)->toBe([
+            '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiIcon', 'UiNode'],
+            '../packages/ui' => ['ChartType', 'DialType'],
+        ])
+        ->and(resourceProps(UiPanelResource::class)['board'])->toBe($board)
+        ->and(new ResourceTransformer(UiPanelResource::class)->typeImports)->toBe([
+            '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode', 'UiToneDto'],
+            '../../packages/ui' => ['ChartType', 'DialType'],
+        ])
+        ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+it("sends a value object's overridden members from an event and a resource in the shapes they publish", function () {
+    $event = new UiBoardUpdated(new Panel, new Gauge, new Pennies(5), new Badge, board: new Board(gauge: new Gauge));
+    $broadcast = new BroadcastEvent($event);
+    $payload = sentAsJson(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
+    $resource = sentAsJson(new UiPanelResource(null)->resolve(request()));
+
+    expect($payload->board)
+        ->panel->toBeObject()
+        ->chart->toBeObject()
+        ->gauge->toBeObject()
+        ->total->toBeObject()
+        ->charts->toBe([])
+        ->and($resource->board)
+        ->panel->toBeObject()
+        ->chart->toBeObject()
+        ->gauge->toBeNull()
+        ->total->toBeObject()
+        ->charts->toBeArray()->toHaveCount(2)
+        ->and($resource->board->charts[0])->toBeObject();
+});
+
 it("imports an overridden enum case's type", function () {
     config()->set('ts-publish.output_to_files', false);
     $page = pageData(UiTonePageController::class.'@index');
@@ -212,7 +256,7 @@ it("imports an overridden enum case's type", function () {
 
     expect(resourceProps(UiPanelResource::class))->toMatchArray(['tone' => 'UiToneDto'])
         ->and(new ResourceWriter(new Filesystem)->write(new ResourceTransformer(UiPanelResource::class)))
-        ->toContain("import type { UiNode, UiToneDto } from '@js/types/ui';")
+        ->toContain("import type { UiAmount, UiGauge, UiNode, UiToneDto } from '@js/types/ui';")
         ->toContain('    tone: UiToneDto;')
         ->and($page['pageType'])->toBe('Inertia.SharedData & { tone: UiToneDto, tones: UiToneDto[] }')
         ->and($page['externalImports'])->toBe(['@js/types/ui' => ['UiToneDto']])
