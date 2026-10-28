@@ -259,7 +259,8 @@ class ModelMetadataTransformer extends CoreTransformer
                 if (isset($seen[$local]) && $seen[$local] !== $from) {
                     throw new InvalidArgumentException(
                         "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$from}]; "
-                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports.',
+                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports. '
+                        .'Where one is a composed class, give it a #[TsType] of its own with inherit: false instead.',
                     );
                 }
 

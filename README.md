@@ -175,7 +175,7 @@ Key capabilities include:
 - **Nullable relations**: singular relations get `| null` from their type and foreign key, configurable per type.
 - **Related models**: a model outside your configured directories publishes when a published model relates to it.
 - **Serialized casts**: a cast publishes what Laravel serializes, so `decimal:2` is a `string` and `timestamp` a `number`.
-- **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types every column that uses a custom cast class.
+- **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types any class, and every class inheriting it, wherever its values publish.
 - **Enum columns**: a parallel `{Model}Resource` interface types each enum column as a resolved `AsEnum<>` instance.
 - **Hidden columns**: `$hidden` attributes publish unless you turn on `models.exclude_hidden`.
 - **Laravel 13 attributes**: `#[Table]`, `#[Hidden]`, `#[Visible]`, `#[Appends]`, and `#[Connection]` apply with no setup.

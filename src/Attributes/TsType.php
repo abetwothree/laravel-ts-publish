@@ -7,7 +7,11 @@ namespace AbeTwoThree\LaravelTsPublish\Attributes;
 use Attribute;
 
 /**
- * Attribute to specify the custom TypeScript type for custom cast classes.
+ * Sets the TypeScript type that every value of a class publishes as, wherever the package meets one.
+ *
+ * Subclasses inherit it, as do classes using a trait or implementing an interface that carries one, so a contract is
+ * declared once. A class reached by two or more publishes `{Basename}Type`, one interface extending them all, where
+ * each can be extended; otherwise, and for a class the package publishes itself, such as a model, the nearest wins.
  *
  * Can receive a string directly:
  *

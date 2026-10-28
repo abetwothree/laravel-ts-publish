@@ -386,16 +386,18 @@ return [
     | Composed Class Types
     |--------------------------------------------------------------------------
     |
-    | A class that inherits two or more #[TsType] overrides from its traits,
-    | parents and interfaces publishes `{ClassName}Type`, an interface that
-    | extends them all, in a module that follows the class's namespace.
+    | A class with two or more #[TsType] overrides, its own and those of its
+    | traits, interfaces and parents, publishes `{ClassName}Type`: one
+    | interface extending them all, in a module that follows its namespace.
     |
     | A module is written for every composed class a published value
-    | reaches, and for each one in 'additional_directories', even when no
-    | value uses it yet. No directory is scanned by default. A class that
-    | 'excluded' or #[TsExclude] leaves out, or one outside 'included',
-    | does not compose, nor does any class while this is disabled: its
-    | values publish the nearest override instead.
+    | reaches, and for each one in 'additional_directories' (none by
+    | default), even when no value uses it yet.
+    |
+    | A non-empty 'included' is an allowlist of the classes that compose.
+    | A class outside it, or one 'excluded' or #[TsExclude] leaves out, gets
+    | no module, and its values publish its nearest override instead. So
+    | does every class while this is disabled.
     */
 
     'class_types' => [
