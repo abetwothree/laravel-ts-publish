@@ -997,7 +997,7 @@ describe('an overridden member of a docblock shape', function () {
         ]);
     });
 
-    test('keeps today\'s unknown for a model member and the type a type-string reader returns', function () {
+    test("keeps unknown for a model member, and the type-string readers' answers", function () {
         $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
 
         expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiBoardShapesResource::class), 'documentedOwner'))

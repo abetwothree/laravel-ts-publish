@@ -76,7 +76,8 @@ final readonly class ModelMetadataAnalysis
     }
 
     /**
-     * Payload keys whose type did not come from #[TsCasts] and so cannot carry an import of its own.
+     * Payload keys no #[TsCasts] entry typed, so no import path of their own covers them: only the inferred imports,
+     * and a docblock key's own override imports, may bring their names.
      *
      * @param  list<string>  $payloadKeys
      * @return list<string>

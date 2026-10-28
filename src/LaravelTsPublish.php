@@ -139,12 +139,6 @@ class LaravelTsPublish
     protected array $aliasExpansionStack = [];
 
     /**
-     * Whether a docblock shape keeps a member its own custom imports bring in. Off under a reader that returns a type
-     * string alone, whose caller has nowhere to put an import; see withoutShapeImports().
-     */
-    protected bool $shapesCarryImports = true;
-
-    /**
      * Per-class cache of resolved phpstan/psalm type aliases: FQCN => alias name => resolved
      * definition, or null when the class carries no such alias (cached to skip re-parsing its docblock).
      *
@@ -166,6 +160,12 @@ class LaravelTsPublish
      * @var array<string, array<string, class-string>>
      */
     protected array $useStatementsCache = [];
+
+    /**
+     * Whether a docblock shape keeps a member its own custom imports bring in. Off under a reader that returns a type
+     * string alone, whose caller has nowhere to put an import; see withoutShapeImports().
+     */
+    private bool $shapesCarryImports = true;
 
     /**
      * Set something to do when the publish command runs, using a callback Closure
@@ -2398,27 +2398,6 @@ class LaravelTsPublish
     }
 
     /**
-     * Run a docblock read for a caller that keeps only the type string, so a shape keeps no member an import alone
-     * makes valid and the reader answers as it did before shapes carried custom imports.
-     *
-     * @template T
-     *
-     * @param  Closure(): T  $read
-     * @return T
-     */
-    protected function withoutShapeImports(Closure $read): mixed
-    {
-        $carried = $this->shapesCarryImports;
-        $this->shapesCarryImports = false;
-
-        try {
-            return $read();
-        } finally {
-            $this->shapesCarryImports = $carried;
-        }
-    }
-
-    /**
      * The type a bare docblock name spells as an alias of the innermost alias context, or null when it is no alias.
      *
      * The definition resolves against the imports and aliases of the class that wrote it. An alias already being
@@ -3088,6 +3067,27 @@ class LaravelTsPublish
             /** @var class-string $fqcn */
             $fqcn = $prefix.'\\'.$item->name->toString();
             $map[$alias] = $fqcn;
+        }
+    }
+
+    /**
+     * Run a docblock read for a caller that keeps only the type string, so a shape keeps no member an import alone
+     * makes valid and the reader answers as it did before shapes carried custom imports.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    private function withoutShapeImports(Closure $read): mixed
+    {
+        $carried = $this->shapesCarryImports;
+        $this->shapesCarryImports = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->shapesCarryImports = $carried;
         }
     }
 
