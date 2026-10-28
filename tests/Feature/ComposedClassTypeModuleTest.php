@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
@@ -558,8 +557,6 @@ it('owns a controller a route names in another case', function () {
 });
 
 describe('imports a composed type from its module in each publisher', function () {
-    $sent = fn (mixed $value): mixed => json_decode((string) json_encode($value), false);
-
     /** Asserts no import line a transformer writes names a marker, and that its rehydrated snapshot still reports. */
     $resolvedAndReported = function (CoreTransformer $transformer, array $typeImports, array $classes): void {
         expect(array_filter(array_keys($typeImports), ComposedClassTypes::isMarker(...)))->toBe([])
@@ -567,11 +564,11 @@ describe('imports a composed type from its module in each publisher', function (
             ->and(unserialize(serialize($transformer))->composedClassTypes())->toBe($classes);
     };
 
-    it('in a broadcast event', function () use ($sent, $resolvedAndReported) {
+    it('in a broadcast event', function () use ($resolvedAndReported) {
         $transformer = new BroadcastEventTransformer(UiBoardUpdated::class);
         $event = new UiBoardUpdated(new Panel, new Gauge, new Pennies(5), new Badge, charts: [new Chart, new Chart]);
         $broadcast = new BroadcastEvent($event);
-        $payload = $sent(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
+        $payload = sentAsJson(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
 
         expect(array_slice(array_map(fn (array $property): string => $property['type'], $transformer->properties), -4))
             ->toBe(['chart' => 'ChartType', 'dial' => 'DialType', 'maybeChart' => 'ChartType | null', 'charts' => 'ChartType[]'])
@@ -587,9 +584,9 @@ describe('imports a composed type from its module in each publisher', function (
         $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class, Dial::class]);
     });
 
-    it('in an API resource', function () use ($sent, $resolvedAndReported) {
+    it('in an API resource', function () use ($resolvedAndReported) {
         $transformer = new ResourceTransformer(UiPanelResource::class);
-        $body = fn (bool $dial): mixed => $sent(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
+        $body = fn (bool $dial): mixed => sentAsJson(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
             ->toMatchArray(['chart' => 'ChartType', 'dial' => 'DialType | null', 'maybe_chart' => 'ChartType | null'])
@@ -601,13 +598,13 @@ describe('imports a composed type from its module in each publisher', function (
         $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class, Dial::class]);
     });
 
-    it('in an Inertia page', function () use ($sent, $resolvedAndReported) {
+    it('in an Inertia page', function () use ($resolvedAndReported) {
         Config::set('ts-publish.inertia.enabled', true);
 
         $transformer = new RouteTransformer(UiDashboardController::class);
         $request = Request::create('/ui/dashboard');
         $request->headers->set('X-Inertia', 'true');
-        $props = $sent(json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), true)['props']);
+        $props = sentAsJson(json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), true)['props']);
 
         expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
             ->and($props->chart)->toBeObject()
@@ -616,25 +613,23 @@ describe('imports a composed type from its module in each publisher', function (
         $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class]);
     });
 
-    it('in a model', function () use ($sent, $resolvedAndReported) {
+    it('in a model', function () use ($resolvedAndReported) {
         $transformer = new ModelTransformer(UiBoard::class);
         $data = $transformer->data()->toArray();
 
         expect($data['typeImports'])->toBe(['../packages/ui' => ['ChartType']])
             ->and($data['appends']['chart']['type'] ?? $data['mutators']['chart']['type'] ?? null)->toBe('ChartType')
-            ->and($sent(UiBoard::query()->create()->fresh()?->toArray())->chart)->toBeObject();
+            ->and(sentAsJson(UiBoard::query()->create()->fresh()?->toArray())->chart)->toBeObject();
 
         $resolvedAndReported($transformer, $data['typeImports'], [Chart::class]);
     });
 
-    it('in shared data', function () use ($sent) {
-        $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)->makePartial()->shouldAllowMockingProtectedMethods();
-        $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(UiShareMiddleware::class);
-        $shared = $analyzer->analyze();
+    it('in shared data', function () {
+        $shared = analyzeSharedDataFor(UiShareMiddleware::class);
 
         expect($shared['sharedPageProps'] ?? null)->toBe('{ node: UiNode, pennies: UiAmount, chart: ChartType }')
             ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/packages/ui' => ['ChartType'], '@js/types/ui' => ['UiAmount', 'UiNode']])
-            ->and($sent(new UiShareMiddleware()->share(request()))->chart)->toBeObject();
+            ->and(sentAsJson(new UiShareMiddleware()->share(request()))->chart)->toBeObject();
     });
 
     it('in a model metadata companion', function () use ($resolvedAndReported) {

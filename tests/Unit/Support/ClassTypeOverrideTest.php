@@ -224,21 +224,18 @@ it('reads a mis-cased composed class as its declared name', function () {
 });
 
 describe('a declared value of an overridden class publishes the override', function () {
-    /** What a JSON response sends for a value, decoded to objects and lists. */
-    $sent = fn (mixed $value): mixed => json_decode((string) json_encode($value), false);
-
-    it('in an API resource helper declaring the class', function () use ($sent) {
+    it('in an API resource helper declaring the class', function () {
         $result = resolve(AstEngine::class)->analyze(UiPanelHelperResource::class, 'toArray', null, 'tests/fixtures');
-        $body = $sent(new UiPanelHelperResource(null)->resolve(request()));
+        $body = sentAsJson(new UiPanelHelperResource(null)->resolve(request()));
 
         expect(array_column($result->properties, 'type', 'name')['panel'])->toBe('UiNode')
             ->and($result->typeImports)->toBe(['@js/types/ui' => ['UiNode']])
             ->and($body->panel)->toBeObject();
     });
 
-    it('in a @return list of the class', function () use ($sent) {
+    it('in a @return list of the class', function () {
         $result = resolve(AstEngine::class)->analyze(UiPanelHelperResource::class, 'toArray', null, 'tests/fixtures');
-        $body = $sent(new UiPanelHelperResource(null)->resolve(request()));
+        $body = sentAsJson(new UiPanelHelperResource(null)->resolve(request()));
 
         expect(array_column($result->properties, 'type', 'name')['panels'])->toBe('UiNode[]')
             ->and($body->panels)->toBeArray()->toHaveCount(2)
@@ -263,11 +260,11 @@ describe('a declared value of an overridden class publishes the override', funct
             ->and($props(false)->maybe)->toBeNull();
     });
 
-    it('in a broadcast event property', function () use ($sent) {
+    it('in a broadcast event property', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => UiBoardUpdated::class]);
         $event = new UiBoardUpdated(new Panel, new Gauge, new Pennies(5), new Badge);
         $broadcast = new BroadcastEvent($event);
-        $payload = $sent(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
+        $payload = sentAsJson(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
 
         expect(array_slice(array_map(fn (array $property): string => $property['type'], $transformer->properties), 0, 5))->toBe([
             'panel' => 'UiNode',
@@ -283,7 +280,7 @@ describe('a declared value of an overridden class publishes the override', funct
             ->and($payload->maybe)->toBeNull();
     });
 
-    describe('on a model', function () use ($sent) {
+    describe('on a model', function () {
         beforeEach(function () {
             Schema::dropIfExists('ui_readings');
             Schema::create('ui_readings', function (Blueprint $table) {
@@ -292,9 +289,9 @@ describe('a declared value of an overridden class publishes the override', funct
             });
         });
 
-        it('in a cast whose get() returns the class', function () use ($sent) {
+        it('in a cast whose get() returns the class', function () {
             $data = new ModelTransformer(UiReading::class)->data()->toArray();
-            $row = $sent(UiReading::query()->create(['pennies' => 5])->fresh()?->toArray());
+            $row = sentAsJson(UiReading::query()->create(['pennies' => 5])->fresh()?->toArray());
 
             expect($data['columns']['pennies']['type'])->toBe('UiAmount')
                 ->and($data['typeImports'])->toHaveKey('@js/types/ui')
@@ -302,9 +299,9 @@ describe('a declared value of an overridden class publishes the override', funct
                 ->and($row->pennies)->toBeObject();
         });
 
-        it('in a new-style accessor returning the class', function () use ($sent) {
+        it('in a new-style accessor returning the class', function () {
             $data = new ModelTransformer(UiReading::class)->data()->toArray();
-            $row = $sent(UiReading::query()->create(['pennies' => 5])->fresh()?->toArray());
+            $row = sentAsJson(UiReading::query()->create(['pennies' => 5])->fresh()?->toArray());
 
             expect($data['appends']['badge']['type'])->toBe('UiIcon')
                 ->and($data['typeImports']['@js/types/ui'] ?? [])->toContain('UiIcon')

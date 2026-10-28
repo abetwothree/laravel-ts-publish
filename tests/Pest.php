@@ -3,10 +3,14 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 
@@ -96,8 +100,69 @@ function analyzedImportNames(string $class, string $method = 'toArray'): array
     return $names;
 }
 
-/** Analyze one `Controller@action` through the page analyzer. */
+/**
+ * Analyze one `Controller@action` through the page analyzer.
+ *
+ * @phpstan-import-type InertiaPageData from InertiaPageAnalyzer
+ *
+ * @return InertiaPageData|null
+ */
 function pageData(string $uses): ?array
 {
     return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
+}
+
+/**
+ * Analyze one fixture middleware without touching the filesystem discovery pass.
+ *
+ * @phpstan-import-type SharedDataResult from InertiaSharedDataAnalyzer
+ *
+ * @param  class-string  $middlewareClass
+ * @return SharedDataResult|null
+ */
+function analyzeSharedDataFor(string $middlewareClass): ?array
+{
+    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
+        ->makePartial()
+        ->shouldAllowMockingProtectedMethods();
+
+    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn($middlewareClass);
+
+    return $analyzer->analyze();
+}
+
+/**
+ * Each property an API resource publishes, as `name => type`, `?` marking an optional key.
+ *
+ * @param  class-string<JsonResource>  $class
+ * @return array<string, string>
+ */
+function resourceProps(string $class): array
+{
+    $props = [];
+
+    foreach (new ResourceTransformer($class)->data()->properties as $name => $property) {
+        $props[$name.($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $props;
+}
+
+/**
+ * Each prop a share middleware publishes, as `name => type`, read from the type the shared data analyzer writes.
+ *
+ * @param  class-string  $middleware
+ * @return array<string, string>
+ */
+function sharedProps(string $middleware): array
+{
+    return array_column(TsTypeShape::members(analyzeSharedDataFor($middleware)['sharedPageProps'] ?? '') ?? [], 1, 0);
+}
+
+/**
+ * What PHP sends for a value, decoded as the frontend reads it.
+ */
+function sentAsJson(mixed $value): mixed
+{
+    return json_decode((string) json_encode($value), false);
 }

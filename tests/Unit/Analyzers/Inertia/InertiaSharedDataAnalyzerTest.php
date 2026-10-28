@@ -47,25 +47,6 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKi
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 
-/**
- * Analyze one fixture middleware without touching the filesystem discovery pass.
- *
- * @phpstan-import-type SharedDataResult from InertiaSharedDataAnalyzer
- *
- * @param  class-string  $middlewareClass
- * @return SharedDataResult|null
- */
-function analyzeSharedDataFor(string $middlewareClass): ?array
-{
-    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
-        ->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-
-    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn($middlewareClass);
-
-    return $analyzer->analyze();
-}
-
 afterEach(function () {
     JsonResource::flushState();
 });

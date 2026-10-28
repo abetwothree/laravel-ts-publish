@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
@@ -24,45 +22,6 @@ use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Plain;
-
-/**
- * Each property an API resource publishes, as `name => type`, `?` marking an optional key.
- *
- * @param  class-string<JsonResource>  $class
- * @return array<string, string>
- */
-function resourceProps(string $class): array
-{
-    $props = [];
-
-    foreach (new ResourceTransformer($class)->data()->properties as $name => $property) {
-        $props[$name.($property['optional'] ? '?' : '')] = $property['type'];
-    }
-
-    return $props;
-}
-
-/**
- * Each prop a share middleware publishes, as `name => type`, read from the type the shared data analyzer writes.
- *
- * @param  class-string  $middleware
- * @return array<string, string>
- */
-function sharedProps(string $middleware): array
-{
-    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)->makePartial()->shouldAllowMockingProtectedMethods();
-    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn($middleware);
-
-    return array_column(TsTypeShape::members($analyzer->analyze()['sharedPageProps'] ?? '') ?? [], 1, 0);
-}
-
-/**
- * What PHP sends for a value, decoded as the frontend reads it.
- */
-function sentAsJson(mixed $value): mixed
-{
-    return json_decode((string) json_encode($value), false);
-}
 
 afterEach(function () {
     JsonResource::flushState();
