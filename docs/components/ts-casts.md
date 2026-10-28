@@ -71,7 +71,11 @@ queue meets the displaced value. `ResourceTransformer::runAstAnalysis()` and
 for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can
 retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
 method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
-cast key's import channels with `forgetChannels()`.
+cast key's import channels with `forgetChannels()`. Shared data carries the custom imports its `@return` shape keeps
+only for a key no cast replaces, and drops an inferred import of a name a cast brings from another module, by the rule a
+resource's fit applies too (`CastChannels::withoutOtherPaths()`, which reads `X as Y` as `Y`). Unlike
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
+key there that names a model or an enum publishes the name with no import, not `unknown`.
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.

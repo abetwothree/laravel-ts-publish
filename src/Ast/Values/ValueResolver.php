@@ -8,8 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -43,6 +46,7 @@ use UnitEnum;
  * any other constant expression, such as a parameter default, by evaluating it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -77,6 +81,9 @@ final class ValueResolver
      * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
      * Returns null for anything not a resolvable constant.
      *
+     * A plain enum's case in a scope that carries no import types as the value it sends instead, while a retyped
+     * (overridden) enum's keeps its override, as `LaravelTsPublish::retypedEnumType()` answers.
+     *
      * @return ValueExpressionResult|null
      */
     public function resolveClassConstant(ClassConstFetch $expr, AnalysisScope $scope): ?array
@@ -107,9 +114,8 @@ final class ValueResolver
 
         $constantReflection = $classReflection->getReflectionConstant($constName);
 
-        // A scope that carries no import cannot import the enum, and the body fallback would drop the shape holding it.
-        if ($constantReflection === false || ($constantReflection->isEnumCase() && ! $scope->carriesImports)) {
-            return null;
+        if ($constantReflection === false) {
+            return null; // @codeCoverageIgnore
         }
 
         try {
@@ -118,6 +124,14 @@ final class ValueResolver
             // The initializer can reference another undefined constant; PHP evaluates a class
             // constant's value lazily, so that only surfaces here, not at class-load time.
             return null;
+        }
+
+        // A scope that carries no import cannot import an enum's own names, so a case types as the value it sends; a
+        // retyped enum's case keeps its override, whose custom import such a scope carries.
+        if ($constantReflection->isEnumCase() && $value instanceof UnitEnum && ! $scope->carriesImports
+            && LaravelTsPublish::retypedEnumType($className) === null
+        ) {
+            return EnumValueTypes::caseValue($value);
         }
 
         return $this->resolveConstantValue($value);
@@ -153,15 +167,15 @@ final class ValueResolver
             return $this->analyzeConstantArrayValue($value);
         }
 
-        // A constant's initializer may itself be another class's enum case (`Status::Live`),
-        // which getValue() hands back as the enum instance rather than a scalar.
+        // A constant's initializer may itself be another class's enum case (`Status::Live`), which getValue() hands
+        // back as the enum instance rather than a scalar. A case keeps its enum channel beside an override's import:
+        // the channel names the enum for a receiver or a wrap, and a sink drops a name the type never spells.
         if ($value instanceof UnitEnum) {
-            $enumFqcn = $value::class;
+            $info = LaravelTsPublish::toTsType($value::class);
 
             return [
-                'type' => LaravelTsPublish::toTsType($enumFqcn)['type'],
-                'optional' => false,
-                'directEnumFqcn' => $enumFqcn,
+                ...ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info),
+                'directEnumFqcn' => $value::class,
             ];
         }
 
@@ -245,15 +259,22 @@ final class ValueResolver
     /**
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
-     * A model declines, since its JSON depends on its runtime attributes, casts and hidden fields. So does a class
-     * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls. The value
-     * is an object, which an API resource's filter never enters, so it keeps its keys.
+     * X's override answers first, whoever serializes X, unless X is a model, whose JSON depends on its runtime
+     * attributes, casts and hidden fields, or an API resource, which publishes as itself.
+     *
+     * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
+     * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
+     * never enters, so it keeps its keys.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveSerializedNew(New_ $new): ?array
     {
-        $result = $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
+        $class = $new->class instanceof Name ? $new->class->toString() : null;
+
+        $result = $class !== null && ClassTypeOverride::appliesToNew($class)
+            ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
+            : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
 
         return $result === null ? null : [...$result, 'keepsKeys' => true];
     }
@@ -361,6 +382,8 @@ final class ValueResolver
         /** @var array<string, string> $types identity => type */
         $types = [];
         $embeddedEnumFqcns = [];
+        /** @var TypesImportMap $customImports */
+        $customImports = [];
 
         foreach ($value as $item) {
             $itemResult = $this->resolveConstantValue($item);
@@ -379,6 +402,7 @@ final class ValueResolver
 
             $types[$identity] = $itemResult['type'];
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$itemFqcns];
+            $customImports = ImportMaps::merge($customImports, $itemResult['customImports'] ?? []);
         }
 
         // Joined first, since listType() would keep one of two elements that print alike.
@@ -389,7 +413,7 @@ final class ValueResolver
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
-        return $result;
+        return $customImports === [] ? $result : [...$result, 'customImports' => $customImports];
     }
 
     /**
@@ -406,12 +430,15 @@ final class ValueResolver
     {
         $parts = [];
         $embeddedEnumFqcns = [];
+        /** @var TypesImportMap $customImports */
+        $customImports = [];
 
         foreach ($value as $key => $item) {
             $itemResult = $this->resolveConstantValue($item) ?? ValueResult::unknown();
             $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
+            $customImports = ImportMaps::merge($customImports, $itemResult['customImports'] ?? []);
         }
 
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
@@ -422,7 +449,7 @@ final class ValueResolver
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
-        return $result;
+        return $customImports === [] ? $result : [...$result, 'customImports' => $customImports];
     }
 
     /**

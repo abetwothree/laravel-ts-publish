@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
@@ -18,8 +20,23 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Gauge as ClashGauge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeBox;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeRack;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeShelf;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\GaugeStack;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeToneHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
@@ -29,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyCon
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -55,7 +73,9 @@ use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
@@ -63,6 +83,17 @@ use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
+use Workbench\App\Packages\Ui\Badge as UiBadge;
+use Workbench\App\Packages\Ui\Board as UiBoard;
+use Workbench\App\Packages\Ui\Chart as UiChart;
+use Workbench\App\Packages\Ui\Dial as UiDial;
+use Workbench\App\Packages\Ui\Gauge as UiGauge;
+use Workbench\App\Packages\Ui\HasIcon as UiHasIcon;
+use Workbench\App\Packages\Ui\Node as UiNodeBase;
+use Workbench\App\Packages\Ui\Panel as UiPanel;
+use Workbench\App\Packages\Ui\Pennies as UiPennies;
+use Workbench\App\Packages\Ui\Plain as UiPlain;
+use Workbench\App\Packages\Ui\Spark as UiSpark;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\CapabilitiesDto;
 use Workbench\App\ValueObjects\Coordinate;
@@ -149,6 +180,23 @@ describe('toTsType', function () {
         expect($result['type'])->toBe('InlineCustomType')
             ->and($result['customImports'])->toBeEmpty();
     });
+
+    test('toTsType publishes a class override from the class, its traits, parents and interfaces', function (string $class, string $type) {
+        ClassTypeOverride::flush();
+
+        expect($this->service->toTsType($class)['type'])->toBe($type);
+    })->with([
+        'its own' => [UiNodeBase::class, 'UiNode'],
+        'a parent\'s' => [UiPanel::class, 'UiNode'],
+        'an interface itself' => [UiHasIcon::class, 'UiIcon'],
+        'an interface\'s' => [UiBadge::class, 'UiIcon'],
+        'a trait\'s, an interface\'s and a parent\'s, composed' => [UiChart::class, 'ChartType'],
+        'its own and a parent\'s, composed' => [UiDial::class, 'DialType'],
+        'its own with inherit: false' => [UiGauge::class, 'UiGauge'],
+        'its own, which cannot be extended' => [UiSpark::class, 'string'],
+        'a plain parent\'s' => [UiPennies::class, 'UiAmount'],
+        'none, the control' => [UiPlain::class, '{ a: number }'],
+    ]);
 
     test('toTsType resolves enum class to Type alias', function () {
         $result = $this->service->toTsType(Status::class);
@@ -324,6 +372,19 @@ describe('toTsType', function () {
 
     test('toTsType resolves void to void', function () {
         expect($this->service->toTsType('void')['type'])->toBe('void');
+    });
+});
+
+describe('retypedEnumType', function () {
+    test('answers the type an override or a custom_ts_mappings entry gives an enum, and null otherwise', function () {
+        config()->set('ts-publish.custom_ts_mappings', [MappedLevel::class => 'string']);
+        TypeScriptMap::reset();
+
+        expect($this->service->retypedEnumType(UiTone::class))->toBe('UiToneDto')
+            ->and($this->service->retypedEnumType(MappedLevel::class))->toBe('string')
+            ->and($this->service->retypedEnumType(Status::class))->toBeNull()
+            ->and($this->service->retypedEnumType(UiGauge::class))->toBeNull()
+            ->and($this->service->retypedEnumType('Missing\\Enum'))->toBeNull();
     });
 });
 
@@ -764,6 +825,245 @@ describe('Arrayable property-shape inference', function () {
         expect($type)->toContain('defaulted: number')
             ->and($type)->toContain('uninitialized?: number')
             ->and($type)->toContain('promoted: number');
+    });
+});
+
+describe("an overridden member of a value object's shape", function () {
+    test("keeps an overridden member of a value object's shape and its import", function () {
+        expect($this->service->toTsType(UiBoard::class))->toMatchArray([
+            'type' => '{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }',
+            'customImports' => [
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+            'keepsKeys' => true,
+        ]);
+    });
+
+    test('keeps an overridden member in each other shape read from public properties', function (Closure $fixture, string $type) {
+        expect($this->service->toTsType($fixture()::class))->toMatchArray([
+            'type' => $type,
+            'customImports' => ['@js/types/ui' => ['UiNode']],
+        ]);
+    })->with([
+        'an Arrayable with no shape docblock' => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                public function __construct(public UiPanel $panel = new UiPanel) {}
+
+                /** @return array<string, mixed> */
+                public function toArray(): array
+                {
+                    return ['panel' => $this->panel];
+                }
+            },
+            '{ panel: UiNode }',
+        ],
+        'a __toString() class with an untyped property' => [
+            fn (): Stringable => new class implements Stringable
+            {
+                public $loose = 1;
+
+                public function __construct(public UiPanel $panel = new UiPanel) {}
+
+                public function __toString(): string
+                {
+                    return 'panel';
+                }
+            },
+            '{ loose: unknown; panel: UiNode }',
+        ],
+        'a nullable member whose override already holds null, its null kept once' => [
+            fn (): MaybeHolder => new MaybeHolder,
+            '{ child: UiNode | null }',
+        ],
+    ]);
+
+    test('keeps today\'s answer for a member no override answers, and a documented list', function () {
+        expect($this->service->toTsType(OwnedBoard::class))->toMatchArray([
+            'type' => '{ owner: unknown; owners: unknown[]; node: UiNode; board: { panel: UiNode; chart: ChartType; '
+                .'gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; tags: string[] }',
+            'customImports' => [
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+        ]);
+    });
+
+    test("reads a property's @var against the file that declares it, a trait's or the class's own", function (string $class, string $type, array $imports) {
+        expect($this->service->toTsType($class))->toMatchArray(['type' => $type, 'customImports' => $imports]);
+    })->with([
+        'a trait the class uses' => [GaugeShelf::class, '{ n: number; gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+        'a trait a trait the class uses uses' => [GaugeStack::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+        "the class's own redeclaration of its trait's" => [GaugeRack::class, '{ gauges: { x: number }[] }', []],
+        "a trait's promoted constructor parameter" => [GaugeBox::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
+    ]);
+
+    test("sends a trait property's members in the shape it publishes", function () {
+        $shelf = new GaugeShelf;
+        $shelf->gauges = [new UiGauge];
+        $rack = new GaugeRack;
+        $rack->gauges = [new ClashGauge];
+
+        expect(sentAsJson($shelf))->n->toBe(1)->gauges->toHaveCount(1)
+            ->and(sentAsJson($shelf)->gauges[0])->toBeObject()
+            ->and(sentAsJson($rack)->gauges[0])->x->toBe(1);
+    });
+
+    test("keeps today's unknown for a member whose override names a type with no import", function () {
+        $holder = new class
+        {
+            public function __construct(public Ambient $local = new Ambient) {}
+        };
+
+        expect($this->service->toTsType(Ambient::class))->toMatchArray(['type' => 'UiLocal', 'customImports' => []])
+            ->and($this->service->toTsType($holder::class))->toMatchArray(['type' => '{ local: unknown }', 'customImports' => []]);
+    });
+
+    test('keeps unknown for a native union whose model or enum arm is spelled like the override beside it', function () {
+        $holder = new class
+        {
+            public function __construct(
+                public Person|User $either = new Person,
+                public ChartKind|UiChart $kind = new UiChart,
+                public UiChart $chart = new UiChart,
+            ) {}
+        };
+
+        expect($this->service->toTsType($holder::class))->toMatchArray([
+            'type' => '{ either: unknown; kind: unknown; chart: ChartType }',
+            'customImports' => [ComposedClassTypes::marker(UiChart::class) => ['ChartType']],
+        ]);
+    });
+
+    test('sends each member in the shape it publishes', function () {
+        $user = new User()->forceFill(['name' => 'Ada']);
+        $sent = sentAsJson(new OwnedBoard($user, [$user], new InheritingChildModel()->forceFill(['id' => 1]), tags: ['a']));
+
+        expect($sent)
+            ->owner->toBeObject()
+            ->owners->toBeArray()->toHaveCount(1)
+            ->node->toBeObject()
+            ->board->toBeObject()
+            ->tags->toBe(['a'])
+            ->and($sent->board)
+            ->panel->toBeObject()
+            ->chart->toBeObject()
+            ->gauge->toBeNull()
+            ->total->toBeObject()
+            ->charts->toBe([])
+            ->and(sentAsJson(new UiBoard(gauge: new UiGauge, charts: [new UiChart])))
+            ->gauge->toBeObject()
+            ->charts->toHaveCount(1);
+    });
+});
+
+describe('an overridden member of a docblock shape', function () {
+    test('keeps an overridden member of a docblock shape and its import', function () {
+        expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiPanelResource::class), 'shaped'))->toMatchArray([
+            'type' => '{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }',
+            'customImports' => [
+                '@js/types/ui' => ['UiGauge', 'UiNode'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+        ]);
+    });
+
+    test('keeps a value object that keeps its members\' overrides in a JsonSerializable\'s docblock shape', function () {
+        expect($this->service->toTsType(BoardJson::class))->toMatchArray([
+            'type' => '{ board: { panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; '
+                .'title: string }',
+            'customImports' => [
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+                ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
+            ],
+        ]);
+    });
+
+    test('keeps an overridden member in each other docblock shape', function (Closure $fixture, string $type) {
+        expect($this->service->toTsType($fixture()::class))->toMatchArray([
+            'type' => $type,
+            'customImports' => ['@js/types/ui' => ['UiNode']],
+        ]);
+    })->with([
+        "an Arrayable's toArray() shape, beside a published model" => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                /** @return array{panel: UiPanel, owner: User} */
+                public function toArray(): array
+                {
+                    return ['panel' => new UiPanel, 'owner' => new User];
+                }
+            },
+            '{ panel: UiNode; owner: unknown }',
+        ],
+        "an Arrayable's toArray() tuple" => [
+            fn (): Arrayable => new class implements Arrayable
+            {
+                /** @return list{UiPanel, int} */
+                public function toArray(): array
+                {
+                    return [new UiPanel, 1];
+                }
+            },
+            '[UiNode, number]',
+        ],
+        "a value object's @var shapes, nested and listed" => [
+            fn (): object => new class
+            {
+                /** @var array{panel: UiPanel, n: int} */
+                public array $meta = [];
+
+                /** @var list<array{panel: UiPanel}> */
+                public array $rows = [];
+            },
+            '{ meta: { panel: UiNode; n: number }; rows: { panel: UiNode }[] }',
+        ],
+    ]);
+
+    test('keeps unknown for a union whose model or enum arm is spelled like the override beside it', function () {
+        $shaped = new class implements Arrayable
+        {
+            /**
+             * @return array{either: Person|User, listed: list<Person|User>, kind: ChartKind|UiChart, chart: UiChart}
+             */
+            public function toArray(): array
+            {
+                return [];
+            }
+        };
+
+        expect($this->service->toTsType($shaped::class))->toMatchArray([
+            'type' => '{ either: unknown; listed: unknown; kind: unknown; chart: ChartType }',
+            'customImports' => [ComposedClassTypes::marker(UiChart::class) => ['ChartType']],
+        ]);
+    });
+
+    test("keeps unknown for a model member, and the type-string readers' answers", function () {
+        $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
+
+        expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiBoardShapesResource::class), 'documentedOwner'))
+            ->toMatchArray(['type' => '{ owner: unknown; panel: UiNode }', 'customImports' => ['@js/types/ui' => ['UiNode']]])
+            ->and($this->service->resolvePhpDocTypeToTs('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
+            ->toBe('{ panel: unknown; nested: { panel: unknown } }')
+            ->and($this->service->resolvePhpDocTypeToTs('list<array{panel: UiPanel}>', $useMap, ''))->toBe('{ panel: unknown }[]')
+            ->and($this->service->parseArrayShapeToTsTypes('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
+            ->toBe(['panel' => 'UiNode', 'nested' => '{ panel: unknown }'])
+            ->and($this->service->parseDocblockReturnArrayShape(new ReflectionMethod(UiPanelResource::class, 'shaped')))
+            ->toBe(['chart' => 'ChartType', 'panel' => 'UiNode', 'gauges' => 'UiGauge[]']);
+
+        // A value object's shape answers as a docblock's does, and the readers leave toTsType()'s own answer alone.
+        $useMap = ['GaugeToneHolder' => GaugeToneHolder::class];
+        $holder = '{ gauge: unknown; tone: unknown; n: number }';
+
+        expect($this->service->resolvePhpDocTypeToTs('array{h: GaugeToneHolder}', $useMap, ''))->toBe("{ h: {$holder} }")
+            ->and($this->service->resolvePhpDocTypeToTs('GaugeToneHolder', $useMap, ''))->toBe($holder)
+            ->and($this->service->resolvePhpDocTypeToTs('list<GaugeToneHolder>', $useMap, ''))->toBe("{$holder}[]")
+            ->and($this->service->parseArrayShapeToTsTypes('array{h: GaugeToneHolder}', $useMap, ''))->toBe(['h' => $holder])
+            ->and($this->service->toTsType(GaugeToneHolder::class))->toMatchArray([
+                'type' => '{ gauge: UiGauge; tone: UiToneDto; n: number }',
+                'customImports' => ['@js/types/ui' => ['UiGauge', 'UiToneDto']],
+            ]);
     });
 });
 
@@ -3214,8 +3514,8 @@ class SelfTypedTraitNode
 #[TsType('ParentTypedBase')]
 class ParentTypedBase {}
 
-/** Types members as `parent` and `self`, which PHP 8.4 reflects as written. */
-#[TsType('ParentTypedChild')]
+/** Types members as `parent` and `self`, which PHP 8.4 reflects as written; its own override stands alone. */
+#[TsType('ParentTypedChild', inherit: false)]
 class ParentTypedChild extends ParentTypedBase
 {
     public ?parent $origin = null;

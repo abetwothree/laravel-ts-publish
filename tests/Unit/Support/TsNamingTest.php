@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
 
 use function Orchestra\Testbench\workbench_path;
 
+use Workbench\App\Enums\ShirtSize;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\MerchantResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -312,5 +315,19 @@ describe('resourceTypeName', function () {
 
     test('a class that does not exist falls back to its basename', function () {
         expect($this->service->resourceTypeName('App\\Http\\Resources\\NopeResource'))->toBe('NopeResource');
+    });
+});
+
+describe('enumName', function () {
+    test('falls back to the enum basename', function () {
+        expect($this->service->enumName(Status::class))->toBe('Status');
+    });
+
+    test('#[TsEnum(name:)] renames the exported const', function () {
+        expect($this->service->enumName(ShirtSize::class))->toBe('Size');
+    });
+
+    test('keeps the rename of an enum whose #[TsType] overrides its values', function () {
+        expect($this->service->enumName(RenamedTone::class))->toBe('Shade');
     });
 });

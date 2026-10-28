@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportab
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BranchedAstModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingCastAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
@@ -23,6 +24,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedMod
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenShapeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionListMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
@@ -290,6 +294,41 @@ test('requires TsCasts for inferred types whose imports cannot be inferred', fun
             'model [Workbench\\App\\Models\\User] property [role] has type [RoleType] whose import cannot be inferred',
         );
 });
+
+test('imports an override a docblock shape names, at its top level and nested, and none for a key a cast replaces', function () {
+    config()->set('ts-publish.model_metadata.provider_class', OverriddenShapeMetadataProvider::class);
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'chart' => 'ChartType',
+        'nested' => '{ panel: UiNode; n: number }',
+        'label' => 'string',
+        'gauge' => 'string',
+    ])->and($data->typeImports)->toBe([
+        '../packages/ui' => ['ChartType'],
+        '@js/types/ui' => ['UiNode'],
+    ])->and($data->properties['nested']['n'])->toBe(1);
+});
+
+test("checks a docblock key against its own imports, never another key's", function () {
+    config()->set('ts-publish.model_metadata.provider_class', CollidingOverrideMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))->toThrow(
+        InvalidArgumentException::class,
+        'model [Workbench\\App\\Models\\User] property [either] has type [User | User] whose import cannot be inferred',
+    );
+});
+
+test('imports both arms of a docblock union of an override and an enum, which spell no shared name', function (string $provider, string $key, string $type) {
+    config()->set('ts-publish.model_metadata.provider_class', $provider);
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([$key => $type, 'status' => 'StatusType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType'], '@js/types/ui' => ['UiNode']]);
+})->with([
+    'bare' => [OverriddenUnionMetadataProvider::class, 'either', 'UiNode | StatusType'],
+    'listed' => [OverriddenUnionListMetadataProvider::class, 'listed', '(UiNode | StatusType)[]'],
+]);
 
 test('normalizes supported nested metadata values', function () {
     $provider = new ConfigurableModelMetadataProvider([

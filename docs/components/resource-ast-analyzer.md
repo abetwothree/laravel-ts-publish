@@ -120,8 +120,9 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 ### What the method's `@return` may fill
 
 `ReturnShapeRefiner` reads a `@return array{…}` shape per key, or a `@return array<string, V>` value type for every
-unfilled key. A `key?:` entry also marks the key optional. It skips a value whose token needs an import, since the
-shape map holds strings and cannot carry the FQCN (`TsTypeString::shapeValueHasUnimportableToken()`).
+unfilled key. A `key?:` entry also marks the key optional. It fills a value only where
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds at each
+leaf, and adds those imports to the analysis, so an override fills with its import while a model or an enum is skipped.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`
@@ -645,17 +646,19 @@ A numeric key goes through two layers:
   and `'6' =>` print `"42"` and `"6"`. A literal whose stored keys run 0 to n-1 is a list, which
   `ValueResolver::resolveListLiteral()` types.
 - **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
-  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher,
-  with the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's
-  `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()`
-  and a spread `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a
-  key whose result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as
-  does `ValueResolver::resolveSerializedNew()`, and `toTsType()` sets it on a class's own JSON shape, which
-  `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable` value as an
-  array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
-  it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
-  since the re-index rewrites no other arm. So does an inline literal with a key that is not a number and no spread,
-  when each member holding one does (`InlineObjectResult::keepsMemberKeys()`): the filter keeps a named key's keys.
+  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher, with
+  the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's `$preserveKeys`.
+  `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()` and a spread
+  `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a key whose
+  result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as does
+  `ValueResolver::resolveSerializedNew()` for each `new` it types. A class's override answers there ahead of the string
+  and `Arrayable` rules, unless the class is a model or an API resource. `toTsType()` sets it on a class's own JSON
+  shape, which `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable`
+  value as an array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A
+  union carries it when each arm that holds an object literal or a `Record<number, …>`
+  (`TsTypeShape::holdsKeyedObject()`) does, since the re-index rewrites no other arm. So does an inline literal with a
+  key that is not a number and no spread, when each member holding one does (`InlineObjectResult::keepsMemberKeys()`):
+  the filter keeps a named key's keys.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 
@@ -763,12 +766,18 @@ value degrades to `unknown`.
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |
+| A composed class, whose override joins two or more | yes | `customImports`, keyed by `ComposedClassTypes::marker()` |
 | A non-`Model` class token, one `toTsType()` did not turn into a shape | **no**, `unknown` | none: no published file to import |
 | `void`, `never`, `unknown`, `unknown \| null` or an empty type | **no**, `unknown` | none: no TypeScript shape |
 
 A single-entry channel needs exactly one FQCN of its kind and none of the other kind, so a union of models and enums
 always rides the multi-entry channels. Every class token must be a `Model`, or the whole result is rejected. Keeping
 the enum half of `Order|SomeDto` would still leak the unimportable `SomeDto`.
+
+A composed class's marker is not a module specifier. Every publisher keeps it in the imports it stores, which
+`composedClassTypes()` reads back from a cached snapshot, and turns it into the path of the class's namespace directory
+with `ComposedClassTypes::importPath()` only as it writes its import lines. `AnalysisImports::build()` keeps it too, so
+the event, metadata and shared-data code that calls it resolves it there.
 
 ### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
 
@@ -874,6 +883,22 @@ where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that
 `X`, `X[]` and their nullable forms. The token pattern skips a namespace-qualified `foo.RoleType` and a longer
 `RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
 the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEnum` only for a type that spells it.
+
+### An enum `toTsType()` names no enum for publishes that type as a value, and its own names in a wrap
+
+`toTsType()` answers an enum carrying `#[TsType]` with its override, and one keyed in `custom_ts_mappings` with the
+mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
+an override with its `customImports`. A case keeps its enum channel (`ValueResolver::resolveConstantValue()`), so a
+receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the
+text never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a
+ternary of a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
+`ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
+names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
+for a value of a declared type (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and `->name` keep the
+enum's names through `EnumValueTypes`. `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the
+type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column
+still miss the wrap
+([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 

@@ -8,13 +8,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -39,9 +40,12 @@ use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Error;
 use PhpParser\Node;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\GroupUse;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\TraitUse;
@@ -66,7 +70,7 @@ use UnitEnum;
  *    type: string,
  *    enums: list<string>,
  *    enumTypes: list<string>,
- *    classes: list<class-string>,
+ *    classes: list<string>,
  *    customImports: array<string, list<string>>,
  *    enumFqcns: list<class-string>,
  *    classFqcns: list<class-string>,
@@ -75,6 +79,7 @@ use UnitEnum;
  *    keepsKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
+ * @phpstan-type ShapeTypeInfo = array{type: string, customImports: array<string, list<string>>}
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
@@ -158,6 +163,12 @@ class LaravelTsPublish
      * @var array<string, array<string, class-string>>
      */
     protected array $useStatementsCache = [];
+
+    /**
+     * Whether a shape, a docblock's or a value object's, keeps a member its own custom imports bring in. Off under a
+     * reader that returns a type string alone, whose caller has nowhere to put an import; see withoutShapeImports().
+     */
+    private bool $shapesCarryImports = true;
 
     /**
      * Set something to do when the publish command runs, using a callback Closure
@@ -275,39 +286,23 @@ class LaravelTsPublish
             }
         }
 
-        // 2. #[TsType] explicit override, ahead of every automatic resolution
-        if (class_exists($phpType)) {
-            // This step and every later one read the class's own declarations, so its files decide the type.
-            DependencyRecorder::recordClass($phpType);
+        // 2. #[TsType] explicit override, ahead of every automatic resolution: the class's own, its traits', its
+        //    interfaces' and its parents'. resolve() records the class's files, which this and every later step read.
+        if (class_exists($phpType) || interface_exists($phpType)) {
+            $override = ClassTypeOverride::resolve($phpType);
 
-            $attrs = (new ReflectionClass($phpType))->getAttributes(TsType::class);
-            if ($attrs) {
-                $tsType = $attrs[0]->newInstance()->type;
-
-                if (is_array($tsType)) {
-                    /** @var array{type: string, import?: string} $tsType */
-                    $result['type'] = $tsType['type'];
-
-                    if (isset($tsType['import'])) {
-                        foreach (TsTypeString::extractImportableTypes($tsType['type']) as $importName) {
-                            $result['customImports'][$tsType['import']][] = $importName;
-                        }
-                    }
-                } else {
-                    $result['type'] = $tsType;
+            if ($override !== null) {
+                if ($override['composed']) {
+                    ComposedClassTypes::register($override['class']);
                 }
 
-                return $result;
+                return [...$result, 'type' => $override['type'], 'customImports' => $override['customImports']];
             }
         }
 
         // 3. PHP enum, before the partial match so "App\Enums\Status" can't hit the "enum" => "string" entry
         if (class_exists($phpType) && (new ReflectionClass($phpType))->isEnum()) {
-            $ref = new ReflectionClass($phpType);
-            $tsEnumAttrs = $ref->getAttributes(TsEnum::class);
-            $name = $tsEnumAttrs
-                ? $tsEnumAttrs[0]->newInstance()->name
-                : class_basename($phpType);
+            $name = TsNaming::enumName($phpType);
 
             $result['type'] = $name.'Type';
             $result['enums'] = [$name];
@@ -367,11 +362,9 @@ class LaravelTsPublish
             && ! is_a($phpType, Model::class, true)
             && is_a($phpType, Arrayable::class, true)
         ) {
-            $shapeType = $this->arrayableShapeType($phpType, 'toArray');
+            $shape = $this->arrayableShapeType($phpType, 'toArray');
 
-            $result['type'] = $shapeType ?? 'unknown[]';
-
-            return [...$result, 'keepsKeys' => true];
+            return [...$result, ...($shape ?? ['type' => 'unknown[]']), 'keepsKeys' => true];
         }
 
         // 5a-bis. JsonSerializable (non-Model, non-Arrayable) → object shape from jsonSerialize().
@@ -383,13 +376,11 @@ class LaravelTsPublish
             && ! is_a($phpType, Model::class, true)
             && is_a($phpType, JsonSerializable::class, true)
         ) {
-            $shapeType = $this->arrayableShapeType($phpType, 'jsonSerialize', fallbackToProperties: false)
-                ?? $this->stringableArrayJsonType($phpType);
+            $shape = $this->arrayableShapeType($phpType, 'jsonSerialize', fallbackToProperties: false);
+            $shapeType = $shape['type'] ?? $this->stringableArrayJsonType($phpType);
 
             if ($shapeType !== null) {
-                $result['type'] = $shapeType;
-
-                return [...$result, 'keepsKeys' => true];
+                return [...$result, 'type' => $shapeType, 'customImports' => $shape['customImports'] ?? [], 'keepsKeys' => true];
             }
         }
 
@@ -414,29 +405,24 @@ class LaravelTsPublish
             && ! is_a($phpType, JsonSerializable::class, true)
             && $this->hasFullyTypedPublicProperties($phpType)
         ) {
-            $shapeType = $this->publicPropertyShapeType($phpType);
+            $shape = $this->publicPropertyShapeType($phpType);
 
-            if ($shapeType !== null) {
-                $result['type'] = $shapeType;
-
-                return [...$result, 'keepsKeys' => true];
+            if ($shape !== null) {
+                return [...$result, ...$shape, 'keepsKeys' => true];
             }
         }
 
         // 5d. A __toString() class json_encode() writes as its public properties, `{}` for none, or any keys where an
         //     instance can gain some. Any other class keeps its token, since the same rule would type a sentinel such
         //     as MissingValue, which a resource strips before it encodes.
-        $stringableObjectType = class_exists($phpType) ? $this->stringableObjectType($phpType) : null;
+        $stringableObject = class_exists($phpType) ? $this->stringableObjectType($phpType) : null;
 
-        if ($stringableObjectType !== null) {
-            $result['type'] = $stringableObjectType;
-
-            return [...$result, 'keepsKeys' => true];
+        if ($stringableObject !== null) {
+            return [...$result, ...$stringableObject, 'keepsKeys' => true];
         }
 
         // 5. Any other existing class
         if (class_exists($phpType)) {
-            /** @var class-string $name */
             $name = class_basename($phpType);
             $result['type'] = $name;
             $result['classes'] = [$name];
@@ -467,6 +453,25 @@ class LaravelTsPublish
         $result['type'] = 'unknown';
 
         return $result;
+    }
+
+    /**
+     * The type toTsType() publishes an enum as where it names no enum, as an override or a `custom_ts_mappings` entry
+     * answers it; null for any other enum, or a class that is no enum.
+     *
+     * A value of such an enum spells that type, not the enum's names, though its channels may still carry the enum.
+     *
+     * @internal
+     */
+    public function retypedEnumType(string $class): ?string
+    {
+        if (! enum_exists($class)) {
+            return null;
+        }
+
+        $info = $this->toTsType($class);
+
+        return $info['enumFqcns'] === [] ? $info['type'] : null;
     }
 
     /**
@@ -649,25 +654,11 @@ class LaravelTsPublish
         }
 
         $reflectionMethod = $class->getMethod($method);
-        $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass());
 
-        if ($signatureInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($signatureInfo['type'])) {
-            return $signatureInfo;
-        }
-
-        // A vague native signature (: array, : iterable, ...) carries no element information, so a
-        // docblock shape like `@return array{value: int, label: string}` can usually do better.
-        $docblockInfo = $this->docblockReturnTypes($reflectionMethod);
-
-        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
-            return $docblockInfo;
-        }
-
-        if (TsTypeString::spellsListAsRecord($signatureInfo['type'], $docblockInfo['type'])) {
-            return $docblockInfo;
-        }
-
-        return $signatureInfo['type'] !== 'unknown' ? $signatureInfo : $docblockInfo;
+        return $this->declaredOrDocblockTypes(
+            $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass()),
+            fn (): array => $this->docblockReturnTypes($reflectionMethod),
+        );
     }
 
     /**
@@ -781,7 +772,7 @@ class LaravelTsPublish
             $result = $this->toTsType($this->reflectedTypeName($returnType, $declaringClass));
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
-                $result['type'] .= ' | null';
+                $result['type'] = $this->withNullArm($result['type']);
             }
 
             return $result;
@@ -824,13 +815,10 @@ class LaravelTsPublish
             return $declaringClass;
         }
 
-        foreach ($this->flattenTraits($declaringClass) as $trait) {
-            if ($trait->getFileName() === $methodFile) {
-                return $trait;
-            }
-        }
-
-        return $declaringClass; // @codeCoverageIgnore
+        return $this->traitDeclaring(
+            $declaringClass,
+            static fn (ReflectionClass $trait): bool => $trait->getFileName() === $methodFile,
+        ) ?? $declaringClass;
     }
 
     /**
@@ -987,10 +975,10 @@ class LaravelTsPublish
         }
 
         if ($this->isPhpDocShape($part)) {
-            $shapeType = $this->resolveArrayShapeString($part, $useMap, $namespace);
+            $shape = $this->resolveArrayShapeString($part, $useMap, $namespace);
 
-            if ($shapeType !== null) {
-                return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
+            if ($shape !== null) {
+                return [...$this->emptyTypeScriptInfo(), ...$shape];
             }
         }
 
@@ -1176,6 +1164,19 @@ class LaravelTsPublish
      */
     public function parseDocblockReturnArrayShape(ReflectionMethod $method): array
     {
+        return $this->withoutShapeImports(fn (): array => array_map(
+            fn (array $info): string => $info['type'],
+            $this->docblockReturnShapeInfos($method),
+        ));
+    }
+
+    /**
+     * parseDocblockReturnArrayShape()'s map, each value with the custom imports of the overrides it spells.
+     *
+     * @return array<string, ShapeTypeInfo>
+     */
+    public function docblockReturnShapeInfos(ReflectionMethod $method): array
+    {
         $docComment = $method->getDocComment();
 
         if ($docComment === false) {
@@ -1194,7 +1195,7 @@ class LaravelTsPublish
 
         return $this->withAliasContext(
             $declaringClass,
-            fn (): array => $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace),
+            fn (): array => $this->parseArrayShapeToInfos($returnType, $useMap, $namespace),
         );
     }
 
@@ -1209,20 +1210,10 @@ class LaravelTsPublish
      */
     public function parseArrayShapeToTsTypes(string $shape, array $useMap, string $namespace): array
     {
-        $parsed = $this->arrayShapeEntries($shape);
-
-        if ($parsed === null || $this->isTupleShape($parsed)) {
-            return [];
-        }
-
-        $result = [];
-
-        foreach ($parsed['entries'] as $entry) {
-            $key = $entry['key'].($entry['optional'] ? '?' : '');
-            $result[$key] = $this->resolvePhpDocTypeToTs($entry['type'], $useMap, $namespace);
-        }
-
-        return $result;
+        return $this->withoutShapeImports(fn (): array => array_map(
+            fn (array $info): string => $info['type'],
+            $this->parseArrayShapeToInfos($shape, $useMap, $namespace),
+        ));
     }
 
     /**
@@ -1294,63 +1285,9 @@ class LaravelTsPublish
      */
     public function resolvePhpDocTypeToTs(string $phpType, array $useMap, string $namespace): string
     {
-        $phpType = trim($phpType);
-
-        // Unions first, so the depth-aware split separates "array{...}" from a trailing "|null"
-        $unionParts = $this->splitPhpDocUnionType($phpType);
-
-        if (count($unionParts) > 1) {
-            $tsParts = array_map(
-                fn (string $part) => $this->resolvePhpDocTypeToTs($part, $useMap, $namespace),
-                $unionParts,
-            );
-
-            return implode(' | ', $tsParts);
-        }
-
-        if ($this->isParenthesizedGroup($phpType)) {
-            return $this->resolvePhpDocTypeToTs(substr($phpType, 1, -1), $useMap, $namespace);
-        }
-
-        $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
-
-        if ($generic !== null) {
-            return $generic['type'];
-        }
-
-        if (str_starts_with($phpType, '?')) {
-            return $this->withNullArm($this->resolvePhpDocTypeToTs(substr($phpType, 1), $useMap, $namespace));
-        }
-
-        // After the union split this is a pure shape
-        if ($this->isPhpDocShape($phpType)) {
-            return $this->resolveArrayShapeString($phpType, $useMap, $namespace)
-                ?? (str_starts_with($phpType, 'array{') ? 'Record<string, unknown>' : 'unknown');
-        }
-
-        $literal = $this->phpDocLiteralType($phpType);
-
-        if ($literal !== null) {
-            return $literal;
-        }
-
-        $alias = $this->docblockAliasType($phpType);
-
-        if ($alias !== null) {
-            return $alias['type'];
-        }
-
-        $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
-
-        // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
-        // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
-        if ($this->isUnreadForm($resolved, '<{(')) {
-            return 'unknown';
-        }
-
-        $info = $this->toTsType($resolved);
-
-        return $info['type'];
+        return $this->withoutShapeImports(
+            fn (): string => $this->resolvePhpDocTypeToInfo($phpType, $useMap, $namespace)['type'],
+        );
     }
 
     /**
@@ -1929,7 +1866,7 @@ class LaravelTsPublish
 
     /**
      * Resolve a "CastClass:args" cast string. AsEnumCollection carries its enum;
-     * AsCollection resolves its mapped element to an inline shape when possible;
+     * AsCollection lists its mapped element by the element's override, inline shape or enum;
      * other cast classes resolve as the bare class (args stripped).
      *
      * @param  list<string>  $args
@@ -1951,6 +1888,11 @@ class LaravelTsPublish
 
             if ($mapClass !== '' && class_exists($mapClass)) {
                 $elementInfo = $this->toTsType($mapClass);
+
+                // An override may be a union, which listType() parenthesizes.
+                if (ClassTypeOverride::resolve($mapClass) !== null) {
+                    return [...$elementInfo, 'type' => TsTypeShape::listType([$elementInfo['type']])];
+                }
 
                 if (str_starts_with($elementInfo['type'], '{')) {
                     $elementInfo['type'] .= '[]';
@@ -1980,8 +1922,9 @@ class LaravelTsPublish
      * exists, or null when neither yields anything.
      *
      * @param  class-string  $fqcn
+     * @return ShapeTypeInfo|null
      */
-    protected function arrayableShapeType(string $fqcn, string $method, bool $fallbackToProperties = true): ?string
+    protected function arrayableShapeType(string $fqcn, string $method, bool $fallbackToProperties = true): ?array
     {
         if (! method_exists($fqcn, $method)) {
             return null; // @codeCoverageIgnore
@@ -2000,7 +1943,7 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionMethod($fqcn, $method);
             $tuple = $this->docblockReturnTupleType($reflection);
-            $shape = $tuple === null ? $this->parseDocblockReturnArrayShape($reflection) : [];
+            $shape = $tuple === null ? $this->docblockReturnShapeInfos($reflection) : [];
         } finally {
             unset($this->shapeExpansionStack[$key]);
         }
@@ -2014,20 +1957,17 @@ class LaravelTsPublish
         }
 
         $parts = [];
+        $imports = [];
 
-        foreach ($shape as $key => $type) {
-            // The shape map is string-only, so a class- or enum-backed value carries no FQCN and could
-            // never emit an import — degrade that property rather than emit a token nothing imports.
-            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
-                $type = 'unknown';
-            }
-
+        foreach ($shape as $key => $info) {
+            $member = $this->keptShapeMember($info);
+            $imports[] = $member['customImports'];
             $name = (string) $key;
             $optional = str_ends_with($name, '?');
-            $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$type;
+            $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$member['type'];
         }
 
-        return '{ '.implode('; ', $parts).' }';
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
     }
 
     /**
@@ -2037,8 +1977,9 @@ class LaravelTsPublish
      * Reuses $shapeExpansionStack under a `::__properties` key to guard against infinite recursion.
      *
      * @param  class-string  $fqcn
+     * @return ShapeTypeInfo|null
      */
-    protected function publicPropertyShapeType(string $fqcn): ?string
+    protected function publicPropertyShapeType(string $fqcn): ?array
     {
         $guard = $fqcn.'::__properties';
 
@@ -2051,29 +1992,59 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionClass($fqcn);
             $parts = [];
+            $imports = [];
 
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
                 if ($property->isStatic()) {
                     continue;
                 }
 
-                $type = $this->propertyTypes($reflection, $property->getName())['type'];
-
-                if (TsTypeString::shapeValueHasUnimportableToken($type)) {
-                    $type = 'unknown';
-                }
+                $member = $this->shapeMemberTypes($reflection, $property);
+                $imports[] = $member['customImports'];
 
                 // json_encode() omits a typed property that was never assigned; a promoted or defaulted
                 // one is always present.
                 $optional = ! $property->hasDefaultValue() && ! $property->isPromoted();
 
-                $parts[] = $property->getName().($optional ? '?' : '').': '.$type;
+                $parts[] = $property->getName().($optional ? '?' : '').': '.$member['type'];
             }
         } finally {
             unset($this->shapeExpansionStack[$guard]);
         }
 
-        return $parts === [] ? null : '{ '.implode('; ', $parts).' }';
+        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
+    }
+
+    /**
+     * The type one public property of a value object publishes in its shape: its `@var` where that says more than its
+     * declaration, else the declaration, each kept only where its custom imports bring in every name it spells.
+     *
+     * Only an override brings custom imports, so a member spelling a model's, an enum's or another class's own name
+     * stays `unknown`.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return ShapeTypeInfo
+     */
+    protected function shapeMemberTypes(ReflectionClass $class, ReflectionProperty $property): array
+    {
+        $declared = $this->propertyTypes($class, $property->getName());
+        $docComment = $property->getDocComment();
+        $var = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $read = $var === null || $var === '' ? $declared : $this->declaredOrDocblockTypes(
+            $declared,
+            fn (): array => $this->resolveDocblockTypeStringAgainst($var, $this->propertyDeclaringFileClass($property)),
+        );
+
+        // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
+        foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
+            $shape = $this->shapeTypeInfo($info);
+
+            if ($this->shapeKeeps($shape)) {
+                return $shape;
+            }
+        }
+
+        return ['type' => 'unknown', 'customImports' => []];
     }
 
     /**
@@ -2105,15 +2076,16 @@ class LaravelTsPublish
 
     /**
      * The object json_encode() writes for a `__toString()` class: its public instance properties, `unknown` for an
-     * untyped one, `{}` for none, or any keys where an instance can gain some. Null for any other class.
+     * untyped one with no `@var`, `{}` for none, or any keys where an instance can gain some. Null for any other class.
      *
      * The class is neither JsonSerializable nor Arrayable. The first internal class in its chain, if any, is a
      * Throwable or an SplFileInfo, which write no properties of their own, or an ArrayObject, which writes its items,
      * unlike DateTime. An abstract class publishes its own properties, though a subclass instance can carry more.
      *
      * @param  class-string  $fqcn
+     * @return ShapeTypeInfo|null
      */
-    protected function stringableObjectType(string $fqcn): ?string
+    protected function stringableObjectType(string $fqcn): ?array
     {
         $reflection = new ReflectionClass($fqcn);
 
@@ -2125,7 +2097,7 @@ class LaravelTsPublish
 
         for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
             if ($class->getAttributes(AllowDynamicProperties::class) !== [] || $class->getName() === ArrayObject::class) {
-                return 'Record<string, unknown>';
+                return ['type' => 'Record<string, unknown>', 'customImports' => []];
             }
 
             if ($class->isInternal()) {
@@ -2142,7 +2114,9 @@ class LaravelTsPublish
             fn (ReflectionProperty $property): bool => ! $property->isStatic(),
         );
 
-        return $hasPublicProperty ? $this->publicPropertyShapeType($fqcn) : TsTypeStringService::EMPTY_OBJECT;
+        return $hasPublicProperty
+            ? $this->publicPropertyShapeType($fqcn)
+            : ['type' => TsTypeStringService::EMPTY_OBJECT, 'customImports' => []];
     }
 
     /**
@@ -2240,6 +2214,55 @@ class LaravelTsPublish
         }
 
         return $traits;
+    }
+
+    /**
+     * The ReflectionClass whose file declares a property, as methodDeclaringFileClass() finds a method's: a trait's
+     * property reports the class using the trait as its declaring class, and the trait's docblock as its own.
+     *
+     * @return ReflectionClass<object>
+     */
+    protected function propertyDeclaringFileClass(ReflectionProperty $property): ReflectionClass
+    {
+        $class = $property->getDeclaringClass();
+        $name = $property->getName();
+
+        // Reflection cannot tell a class's redeclaration of its trait's property from the trait's, docblock included.
+        if ($class->getTraitNames() === [] || $this->declaresProperty($class, $name)) {
+            return $class;
+        }
+
+        return $this->traitDeclaring($class, fn (ReflectionClass $trait): bool => $this->declaresProperty($trait, $name))
+            ?? $class;
+    }
+
+    /**
+     * A declared type, or a docblock's where the declaration is unknown or vague and the docblock says more, as
+     * methodOrDocblockReturnTypes() reads `@return` and shapeMemberTypes() reads `@var`.
+     *
+     * @param  TypeScriptTypeInfo  $declared
+     * @param  Closure(): TypeScriptTypeInfo  $docblock  read only where the declaration leaves it a say
+     * @return TypeScriptTypeInfo
+     */
+    protected function declaredOrDocblockTypes(array $declared, Closure $docblock): array
+    {
+        if ($declared['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($declared['type'])) {
+            return $declared;
+        }
+
+        // A vague native signature (: array, : iterable, ...) carries no element information, so a
+        // docblock shape like `@return array{value: int, label: string}` can usually do better.
+        $docblockInfo = $docblock();
+
+        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
+            return $docblockInfo;
+        }
+
+        if (TsTypeString::spellsListAsRecord($declared['type'], $docblockInfo['type'])) {
+            return $docblockInfo;
+        }
+
+        return $declared['type'] !== 'unknown' ? $declared : $docblockInfo;
     }
 
     /**
@@ -2533,10 +2556,10 @@ class LaravelTsPublish
         }
 
         if ($this->isPhpDocShape($valueType)) {
-            $shapeType = $this->resolveArrayShapeString($valueType, $useMap, $namespace);
+            $shape = $this->resolveArrayShapeString($valueType, $useMap, $namespace);
 
-            if ($shapeType !== null) {
-                return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
+            if ($shape !== null) {
+                return [...$this->emptyTypeScriptInfo(), ...$shape];
             }
         }
 
@@ -2638,9 +2661,11 @@ class LaravelTsPublish
     /**
      * The tuple a method's `@return` list shape publishes, or null when its `@return` is no list shape.
      *
-     * A list shape has no keys for parseDocblockReturnArrayShape() to map, and json_encode() writes it as an array.
+     * A list shape has no keys for docblockReturnShapeInfos() to map, and json_encode() writes it as an array.
+     *
+     * @return ShapeTypeInfo|null
      */
-    protected function docblockReturnTupleType(ReflectionMethod $method): ?string
+    protected function docblockReturnTupleType(ReflectionMethod $method): ?array
     {
         $returnType = $this->extractReturnTypeFromDocblock((string) $method->getDocComment());
         $shape = $returnType === null ? null : $this->arrayShapeEntries($returnType);
@@ -2651,7 +2676,7 @@ class LaravelTsPublish
 
         $declaringClass = $this->methodDeclaringFileClass($method);
 
-        return $this->withAliasContext($declaringClass, fn (): ?string => $this->resolveArrayShapeString(
+        return $this->withAliasContext($declaringClass, fn (): ?array => $this->resolveArrayShapeString(
             $returnType,
             $this->parseFileUseStatements($declaringClass),
             $declaringClass->getNamespaceName(),
@@ -2659,14 +2684,13 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve a PHPDoc shape string to an inline TS object literal, a tuple for a list shape, or null when malformed.
-     *
-     * A per-key value with an unimportable token (a bare class/enum name) degrades to 'unknown': the
-     * shape map is string-only, so it can never carry the FQCN an import would need.
+     * Resolve a PHPDoc shape string to an inline TS object literal, a tuple for a list shape, or null when malformed,
+     * with the custom imports of the members it keeps, as keptShapeMember() decides each one.
      *
      * @param  array<string, string>  $useMap
+     * @return ShapeTypeInfo|null
      */
-    protected function resolveArrayShapeString(string $phpType, array $useMap, string $namespace): ?string
+    protected function resolveArrayShapeString(string $phpType, array $useMap, string $namespace): ?array
     {
         $parsed = $this->arrayShapeEntries($phpType);
 
@@ -2674,16 +2698,18 @@ class LaravelTsPublish
             return null;
         }
 
-        $member = function (string $type) use ($useMap, $namespace): string {
-            $resolved = $this->resolvePhpDocTypeToTs($type, $useMap, $namespace);
+        $imports = [];
+        $member = function (string $type) use ($useMap, $namespace, &$imports): string {
+            $kept = $this->keptShapeMember($this->resolvePhpDocTypeToInfo($type, $useMap, $namespace));
+            $imports[] = $kept['customImports'];
 
-            return TsTypeString::shapeValueHasUnimportableToken($resolved) ? 'unknown' : $resolved;
+            return $kept['type'];
         };
 
         if ($this->isTupleShape($parsed)) {
             // A list that may hold more members says nothing of the type at each position.
             if (! $parsed['sealed']) {
-                return 'unknown[]';
+                return ['type' => 'unknown[]', 'customImports' => []];
             }
 
             $members = [];
@@ -2698,11 +2724,11 @@ class LaravelTsPublish
                     : $type;
             }
 
-            return '['.implode(', ', $members).']';
+            return ['type' => '['.implode(', ', $members).']', 'customImports' => ImportMaps::merge(...$imports)];
         }
 
         if ($parsed['entries'] === []) {
-            return 'Record<string, unknown>';
+            return ['type' => 'Record<string, unknown>', 'customImports' => []];
         }
 
         $parts = [];
@@ -2712,7 +2738,149 @@ class LaravelTsPublish
             $parts[$entry['key']] = $key.': '.$member($entry['type']);
         }
 
-        return '{ '.implode('; ', $parts).' }';
+        return ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
+    }
+
+    /**
+     * A docblock shape's member as the shape publishes it: its type where its own custom imports bring in every name
+     * it spells, else `unknown`. Only an override brings custom imports, and the shape carries no FQCN channel, so a
+     * member naming a model or an enum is `unknown`.
+     *
+     * @param  ShapeTypeInfo  $info
+     * @return ShapeTypeInfo
+     */
+    protected function keptShapeMember(array $info): array
+    {
+        return $this->shapeKeeps($info)
+            ? ['type' => $info['type'], 'customImports' => $info['customImports']]
+            : ['type' => 'unknown', 'customImports' => []];
+    }
+
+    /**
+     * A resolved type as a shape carries it: with its custom imports, unless one brings a name a model, enum or other
+     * class in it publishes as, since a shape carries no FQCN channel and that class would bind to the import instead.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return ShapeTypeInfo
+     */
+    protected function shapeTypeInfo(array $info): array
+    {
+        $collides = array_intersect(
+            [...$info['classes'], ...$info['enumTypes']],
+            ImportMaps::localNames($info['customImports']),
+        ) !== [];
+
+        return ['type' => $info['type'], 'customImports' => $collides ? [] : $info['customImports']];
+    }
+
+    /**
+     * Whether a docblock union's arm its own imports do not cover spells a name only a sibling arm's imports bring, as
+     * a model spelled like the override beside it does, so the union must take none of them.
+     *
+     * @param  ShapeTypeInfo  $arm
+     * @param  array<string, list<string>>  $merged  every arm's imports
+     */
+    protected function borrowsImport(array $arm, array $merged): bool
+    {
+        if (TsTypeString::importsCover($arm['type'], $arm['customImports'])) {
+            return false;
+        }
+
+        return array_any(
+            array_diff(ImportMaps::localNames($merged), ImportMaps::localNames($arm['customImports'])),
+            fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $arm['type']),
+        );
+    }
+
+    /**
+     * Resolve a PHPDoc type string, nested array shapes included, to its TypeScript type and the custom imports of each
+     * override it spells.
+     *
+     * @param  array<string, string>  $useMap
+     * @return ShapeTypeInfo
+     */
+    protected function resolvePhpDocTypeToInfo(string $phpType, array $useMap, string $namespace): array
+    {
+        $phpType = trim($phpType);
+
+        // Unions first, so the depth-aware split separates "array{...}" from a trailing "|null"
+        $unionParts = $this->splitPhpDocUnionType($phpType);
+
+        if (count($unionParts) > 1) {
+            $infos = array_map(
+                fn (string $part): array => $this->resolvePhpDocTypeToInfo($part, $useMap, $namespace),
+                $unionParts,
+            );
+            $merged = ImportMaps::merge(...array_column($infos, 'customImports'));
+            $borrows = array_any($infos, fn (array $info): bool => $this->borrowsImport($info, $merged));
+
+            return ['type' => implode(' | ', array_column($infos, 'type')), 'customImports' => $borrows ? [] : $merged];
+        }
+
+        if ($this->isParenthesizedGroup($phpType)) {
+            return $this->resolvePhpDocTypeToInfo(substr($phpType, 1, -1), $useMap, $namespace);
+        }
+
+        $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
+
+        if ($generic !== null) {
+            return $this->shapeTypeInfo($generic);
+        }
+
+        if (str_starts_with($phpType, '?')) {
+            $inner = $this->resolvePhpDocTypeToInfo(substr($phpType, 1), $useMap, $namespace);
+
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
+        }
+
+        // After the union split this is a pure shape
+        if ($this->isPhpDocShape($phpType)) {
+            $malformed = str_starts_with($phpType, 'array{') ? 'Record<string, unknown>' : 'unknown';
+
+            return $this->resolveArrayShapeString($phpType, $useMap, $namespace) ?? ['type' => $malformed, 'customImports' => []];
+        }
+
+        $literal = $this->phpDocLiteralType($phpType);
+
+        if ($literal !== null) {
+            return ['type' => $literal, 'customImports' => []];
+        }
+
+        $info = $this->docblockAliasType($phpType);
+
+        if ($info === null) {
+            $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+
+            // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
+            // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
+            $info = $this->isUnreadForm($resolved, '<{(') ? $this->emptyTypeScriptInfo() : $this->toTsType($resolved);
+        }
+
+        return $this->shapeTypeInfo($info);
+    }
+
+    /**
+     * parseArrayShapeToTsTypes()'s map, each value with the custom imports of the overrides it spells.
+     *
+     * @param  array<string, string>  $useMap
+     * @return array<string, ShapeTypeInfo>
+     */
+    protected function parseArrayShapeToInfos(string $shape, array $useMap, string $namespace): array
+    {
+        $parsed = $this->arrayShapeEntries($shape);
+
+        if ($parsed === null || $this->isTupleShape($parsed)) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($parsed['entries'] as $entry) {
+            $key = $entry['key'].($entry['optional'] ? '?' : '');
+            $result[$key] = $this->resolvePhpDocTypeToInfo($entry['type'], $useMap, $namespace);
+        }
+
+        return $result;
     }
 
     /**
@@ -2956,6 +3124,73 @@ class LaravelTsPublish
             /** @var class-string $fqcn */
             $fqcn = $prefix.'\\'.$item->name->toString();
             $map[$alias] = $fqcn;
+        }
+    }
+
+    /**
+     * The first of a class's traits, its traits' own traits included, that declares a member by the given test.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  Closure(ReflectionClass<object>): bool  $declares
+     * @return ReflectionClass<object>|null
+     */
+    private function traitDeclaring(ReflectionClass $class, Closure $declares): ?ReflectionClass
+    {
+        return array_find($this->flattenTraits($class), $declares);
+    }
+
+    /**
+     * Whether a class's or trait's own source declares a property, as a property statement or a promoted parameter.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function declaresProperty(ReflectionClass $class, string $name): bool
+    {
+        $file = $class->getFileName();
+        $node = $file === false ? null : new NodeFinder()->findFirst(
+            resolve(AstParser::class)->parseFile($file),
+            fn (Node $node): bool => $node instanceof ClassLike && $node->namespacedName?->toString() === $class->getName(),
+        );
+
+        if (! $node instanceof ClassLike) {
+            return false; // @codeCoverageIgnore
+        }
+
+        return $node->getProperty($name) !== null || array_any(
+            $node->getMethod('__construct')->params ?? [],
+            fn (Param $param): bool => $param->isPromoted() && $param->var instanceof Variable && $param->var->name === $name,
+        );
+    }
+
+    /**
+     * Whether a shape, a docblock's or a value object's, keeps a member: its own custom imports bring in every name it
+     * spells, and withoutShapeImports() has not turned them off.
+     *
+     * @param  ShapeTypeInfo  $info
+     */
+    private function shapeKeeps(array $info): bool
+    {
+        return TsTypeString::importsCover($info['type'], $this->shapesCarryImports ? $info['customImports'] : []);
+    }
+
+    /**
+     * Run a docblock read for a caller that keeps only the type string, so a shape keeps no member an import alone
+     * makes valid and the reader answers as it did before shapes carried custom imports.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    private function withoutShapeImports(Closure $read): mixed
+    {
+        $carried = $this->shapesCarryImports;
+        $this->shapesCarryImports = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->shapesCarryImports = $carried;
         }
     }
 

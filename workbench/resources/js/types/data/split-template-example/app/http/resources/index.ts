@@ -238,6 +238,7 @@ export * from './trait-helper-read-resource';
 export * from './trait-shaped-child-resource';
 export * from './trait-shaped-resource';
 export * from './trait-spread-coverage-resource';
+export * from './ui-panel-resource';
 export * from './union-honesty-resource';
 export * from './unit-enum-resource';
 export * from './user-collection';

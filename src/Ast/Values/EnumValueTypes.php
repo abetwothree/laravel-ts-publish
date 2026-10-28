@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
+use JsonSerializable;
 use ReflectionEnum;
 use ReflectionEnumUnitCase;
 use UnitEnum;
@@ -105,6 +106,26 @@ final class EnumValueTypes
         }
 
         return self::literals($cases['names']);
+    }
+
+    /**
+     * What json_encode() writes one case as, spelled with no import: a backed case's value as a literal, or `number`
+     * past the safe integer range; null for a pure enum's case, which json_encode() cannot write.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public static function caseValue(UnitEnum $case): ?array
+    {
+        DependencyRecorder::recordClass($case::class);
+
+        // json_encode() sends a JsonSerializable case's jsonSerialize(), not its value.
+        if (! $case instanceof BackedEnum || $case instanceof JsonSerializable) {
+            return null;
+        }
+
+        return self::typed(is_int($case->value) && abs($case->value) > self::MAX_SAFE_INTEGER
+            ? 'number'
+            : self::literals([$case->value]));
     }
 
     /**

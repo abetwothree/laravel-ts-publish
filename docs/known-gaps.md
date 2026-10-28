@@ -199,6 +199,15 @@ resource's filter walks into the array `resolve()` returns and re-indexes every 
 method value the published enum holds as `{ "1": 1, "2": 2 }` arrives as `[1, 2]`. The filter never walks into a
 resource object, so return `EnumResource::make(…)` itself and the keys arrive as the type says.
 
+### A broadcast event's `EnumResource` publishes the enum's type, not `AsEnum<typeof X>`
+
+`'role' => EnumResource::make($this->role)` in an event's `broadcastWith()` publishes `RoleType` for every enum, though
+the payload sends the resource object, `{ name, value, backed, … }`. API resources, pages and shared data rewrite such a
+key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. An enum whose
+`#[TsType]` or `custom_ts_mappings` entry types its values still publishes its own `…Type` here. Override the key with
+an import-aware `#[TsCasts]`, typed by a name your own module exports, such as
+`export type RoleResource = AsEnum<typeof Role>`.
+
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 
 Each tree's `laravel-ts-global.ts` carries `app.enums.StatusType[] | app.enums.StatusType[]` twice, from
@@ -244,6 +253,32 @@ namespaces nothing collides, because a file that imports both aliases the const
 ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one enum a distinct name,
 such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type.
 
+### An overridden enum's case can publish the enum's own type
+
+A case of an enum with an override keeps the enum's import channel beside the override's import, and two reads still
+take the channel's name:
+
+- An override spelled like the enum's own type, such as `#[TsType(['type' => 'HueType', 'import' => '@acme/dto'])]` on
+  enum `Hue`, publishes a case read directly in an API resource as the enum's own `HueType`, imported from the enum's
+  module under an alias, and drops the override's import. Through an untyped helper's array it publishes the override,
+  so one file can spell both. Name the override something else, such as `HueDto`.
+- An array, a constant's or a literal, holding an overridden enum's case before a case of a same-named plain enum, such
+  as `[Tone::Bright, Other\Tone::A]` or `['a' => Tone::Bright, 'b' => Other\Tone::A]`, publishes the plain element as
+  the overridden enum's own `ToneType`, imported from that enum's module. The type compiles but names the wrong enum.
+  List the plain enum's cases first, or give it a distinct `#[TsEnum]` name.
+
+### Two reads of a column cast to an overridden enum miss its `AsEnum<typeof X>`
+
+An `EnumResource` keeps an overridden enum's own names, but two reads of a column cast to such an enum, here `Tone` with
+the override `ToneDto`, do not:
+
+- `EnumResource::collection($this->tones)` over an `AsEnumCollection::of(Tone::class)` cast publishes `unknown`, where
+  a plain enum's publishes `AsEnum<typeof Status>[]`. Type the key with an import-aware `#[TsCasts]` of
+  `ToneResource[]`, where your own module exports `type ToneResource = AsEnum<typeof Tone>`.
+- A model's `{Model}Resource` interface types the column as the override, `ToneDto` or `ToneDto[]`, where it types a
+  plain enum's as `AsEnum<typeof Status>`. Read the column through an API resource's `EnumResource::make($this->tone)`,
+  which publishes `AsEnum<typeof Tone>`.
+
 ### An empty `[]` under an imported type alias still ships as `[]`
 
 Model metadata writes an empty array as `{}` where the property's type is object-like, but `TsTypeShape::isObjectLike()`
@@ -271,6 +306,75 @@ a `#[TsExclude]`d model, or one in `models.excluded` or outside `models.included
 A custom `models.collector_class` that narrows `collect()` must narrow `accepts()` too, or the models its list relates
 to are published on demand. Add the model's class or directory to `models.additional_directories` to publish it like
 any other model.
+
+### A composed class only a value reaches is not watched
+
+`WatcherJsonWriter` lists each scanned composed class with the files its overrides come from. A composed class outside
+`class_types.additional_directories` gets its module when a published value reaches it, but neither it nor its
+ancestors are listed, as for a model published on demand. Editing one triggers no publish on its own; the next publish
+rebuilds the module, which is cached against those files. Add the class or its directory to
+`class_types.additional_directories` to watch it.
+
+### `--source` on a watched contributor file can republish nothing
+
+The watcher lists the file of each class, trait or interface a scanned composed class reads a `#[TsType]` from, and
+`--source` on that file republishes the class's module. It cannot follow two edits:
+
+- A contributor whose `#[TsType]` was just removed, or that no longer feeds a scanned class, is no contributor any
+  more, so `--source` on it fails as not publishable and the module keeps its old `extends` list.
+- A contributor that is itself a routed controller publishes its route file, so the module is not republished.
+
+Run a full `ts:publish` after either edit.
+
+### A composed class beside another publisher's files can lose its barrel export
+
+A composed class's module shares its namespace's `index.ts` with any model, enum, API resource, form request or
+broadcast event there. Those phases rebuild the barrel from their own files and the class-type phase, which runs after
+them, adds its modules back, so a run that skips class types (`--only-enums`, say) leaves the module's export out, and
+a file importing `{Basename}Type` from that barrel fails `tsc` until the next full publish. Each full run also writes
+such a barrel twice, once without the module's export and once with it, so its mtime moves when nothing changed. A
+composed class in a controller's namespace replaces the route barrel's `export { default … }` lines with its own, and
+`ts:publish` warns. Keep composed classes in a namespace of their own.
+
+### A composed module that spells its own name, or imports one name twice, fails `tsc`
+
+A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with no import makes the interface extend
+itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
+make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
+
+### A composed type fails `tsc` when a contributor is not an object type, or two contributors disagree on a member
+
+The package reads only an override's spelling, so it cannot tell what the type it names holds. An override naming an
+alias of a primitive or a union, such as `type Money = number`, fails the composed interface with TS2312; two
+contributors declaring one member at different types fail it with TS2320; and an index-signature type beside a named
+member of another type fails it with TS2411. A `Record<…>` override is never composed for that reason, but an alias of
+one is. Give the class a `#[TsType]` of its own with `inherit: false`, so it publishes that override alone.
+
+### A run that skips class types can import a composed module no run has written
+
+A run whose `--only-*` flag skips class types, or a `--source` run on a file whose value is a composed class, writes
+that file's import of `{Basename}Type` but not the module. When the class has just started to compose, as a new class
+or one whose ancestor gained a `#[TsType]`, neither the module nor its barrel export exists yet, and the file fails
+`tsc` with TS2305 or TS2307 until the next full publish. A route file importing a form request behaves the same way.
+Run a full `ts:publish` after adding a composed class.
+
+### A page that reads a composed type and a class named like it imports the name twice
+
+An API resource, model or broadcast event aliases an enum or model that spells a composed class's `{Basename}Type`,
+such as an enum `Chart`, whose type is `ChartType`. An Inertia page and shared data alias no import, so a page that
+reads both ships two `import type { ChartType }` lines (TS2300), and a model metadata companion throws at publish time,
+as with
+[two same-named enums](#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts).
+Give the enum a distinct `#[TsEnum]` name.
+
+### Two composed classes with one basename, read in one file, publish one name
+
+Two composed classes named alike, such as `App\Ui\Chart` and `Vendor\Charts\Chart`, both publish `ChartType`. A
+composed name rides the custom imports, which no file aliases, so a file reading both imports `ChartType` twice
+(TS2300), a metadata companion throws, and the globals file reads both values as the first class's type. `ts:publish`
+warns, naming the file and both classes, except under `--source`, which runs no such check and republishes the file
+silently. Give one of them a `#[TsType]` of its own with `inherit: false`, so it publishes that override alone, or read
+the two in different files.
 
 ### A model class name containing an underscore can collide with a metadata companion
 
@@ -349,12 +453,19 @@ resource with no backing model for two or more models still publishes `null` for
 
 ### A shape whose values name a class loses those values, in one of two ways
 
-Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
-shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock
-shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member,
-`list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole.
-Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+The method-body fallback, a docblock array shape and a value object's own shape carry an override's import, but no
+model's or enum's. Each keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value
+object whose shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body
+fallback (`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape,
+as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
+degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
+`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
+an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union spells
+a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
+
+A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
+and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
+member brings for that name, or is `unknown` when none does. Give the override an `import`.
 
 ### An open shape publishes only its named keys
 
@@ -616,7 +727,7 @@ from the published type. Put the keys in `toArray()`.
 
 `json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties, and an
 abstract class publishes its own properties the same way. In another `__toString()` class, an untyped public property
-publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
+with no `@var` publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
 `Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
 `@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
 `SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says
@@ -625,12 +736,42 @@ what they write. Declaring `jsonSerialize(): string`, or `@return string` on it,
 
 ### A `new` of an `Arrayable` or `Responsable` class, a model or a class with no public property publishes `unknown`
 
-What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: an API resource or a
-broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). The same holds for a
+What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: its `toArray()` in
+some places and its public properties in others (#117, and
+[below](#an-override-publishes-in-every-context-though-some-send-the-classs-public-properties)). The same holds for a
 `Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
 sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
 model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
-publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`.
+publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such a key with `#[TsCasts]`, or give the
+class a `#[TsType]`: a `new` of a class with an override, its own or an inherited one, publishes the override whoever
+serializes it, as every other read of the class does. A model's override does not apply to a `new` of the model.
+
+### An override publishes in every context, though some send the class's public properties
+
+An override is the type you declare, and every read of the class publishes it. For an `Arrayable` class that is not
+`JsonSerializable`, what is sent takes one of two shapes, depending on where the value sits:
+
+- **Its `toArray()`**: an Inertia prop, and each value inside an array prop; a broadcast event's top-level public
+  property; a model attribute, cast or accessor, and each item of a collection attribute; and a `Collection` of the
+  class, wherever it sits, which is sent as each item's `toArray()`.
+- **Its public properties, `{}` when it has none**, as `json_encode()` writes them: a value in an API resource's
+  `toArray()` array or in an event's `broadcastWith()` array; a value inside an array or value object an event's
+  property holds, such as `UiBoardUpdated`'s `charts` and `board`; and a value inside any value object.
+
+An override written for the `toArray()` shape therefore matches only the first list. Implement `JsonSerializable`
+returning `toArray()`, or wrap the value in an API resource, and every context sends one shape.
+
+### A class's override skips an interface it repeats from its parent or beside an interface that extends it
+
+PHP's reflection lists an interface once, so an interface a class repeats contributes its `#[TsType]` only in the place
+of the parent that also implements it, or of the interface that extends it. Where that one declares `inherit: false`,
+the override is dropped: `class Badge implements Muted, HasIcon`, with `Muted extends HasIcon` declaring
+`inherit: false`, publishes `Muted`'s override alone, and so does a class implementing `HasIcon` under an
+`inherit: false` parent that implements it too. Elsewhere the interface moves down the order, which reorders a composed
+type's `extends` list and, where a contributor cannot be extended, can change which one wins as nearest:
+`class Child extends Base implements HasIcon`, where `Base` also implements `HasIcon` and declares
+`#[TsType('string')]`, publishes `string` with a warning, though `Child` lists `HasIcon` before its parent. Declare the
+interface's type in the class's own `#[TsType]`, or drop the `inherit: false`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 
 /**
  * Static types for one provider, restricted to what the transformer needs to validate and render a payload.
@@ -21,6 +22,7 @@ final readonly class ModelMetadataAnalysis
      * @param  array<string, true>  $requiredKeys  keys the docblock shape or #[TsCasts] declare as required
      * @param  array<string, string>  $importPaths  #[TsCasts] import path per key
      * @param  TypesImportMap  $typeImports  imports the inferred types need, relative to the companion file
+     * @param  array<string, TypesImportMap>  $docblockImports  per key the docblock types, its overrides' imports
      */
     public function __construct(
         public array $types,
@@ -28,22 +30,19 @@ final readonly class ModelMetadataAnalysis
         public array $requiredKeys,
         public array $importPaths,
         public array $typeImports = [],
+        public array $docblockImports = [],
     ) {}
 
     /**
-     * Local names the inferred imports bring into the file (`X as Y` counts as `Y`).
+     * Local names the inferred imports bring into the file (`X as Y` counts as `Y`), with those a docblock key's own
+     * imports bring for that key, so one key never borrows another's.
      *
      * @return list<string>
      */
-    public function importedNames(): array
+    public function importedNames(?string $key = null): array
     {
-        $names = [];
-
-        foreach ($this->typeImports as $imported) {
-            foreach ($imported as $name) {
-                $names[] = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
-            }
-        }
+        $docblock = $key === null ? [] : $this->docblockImports[$key] ?? [];
+        $names = [...ImportMaps::localNames($this->typeImports), ...ImportMaps::localNames($docblock)];
 
         return array_values(array_unique($names));
     }
@@ -71,7 +70,8 @@ final readonly class ModelMetadataAnalysis
     }
 
     /**
-     * Payload keys whose type did not come from #[TsCasts] and so cannot carry an import of its own.
+     * Payload keys no #[TsCasts] entry typed, so no import path of their own covers them: only the inferred imports,
+     * and a docblock key's own override imports, may bring their names.
      *
      * @param  list<string>  $payloadKeys
      * @return list<string>

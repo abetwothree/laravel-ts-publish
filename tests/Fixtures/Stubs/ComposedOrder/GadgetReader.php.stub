@@ -1,0 +1,33 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ComposedOrder;
+
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * Copied to a temp file under a unique name, so a test can edit a resource whose value is a composed class.
+ */
+final class GadgetReader__SUFFIX__ extends JsonResource
+{
+    /**
+     * Publishes one value of the composed class.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        return ['gadget' => $this->gadget()];
+    }
+
+    /**
+     * The value, by its declared class.
+     */
+    protected function gadget(): Gadget
+    {
+        return new Gadget;
+    }
+}

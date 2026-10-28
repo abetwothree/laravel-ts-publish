@@ -12,6 +12,7 @@ import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
+import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode, UiToneDto } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
@@ -1758,6 +1759,24 @@ declare global {
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
             diff: unknown[] | Record<string, unknown>;
         }
+        /** A board whose appended accessor is a value of a composed class, so its interface imports the class's module. */
+        export interface UiBoard {
+            // Columns
+            id: number;
+            panels: UiNode[] | null;
+            charts: workbench.app.packages.ui.ChartType[] | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** An uploader, typed only by this docblock. */
+            uploader_from_docblock: User | null;
+            /** A gauge, typed only by this docblock. */
+            gauge_from_docblock: UiGauge;
+            /** A gauge, by a getter closure that declares its class. */
+            gauge_attr: UiGauge;
+            /** A chart, by a getter closure that declares its class. */
+            chart: workbench.app.packages.ui.ChartType;
+        }
         /**
          * Exercises the ModelTransformer unknown-type fallback paths
          * using untyped SQLite columns.
@@ -2368,6 +2387,18 @@ declare global {
         }
         export type StatusType = 0 | 1;
         export type StatusKind = 'Draft' | 'Published';
+
+        /**
+         * Fixture: an enum with an override, which a value of the enum publishes, while its own file, an `EnumResource`, its
+         * `->value` and its `->name` keep the enum's names.
+         */
+        export interface UiTone
+        {
+            Bright: 'bright',
+            Dim: 'dim',
+        }
+        export type UiToneType = 'bright' | 'dim';
+        export type UiToneKind = 'Bright' | 'Dim';
 
         /**
          * Pure unit enum (no backing type) — tests that the publisher handles unit enums
@@ -5694,6 +5725,25 @@ declare global {
             extra: Record<string, unknown>;
         }
         /**
+         * Fixture: values of overridden classes, through declared helpers, `new` and a mixed-in model's accessor, so the file
+         * imports each override and each composed class's `…Type`; an overridden enum's case and its `EnumResource`; and a
+         * value object, a docblock shape and an untyped array, each keeping its members' overrides.
+         */
+        export interface UiPanelResource {
+            chart: workbench.app.packages.ui.ChartType;
+            dial: workbench.app.packages.ui.DialType | null;
+            panel: UiNode;
+            panels: UiNode[];
+            when_panel?: UiNode;
+            maybe_chart: workbench.app.packages.ui.ChartType | null;
+            tone: UiToneDto;
+            tone_resource: workbench.app.enums.UiToneType;
+            board: { panel: UiNode; chart: workbench.app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: workbench.app.packages.ui.ChartType[] };
+            shaped: { chart: workbench.app.packages.ui.ChartType; panel: UiNode; gauges: UiGauge[] };
+            untyped: { panel: UiNode; chart: workbench.app.packages.ui.ChartType };
+            gauge_attr: UiGauge;
+        }
+        /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
          * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
@@ -6565,6 +6615,18 @@ declare global {
         export interface TeamRosterSynced {
             team: workbench.app.http.resources.TeamResource;
         }
+        export interface UiBoardUpdated {
+            panel: UiNode;
+            gauge: UiGauge;
+            pennies: UiAmount;
+            badge: UiIcon;
+            maybe: UiNode | null;
+            chart: workbench.app.packages.ui.ChartType;
+            dial: workbench.app.packages.ui.DialType;
+            maybeChart: workbench.app.packages.ui.ChartType | null;
+            charts: workbench.app.packages.ui.ChartType[];
+            board: { panel: UiNode; chart: workbench.app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: workbench.app.packages.ui.ChartType[] };
+        }
         export interface UserNotification extends HasTimestamps {
             userId: number;
             title: string;
@@ -6588,5 +6650,9 @@ declare global {
             user: Partial<workbench.app.models.User>;
             crmUser: Partial<workbench.crm.models.User>;
         }
+    }
+    export namespace workbench.app.packages.ui {
+        export interface ChartType extends UiHello, UiIcon, UiNode {}
+        export interface DialType extends UiDial, UiNode {}
     }
 }

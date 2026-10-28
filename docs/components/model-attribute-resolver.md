@@ -90,6 +90,38 @@ Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so
 import. A `SerializesCastableAttributes` caster publishes what its `serialize()` declares instead, since
 `Model::toArray()` writes that; one that declares nothing leaves `get()` to type it.
 
+### Step 2: an override, resolved and composed
+
+Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride.php) for a class or an interface.
+
+- **Contributors, in order**: the class's own `#[TsType]`; each trait's in `use` order, a trait's own traits after it;
+  each declared interface's, its parents after it; then the parent class's by the same rule. One reached twice keeps
+  its first place, and one declaring `inherit: false` brings only its own. Reflection lists an interface once, so one
+  the class repeats from its parent, or beside an interface extending it, contributes only from there, and is dropped
+  under an `inherit: false` there: see
+  [known gaps](../known-gaps.md#a-classs-override-skips-an-interface-it-repeats-from-its-parent-or-beside-an-interface-that-extends-it).
+- **Composition**: one contributor publishes as written, with its import. Two or more publish the composed
+  `{Basename}Type` when each is one type reference, optionally dotted or generic, and neither a keyword nor a
+  `Record<…>` (`TsTypeString::isExtendable()`), and `ComposedClassTypes::composes()` holds: class types are enabled
+  and the class-types collector's filters and `#[TsExclude]` admit the class, the same question that decides its
+  module. Otherwise the nearest wins. The run warns which were left out only when one cannot be extended: turning
+  class types off or filtering the class out is the project's choice. A composition `tsc` rejects is
+  [a known gap](../known-gaps.md#a-composed-type-fails-tsc-when-a-contributor-is-not-an-object-type-or-two-contributors-disagree-on-a-member).
+- **Classes another publisher owns**: a model, API resource, broadcast event, form request, enum or a class a
+  registered route dispatches to, whatever the routes filters say, publishes its own override, else its nearest parent
+  class's, and never composes, since its publisher writes the file a composed module would take. A trait's or
+  interface's override on it is left out with the same warning.
+- **The marker**: a composed type rides `customImports` under a
+  [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
+  spell, so every carrier moves it unchanged to the code that writes import lines, which turns it into the path of the
+  class's namespace directory ([dispatch rules](resource-ast-analyzer.md#import-dispatch-rules)). The globals file
+  declares the composed interface in that namespace instead. Step 2 registers the class for its module, which the
+  class-type phase writes ([generation cache](generation-cache.md#composed-class-modules)).
+
+`resolve()` reads a class by its declared name, however a type spells it. `BaseRunner::resetRunState()` flushes the
+lookup's memo and the registry at each run. `resolve()` records the class's files, its traits', interfaces' and
+parents' included, on every call, memoized or not, since each consumer's cache entry needs them.
+
 ### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
 
 - **4b**: a `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes
@@ -112,23 +144,25 @@ properties. `jsonSerialize()` has no such contract, so inferring from its proper
 An `Arrayable` with neither is `unknown[]`, and a `JsonSerializable` with no shape falls through to the later steps. A
 class that implements both takes the `Arrayable` path.
 
-A property shape reads public, non-static properties only. It marks a property optional when it is neither promoted
-nor defaulted, because `json_encode()` omits a typed property that was never assigned. A property naming a class or
-enum degrades to `unknown`, since a shape string has no import channel. `$shapeExpansionStack` guards docblock shapes
-and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of
-exhausting memory.
+A property shape reads public, non-static properties only, each by its `@var` where its declaration is unknown or vague,
+as `methodOrDocblockReturnTypes()` reads `@return`. It marks a property optional when it is neither promoted nor
+defaulted, because `json_encode()` omits a typed property that was never assigned. A property keeps a type only by
+[the shape rule](#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), checked per property, and the shape
+carries those imports. A `@var` the rule rejects falls back to the declaration, and a declaration it rejects degrades to
+`unknown`. `$shapeExpansionStack` guards docblock shapes and property shapes under separate keys, so a self-referencing
+or mutual DTO degrades its inner reference instead of exhausting memory.
 
 ### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
 
 `json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
 `StringSerialization::jsonStringType()` reads one from `jsonSerialize()`, or where a `jsonSerialize()` declaring `mixed`
-or nothing says so in its `@return`, and PHP's date object where that `@return` names `DateTime`. Step 5d publishes
-the object `stringableObjectType()` reads for a `__toString()` class: its public properties, an untyped one as
-`unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an exception or `HtmlString`, and `Record<string, unknown>`
-where an instance can gain keys, as an `ArrayObject` or a `#[AllowDynamicProperties]` class can. Only a `__toString()`
-class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public properties publishes its
-step 5c shape first, and one whose `jsonSerialize()` declares `array` with no `@return` shape publishes
-`unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
+or nothing says so in its `@return`, and PHP's date object where that `@return` names `DateTime`. Step 5d publishes the
+object `stringableObjectType()` reads for a `__toString()` class: its public properties, an untyped one with no `@var`
+as `unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an exception or `HtmlString`, and
+`Record<string, unknown>` where an instance can gain keys, as an `ArrayObject` or a `#[AllowDynamicProperties]` class
+can. Only a `__toString()` class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public
+properties publishes its step 5c shape first, and one whose `jsonSerialize()` declares `array` with no `@return` shape
+publishes `unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
 
 ### Step 5c inlines a plain class's typed properties
 
@@ -157,15 +191,37 @@ Laravel's `AsEnumCollection::of()`, `AsCollection::of()` and `AsCollection::usin
 `CastClass:arguments`. Step 1b handles one only when the text before the first colon is an existing class, so
 `decimal:2` and `encrypted:array` fall through to the later steps, though a model's `decimal:2` cast never reaches them:
 `castToTsType()` answers it first. `AsEnumCollection` publishes a list of the enum's type, with the enum's import.
-`AsCollection` publishes a list of its map class when that class resolves to an inline shape or an enum, and `unknown[]`
-otherwise, because a bare class token has no import channel. Any other cast class resolves as the bare class, arguments
-ignored.
+`AsCollection` publishes a list of its map class when that class has an override, with the override's custom imports, or
+resolves to an inline shape or an enum, and `unknown[]` otherwise, because a bare class token has no import channel. Any
+other cast class resolves as the bare class, arguments ignored.
 
 ### Database types come from the schema grammar
 
 A column with no cast resolves the native type string `Schema::getColumns()` reports, such as `tinyint(1)`, or `point`
 for a MySQL `geometry(subtype: 'point')` column. The schema grammar writes that string, not the migration method, so
 read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeScriptMap` entry.
+
+## A shape keeps a member only where its own imports cover it
+
+A shape carries custom imports but no FQCN channel, so a member keeps its type only where the custom imports it brought
+itself bind every name it spells (`TsTypeString::importsCover()`), and no model, enum or other class in it publishes
+under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an import's local name through
+`ImportMaps::localNames()`, so `X as Y` binds `Y`. An override keeps its type and its import, a composed class's marker
+included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
+test stops an enum spelled like a composed class beside it from taking that class's import.
+
+A union keeps its arms' merged imports unless an arm its own imports do not cover spells a name a sibling arm's imports
+bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
+`Panel|Status` keeps `UiNode`'s.
+
+These readers apply it, each with the scope and the fallback its page gives:
+
+- a value object's shape, steps 5a and 5c ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
+- a docblock `array{…}` shape, nested in a container too ([Generic containers](#generic-containers));
+- the `@return` an API resource's method fills from
+  ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));
+- a model metadata payload, which throws instead ([Model metadata](model-metadata.md#type-precedence));
+- the body fallback, per method ([Receiver types](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)).
 
 ## Docblock types
 
@@ -175,8 +231,8 @@ read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeSc
 `Collection<K, X>` and `X[]`, by these rules:
 
 - **Shapes in the value slot**: an `array{...}` value resolves through `resolveArrayShapeString()`, the resolver the
-  top-level docblock paths use, so a nested shape publishes `{ key: string }[]`, not `unknown[][]`. A shape key that
-  names a class or enum degrades to `unknown` on its own.
+  top-level docblock paths use, so a nested shape publishes `{ key: string }[]`, not `unknown[][]`. Its keys follow
+  [the shape rule](#a-shape-keeps-a-member-only-where-its-own-imports-cover-it).
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So
@@ -210,8 +266,10 @@ appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `
 For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()` reports the using class, though the
 file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
 so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
-use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `parseDocblockReturnArrayShape()` and
-`ModelAttributeResolver::morphToGenericMembers()`.
+use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
+`ModelAttributeResolver::morphToGenericMembers()`. A value object's shape reads a property's `@var` the same way,
+through `propertyDeclaringFileClass()`. Reflection reports a trait's property, docblock and all, as the using class's,
+and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
 argument of the consumer's `@use Trait<X>` tag, spelled `@use`, `@phpstan-use` or `@psalm-use`. `traitUseArguments()`
@@ -239,8 +297,11 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
-A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
-`null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+A nullable column adds `| null` unless the declared type already has a top-level `null`: the column reaches the value as
+`null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
+whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. A native non-null `get()`
+never returns null, so the looser test only leaves out a null PHP never sends. `ModelAttributeResolver::sendsNullAsIs()`
+no longer decides the test, and is deprecated.
 
 ## Relation discovery
 

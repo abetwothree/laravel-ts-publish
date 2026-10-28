@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelp
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
@@ -7303,11 +7304,21 @@ test('a union holding an enum resource beside two same-named enums keeps the mer
         ]);
 });
 
-// The body fallback flattens a helper's shape with no import, so the case declines and leaves its siblings their types.
-test('an enum case in a vague helper\'s body fallback leaves its siblings typed', function () {
+// The body fallback flattens a helper's shape with no import, so the case types as the value it sends.
+test('an enum case in a vague helper\'s body fallback publishes the value it sends, beside its typed siblings', function () {
     $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
 
-    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ s: unknown; n: number }']);
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ s: 0; n: number }'])
+        ->and(sentAsJson(new EnumCaseShapeHelperResource(null)->resolve(request()))->shape)->s->toBe(0)->n->toBe(1);
+});
+
+// json_encode() writes a JsonSerializable case's jsonSerialize(), so its value is not what the shape sends.
+test('a JsonSerializable enum\'s case in a vague helper\'s body fallback stays unknown', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(JsonSerializableEnumCaseHelperResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ t: unknown }'])
+        ->and(sentAsJson(new JsonSerializableEnumCaseHelperResource(null)->resolve(request()))->shape->t)
+        ->tier->toBe('gold')->label->toBe('Gold');
 });
 
 test('a list of an enum case beside a read of the same enum publishes one element type, queued once per token', function () {

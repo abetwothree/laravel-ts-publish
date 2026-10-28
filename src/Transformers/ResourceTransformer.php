@@ -16,11 +16,12 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -226,6 +227,17 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * The composed classes whose module this resource's file imports, read from its custom imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->customImports, $this->analysisCustomImports);
+    }
+
+    /**
      * Build a map of per-file enum const aliases to namespace-qualified type names, walking
      * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
      * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
@@ -287,7 +299,8 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initReflection(): self
@@ -434,9 +447,8 @@ class ResourceTransformer extends CoreTransformer
         }
 
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-            $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-            $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
@@ -457,9 +469,8 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             }
             $this->propertyEnumFqcns[$propName] = $fqcn;
             $this->directEnumProperties[$propName] = $fqcn;
@@ -491,10 +502,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
-                if (! isset($this->enumConstMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
-                }
+                $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             }
             $this->propertyInlineEnumResourceFqcns[$propName] = $fqcns;
         }
@@ -502,9 +510,8 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumFqcnMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                    $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                    $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
                 }
             }
             $this->multiEnumResourceProperties[$propName] = $fqcns;
@@ -777,7 +784,7 @@ class ResourceTransformer extends CoreTransformer
         // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
         foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
             $this->enumFqcnMap[$fqcn] ??= $typeName;
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 
@@ -930,7 +937,7 @@ class ResourceTransformer extends CoreTransformer
         foreach ($this->customImports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$types),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$types),
             ));
 
             if ($kept === []) {
@@ -964,7 +971,7 @@ class ResourceTransformer extends CoreTransformer
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);

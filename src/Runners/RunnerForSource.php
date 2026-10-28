@@ -9,12 +9,14 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
@@ -55,6 +57,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
         $broadcastEventGenerators = collect();
         $this->broadcastEventGenerators = $broadcastEventGenerators;
+
+        /** @var Collection<int, ClassTypeGenerator> $classTypeGenerators */
+        $classTypeGenerators = collect();
+        $this->classTypeGenerators = $classTypeGenerators;
     }
 
     /**
@@ -68,14 +74,16 @@ class RunnerForSource extends BaseRunner
 
         $fqcn = $this->resolveSourceToFqcn();
 
-        if (! class_exists($fqcn)) {
+        // An interface can compose, and a trait's or interface's override can decide a composed class's module.
+        if (! class_exists($fqcn) && ! interface_exists($fqcn) && ! trait_exists($fqcn)) {
             throw new InvalidArgumentException("Class does not exist: {$fqcn}");
         }
 
         $reflection = new ReflectionClass($fqcn);
 
-        // An enum names no model. Any other class may, and reads the same published set a full run does.
-        if (! $reflection->isEnum()
+        // An enum names no model, nor does the class-type module a trait or interface republishes. Any other class may,
+        // and reads the same published set a full run does.
+        if (! $reflection->isEnum() && ! $reflection->isInterface() && ! $reflection->isTrait()
             && ($this->shouldPublishModels || Config::boolean('ts-publish.models.enabled', false))
         ) {
             $this->buildModelMorphTargetMap();
@@ -142,7 +150,17 @@ class RunnerForSource extends BaseRunner
 
             $this->generateBroadcastEvent($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, or broadcast event: {$fqcn}");
+            $composed = $this->composedClassesDecidedBy($reflection);
+
+            if ($composed === []) {
+                throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
+            }
+
+            if (! $this->shouldPublishClassTypes) {
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: class types are disabled");
+            }
+
+            $this->generateClassTypes($composed);
         }
     }
 
@@ -268,5 +286,38 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->broadcastEventGenerators = collect([$generator]);
+    }
+
+    /**
+     * The composed classes whose module the source decides: the source itself when it composes, and each scanned
+     * composed class reading an override it declares, as the watcher lists its file for them.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @return list<class-string>
+     */
+    protected function composedClassesDecidedBy(ReflectionClass $reflection): array
+    {
+        $fqcn = $reflection->getName();
+        $readers = array_keys(array_filter(
+            ComposedClassTypes::scanned(),
+            static fn (array $declaredBy): bool => in_array($fqcn, $declaredBy, true),
+        ));
+
+        return array_values(array_unique([...($this->validateClassType($reflection) ? [$fqcn] : []), ...$readers]));
+    }
+
+    /**
+     * Generate each composed class's module from its FQCN.
+     *
+     * @param  list<class-string>  $classes  The fully qualified names of classes whose override composes.
+     */
+    protected function generateClassTypes(array $classes): void
+    {
+        $generatorClass = Config::string('ts-publish.class_types.generator_class', ClassTypeGenerator::class);
+
+        /** @var Collection<int, ClassTypeGenerator> $generators */
+        $generators = collect($classes)->map(static fn (string $fqcn): mixed => resolve($generatorClass, ['findable' => $fqcn]));
+
+        $this->classTypeGenerators = $generators;
     }
 }

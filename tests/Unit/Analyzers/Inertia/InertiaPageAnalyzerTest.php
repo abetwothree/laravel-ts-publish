@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
@@ -42,17 +43,12 @@ use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
+use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
-
-/** Analyze one `Controller@action` through the page analyzer. */
-function pageData(string $uses): ?array
-{
-    return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
-}
 
 afterEach(function () {
     JsonResource::flushState();
@@ -814,4 +810,17 @@ test('the page type prints no ? after a signature, whatever flag reaches it', fu
         ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
         ['a-b' => 'string'],
     ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, "a-b": string }');
+});
+
+it("imports a docblock-typed accessor's class and override on a page", function () {
+    $data = pageData(UiDashboardController::class.'@index');
+    $sent = inertiaProps(new UiDashboardController()->index(request()));
+
+    expect($data['pageType'])->toContain('uploader: User | null, gauge_from_docblock: UiGauge }')
+        ->and($data['externalImports']['@js/types/ui'])->toContain('UiGauge')
+        ->and($data['externalImports']['@js/types/ui'])->toBe(['UiNode', 'UiGauge', 'UiAmount'])
+        ->and(new RouteTransformer(UiDashboardController::class)->typeImports['../../models'])->toBe(['User'])
+        ->and($sent->uploader)->toBeNull()
+        ->and($sent->gauge_from_docblock)->toBeObject()->kind->toBe('node')
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

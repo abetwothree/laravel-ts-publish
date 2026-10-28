@@ -441,6 +441,63 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\UiBoardUpdated": {
+            "name": "UiBoardUpdated",
+            "eventName": "UiBoardUpdated",
+            "broadcastName": ".Workbench.App.Events.UiBoardUpdated",
+            "properties": [
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "gauge",
+                    "type": "UiGauge",
+                    "optional": false
+                },
+                {
+                    "name": "pennies",
+                    "type": "UiAmount",
+                    "optional": false
+                },
+                {
+                    "name": "badge",
+                    "type": "UiIcon",
+                    "optional": false
+                },
+                {
+                    "name": "maybe",
+                    "type": "UiNode | null",
+                    "optional": false
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType",
+                    "optional": false
+                },
+                {
+                    "name": "maybeChart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[]",
+                    "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\UserNotification": {
             "name": "UserNotification",
             "eventName": "UserNotification",
@@ -529,6 +586,23 @@
                     "type": "Partial<CrmUser>",
                     "optional": false
                 }
+            ]
+        }
+    },
+    "classTypes": {
+        "Workbench\\App\\Packages\\Ui\\Chart": {
+            "name": "ChartType",
+            "extends": [
+                "UiHello",
+                "UiIcon",
+                "UiNode"
+            ]
+        },
+        "Workbench\\App\\Packages\\Ui\\Dial": {
+            "name": "DialType",
+            "extends": [
+                "UiDial",
+                "UiNode"
             ]
         }
     },
@@ -1665,6 +1739,31 @@
                     }
                 }
             }
+        },
+        "Workbench\\App\\Enums\\UiTone": {
+            "name": "UiTone",
+            "cases": [
+                {
+                    "name": "Bright",
+                    "value": "bright",
+                    "description": ""
+                },
+                {
+                    "name": "Dim",
+                    "value": "dim",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Bright'",
+                "'Dim'"
+            ],
+            "caseTypes": [
+                "'bright'",
+                "'dim'"
+            ],
+            "methods": [],
+            "staticMethods": []
         },
         "Workbench\\App\\Enums\\Visibility": {
             "name": "Visibility",
@@ -9134,6 +9233,47 @@
                 {
                     "name": "diff",
                     "type": "unknown[] | Record<string, unknown>"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\UiBoard": {
+            "name": "UiBoard",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "panels",
+                    "type": "UiNode[] | null"
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[] | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType"
+                },
+                {
+                    "name": "uploader_from_docblock",
+                    "type": "User | null"
+                },
+                {
+                    "name": "gauge_from_docblock",
+                    "type": "UiGauge"
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge"
                 }
             ]
         },
@@ -21001,6 +21141,71 @@
                 {
                     "name": "extra",
                     "type": "Record<string, unknown>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\UiPanelResource": {
+            "name": "UiPanelResource",
+            "properties": [
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType | null",
+                    "optional": false
+                },
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "panels",
+                    "type": "UiNode[]",
+                    "optional": false
+                },
+                {
+                    "name": "when_panel",
+                    "type": "UiNode",
+                    "optional": true
+                },
+                {
+                    "name": "maybe_chart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "tone",
+                    "type": "UiToneDto",
+                    "optional": false
+                },
+                {
+                    "name": "tone_resource",
+                    "type": "AsEnum<typeof UiTone>",
+                    "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
+                    "optional": false
+                },
+                {
+                    "name": "shaped",
+                    "type": "{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped",
+                    "type": "{ panel: UiNode; chart: ChartType }",
+                    "optional": false
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge",
                     "optional": false
                 }
             ]

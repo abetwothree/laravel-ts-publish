@@ -1121,6 +1121,20 @@ describe('shapeValueHasUnimportableToken', function () {
     ]);
 });
 
+describe('importsCover', function () {
+    test('a shape value is covered when its own custom imports bring in every name it spells', function (string $type, array $imports, bool $expected) {
+        expect($this->service->importsCover($type, $imports))->toBe($expected);
+    })->with([
+        'no name at all' => ['{ a: number }', [], true],
+        'every name, across two modules' => ['{ a: UiNode; b: UiGauge[] }', ['@ui/a' => ['UiNode'], '@ui/b' => ['UiGauge']], true],
+        "a composed class's marker" => ['ChartType | null', ['ts-publish:class-type:App\\Chart' => ['ChartType']], true],
+        'a name no import brings' => ['{ a: UiNode; owner: User }', ['@ui/a' => ['UiNode']], false],
+        'a name with no imports' => ['UiLocal', [], false],
+        'an aliased name, by its alias' => ['UiChartType[]', ['@ui' => ['ChartType as UiChartType']], true],
+        'an aliased name, by the name it aliases' => ['ChartType', ['@ui' => ['ChartType as UiChartType']], false],
+    ]);
+});
+
 describe('orUndefined', function () {
     test('appends an undefined arm only when the type has no top-level one', function (string $type, string $expected) {
         expect($this->service->orUndefined($type))->toBe($expected);
@@ -1148,6 +1162,32 @@ describe('isUnknownOnly', function () {
         'unknown beside a real arm' => ['unknown | string', false],
         'an unknown inside a shape' => ['{ a: unknown }', false],
         'an unknown element type' => ['unknown[]', false],
+    ]);
+});
+
+describe('isExtendable', function () {
+    test('only one type reference that is no keyword can join an interface\'s extends list', function (string $type, bool $extendable) {
+        expect($this->service->isExtendable($type))->toBe($extendable);
+    })->with([
+        'an identifier' => ['UiNode', true],
+        'a dotted name' => ['Acme.Ui.Node', true],
+        'a generic' => ['Partial<Chart>', true],
+        'a nested generic' => ['Map<string, Array<(a: string) => void>>', true],
+        'a record' => ['Record<string, Chart>', false],
+        'a record of a record' => ['Record<string, Record<string, Chart>>', false],
+        'a keyword' => ['string', false],
+        'another keyword' => ['unknown', false],
+        'true' => ['true', false],
+        'false' => ['false', false],
+        'this' => ['this', false],
+        'a union' => ['UiNode | null', false],
+        'a union of generics' => ['Foo<A> | Bar<B>', false],
+        'an array' => ['UiNode[]', false],
+        'an array of a generic' => ['Foo<A>[]', false],
+        'a literal' => ["'a'", false],
+        'an intersection' => ['A & B', false],
+        'an object literal' => ['{ a: string }', false],
+        'a type query' => ['typeof UiNode', false],
     ]);
 });
 

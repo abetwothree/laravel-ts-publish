@@ -53,7 +53,7 @@ abstract class CoreCollector
             ->values();
 
         $additionalClasses = collect($settings['additional_directories'])
-            ->filter(fn (string $dir) => class_exists($dir))
+            ->filter($this->isScannableName(...))
             ->values();
 
         $included = $settings['included'];
@@ -104,6 +104,21 @@ abstract class CoreCollector
     }
 
     /**
+     * Whether the include and exclude filters admit a class or interface with no #[TsExclude], whatever the class
+     * filter says.
+     *
+     * @param  class-string  $class
+     */
+    public function admits(string $class): bool
+    {
+        if (! $this->allows($class)) {
+            return false;
+        }
+
+        return (! class_exists($class) && ! interface_exists($class)) || ! $this->excluded(new ReflectionClass($class));
+    }
+
+    /**
      * Whether a class the scan did not find would still be published when named.
      */
     public function accepts(string $class): bool
@@ -112,19 +127,30 @@ abstract class CoreCollector
     }
 
     /**
-     * Whether a class exists, passes this collector's class filter and carries no #[TsExclude].
+     * Whether a name is a class this collector's filter can decide.
+     *
+     * @phpstan-assert-if-true class-string $class
+     */
+    protected function isScannableName(string $class): bool
+    {
+        return class_exists($class);
+    }
+
+    /**
+     * Whether a class exists, carries no #[TsExclude] and passes this collector's class filter, asked last since a
+     * filter can warn about the class it reads.
      *
      * @phpstan-assert-if-true class-string $class
      */
     protected function passesClassFilter(string $class): bool
     {
-        if (! class_exists($class)) {
+        if (! $this->isScannableName($class)) {
             return false;
         }
 
         $reflection = new ReflectionClass($class);
 
-        return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
+        return $reflection->getAttributes(TsExclude::class) === [] && $this->classFilter($reflection);
     }
 
     /**

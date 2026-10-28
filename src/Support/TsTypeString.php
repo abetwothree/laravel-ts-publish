@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
  * top-level unions, null hoisting, same-basename aliasing, enum substitution, global qualification.
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -35,6 +38,9 @@ class TsTypeString
      */
     protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
         .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
+
+    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
+    protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
@@ -99,6 +105,17 @@ class TsTypeString
         }
 
         return false;
+    }
+
+    /**
+     * Whether a shape value's own custom imports bring in every name it spells, a composed class's marker included, so
+     * a shape that carries custom imports and no FQCN channel may keep it.
+     *
+     * @param  TypesImportMap  $customImports
+     */
+    public function importsCover(string $type, array $customImports): bool
+    {
+        return ! $this->shapeValueHasUnimportableToken($type, ImportMaps::localNames($customImports));
     }
 
     /**
@@ -370,6 +387,25 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * Whether a type can join an interface's `extends` list: one type reference, optionally dotted or generic, and
+     * never a keyword type or a `Record<…>`.
+     */
+    public function isExtendable(string $type): bool
+    {
+        $type = trim($type);
+        $open = strpos($type, '<');
+        $name = $open === false ? $type : rtrim(substr($type, 0, $open));
+
+        // A record's index signature fails beside another contributor's named member of a different type (TS2411).
+        if (in_array($name, [...static::KEYWORD_TYPES, 'Record'], true)
+            || ($open !== false && ! TsTypeShape::isWrapped(substr($type, $open), '<', '>'))) {
+            return false;
+        }
+
+        return array_all(explode('.', $name), fn (string $segment): bool => $this->extractImportableTypes($segment) === [$segment]);
     }
 
     /**

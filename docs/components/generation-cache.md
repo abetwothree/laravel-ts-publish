@@ -43,6 +43,18 @@ A partial run rehydrates the features it skips from their kept entries, so the g
 as the last run that published them left them. With the cache off, or with nothing cached for them (the first
 publish, `--fresh`, or a config, template or package change), they are left out.
 
+## Composed class modules
+
+A value reaching a composed class registers it in `ComposedClassTypes`, but a hit runs no transform and reaches nothing.
+Each transformer therefore answers `composedClassTypes()` from the custom imports it keeps, whose marker keys its
+snapshot carries; a publisher resolves a marker into a path only as it writes its import lines, so the marker stays. The
+class-type phase writes the union of the scanned classes, the registered ones and every built, cached or retained
+generator's answer, each through `cachedGenerate()`. It runs after the skipped features are retained, so their files'
+modules are written too, but a run retains them only while globals or JSON is on; otherwise a skipped feature's files
+import the modules the last run that reached them wrote. A module's entry records the class with its traits,
+interfaces and parents, so editing an ancestor's `#[TsType]` rebuilds the module and every file whose value is the
+class. A module names no model but caches under the published set too, so a class-types-only run builds that set.
+
 ## What is recorded
 
 See [AST engine § Dependency recording policy](ast-engine.md#dependency-recording-policy).

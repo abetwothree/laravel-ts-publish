@@ -9,13 +9,16 @@ use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -25,6 +28,8 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
@@ -43,6 +48,11 @@ use InvalidArgumentException;
 use Override;
 use Throwable;
 
+/**
+ * @phpstan-type PublishedGenerators = list<Collection<int, EnumGenerator>|Collection<int, ModelGenerator>
+ *     |Collection<int, ModelMetadataGenerator>|Collection<int, ResourceGenerator>|Collection<int, RouteGenerator>
+ *     |Collection<int, FormRequestGenerator>|Collection<int, BroadcastEventGenerator>>
+ */
 class Runner extends BaseRunner
 {
     /**
@@ -64,6 +74,9 @@ class Runner extends BaseRunner
 
     /** @var Collection<int, BroadcastEventGenerator> */
     public protected(set) Collection $retainedBroadcastEventGenerators;
+
+    /** @var Collection<int, ClassTypeGenerator> */
+    public protected(set) Collection $retainedClassTypeGenerators;
 
     /** @var list<class-string>|null The published set a skipped model phase built, so retaining reuses it. */
     private ?array $skippedModelSet = null;
@@ -103,6 +116,9 @@ class Runner extends BaseRunner
         $this->generateRoutes();
 
         $this->retainSkippedGenerators();
+        $this->warnOfSharedComposedNames();
+        // After retaining: a skipped feature's cached files import composed modules this phase still writes.
+        $this->generateClassTypes();
         $this->generateGlobals();
         $this->generateViteEnv();
         $this->generateJson();
@@ -159,6 +175,8 @@ class Runner extends BaseRunner
         $formRequests = $skipped['form_requests'] ?? null;
         /** @var class-string<BroadcastEventGenerator>|null $broadcastEvents */
         $broadcastEvents = $skipped['broadcast_events'] ?? null;
+        /** @var class-string<ClassTypeGenerator>|null $classTypes */
+        $classTypes = $skipped['class_types'] ?? null;
 
         $this->retainedEnumGenerators = $this->rehydrateAll(
             $enums,
@@ -180,6 +198,8 @@ class Runner extends BaseRunner
             $broadcastEvents,
             fn (): Collection => $this->collected('broadcast_events', BroadcastEventsCollector::class),
         );
+        // Last, since the classes it keeps include those the features retained above import.
+        $this->retainedClassTypeGenerators = $this->rehydrateAll($classTypes, $this->composedClasses(...));
     }
 
     protected function generateEnums(): void
@@ -284,13 +304,13 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Whether a phase after the model phase runs: each can name a model, and each caches under the published set.
-     * The Inertia config always runs when it is on, and types the shared data through the same engine.
+     * Whether a phase after the model phase runs: each caches under the published set, and all but class types can
+     * name a model. The Inertia config always runs when it is on, and types the shared data through the same engine.
      */
     protected function publishesAfterModels(): bool
     {
         return $this->shouldPublishModelMetadata || $this->shouldPublishResources || $this->shouldPublishRoutes
-            || $this->shouldPublishFormRequests || $this->shouldPublishBroadcastEvents
+            || $this->shouldPublishFormRequests || $this->shouldPublishBroadcastEvents || $this->shouldPublishClassTypes
             || Config::boolean('ts-publish.inertia.enabled');
     }
 
@@ -431,10 +451,7 @@ class Runner extends BaseRunner
             ModelMetadataTransformer::class,
         );
 
-        $failed = array_map(
-            static fn (array $failure): string => $transformerClass::filenameFor($failure['subject']),
-            $this->modelMetadataFailures,
-        );
+        $failed = array_merge(...array_values($this->failedMetadataFilenames()));
 
         if (! $keepModels && ! $keepMetadata && $failed === []) {
             return null;
@@ -443,6 +460,29 @@ class Runner extends BaseRunner
         return static fn (string $filename): bool => $transformerClass::isMetadataFilename($filename)
             ? $keepMetadata || in_array($filename, $failed, true)
             : $keepModels;
+    }
+
+    /**
+     * The companion filename of each model whose metadata threw, as the configured transformer names it, keyed by the
+     * namespace path its model's files are written in.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function failedMetadataFilenames(): array
+    {
+        /** @var class-string<ModelMetadataTransformer> $transformerClass */
+        $transformerClass = Config::string(
+            'ts-publish.model_metadata.transformer_class',
+            ModelMetadataTransformer::class,
+        );
+
+        $filenames = [];
+
+        foreach ($this->modelMetadataFailures as $failure) {
+            $filenames[TsNaming::namespaceToPath($failure['subject'])][] = $transformerClass::filenameFor($failure['subject']);
+        }
+
+        return $filenames;
     }
 
     protected function generateResources(): void
@@ -658,6 +698,157 @@ class Runner extends BaseRunner
         $this->logger?->success('Route controllers — '.$this->routeGenerators->count());
     }
 
+    /**
+     * Write the module of each composed class, after every phase whose values can reach one, then their barrels.
+     */
+    protected function generateClassTypes(): void
+    {
+        /** @var Collection<int, ClassTypeGenerator> $generators */
+        $generators = collect();
+
+        if (! $this->shouldPublishClassTypes || ! ComposedClassTypes::enabled()) {
+            $this->classTypeGenerators = $generators;
+            $this->classTypeModularBarrels = [];
+
+            return;
+        }
+
+        $this->logger?->subLabel('Class types…');
+
+        /** @var class-string<ClassTypeGenerator> $generatorClass */
+        $generatorClass = Config::string('ts-publish.class_types.generator_class', ClassTypeGenerator::class);
+
+        foreach ($this->composedClasses() as $class) {
+            $generators->push($this->cachedGenerate($class, $generatorClass));
+        }
+
+        $this->classTypeGenerators = $generators;
+        $this->classTypeModularBarrels = $generators->isEmpty() ? [] : $this->writeClassTypeBarrels($generators);
+        $this->warnOfSharedRouteBarrels($generators);
+        $this->logger?->success('Class types — '.$generators->count());
+    }
+
+    /**
+     * Write the barrel of each namespace the modules live in, one at a time, so each keeps only the exports other
+     * phases wrote in that directory.
+     *
+     * @param  Collection<int, ClassTypeGenerator>  $generators
+     * @return array<string, string> Barrel contents keyed by namespace path
+     */
+    protected function writeClassTypeBarrels(Collection $generators): array
+    {
+        $keep = $this->preservedClassTypeBarrelExports();
+        $barrels = [];
+
+        foreach ($generators->groupBy(static fn (ClassTypeGenerator $generator): string => $generator->namespacePath()) as $namespacePath => $group) {
+            $namespacePath = (string) $namespacePath;
+            $barrels += $this->barrelWriter->writeModularPreserving(
+                $group,
+                static fn (string $filename): bool => $keep($namespacePath, $filename),
+            );
+        }
+
+        ksort($barrels);
+
+        return $barrels;
+    }
+
+    /**
+     * Warn of each module written where route controllers publish: their barrel re-exports defaults, and this phase's
+     * write keeps only `export *` lines, so the directory's barrel drops the controllers' exports.
+     *
+     * @param  Collection<int, ClassTypeGenerator>  $generators
+     */
+    protected function warnOfSharedRouteBarrels(Collection $generators): void
+    {
+        $routesBase = Config::get('ts-publish.routes.output_directory');
+        $routesBase = is_string($routesBase) && $routesBase !== '' ? $routesBase : Config::string('ts-publish.output_directory');
+
+        if (rtrim($routesBase, '/') !== rtrim(Config::string('ts-publish.output_directory'), '/')) {
+            return;
+        }
+
+        foreach ($generators as $generator) {
+            if (isset($this->routeModularBarrels[$generator->namespacePath()])) {
+                AnalysisWarnings::addOnce($generator->findable, sprintf(
+                    'Publishes its composed type in [%s], where route controllers publish too, so that directory\'s barrel drops their default exports. Move the class to a namespace of its own.',
+                    $generator->namespacePath(),
+                ));
+            }
+        }
+    }
+
+    /**
+     * Warn of each published or retained file that reaches two composed classes of one type name, which its file and
+     * its globals entry cannot tell apart. A cache hit runs no transform, so this reads what each file stored.
+     */
+    protected function warnOfSharedComposedNames(): void
+    {
+        foreach ($this->publishedGenerators() as $generators) {
+            foreach ($generators as $generator) {
+                ComposedClassTypes::warnOfSharedNames($generator->transformer->fqcn(), $generator->transformer->composedClassTypes());
+            }
+        }
+    }
+
+    /**
+     * Every composed class this run writes a module for: each the configured directories hold, each a value reached,
+     * and each a file this run published or retained imports, which a cache hit reaches without transforming.
+     *
+     * @return list<class-string>
+     */
+    protected function composedClasses(): array
+    {
+        /** @var CoreCollector<object> $collector */
+        $collector = resolve(Config::string('ts-publish.class_types.collector_class', ClassTypesCollector::class));
+
+        $classes = [...$collector->collect()->all(), ...ComposedClassTypes::registered()];
+
+        foreach ($this->publishedGenerators() as $generators) {
+            foreach ($generators as $generator) {
+                array_push($classes, ...$generator->transformer->composedClassTypes());
+            }
+        }
+
+        // A snapshot names its classes as they composed when it was built; a module for one that no longer does throws.
+        $classes = array_values(array_filter(
+            array_unique($classes),
+            static fn (string $class): bool => ClassTypeOverride::resolve($class)['composed'] ?? false,
+        ));
+
+        // Which files the cache served decides the order classes are reached in, so sort to keep the output stable.
+        sort($classes, SORT_STRING);
+
+        return $classes;
+    }
+
+    /**
+     * Which existing class-type barrel exports outlive this run, by namespace path and filename. While a flag skips
+     * a phase that writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own
+     * stale ones; otherwise only those another phase wrote in that namespace this run, so a stale one drops out.
+     *
+     * @return Closure(string, string): bool
+     */
+    protected function preservedClassTypeBarrelExports(): Closure
+    {
+        if (array_diff_key($this->skippedFeatureGenerators(), ['routes' => true, 'class_types' => true]) !== []) {
+            return static fn (string $namespacePath, string $filename): bool => true;
+        }
+
+        $written = array_map(
+            static fn (array $filenames): array => array_fill_keys($filenames, true),
+            $this->failedMetadataFilenames(),
+        );
+
+        foreach ($this->publishedGenerators() as $generators) {
+            foreach ($generators as $generator) {
+                $written[$generator->namespacePath()][$generator->filename()] = true;
+            }
+        }
+
+        return static fn (string $namespacePath, string $filename): bool => isset($written[$namespacePath][$filename]);
+    }
+
     protected function generateGlobals(): void
     {
         $this->logger?->subLabel('Globals…');
@@ -717,20 +908,22 @@ class Runner extends BaseRunner
      */
     private function skippedFeatureGenerators(): array
     {
+        // Each feature's flag, generator and whether config enables it.
         $features = [
-            'enums' => [$this->shouldPublishEnums, EnumGenerator::class],
-            'models' => [$this->shouldPublishModels, ModelGenerator::class],
-            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class],
-            'resources' => [$this->shouldPublishResources, ResourceGenerator::class],
-            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class],
-            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class],
-            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class],
+            'enums' => [$this->shouldPublishEnums, EnumGenerator::class, Config::boolean('ts-publish.enums.enabled', false)],
+            'models' => [$this->shouldPublishModels, ModelGenerator::class, Config::boolean('ts-publish.models.enabled', false)],
+            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class, Config::boolean('ts-publish.model_metadata.enabled', false)],
+            'resources' => [$this->shouldPublishResources, ResourceGenerator::class, Config::boolean('ts-publish.resources.enabled', false)],
+            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class, Config::boolean('ts-publish.routes.enabled', false)],
+            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class, Config::boolean('ts-publish.form_requests.enabled', false)],
+            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class, Config::boolean('ts-publish.broadcast_events.enabled', false)],
+            'class_types' => [$this->shouldPublishClassTypes, ClassTypeGenerator::class, ComposedClassTypes::enabled()],
         ];
 
         $skipped = [];
 
-        foreach ($features as $feature => [$published, $defaultGenerator]) {
-            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", false)) {
+        foreach ($features as $feature => [$published, $defaultGenerator, $enabled]) {
+            if (! $published && $enabled) {
                 $skipped[$feature] = Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator);
             }
         }
@@ -781,7 +974,25 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Empty the five retained collections.
+     * Every generator this run built or retained, by feature, but the class-type phase's own.
+     *
+     * @return PublishedGenerators
+     */
+    private function publishedGenerators(): array
+    {
+        return [
+            $this->enumGenerators, $this->retainedEnumGenerators,
+            $this->modelGenerators, $this->retainedModelGenerators,
+            $this->modelMetadataGenerators,
+            $this->resourceGenerators, $this->retainedResourceGenerators,
+            $this->routeGenerators,
+            $this->formRequestGenerators, $this->retainedFormRequestGenerators,
+            $this->broadcastEventGenerators, $this->retainedBroadcastEventGenerators,
+        ];
+    }
+
+    /**
+     * Empty the six retained collections.
      */
     private function forgetRetainedGenerators(): void
     {
@@ -804,5 +1015,9 @@ class Runner extends BaseRunner
         /** @var Collection<int, BroadcastEventGenerator> $broadcastEvents */
         $broadcastEvents = collect();
         $this->retainedBroadcastEventGenerators = $broadcastEvents;
+
+        /** @var Collection<int, ClassTypeGenerator> $classTypes */
+        $classTypes = collect();
+        $this->retainedClassTypeGenerators = $classTypes;
     }
 }

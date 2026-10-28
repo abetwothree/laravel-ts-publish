@@ -56,8 +56,8 @@ trait ResolvesClassNames
         // E.g. for `public MediaType $resource`, this would return `MediaType::class`
         // Note: JsonResource::$resource forbids child-class type narrowing, so this is unreachable for 'resource'.
         $info = LaravelTsPublish::propertyTypes($declaringClass, $property);
-        if (count($info['classes']) > 0) {
-            return $info['classes'][0]; // @codeCoverageIgnore
+        if ($info['classFqcns'] !== []) {
+            return $info['classFqcns'][0]; // @codeCoverageIgnore
         }
 
         // If the property doesn't have a native type declaration, check for a @var annotation in the docblock

@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -107,12 +109,14 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function data(): TsModelMetadataDto
     {
+        $typeImports = ImportMaps::merge(ComposedClassTypes::resolveImports($this->typeImports, $this->namespacePath));
+
         return new TsModelMetadataDto(
             modelName: $this->modelName,
             filename: $this->filename(),
             properties: $this->properties,
             propertyTypes: $this->propertyTypes,
-            typeImports: $this->typeImports,
+            typeImports: $typeImports,
         );
     }
 
@@ -125,6 +129,17 @@ class ModelMetadataTransformer extends CoreTransformer
         // Dispatched on the runtime class so a transformer_class that overrides filenameFor() names the files
         // it writes the same way Runner::preservedModelBarrelExports() asks which exports the phase owns.
         return static::filenameFor($this->findable);
+    }
+
+    /**
+     * The composed classes whose module this companion imports, read from its type imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->typeImports);
     }
 
     /**
@@ -201,7 +216,7 @@ class ModelMetadataTransformer extends CoreTransformer
         foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
             $type = $this->analysis->types[$property];
 
-            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames($property))) {
                 throw new InvalidArgumentException(
                     "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
                     .'whose import cannot be inferred; declare it with #[TsCasts].',
@@ -226,29 +241,30 @@ class ModelMetadataTransformer extends CoreTransformer
             $this->propertyTypes[$property] = $resolved['overrides'][$property];
         }
 
-        $typeImports = $resolved['typeImports'];
-
-        foreach ($this->analysis->typeImports as $path => $names) {
-            $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
-            sort($typeImports[$path]);
-        }
-
-        ksort($typeImports);
+        $typeImports = ImportMaps::merge(
+            $resolved['typeImports'],
+            $this->analysis->typeImports,
+            ...array_values(array_intersect_key($this->analysis->docblockImports, $this->metadata)),
+        );
 
         $seen = [];
 
         foreach ($typeImports as $path => $names) {
-            foreach ($names as $name) {
-                $local = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+            // The stored map keeps a composed class's marker; the companion imports from the path it names.
+            $from = ComposedClassTypes::importPath($path, $this->namespacePath);
 
-                if (isset($seen[$local]) && $seen[$local] !== $path) {
+            foreach ($names as $name) {
+                $local = ImportMaps::localName($name);
+
+                if (isset($seen[$local]) && $seen[$local] !== $from) {
                     throw new InvalidArgumentException(
-                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$path}]; "
-                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports.',
+                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$from}]; "
+                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports. '
+                        .'Where one is a composed class, give it a #[TsType] of its own with inherit: false instead.',
                     );
                 }
 
-                $seen[$local] = $path;
+                $seen[$local] = $from;
             }
         }
 

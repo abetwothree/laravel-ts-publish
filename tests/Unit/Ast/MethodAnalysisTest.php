@@ -460,3 +460,22 @@ describe('MethodAnalysis::addProperty()', function () {
         expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['a' => true, 'b' => true, 'c' => false]);
     });
 });
+
+it("lists the names each class on a property's channels publishes under, and none for a retyped enum it holds", function () {
+    $analysis = new MethodAnalysis(
+        nestedResources: ['post' => 'Workbench\App\Http\Resources\PostResource'],
+        directEnumFqcns: ['status' => 'Workbench\App\Enums\Status', 'tone' => 'Workbench\App\Enums\UiTone'],
+        modelFqcns: ['user' => 'Workbench\App\Models\User'],
+        inlineEnumFqcns: ['tones' => ['Workbench\App\Enums\UiTone']],
+        multiEnumResourceFqcns: ['wrapped' => ['Workbench\App\Enums\UiTone']],
+    );
+
+    expect($analysis->channelNames('status'))->toBe(['Status', 'StatusType', 'StatusKind'])
+        ->and($analysis->channelNames('post'))->toBe(['PostResource'])
+        ->and($analysis->channelNames('user'))->toBe(['User'])
+        ->and($analysis->channelNames('tone'))->toBe([])
+        ->and($analysis->channelNames('tones'))->toBe([])
+        // A wrap spells the enum's own names, whatever a value of the enum publishes.
+        ->and($analysis->channelNames('wrapped'))->toBe(['UiTone', 'UiToneType', 'UiToneKind'])
+        ->and($analysis->channelNames('none'))->toBe([]);
+});

@@ -40,3 +40,4 @@ export { default as PostController } from './post-controller';
 export { default as PostInertiaController } from './post-inertia-controller';
 export { default as PrimaryKeyController } from './primary-key-controller';
 export { default as TypedParamController } from './typed-param-controller';
+export { default as UiDashboardController } from './ui-dashboard-controller';

@@ -1,0 +1,13 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ComposedAncestor;
+
+use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
+
+/**
+ * Copied to a temp file under a unique name, so a test can edit the ancestor whose override a composed class inherits.
+ */
+#[TsType(['type' => 'UiNode', 'import' => '@js/types/ui'])]
+abstract class Base__SUFFIX__ {}

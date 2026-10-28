@@ -24,6 +24,8 @@ use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUniqueStringIds;
 use Illuminate\Database\Eloquent\Model;
@@ -131,8 +133,13 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
-     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive or an enum cast.
-     * An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null.
+     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast,
+     * `AsCollection` or `AsEnumCollection`. An enum cast passes null through, since getEnumCastableAttributeValue()
+     * returns null for null, and both collection casts return null before they map an element, which may hold one.
+     *
+     * Kept for outside callers; typeHoldsNull() decides the column's null.
+     *
+     * @deprecated No package code reads it, and it no longer states the rule. Use typeHoldsNull() instead.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {
@@ -146,15 +153,22 @@ class ModelAttributeResolver
 
         $class = Str::before($cast, ':');
 
-        return enum_exists($class) || ! (class_exists($class) || interface_exists($class));
+        return enum_exists($class)
+            || is_a($class, AsCollection::class, true)
+            || is_a($class, AsEnumCollection::class, true)
+            || ! (class_exists($class) || interface_exists($class));
     }
 
     /**
-     * Whether a type already holds the column's `null`: a top-level arm if the cast passes null as is, else any.
+     * Whether a type already holds the column's `null`: a top-level arm, since a `NULL` column reaches the value as
+     * null or as what a class cast's `get()` returns, whatever null its members hold. An accessor, and a cast whose
+     * `get()` declares a native non-null type, keep the looser test, which counts any `null`.
      */
     public static function typeHoldsNull(string $type, ?string $cast): bool
     {
-        return self::sendsNullAsIs($cast) ? ValueResult::hasNullArm($type) : str_contains($type, 'null');
+        return $cast === 'attribute' || $cast === 'accessor' || self::getDeclaresNonNull($cast)
+            ? str_contains($type, 'null')
+            : ValueResult::hasNullArm($type);
     }
 
     /**
@@ -1793,8 +1807,7 @@ class ModelAttributeResolver
     /**
      * Append ' | null' to a TypeScriptTypeInfo's type when nullable and it holds no `null` yet.
      *
-     * A primitive cast or a database-typed column sends `null` for a `NULL` column, so only a top-level `null` arm
-     * counts there; a class cast or an accessor runs on `NULL` and returns what it returns, so any `null` counts.
+     * See typeHoldsNull() for which `null` counts.
      *
      * @param  TypeScriptTypeInfo  $tsInfo
      * @return TypeScriptTypeInfo
@@ -1861,6 +1874,22 @@ class ModelAttributeResolver
         $visible = $instance->getVisible();
 
         return ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $instance->getHidden(), true);
+    }
+
+    /**
+     * Whether a cast is a `CastsAttributes` class whose `get()` declares a native type that excludes null.
+     */
+    private static function getDeclaresNonNull(?string $cast): bool
+    {
+        $class = Str::before((string) $cast, ':');
+
+        if (! is_a($class, CastsAttributes::class, true)) {
+            return false;
+        }
+
+        $return = new ReflectionMethod($class, 'get')->getReturnType();
+
+        return $return !== null && ! $return->allowsNull();
     }
 
     /**

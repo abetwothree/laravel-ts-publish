@@ -1,0 +1,13 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\App\Models;
+
+use Workbench\App\Packages\Ui\HasIcon;
+use Workbench\App\Packages\Ui\Node;
+
+/**
+ * A composed class in the workbench models' namespace, so its module shares their barrel.
+ */
+final class UiModelsChart extends Node implements HasIcon {}

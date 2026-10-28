@@ -9,10 +9,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRenamedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRevaluedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRenamedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRevaluedCases;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnumInterfaceReads;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Grade;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\PostHelperParamsResource;
 use Workbench\App\Models\Post;
@@ -90,6 +92,22 @@ it('keeps an enum alias only while #[TsCase] leaves the case scalars it is built
     'a backed name beside a revalued case' => [BackedRevaluedCases::class, 'name', 'BackedRevaluedCasesKind'],
     'a backed value beside a renamed case' => [BackedRenamedCases::class, 'value', 'BackedRenamedCasesType'],
 ]);
+
+it('keeps an overridden enum\'s value and name reads by the enum\'s own names', function () {
+    expect(EnumValueTypes::value(UiTone::class, true))
+        ->toBe(['type' => 'UiToneType', 'optional' => false, 'directEnumFqcn' => UiTone::class])
+        ->and(EnumValueTypes::name(UiTone::class, true))
+        ->toBe(['type' => 'UiToneKind', 'optional' => false, 'directEnumFqcn' => UiTone::class]);
+});
+
+it('spells an overridden enum\'s value and name by the names its own file exports', function () {
+    $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([RenamedTone::class]));
+
+    expect(EnumValueTypes::value(RenamedTone::class, true))
+        ->toBe(['type' => 'ShadeType', 'optional' => false, 'directEnumFqcn' => RenamedTone::class])
+        ->and(EnumValueTypes::name(RenamedTone::class, true))
+        ->toBe(['type' => 'ShadeKind', 'optional' => false, 'directEnumFqcn' => RenamedTone::class]);
+});
 
 it('reads an enum value in an import-less shape as the literal union', function () {
     expect(publishedResourceKeyTypes(PostHelperParamsResource::class, Post::class)['status_label'])

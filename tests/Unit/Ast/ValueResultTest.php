@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Comment;
@@ -324,6 +325,16 @@ describe('ValueResult::enumTypeName()', function () {
         expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
             ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
             ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
+    });
+});
+
+describe('ValueResult::readsEnumType()', function () {
+    test("tells a value spelling its enum's type from one of an overridden enum, which spells the override", function () {
+        expect(ValueResult::readsEnumType(['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class]))
+            ->toBeTrue()
+            ->and(ValueResult::readsEnumType(['type' => 'UiToneDto', 'optional' => false, 'directEnumFqcn' => UiTone::class]))
+            ->toBeFalse()
+            ->and(ValueResult::readsEnumType(['type' => 'StatusType', 'optional' => false]))->toBeFalse();
     });
 });
 

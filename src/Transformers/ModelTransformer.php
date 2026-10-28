@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -204,6 +205,17 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The composed classes whose module this model's file imports, read from its custom imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->customImports);
+    }
+
+    /**
      * The columns a combined interface declares, one that holds the attributes beside the relations.
      *
      * @return ColumnsList
@@ -307,7 +319,8 @@ class ModelTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initInstance(): self
@@ -959,8 +972,12 @@ class ModelTransformer extends CoreTransformer
             );
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
-        $combinedTypeImports = $this->mergeCustomImports($combinedTypeImports, $this->customImportsSpelledIn($types));
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
+        $combinedTypeImports = ComposedClassTypes::resolveImports(
+            $this->customImportsSpelledIn($types),
+            $this->namespacePath,
+            $combinedTypeImports,
+        );
 
         return [
             'typeImports' => $this->deduplicateAndSortImports($typeImports),

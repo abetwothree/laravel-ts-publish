@@ -144,6 +144,8 @@ export * from './team';
 export * from './team_meta';
 export * from './tracking-event';
 export * from './tracking-event_meta';
+export * from './ui-board';
+export * from './ui-board_meta';
 export * from './untyped-column';
 export * from './untyped-column_meta';
 export * from './user';

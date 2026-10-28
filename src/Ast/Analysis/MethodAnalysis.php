@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -346,7 +348,10 @@ class MethodAnalysis
         }
     }
 
-    /** Whether any FQCN channel carries an entry for this property name, whose tokens are rewritten under it. */
+    /**
+     * Whether any FQCN channel carries an entry for this property name. A direct enum's entry may name an enum whose
+     * override the value spells instead of its `…Type`; channelNames() leaves such an enum out.
+     */
     public function hasFqcnChannel(string $name): bool
     {
         return isset($this->enumResources[$name]) || isset($this->nestedResources[$name])
@@ -355,6 +360,38 @@ class MethodAnalysis
             || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
             || isset($this->enumResourceArmShapes[$name]);
+    }
+
+    /**
+     * The names the classes on a property's import channels publish under: each enum's type, sibling names and const,
+     * each model's name and each resource's type. An enum the value holds that LaravelTsPublish::retypedEnumType()
+     * answers for brings none, as the value spells that type instead.
+     *
+     * @return list<string>
+     */
+    public function channelNames(string $name): array
+    {
+        $held = array_filter(
+            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
+        );
+        $wrapped = [
+            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
+            ...$this->inlineEnumResourceFqcns[$name] ?? [],
+        ];
+        $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
+        $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
+
+        $names = [
+            ...array_map(class_basename(...), $models),
+            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
+        ];
+
+        foreach ([...$held, ...$wrapped] as $enum) {
+            array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**
@@ -479,6 +516,18 @@ class MethodAnalysis
         }
 
         return $queues;
+    }
+
+    /**
+     * The classes a property's single-entry channel and its list channel of one kind hold, in that order.
+     *
+     * @param  ClassMapType  $single
+     * @param  FqcnQueueMap  $listed
+     * @return list<class-string>
+     */
+    private function channelClasses(string $name, array $single, array $listed): array
+    {
+        return [...(isset($single[$name]) ? [$single[$name]] : []), ...$listed[$name] ?? []];
     }
 
     /**

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
@@ -18,12 +19,16 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiHelloController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Greets;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -35,6 +40,11 @@ use Workbench\App\Models\ExcludedModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Laravel13Connection;
 use Workbench\App\Packages\Audit\Models\AuditTrail;
+use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Concerns\AnnouncesHello;
+use Workbench\App\Packages\Ui\Dial;
+use Workbench\App\Packages\Ui\HasIcon;
+use Workbench\App\Packages\Ui\Node;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
@@ -151,7 +161,80 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class');
+
+test('generates a composed class module from its FQCN, with no barrel', function () {
+    $runner = new RunnerForSource(Dial::class);
+    $runner->run();
+
+    expect($runner->classTypeGenerators)->toHaveCount(1)
+        ->and($runner->classTypeGenerators->first()->transformer->typeName)->toBe('DialType')
+        ->and($runner->classTypeModularBarrels)->toBe([]);
+});
+
+test('republishes each scanned composed class a source lends its override to', function (string $source, array $classes) {
+    $runner = new RunnerForSource($source);
+    $runner->run();
+
+    expect($runner->classTypeGenerators->map(fn (ClassTypeGenerator $generator): string => $generator->findable)->all())
+        ->toBe($classes)
+        ->and($runner->classTypeModularBarrels)->toBe([]);
+})->with([
+    'a parent class' => [Node::class, [Chart::class, Dial::class]],
+    'an interface' => [HasIcon::class, [Chart::class]],
+    'a trait' => [AnnouncesHello::class, [Chart::class]],
+    'a composed class declaring its own' => [Dial::class, [Dial::class]],
+]);
+
+test('generates a composed interface module from its FQCN', function () {
+    $runner = new RunnerForSource(Greets::class);
+    $runner->run();
+
+    expect($runner->classTypeGenerators)->toHaveCount(1)
+        ->and($runner->classTypeGenerators->first()->transformer->typeName)->toBe('GreetsType');
+});
+
+test('throws for an interface no scanned composed class reads an override from', function () {
+    $runner = new RunnerForSource(Arrayable::class);
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: '.Arrayable::class);
+
+test('a trait or interface --source run reads no model set', function (string $source) {
+    (new RunnerForSource($source))->run();
+
+    expect(PublishedModelRegistry::isEmpty())->toBeTrue();
+})->with([
+    'an interface' => [HasIcon::class],
+    'a trait' => [AnnouncesHello::class],
+]);
+
+test('throws for a controller whose only route spells its name in another case, and writes no route file', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-cased-route-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    // The routes publisher matches a controller's actions by its exact name, so this route gives it none.
+    Route::get('ui-hello-cased', strtolower(UiHelloController::class).'@index');
+
+    try {
+        expect(fn () => (new RunnerForSource(UiHelloController::class))->run())
+            ->toThrow(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller')
+            ->and(is_dir($outputDir))->toBeFalse();
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('throws for a contributor while class type publishing is disabled', function () {
+    $runner = new RunnerForSource(Node::class);
+    $runner->shouldPublishClassTypes = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\App\Packages\Ui\Node: class types are disabled');
+
+test('throws for a composed class when class type publishing is disabled', function () {
+    $runner = new RunnerForSource(Dial::class);
+    $runner->shouldPublishClassTypes = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\App\Packages\Ui\Dial: class types are disabled');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));
@@ -259,7 +342,7 @@ test('throws when route publishing is disabled', function () {
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, broadcast event, or composed class');
 
 test('generates single broadcast event from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');

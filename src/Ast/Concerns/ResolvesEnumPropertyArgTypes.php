@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -24,6 +25,11 @@ use PhpParser\Node\Name;
  * enum a resolved payload holds, for both resource-construction shapes: `EnumResource::make()`/`::collection()` and
  * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
  * fallback would drop its whole shape for the enum either names.
+ *
+ * A wrap sends the enum itself, so it takes the enum's own type name, which the `AsEnum` rewrite replaces, even where
+ * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
+ * channel, while a cast, an accessor or a declared type is read from its class.
+ *
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -77,18 +83,7 @@ trait ResolvesEnumPropertyArgTypes
                 && $this->isProxyFetch($argExpr->var, $scope)
                 && $argExpr->name instanceof Identifier
             ) {
-                $propName = $argExpr->name->toString();
-                $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
-
-                if ($info['enumFqcn'] === null) {
-                    return null;
-                }
-
-                return [
-                    ...$result,
-                    'type' => $info['type'],
-                    'enumFqcn' => $info['enumFqcn'],
-                ];
+                return $this->resolveEnumFromAttribute($argExpr->name->toString(), $scope);
             }
 
             // Enum::staticMethod(...) or Enum::Case — resolved from the class name alone. parseAndResolveAst()
@@ -102,11 +97,9 @@ trait ResolvesEnumPropertyArgTypes
             }
 
             if ($enumClassName !== null && enum_exists($enumClassName)) {
-                $enumTsInfo = LaravelTsPublish::toTsType($enumClassName);
-
                 return [
                     ...$result,
-                    'type' => $enumTsInfo['type'],
+                    'type' => ValueResult::enumTypeName($enumClassName),
                     'enumFqcn' => $enumClassName,
                 ];
             }
@@ -121,17 +114,7 @@ trait ResolvesEnumPropertyArgTypes
             return null; // @codeCoverageIgnore
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
-
-        if ($info['enumFqcn'] === null) {
-            return null;
-        }
-
-        return [
-            ...$result,
-            'type' => $info['type'],
-            'enumFqcn' => $info['enumFqcn'],
-        ];
+        return $this->resolveEnumFromAttribute($propName, $scope);
     }
 
     /**
@@ -200,19 +183,34 @@ trait ResolvesEnumPropertyArgTypes
             ...($resolved['embeddedEnumFqcns'] ?? []),
         ]));
 
-        if (count($fqcns) !== 1) {
+        $enum = match (count($fqcns)) {
+            0 => $this->retypedPayloadEnum($payload, $scope),
+            1 => $fqcns[0],
+            default => null,
+        };
+
+        if ($enum === null) {
             return null;
         }
 
-        $enumType = LaravelTsPublish::toTsType($fqcns[0])['type'];
+        $retyped = LaravelTsPublish::retypedEnumType($enum);
+        $enumType = $retyped ?? ValueResult::enumTypeName($enum);
         $held = ValueResult::stripNullArm($resolved['type']);
 
         if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
         }
 
+        $type = $retyped === null
+            ? $resolved['type']
+            : ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]');
+
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
-        return ['type' => $resolved['type'], 'optional' => $resolved['optional'], 'enumFqcn' => $fqcns[0]];
+        return [
+            'type' => ValueResult::hasNullArm($resolved['type']) ? ValueResult::withNullArm($type) : $type,
+            'optional' => $resolved['optional'],
+            'enumFqcn' => $enum,
+        ];
     }
 
     /**
@@ -244,5 +242,49 @@ trait ResolvesEnumPropertyArgTypes
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
+    }
+
+    /**
+     * Resolve the enum a model attribute holds, as an EnumResource wrap reads it: by its attribute type, or for an enum
+     * `toTsType()` names no enum for, by the class the attribute holds and the attribute's null arm.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveEnumFromAttribute(string $attributeName, AnalysisScope $scope): ?array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($attributeName, $scope);
+
+        if ($info['enumFqcn'] !== null) {
+            return [...ValueResult::unknown(), 'type' => $info['type'], 'enumFqcn' => $info['enumFqcn']];
+        }
+
+        $enum = $scope->modelClass === null
+            ? null
+            : resolve(ModelAttributeResolver::class)->resolveAttributeClass($scope->modelClass, $attributeName);
+
+        if ($enum === null || ! enum_exists($enum)) {
+            return null;
+        }
+
+        $type = ValueResult::enumTypeName($enum);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => ValueResult::hasNullArm($info['type']) ? ValueResult::withNullArm($type) : $type,
+            'enumFqcn' => $enum,
+        ];
+    }
+
+    /**
+     * The one enum class a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings`
+     * entry answering its type, as a value of a type it declares carries no enum channel.
+     *
+     * @return class-string|null
+     */
+    private function retypedPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
+    {
+        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
+
+        return count($classes) === 1 && LaravelTsPublish::retypedEnumType($classes[0]) !== null ? $classes[0] : null;
     }
 }

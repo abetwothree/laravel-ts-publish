@@ -8,9 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -141,13 +142,12 @@ final class AnalysisComposer
         $this->modelFqcnMap = [];
 
         foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-            $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-            $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
 
         foreach ($this->inlineEnumResourceFqcns($analysis) as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
         foreach ($analysis->nestedResources as $fqcn) {
@@ -168,7 +168,7 @@ final class AnalysisComposer
 
         foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
             $this->enumFqcnMap[$fqcn] ??= $name;
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
         foreach ($this->carriedInUse($analysis->carried['models'] ?? [], $this->modelFqcnMap, class_basename(...)) as $fqcn => $name) {
@@ -387,7 +387,7 @@ final class AnalysisComposer
             }
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $analysis->customImports);
+        $typeImports = ComposedClassTypes::resolveImports($analysis->customImports, $this->namespacePath, $typeImports);
 
         return $this->deduplicateAndSortImports($this->pruneUnspelledImports($typeImports));
     }
@@ -430,7 +430,7 @@ final class AnalysisComposer
         foreach ($imports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn($this->localName($name), ...$types),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$types),
             ));
 
             if ($kept === []) {
@@ -443,16 +443,6 @@ final class AnalysisComposer
         }
 
         return $imports;
-    }
-
-    /**
-     * The local name an import specifier binds — the alias when it carries `Original as Alias`.
-     */
-    private function localName(string $specifier): string
-    {
-        $position = strpos($specifier, ' as ');
-
-        return $position === false ? $specifier : substr($specifier, $position + 4);
     }
 
     /**
