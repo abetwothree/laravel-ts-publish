@@ -108,9 +108,9 @@ Step 2 asks [`ClassTypeOverride::resolve()`](../../src/Support/ClassTypeOverride
   class types off or filtering the class out is the project's choice. A composition `tsc` rejects is
   [a known gap](../known-gaps.md#a-composed-type-fails-tsc-when-a-contributor-is-not-an-object-type-or-two-contributors-disagree-on-a-member).
 - **Classes another publisher owns**: a model, API resource, broadcast event, form request, enum or a class a
-  registered route dispatches to publishes its own override, else its nearest parent class's, and never composes,
-  since its publisher writes the file a composed module would take. A trait's or interface's override on it is left
-  out with the same warning.
+  registered route dispatches to, whatever the routes filters say, publishes its own override, else its nearest parent
+  class's, and never composes, since its publisher writes the file a composed module would take. A trait's or
+  interface's override on it is left out with the same warning.
 - **The marker**: a composed type rides `customImports` under a
   [`ComposedClassTypes::marker()`](../../src/Support/ComposedClassTypes.php) key, which no module specifier can
   spell, so every carrier moves it unchanged to the code that writes import lines, which turns it into the path of the

@@ -38,6 +38,9 @@ The helpers and the test that pins them live in these files:
   marker, the path a file imports its module from, the composed classes values reached this run or the scan found,
   and whether a class may compose at all. That last asks the configured class-types collector, so the scan and the
   composer share one filter. Static and `@internal`.
+- [`Support\RoutedControllers`](../../src/Support/RoutedControllers.php): whether a registered route dispatches to a
+  class, in any case, read from the router once per run. Static and `@internal`, read by the owned-class rule and the
+  controller validator.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -57,6 +60,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
+| Does a registered route dispatch to this class? | `RoutedControllers` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |

@@ -280,6 +280,17 @@ ancestors are listed, as for a model published on demand. Editing one triggers n
 rebuilds the module, which is cached against those files. Add the class or its directory to
 `class_types.additional_directories` to watch it.
 
+### `--source` on a watched contributor file can republish nothing
+
+The watcher lists the file of each class, trait or interface a scanned composed class reads a `#[TsType]` from, and
+`--source` on that file republishes the class's module. It cannot follow two edits:
+
+- A contributor whose `#[TsType]` was just removed, or that no longer feeds a scanned class, is no contributor any
+  more, so `--source` on it fails as not publishable and the module keeps its old `extends` list.
+- A contributor that is itself a routed controller publishes its route file, so the module is not republished.
+
+Run a full `ts:publish` after either edit.
+
 ### A composed class beside another publisher's files can lose its barrel export
 
 A composed class's module shares its namespace's `index.ts` with any model, enum, API resource, form request or
