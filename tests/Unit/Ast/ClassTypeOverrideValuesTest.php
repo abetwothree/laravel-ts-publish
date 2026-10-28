@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNewValueEdgesRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiNodeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiToneReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedChartKindResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedEnumArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiUntypedToneHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GaugeCardHolder;
@@ -235,6 +236,35 @@ it("publishes an overridden enum's case in an untyped helper's array as its over
         ->tone->toBe('bright')
         ->gauge->toBeObject()
         ->n->toBe(1);
+});
+
+it("publishes a plain backed enum's case in an untyped helper's array as the value it sends, beside an override", function () {
+    expect(resourceProps(UiUntypedEnumArmsResource::class))->toBe([
+        'mixed' => "{ kind: 'bar' | UiToneDto; chart: ChartType }",
+        'matched' => "{ kind: 'bar' | UiToneDto }",
+        'status' => '{ kind: 1 | string }',
+        'pure' => '{ kind: unknown; n: number }',
+    ])
+        ->and(new ResourceTransformer(UiUntypedEnumArmsResource::class)->typeImports)->toBe([
+            '@js/types/ui' => ['UiToneDto'],
+            '../../../../../../workbench/app/packages/ui' => ['ChartType'],
+        ]);
+});
+
+it("sends a plain backed enum's case in an untyped helper's array as the value it publishes", function () {
+    // A pure enum's case is left out: json_encode() cannot write it, which is why that key publishes unknown.
+    $sent = fn (mixed $resource): stdClass => sentAsJson(
+        array_diff_key(new UiUntypedEnumArmsResource($resource)->resolve(request()), ['pure' => true]),
+    );
+
+    expect($sent(true))
+        ->mixed->kind->toBe('bar')
+        ->matched->kind->toBe('bar')
+        ->status->kind->toBe(1)
+        ->and($sent(null))
+        ->mixed->kind->toBe('bright')
+        ->matched->kind->toBe('bright')
+        ->status->kind->toBe('none');
 });
 
 it("keeps an overridden member of a value object's shape and its import in an event and a resource", function () {

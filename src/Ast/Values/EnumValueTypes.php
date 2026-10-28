@@ -108,6 +108,25 @@ final class EnumValueTypes
     }
 
     /**
+     * What json_encode() writes one case as, spelled with no import: a backed case's value as a literal, or `number`
+     * past the safe integer range; null for a pure enum's case, which json_encode() cannot write.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public static function caseValue(UnitEnum $case): ?array
+    {
+        DependencyRecorder::recordClass($case::class);
+
+        if (! $case instanceof BackedEnum) {
+            return null;
+        }
+
+        return self::typed(is_int($case->value) && abs($case->value) > self::MAX_SAFE_INTEGER
+            ? 'number'
+            : self::literals([$case->value]));
+    }
+
+    /**
      * What the enum's cases spell, read once per process: a class's cases never change while it runs. Null when the
      * class is no enum or declares no case.
      *

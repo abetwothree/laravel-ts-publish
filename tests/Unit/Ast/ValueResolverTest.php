@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InertiaPropertyLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ResponsableLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
@@ -26,6 +28,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Models\User;
@@ -185,11 +188,16 @@ it('types a pure enum case as its enum too, the names a model or a metadata file
     expect($result)->toBe(['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class]);
 });
 
-it('declines an enum case in a scope that carries no import', function () {
+it('types an enum case in a scope that carries no import as the value it sends, or not at all for a pure enum', function () {
     $scope = valueResolverTestScope();
     $scope->carriesImports = false;
+    $resolve = fn (string $enum, string $case): ?array => new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch($enum, $case), $scope);
 
-    expect(new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch(Status::class, 'Draft'), $scope))->toBeNull();
+    expect($resolve(Status::class, 'Draft'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve(ChartKind::class, 'Bar'))->toBe(['type' => "'bar'", 'optional' => false])
+        ->and($resolve(UnsafeIntegerBackedStatus::class, 'Huge'))->toBe(['type' => 'number', 'optional' => false])
+        ->and($resolve(Visibility::class, 'Public'))->toBeNull()
+        ->and($resolve(UiTone::class, 'Bright'))->toMatchArray(['type' => 'UiToneDto', 'customImports' => ['@js/types/ui' => ['UiToneDto']]]);
 });
 
 it('declines a constant whose lazily-evaluated initializer throws, instead of aborting', function () {

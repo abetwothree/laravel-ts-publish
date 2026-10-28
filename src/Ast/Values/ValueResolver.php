@@ -81,6 +81,8 @@ final class ValueResolver
      * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
      * Returns null for anything not a resolvable constant.
      *
+     * A case in a scope that carries no import types as the value it sends instead.
+     *
      * @return ValueExpressionResult|null
      */
     public function resolveClassConstant(ClassConstFetch $expr, AnalysisScope $scope): ?array
@@ -111,11 +113,8 @@ final class ValueResolver
 
         $constantReflection = $classReflection->getReflectionConstant($constName);
 
-        // A scope that carries no import cannot import an enum's own names, only a retyped enum's custom import.
-        if ($constantReflection === false
-            || ($constantReflection->isEnumCase() && ! $scope->carriesImports && LaravelTsPublish::retypedEnumType($className) === null)
-        ) {
-            return null;
+        if ($constantReflection === false) {
+            return null; // @codeCoverageIgnore
         }
 
         try {
@@ -124,6 +123,14 @@ final class ValueResolver
             // The initializer can reference another undefined constant; PHP evaluates a class
             // constant's value lazily, so that only surfaces here, not at class-load time.
             return null;
+        }
+
+        // A scope that carries no import cannot import an enum's own names, so a case types as the value it sends; a
+        // retyped enum's case keeps its override, whose custom import such a scope carries.
+        if ($constantReflection->isEnumCase() && $value instanceof UnitEnum && ! $scope->carriesImports
+            && LaravelTsPublish::retypedEnumType($className) === null
+        ) {
+            return EnumValueTypes::caseValue($value);
         }
 
         return $this->resolveConstantValue($value);
