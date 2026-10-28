@@ -32,7 +32,8 @@ The helpers and the test that pins them live in these files:
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
-  and paths sorted. Static and `@internal`; every merge of import maps goes through it.
+  and paths sorted. Static and `@internal`. Every merge of import maps added since goes through it; five older inline
+  merges stay as they are, `ComposedClassTypes::resolveImports()` among them, since it keeps key order by contract.
 - [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
   `#[TsType]` and its traits', interfaces' and parents'. It reads attributes by reflection and never calls
   `toTsType()`, whose step 2 calls it. Static, memoized per run and `@internal`.

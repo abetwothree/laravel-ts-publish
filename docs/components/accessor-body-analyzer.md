@@ -93,7 +93,6 @@ getter's scope. The getter's filters then publish what they would inside the met
 for a member naming a token, `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
 The model file and every resource still publish the analysis with imports.
 
-
 `ResolvesAccessorType::resolveAccessorBodyType()` then chooses between that spelling and the annotation. Without
 imports, a spelling can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
 publishes `Comment[]` but reads `unknown[]`. The vague spelling beats the fallback annotation only when two things
