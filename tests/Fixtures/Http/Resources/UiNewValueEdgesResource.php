@@ -1,0 +1,33 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
+
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\EveryWayNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Stamp;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Packages\Ui\Panel;
+
+/**
+ * A `new` of an overridden class in the shapes beside the workbench's: a class every serialization rule would answer, a
+ * date, a nullable override, a parameter default, a model and an API resource.
+ */
+class UiNewValueEdgesResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            'every_way' => new EveryWayNode,
+            'stamp' => new Stamp,
+            'maybe_node' => $request->boolean('node') ? new MaybeNode : null,
+            'default_panel' => $this->when(true, fn ($panel = new Panel) => $panel),
+            'model' => new InheritingChildModel,
+            'default_resource' => $this->when(true, fn ($node = new UiNodeResource(null)) => $node),
+        ];
+    }
+}

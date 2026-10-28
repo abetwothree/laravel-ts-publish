@@ -1,3 +1,4 @@
+import type { UiNode } from '@js/types/ui';
 import type { ChartType, DialType } from '../../packages/ui';
 
 /**
@@ -9,4 +10,9 @@ export interface UiPanelResource
 {
     chart: ChartType;
     dial: DialType | null;
+    panel: UiNode;
+    panels: UiNode[];
+    when_panel?: UiNode;
+    maybe_chart: ChartType | null;
+    plain: unknown;
 }

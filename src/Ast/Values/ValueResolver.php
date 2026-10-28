@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -18,6 +19,7 @@ use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
@@ -245,6 +247,8 @@ final class ValueResolver
     /**
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
+     * X's override answers first, whoever serializes X, unless X is a model.
+     *
      * A model declines, since its JSON depends on its runtime attributes, casts and hidden fields. So does a class
      * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls. The value
      * is an object, which an API resource's filter never enters, so it keeps its keys.
@@ -253,7 +257,11 @@ final class ValueResolver
      */
     public function resolveSerializedNew(New_ $new): ?array
     {
-        $result = $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
+        $class = $new->class instanceof Name ? $new->class->toString() : null;
+
+        $result = $class !== null && $this->publishesOverride($class)
+            ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
+            : $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
 
         return $result === null ? null : [...$result, 'keepsKeys' => true];
     }
@@ -273,6 +281,16 @@ final class ValueResolver
         return $arg instanceof Arg && ! $arg->unpack
             ? new FuncCall(new Name('collect'), [new Arg($arg->value)], $new->getAttributes())
             : null;
+    }
+
+    /**
+     * Whether a `new` of a class publishes the class's override. A model and an API resource keep their own channels.
+     */
+    private function publishesOverride(string $class): bool
+    {
+        return ! is_a($class, Model::class, true)
+            && ! is_a($class, JsonResource::class, true)
+            && ClassTypeOverride::resolve($class) !== null;
     }
 
     /**

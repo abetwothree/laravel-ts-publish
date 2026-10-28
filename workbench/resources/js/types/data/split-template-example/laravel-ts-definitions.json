@@ -21107,6 +21107,31 @@
                     "name": "dial",
                     "type": "DialType | null",
                     "optional": false
+                },
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "panels",
+                    "type": "UiNode[]",
+                    "optional": false
+                },
+                {
+                    "name": "when_panel",
+                    "type": "UiNode",
+                    "optional": true
+                },
+                {
+                    "name": "maybe_chart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "plain",
+                    "type": "unknown",
+                    "optional": false
                 }
             ]
         },

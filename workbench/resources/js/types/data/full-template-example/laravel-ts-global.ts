@@ -5708,6 +5708,11 @@ declare global {
         export interface UiPanelResource {
             chart: app.packages.ui.ChartType;
             dial: app.packages.ui.DialType | null;
+            panel: UiNode;
+            panels: UiNode[];
+            when_panel?: UiNode;
+            maybe_chart: app.packages.ui.ChartType | null;
+            plain: unknown;
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.

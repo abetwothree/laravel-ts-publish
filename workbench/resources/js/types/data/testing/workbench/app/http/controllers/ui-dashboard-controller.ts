@@ -1,9 +1,9 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
 
-import type { UiNode } from '@js/types/ui';
+import type { UiAmount, UiGauge, UiNode } from '@js/types/ui';
 import type { ChartType } from '../../packages/ui';
 
-export type IndexPageProps = Inertia.SharedData & { chart: UiNode, composed: ChartType };
+export type IndexPageProps = Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount };
 
 export const index = annotatePageProps<IndexPageProps>()(defineRoute({
     name: 'ui.dashboard',

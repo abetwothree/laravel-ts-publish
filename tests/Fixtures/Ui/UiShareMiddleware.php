@@ -7,9 +7,11 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Pennies;
 
 /**
- * Shares a value of a composed class, kept out of the workbench so no workbench page's shared data moves.
+ * Shares values of overridden classes, kept out of the workbench so no workbench page's shared data moves.
  */
 class UiShareMiddleware extends Middleware
 {
@@ -20,7 +22,11 @@ class UiShareMiddleware extends Middleware
      */
     public function share(Request $request): array
     {
-        return ['chart' => $this->chart()];
+        return [
+            'node' => new Panel,
+            'pennies' => new Pennies(5),
+            'chart' => $this->chart(),
+        ];
     }
 
     /**

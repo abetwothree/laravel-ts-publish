@@ -592,8 +592,8 @@ describe('imports a composed type from its module in each publisher', function (
         $body = fn (bool $dial): mixed => $sent(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
-            ->toBe(['chart' => 'ChartType', 'dial' => 'DialType | null'])
-            ->and($transformer->typeImports)->toBe(['../../packages/ui' => ['ChartType', 'DialType']])
+            ->toMatchArray(['chart' => 'ChartType', 'dial' => 'DialType | null', 'maybe_chart' => 'ChartType | null'])
+            ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType', 'DialType']])
             ->and($body(true)->chart)->toBeObject()
             ->and($body(true)->dial)->toBeObject()
             ->and($body(false)->dial)->toBeNull();
@@ -607,9 +607,9 @@ describe('imports a composed type from its module in each publisher', function (
         $transformer = new RouteTransformer(UiDashboardController::class);
         $request = Request::create('/ui/dashboard');
         $request->headers->set('X-Inertia', 'true');
-        $props = $sent(json_decode((string) new UiDashboardController()->index()->toResponse($request)->getContent(), true)['props']);
+        $props = $sent(json_decode((string) new UiDashboardController()->index($request)->toResponse($request)->getContent(), true)['props']);
 
-        expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType']])
+        expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'], '../../packages/ui' => ['ChartType']])
             ->and($props->chart)->toBeObject()
             ->and($props->composed)->toBeObject();
 
@@ -632,8 +632,8 @@ describe('imports a composed type from its module in each publisher', function (
         $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(UiShareMiddleware::class);
         $shared = $analyzer->analyze();
 
-        expect($shared['sharedPageProps'] ?? null)->toBe('{ chart: ChartType }')
-            ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/packages/ui' => ['ChartType']])
+        expect($shared['sharedPageProps'] ?? null)->toBe('{ node: UiNode, pennies: UiAmount, chart: ChartType }')
+            ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/packages/ui' => ['ChartType'], '@js/types/ui' => ['UiAmount', 'UiNode']])
             ->and($sent(new UiShareMiddleware()->share(request()))->chart)->toBeObject();
     });
 
@@ -668,7 +668,7 @@ describe('imports a composed type from its module in each publisher', function (
     it('in analyze()', function () {
         $result = resolve(AstEngine::class)->analyze(UiPanelResource::class, fromNamespacePath: 'workbench/app/http/resources');
 
-        expect($result->typeImports)->toBe(['../../packages/ui' => ['ChartType', 'DialType']]);
+        expect($result->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType', 'DialType']]);
     });
 });
 
