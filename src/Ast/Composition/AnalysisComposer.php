@@ -388,10 +388,7 @@ final class AnalysisComposer
             }
         }
 
-        $typeImports = $this->mergeCustomImports(
-            $typeImports,
-            ComposedClassTypes::resolveImports($analysis->customImports, $this->namespacePath),
-        );
+        $typeImports = ComposedClassTypes::resolveImports($analysis->customImports, $this->namespacePath, $typeImports);
 
         return $this->deduplicateAndSortImports($this->pruneUnspelledImports($typeImports));
     }

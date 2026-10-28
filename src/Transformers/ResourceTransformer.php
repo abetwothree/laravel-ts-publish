@@ -977,11 +977,7 @@ class ResourceTransformer extends CoreTransformer
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
-        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
-        $typeImports = $this->mergeCustomImports(
-            $typeImports,
-            ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath),
-        );
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);

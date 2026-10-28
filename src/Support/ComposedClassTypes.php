@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Support\Facades\Config;
 
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Config;
  *
  * A value carries a composed type as a custom import keyed by a marker, so every import channel moves it unchanged
  * and only the code that writes an import line has to read the marker as the composed class's module.
+ *
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -94,26 +97,29 @@ final class ComposedClassTypes
     }
 
     /**
-     * An import map with each marker key resolved through importPath(), its names joining those its path already has.
-     * The order of the other keys is kept, so a caller sorts after.
+     * Merge an import map into `$into`, each marker key resolved through importPath() and its names joining those the
+     * path already has; key order is kept, so a caller sorts after. Only the code writing import lines calls this: a
+     * stored map keeps its markers, which composedClassTypes() reads back from a cached snapshot.
      *
-     * @param  array<string, list<string>>  $imports
-     * @return array<string, list<string>>
+     * @param  TypesImportMap  $imports
+     * @param  TypesImportMap  $into
+     * @return TypesImportMap
      */
-    public static function resolveImports(array $imports, string $fromNamespacePath): array
+    public static function resolveImports(array $imports, string $fromNamespacePath, array $into = []): array
     {
-        $resolved = [];
-
         foreach ($imports as $path => $names) {
-            $path = self::importPath((string) $path, $fromNamespacePath);
-            $resolved[$path] = array_values(array_unique([...($resolved[$path] ?? []), ...$names]));
+            if ($names !== []) {
+                $path = self::importPath((string) $path, $fromNamespacePath);
+                $into[$path] = array_values(array_unique([...($into[$path] ?? []), ...$names]));
+            }
         }
 
-        return $resolved;
+        return $into;
     }
 
     /**
      * Each class's composed type name, mapped to that name qualified by the class's namespace in the globals file.
+     * The first of two classes sharing a name keeps it, as warnOfSharedNames() says.
      *
      * @param  list<class-string>  $classes
      * @return array<string, string>
@@ -123,16 +129,42 @@ final class ComposedClassTypes
         $references = [];
 
         foreach ($classes as $class) {
-            $references[self::typeName($class)] = TsNaming::globalNamespace($class).'.'.self::typeName($class);
+            $references[self::typeName($class)] ??= TsNaming::globalNamespace($class).'.'.self::typeName($class);
         }
 
         return $references;
     }
 
     /**
+     * Warn when one file reaches two composed classes that publish one type name. A composed name is a custom import,
+     * which no registry aliases, so the file imports it twice and the globals file reads both as the first.
+     *
+     * @param  list<class-string>  $classes  the classes, in the order the file reaches them
+     */
+    public static function warnOfSharedNames(string $subject, array $classes): void
+    {
+        $byName = [];
+
+        foreach ($classes as $class) {
+            $byName[self::typeName($class)][] = $class;
+        }
+
+        foreach ($byName as $name => $named) {
+            if (count($named) > 1) {
+                AnalysisWarnings::addOnce($subject, sprintf(
+                    'Imports [%s] from composed classes [%s], so its file imports that name twice (TS2300), and its globals entry, if any, reads them all as [%s]. Give all but one a #[TsType] of its own with inherit: false.',
+                    $name,
+                    implode('] and [', $named),
+                    $named[0],
+                ));
+            }
+        }
+    }
+
+    /**
      * The composed classes the marker keys of these import maps stand for, in first-seen order.
      *
-     * @param  array<string, list<string>>  ...$importMaps
+     * @param  TypesImportMap  ...$importMaps
      * @return list<class-string>
      */
     public static function classesIn(array ...$importMaps): array

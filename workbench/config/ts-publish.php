@@ -401,7 +401,6 @@ return [
     'class_types' => [
         'enabled' => true,
         'template' => 'laravel-ts-publish::class-type',
-        'output_directory' => null,
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],

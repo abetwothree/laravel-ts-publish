@@ -972,14 +972,11 @@ class ModelTransformer extends CoreTransformer
             );
         }
 
-        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
-        $typeImports = $this->mergeCustomImports(
-            $typeImports,
-            ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath),
-        );
-        $combinedTypeImports = $this->mergeCustomImports(
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
+        $combinedTypeImports = ComposedClassTypes::resolveImports(
+            $this->customImportsSpelledIn($types),
+            $this->namespacePath,
             $combinedTypeImports,
-            ComposedClassTypes::resolveImports($this->customImportsSpelledIn($types), $this->namespacePath),
         );
 
         return [

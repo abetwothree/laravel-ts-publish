@@ -18,9 +18,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetWidget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiGadgetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiTwoChartsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiChartKindHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiGadgetHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartCastMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartZoneMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
@@ -296,18 +299,6 @@ it('publishes no module when class types are disabled', function () {
         ->and(is_dir($this->out.'/workbench/app/packages/ui'))->toBeFalse();
 });
 
-it('writes modules to the class types output directory when one is set', function () {
-    $classTypesOut = $this->out.'/class-types';
-    Config::set('ts-publish.class_types.output_directory', $classTypesOut);
-
-    $runner = classTypesOnlyRunner();
-    $runner->run();
-
-    expect(file_exists("$classTypesOut/workbench/app/packages/ui/chart.ts"))->toBeTrue()
-        ->and(file_exists("$classTypesOut/workbench/app/packages/ui/index.ts"))->toBeTrue()
-        ->and(file_exists($this->out.'/workbench/app/packages/ui/chart.ts'))->toBeFalse();
-});
-
 it('warns when a module shares the directory of a route barrel', function () {
     disableBarrelPhasesBut();
     Config::set('ts-publish.routes.enabled', true);
@@ -493,6 +484,22 @@ describe('imports a composed type from its module in each publisher', function (
         $resolvedAndReported($transformer, $typeImports, [Chart::class]);
     });
 
+    it('in a model metadata companion, its names sorted where a cast imports from the same path', function () {
+        Config::set('ts-publish.model_metadata.provider_class', UiChartZoneMetadataProvider::class);
+
+        expect(new ModelMetadataTransformer(UiBoard::class)->data()->typeImports)
+            ->toBe(['../packages/ui' => ['ChartType', 'ZoneType']]);
+    });
+
+    it('in a model metadata companion that throws for one name from two paths, naming the path it imports', function () {
+        Config::set('ts-publish.model_metadata.provider_class', UiChartCastMetadataProvider::class);
+
+        expect(fn () => new ModelMetadataTransformer(UiBoard::class))->toThrow(
+            InvalidArgumentException::class,
+            'imports [ChartType] from both [@js/types/ui] and [../packages/ui]',
+        );
+    });
+
     it('in analyze()', function () {
         $result = resolve(AstEngine::class)->analyze(UiPanelResource::class, fromNamespacePath: 'workbench/app/http/resources');
 
@@ -549,6 +556,29 @@ describe('aliases an enum type that a composed name also spells', function () {
             '../../enums' => ['ChartType'],
         ]);
     });
+});
+
+it('imports two composed classes of one name twice, and warns (a known gap)', function () {
+    disableBarrelPhasesBut('resources');
+    Config::set('ts-publish.resources.included', [UiTwoChartsResource::class]);
+    Config::set('ts-publish.resources.additional_directories', [UiTwoChartsResource::class]);
+
+    $runner = classTypesOnlyRunner();
+    $runner->shouldPublishResources = true;
+    $runner->run();
+
+    $transformer = $runner->resourceGenerators->first()?->transformer;
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer?->properties ?? []))
+        ->toBe(['chart' => 'ChartType', 'clash' => 'ChartType'])
+        ->and($transformer?->typeImports)->toBe([
+            '../../../../../../workbench/app/packages/ui' => ['ChartType'],
+            '../../ui/clash' => ['ChartType'],
+        ])
+        ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[UiTwoChartsResource::class] ?? '')
+        ->toBe('Imports [ChartType] from composed classes ['.Chart::class.'] and ['.ClashChart::class.'], so its file '
+            .'imports that name twice (TS2300), and its globals entry, if any, reads them all as ['.Chart::class.']. '
+            .'Give all but one a #[TsType] of its own with inherit: false.');
 });
 
 it('writes no marker path in any generated file', function () {

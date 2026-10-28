@@ -30,23 +30,14 @@ class ClassTypeWriter extends CoreWriter
 
         $content = view($template, ['data' => $transformer->data()])->render();
 
+        // Under the top-level directory, where every file importing the module computes its relative path from.
         if (Config::boolean('ts-publish.output_to_files')) {
-            $outputPath = $this->outputBase().'/'.$transformer->namespacePath;
+            $outputPath = Config::string('ts-publish.output_directory').'/'.$transformer->namespacePath;
 
             $this->ensureDirectoryExists($outputPath);
             $this->putIfChanged("$outputPath/{$transformer->filename()}.ts", $content);
         }
 
         return $content;
-    }
-
-    /**
-     * The class types output directory, else the top-level one.
-     */
-    protected function outputBase(): string
-    {
-        $outputPath = Config::get('ts-publish.class_types.output_directory');
-
-        return is_string($outputPath) && $outputPath !== '' ? $outputPath : Config::string('ts-publish.output_directory');
     }
 }

@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
 
@@ -75,4 +77,34 @@ it('qualifies each composed type name by its class namespace for the globals fil
         'ChartType' => 'workbench.app.packages.ui.ChartType',
         'DialType' => 'workbench.app.packages.ui.DialType',
     ]);
+});
+
+it('merges resolved imports into a map, skipping a path with no names', function () {
+    expect(ComposedClassTypes::resolveImports([
+        ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+        '@js/types/empty' => [],
+    ], 'workbench/app/events', ['../packages/ui' => ['GaugeKind'], '@js/types/ui' => ['UiNode']]))->toBe([
+        '../packages/ui' => ['GaugeKind', 'ChartType'],
+        '@js/types/ui' => ['UiNode'],
+    ]);
+});
+
+it('keeps the first of two classes that publish one name, and warns once of the pair', function () {
+    $classes = [Chart::class, ClashChart::class, Dial::class];
+
+    ComposedClassTypes::warnOfSharedNames('Subject', $classes);
+    ComposedClassTypes::warnOfSharedNames('Subject', $classes);
+
+    expect(ComposedClassTypes::globalReferences($classes))->toBe([
+        'ChartType' => 'workbench.app.packages.ui.ChartType',
+        'DialType' => 'workbench.app.packages.ui.DialType',
+    ])->and(AnalysisWarnings::all())->toHaveCount(1)
+        ->and(AnalysisWarnings::all()[0]['message'])
+        ->toStartWith('Imports [ChartType] from composed classes ['.Chart::class.'] and ['.ClashChart::class.']');
+});
+
+it('warns of no class whose name it publishes alone', function () {
+    ComposedClassTypes::warnOfSharedNames('Subject', [Chart::class, Dial::class]);
+
+    expect(AnalysisWarnings::all())->toBe([]);
 });

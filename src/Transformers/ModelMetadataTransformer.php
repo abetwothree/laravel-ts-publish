@@ -108,8 +108,12 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function data(): TsModelMetadataDto
     {
-        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
         $typeImports = ComposedClassTypes::resolveImports($this->typeImports, $this->namespacePath);
+        $typeImports = array_map(static function (array $names): array {
+            sort($names);
+
+            return $names;
+        }, $typeImports);
         ksort($typeImports);
 
         return new TsModelMetadataDto(
@@ -254,17 +258,20 @@ class ModelMetadataTransformer extends CoreTransformer
         $seen = [];
 
         foreach ($typeImports as $path => $names) {
+            // The stored map keeps a composed class's marker; the companion imports from the path it names.
+            $from = ComposedClassTypes::importPath($path, $this->namespacePath);
+
             foreach ($names as $name) {
                 $local = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
 
-                if (isset($seen[$local]) && $seen[$local] !== $path) {
+                if (isset($seen[$local]) && $seen[$local] !== $from) {
                     throw new InvalidArgumentException(
-                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$path}]; "
+                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$from}]; "
                         .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports.',
                     );
                 }
 
-                $seen[$local] = $path;
+                $seen[$local] = $from;
             }
         }
 

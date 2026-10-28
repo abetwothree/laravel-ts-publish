@@ -115,6 +115,7 @@ class Runner extends BaseRunner
         $this->generateRoutes();
 
         $this->retainSkippedGenerators();
+        $this->warnOfSharedComposedNames();
         // After retaining: a skipped feature's cached files import composed modules this phase still writes.
         $this->generateClassTypes();
         $this->generateGlobals();
@@ -718,15 +719,11 @@ class Runner extends BaseRunner
 
         $this->classTypeGenerators = $generators;
 
-        $outputPath = Config::get('ts-publish.class_types.output_directory');
-        $outputPath = is_string($outputPath) && $outputPath !== '' ? $outputPath : null;
-
         $this->classTypeModularBarrels = $generators->isEmpty() ? [] : $this->barrelWriter->writeModularPreserving(
             $generators,
             $this->preservedClassTypeBarrelExports(),
-            $outputPath,
         );
-        $this->warnOfSharedRouteBarrels($generators, $outputPath ?? Config::string('ts-publish.output_directory'));
+        $this->warnOfSharedRouteBarrels($generators);
         $this->logger?->success('Class types — '.$generators->count());
     }
 
@@ -736,12 +733,12 @@ class Runner extends BaseRunner
      *
      * @param  Collection<int, ClassTypeGenerator>  $generators
      */
-    protected function warnOfSharedRouteBarrels(Collection $generators, string $classTypesBase): void
+    protected function warnOfSharedRouteBarrels(Collection $generators): void
     {
         $routesBase = Config::get('ts-publish.routes.output_directory');
         $routesBase = is_string($routesBase) && $routesBase !== '' ? $routesBase : Config::string('ts-publish.output_directory');
 
-        if (rtrim($routesBase, '/') !== rtrim($classTypesBase, '/')) {
+        if (rtrim($routesBase, '/') !== rtrim(Config::string('ts-publish.output_directory'), '/')) {
             return;
         }
 
@@ -751,6 +748,19 @@ class Runner extends BaseRunner
                     'Publishes its composed type in [%s], where route controllers publish too, so that directory\'s barrel drops their default exports. Move the class to a namespace of its own.',
                     $generator->namespacePath(),
                 ));
+            }
+        }
+    }
+
+    /**
+     * Warn of each published or retained file that reaches two composed classes of one type name, which its file and
+     * its globals entry cannot tell apart. A cache hit runs no transform, so this reads what each file stored.
+     */
+    protected function warnOfSharedComposedNames(): void
+    {
+        foreach ($this->publishedGenerators() as $generators) {
+            foreach ($generators as $generator) {
+                ComposedClassTypes::warnOfSharedNames($generator->transformer->fqcn(), $generator->transformer->composedClassTypes());
             }
         }
     }

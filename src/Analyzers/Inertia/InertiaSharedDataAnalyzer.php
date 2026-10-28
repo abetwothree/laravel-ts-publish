@@ -152,6 +152,7 @@ class InertiaSharedDataAnalyzer
         );
 
         $inferredImports = $this->buildInferredImports($analysis, $propsType);
+        ComposedClassTypes::warnOfSharedNames($middlewareClass, ComposedClassTypes::classesIn($analysis->customImports));
 
         return [
             'sharedPageProps' => $propsType,
