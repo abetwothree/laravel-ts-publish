@@ -48,12 +48,6 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
-/** Analyze one `Controller@action` through the page analyzer. */
-function pageData(string $uses): ?array
-{
-    return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
-}
-
 afterEach(function () {
     JsonResource::flushState();
 });

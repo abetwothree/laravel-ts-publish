@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -93,4 +94,10 @@ function analyzedImportNames(string $class, string $method = 'toArray'): array
     sort($names);
 
     return $names;
+}
+
+/** Analyze one `Controller@action` through the page analyzer. */
+function pageData(string $uses): ?array
+{
+    return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
 }
