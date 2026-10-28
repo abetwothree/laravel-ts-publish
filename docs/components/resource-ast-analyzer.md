@@ -645,19 +645,19 @@ A numeric key goes through two layers:
   and `'6' =>` print `"42"` and `"6"`. A literal whose stored keys run 0 to n-1 is a list, which
   `ValueResolver::resolveListLiteral()` types.
 - **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
-  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher,
-  with the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's
-  `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()`
-  and a spread `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a
-  key whose result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as
-  does `ValueResolver::resolveSerializedNew()` for each `new` it types, a class's override included, which answers
-  ahead of the string and `Arrayable` rules for any class but a model or an API resource. `toTsType()` sets it on a
-  class's own JSON shape, which
-  `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable` value as an
-  array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
-  it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
-  since the re-index rewrites no other arm. So does an inline literal with a key that is not a number and no spread,
-  when each member holding one does (`InlineObjectResult::keepsMemberKeys()`): the filter keeps a named key's keys.
+  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher, with
+  the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's `$preserveKeys`.
+  `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()` and a spread
+  `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a key whose
+  result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as does
+  `ValueResolver::resolveSerializedNew()` for each `new` it types. A class's override answers there ahead of the string
+  and `Arrayable` rules, unless the class is a model or an API resource. `toTsType()` sets it on a class's own JSON
+  shape, which `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable`
+  value as an array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A
+  union carries it when each arm that holds an object literal or a `Record<number, …>`
+  (`TsTypeShape::holdsKeyedObject()`) does, since the re-index rewrites no other arm. So does an inline literal with a
+  key that is not a number and no spread, when each member holding one does (`InlineObjectResult::keepsMemberKeys()`):
+  the filter keeps a named key's keys.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 
