@@ -736,8 +736,9 @@ what they write. Declaring `jsonSerialize(): string`, or `@return string` on it,
 
 ### A `new` of an `Arrayable` or `Responsable` class, a model or a class with no public property publishes `unknown`
 
-What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: an API resource or a
-broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). The same holds for a
+What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: its `toArray()` in
+some places and its public properties in others (#117, and
+[below](#an-override-publishes-in-every-context-though-some-send-the-classs-public-properties)). The same holds for a
 `Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
 sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
 model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`
@@ -745,10 +746,19 @@ publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such
 class a `#[TsType]`: a `new` of a class with an override, its own or an inherited one, publishes the override whoever
 serializes it, as every other read of the class does. A model's override does not apply to a `new` of the model.
 
-The override is the type you declare, not what each context sends. An API resource's key or a `broadcastWith()` key
-holding an `Arrayable` class that is not `JsonSerializable` is sent as `json_encode()` writes it, the class's public
-properties, `{}` when it has none, while Inertia sends its `toArray()`, so a page matches. Implement
-`JsonSerializable` returning `toArray()`, or wrap the value in an API resource, so every context sends one shape.
+### An override publishes in every context, though some send the class's public properties
+
+An override is the type you declare, and every read of the class publishes it. For an `Arrayable` class that is not
+`JsonSerializable`, what is sent takes one of two shapes, depending on where the value sits:
+
+- **Its `toArray()`**: an Inertia prop, and each value inside an array prop; a broadcast event's top-level public
+  property; a model attribute, cast or accessor, and each item of a collection attribute.
+- **Its public properties, `{}` when it has none**, as `json_encode()` writes them: a value in an API resource's
+  `toArray()` array or in an event's `broadcastWith()` array; a value inside an array or value object an event's
+  property holds, such as `UiBoardUpdated`'s `charts` and `board`; and a value inside any value object.
+
+An override written for the `toArray()` shape therefore matches only the first list. Implement `JsonSerializable`
+returning `toArray()`, or wrap the value in an API resource, and every context sends one shape.
 
 ### A class's override skips an interface it repeats from its parent or beside an interface that extends it
 

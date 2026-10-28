@@ -386,9 +386,11 @@ return [
     | Composed Class Types
     |--------------------------------------------------------------------------
     |
-    | A class with two or more #[TsType] overrides, its own and those of its
-    | traits, interfaces and parents, publishes `{ClassName}Type`: one
-    | interface extending them all, in a module that follows its namespace.
+    | A class with two or more #[TsType] overrides that can each be
+    | extended, its own and those of its traits, interfaces and parents,
+    | publishes `{Basename}Type`: one interface extending them all, in a
+    | module that follows its namespace. That holds unless the package
+    | already publishes the class, such as a model.
     |
     | A module is written for every composed class a published value
     | reaches, and for each one in 'additional_directories' (none by
