@@ -770,7 +770,7 @@ class LaravelTsPublish
             $result = $this->toTsType($this->reflectedTypeName($returnType, $declaringClass));
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
-                $result['type'] .= ' | null';
+                $result['type'] = $this->withNullArm($result['type']);
             }
 
             return $result;

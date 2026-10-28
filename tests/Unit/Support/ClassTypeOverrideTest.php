@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiReading;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\DialOverMaybe;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Diamond;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\LoneChart;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MutedThing;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\QuietThing;
@@ -109,6 +110,16 @@ it('does not repeat null for a nullable override read as nullable', function () 
         'customImports' => ['@js/types/ui' => ['UiNode']],
     ]);
 });
+
+it('does not repeat null for an inherited nullable override read as a nullable method return or property', function (Closure $type) {
+    expect(LaravelTsPublish::resolveReflectionType($type()))->toMatchArray([
+        'type' => 'UiNode | null',
+        'customImports' => ['@js/types/ui' => ['UiNode']],
+    ]);
+})->with([
+    'a method return' => [fn (): ?ReflectionType => new ReflectionMethod(MaybeHolder::class, 'child')->getReturnType()],
+    'a property' => [fn (): ?ReflectionType => new ReflectionProperty(MaybeHolder::class, 'child')->getType()],
+]);
 
 it('lets the nearest contributor win when one cannot be extended', function (string $class, string $type, string $leftOut) {
     $published = LaravelTsPublish::toTsType($class);
@@ -306,6 +317,15 @@ describe('a declared value of an overridden class publishes the override', funct
             expect($data['appends']['badge']['type'])->toBe('UiIcon')
                 ->and($data['typeImports']['@js/types/ui'] ?? [])->toContain('UiIcon')
                 ->and($row->badge)->toBeObject();
+        });
+
+        it('in a nullable accessor whose class inherits an override that holds null', function () {
+            $data = new ModelTransformer(UiReading::class)->data()->toArray();
+            $row = sentAsJson(UiReading::query()->create(['pennies' => 5])->fresh()?->toArray());
+
+            expect($data['appends']['maybe']['type'])->toBe('UiNode | null')
+                ->and($data['typeImports']['@js/types/ui'] ?? [])->toContain('UiNode')
+                ->and($row->maybe)->toBeNull();
         });
     });
 });
