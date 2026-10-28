@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Descendants;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\FirstRelated;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Siblings;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -122,7 +124,7 @@ test('strategyFor defaults to nullable for unknown relation types', function () 
     expect($relationMap->strategyFor('UnknownRelation'))->toBe('nullable');
 });
 
-test('isToMany reads the short type, and a subclass of a to-many relation that keeps how it loads the collection', function () {
+test('isToMany reads the short type, and a subclass of a to-many relation that keeps how an eager load starts or how it loads the collection', function () {
     $toMany = fn (string $class): bool => RelationMap::isToMany(class_basename($class), $class);
 
     expect($toMany(HasMany::class))->toBeTrue()
@@ -131,6 +133,8 @@ test('isToMany reads the short type, and a subclass of a to-many relation that k
         ->and($toMany(MorphMany::class))->toBeTrue()
         ->and($toMany(MorphToMany::class))->toBeTrue()
         ->and($toMany(Ancestors::class))->toBeTrue()
+        ->and($toMany(Descendants::class))->toBeTrue()
+        ->and($toMany(Siblings::class))->toBeTrue()
         ->and($toMany(FirstRelated::class))->toBeFalse()
         ->and($toMany(HasOne::class))->toBeFalse()
         ->and($toMany(HasOneThrough::class))->toBeFalse()

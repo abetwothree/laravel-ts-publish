@@ -28,7 +28,8 @@ class RelationMap
 
     /**
      * Whether a relation loads a collection: its short type names "many" and no `morphTo`, or its class extends one of
-     * Laravel's to-many relations and keeps the getResults() and match() that load the collection.
+     * Laravel's to-many relations and keeps either the initRelation() that starts each eager load with an empty
+     * collection, or the getResults() and match() that load the collection.
      */
     public static function isToMany(string $type, ?string $relationClass = null): bool
     {
@@ -42,8 +43,10 @@ class RelationMap
 
         foreach (self::TO_MANY as $toMany) {
             if (is_a($relationClass, $toMany, true)) {
-                return self::keepsMethodOf($relationClass, 'getResults', $toMany)
-                    && self::keepsMethodOf($relationClass, 'match', $toMany);
+                // A relation that loads one model must replace initRelation() too, or an eager load leaves `[]`.
+                return self::keepsMethodOf($relationClass, 'initRelation', $toMany)
+                    || (self::keepsMethodOf($relationClass, 'getResults', $toMany)
+                        && self::keepsMethodOf($relationClass, 'match', $toMany));
             }
         }
 

@@ -11,8 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TreeCategory;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationFacility;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationTrail;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Descendants;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\FirstRelated;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Siblings;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelInspector as EloquentModelInspector;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -54,6 +57,8 @@ describe('ModelInspector with a relation method declared only by its @return rel
     test('discovers a relation method declared only by its @return relation class', function () {
         expect(resolve(ModelInspector::class)->relationsOf(new TreeCategory)->all())->toBe([
             ['name' => 'firstBranch', 'type' => 'FirstRelated', 'related' => TreeCategory::class, 'class' => FirstRelated::class],
+            ['name' => 'descendants', 'type' => 'Descendants', 'related' => TreeCategory::class, 'class' => Descendants::class],
+            ['name' => 'siblings', 'type' => 'Siblings', 'related' => TreeCategory::class, 'class' => Siblings::class],
             ['name' => 'ancestors', 'type' => 'Ancestors', 'related' => TreeCategory::class, 'class' => Ancestors::class],
             ['name' => 'parent', 'type' => 'BelongsTo', 'related' => Category::class, 'class' => BelongsTo::class],
             ['name' => 'children', 'type' => 'HasMany', 'related' => Category::class, 'class' => HasMany::class],
@@ -118,6 +123,21 @@ test('publishes a relation class built on HasMany that loads one model as that m
         ->and($sent($branch))->toBeNull()
         ->and($root->firstBranch)->toBeInstanceOf(TreeCategory::class);
 });
+
+// staudenmeir/laravel-adjacency-list's Descendants replaces match(), and its Siblings getResults() and match().
+test('publishes a relation class built on HasMany that replaces how it loads but still loads a list as a list, as Laravel sends it', function (string $relation) {
+    $root = TreeCategory::create(['name' => 'Root', 'slug' => 'root']);
+    $branch = TreeCategory::create(['name' => 'Branch', 'slug' => 'branch', 'parent_id' => $root->id]);
+
+    $sent = fn (TreeCategory $category): mixed => TreeCategory::with($relation)->findOrFail($category->id)
+        ->toArray()[$relation];
+
+    expect((new ModelTransformer(TreeCategory::class))->data()->relations[$relation]['type'])->toBe('TreeCategory[]')
+        ->and($sent($root))->toBeList()->toHaveCount(1)
+        ->and($sent($root)[0])->toHaveKey('id', $branch->id)
+        ->and($sent($branch))->toBe([])
+        ->and($root->{$relation})->toBeInstanceOf(EloquentCollection::class);
+})->with(['descendants', 'siblings']);
 
 test('Laravel loads, counts and sends the notification relations only their docblock declares', function () {
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

@@ -315,11 +315,13 @@ It reads them in the order PHP 8.5 binds the model's methods, each class's own a
 up, so PHP 8.4, which binds a class's traits after its parent, lists them the same.
 
 Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads a relation as
-a list when its `type` names "many", or when its class extends one of Laravel's to-many relations and keeps that
-relation's `getResults()` and `match()`. So a package's `Ancestors` on `HasMany` loads a list, and a has-one-deep built
-on has-many-through, which overrides both, loads one model. `strategyFor()` gives a subclass the map does not name the
-strategy of its nearest parent the map names, but never a to-many parent's to a subclass that loads one model, which
-stays `nullable`. The `morphTo` and `morphToMany` tests still read `type`.
+a list when its `type` names "many", or when its class extends one of Laravel's to-many relations and keeps either
+that relation's `initRelation()`, which starts an eager load with an empty collection, or its `getResults()` and
+`match()`. So a package's `Ancestors` on `HasMany` loads a list, as do its `Descendants` and `Siblings`, which replace
+`match()` but not `initRelation()`, and a has-one-deep built on has-many-through, which replaces all three, loads one
+model. `strategyFor()` gives a subclass the map does not name the strategy of its nearest parent the map names, but
+never a to-many parent's to a subclass that loads one model, which stays `nullable`. The `morphTo` and `morphToMany`
+tests still read `type`.
 
 ## MorphTo targets
 
