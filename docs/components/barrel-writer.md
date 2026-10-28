@@ -72,9 +72,10 @@ models are matched through `filenameFor()`, so one model's failure preserves one
 
 ## Class-type barrels
 
-A composed class's module lives in its namespace directory, beside any model, enum, API resource, form request or
-broadcast event there. Those phases rebuild their barrels from their own files, so the class-type phase runs after all
-of them and writes through `writeModularPreserving()`:
+A composed class's module lives in its namespace directory under the top-level `output_directory`, where every file
+importing it points, so class types have no output directory of their own. Any model, enum, API resource, form request
+or broadcast event there shares the barrel. Those phases rebuild their barrels from their own files, so the class-type
+phase runs after all of them and writes through `writeModularPreserving()`:
 
 | Run state | Existing exports kept |
 | --- | --- |

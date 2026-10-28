@@ -308,16 +308,18 @@ Run a full `ts:publish` after adding a composed class.
 
 An API resource, model or broadcast event aliases an enum or model that spells a composed class's `{Basename}Type`,
 such as an enum `Chart`, whose type is `ChartType`. An Inertia page and shared data alias no import, so a page that
-reads both ships two `import type { ChartType }` lines (TS2300), as with
+reads both ships two `import type { ChartType }` lines (TS2300), and a model metadata companion throws at publish time,
+as with
 [two same-named enums](#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts).
 Give the enum a distinct `#[TsEnum]` name.
 
-### A composed module in `class_types.output_directory` is imported from the top-level output directory
+### Two composed classes with one basename, read in one file, publish one name
 
-A file imports a composed module by the path from its own namespace directory to the class's, as if both sat under
-`output_directory`. With `class_types.output_directory` set elsewhere, every such import fails with TS2307, as a
-route, form-request or broadcast-event file in its own `output_directory` does for what it imports. Leave
-`class_types.output_directory` unset while files import composed modules.
+Two composed classes named alike, such as `App\Ui\Chart` and `Vendor\Charts\Chart`, both publish `ChartType`. A
+composed name rides the custom imports, which no file aliases, so a file reading both imports `ChartType` twice
+(TS2300), a metadata companion throws, and the globals file reads both values as the first class's type. `ts:publish`
+warns, naming the file and both classes. Give one of them a `#[TsType]` of its own with `inherit: false`, so it
+publishes that override alone, or read the two in different files.
 
 ### A model class name containing an underscore can collide with a metadata companion
 

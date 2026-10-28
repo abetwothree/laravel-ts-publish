@@ -130,6 +130,9 @@ A composed class's `{Basename}Type` is one of those names: it rides `customImpor
 same name is aliased and the composed type never is. Inertia pages and shared data run no registry, so a page that
 reads both imports the name twice
 ([known gaps](../known-gaps.md#a-page-that-reads-a-composed-type-and-a-class-named-like-it-imports-the-name-twice)).
+Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
+composed classes with one basename
+([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
