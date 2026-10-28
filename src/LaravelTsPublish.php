@@ -2062,17 +2062,13 @@ class LaravelTsPublish
         $declared = $this->propertyTypes($class, $property->getName());
         $docComment = $property->getDocComment();
         $var = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $read = $var === null || $var === '' ? $declared : $this->declaredOrDocblockTypes(
+            $declared,
+            fn (): array => $this->resolveDocblockTypeStringAgainst($var, $property->getDeclaringClass()),
+        );
 
         // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
-        $readings = $var === null || $var === '' ? [$declared] : [
-            $this->declaredOrDocblockTypes(
-                $declared,
-                fn (): array => $this->resolveDocblockTypeStringAgainst($var, $property->getDeclaringClass()),
-            ),
-            $declared,
-        ];
-
-        foreach ($readings as $info) {
+        foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
             $imported = array_merge(...array_values($info['customImports']));
 
             if (! TsTypeString::shapeValueHasUnimportableToken($info['type'], $imported)) {
