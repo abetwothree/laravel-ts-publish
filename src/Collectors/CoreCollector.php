@@ -53,7 +53,7 @@ abstract class CoreCollector
             ->values();
 
         $additionalClasses = collect($settings['additional_directories'])
-            ->filter($this->exists(...))
+            ->filter($this->isScannableName(...))
             ->values();
 
         $included = $settings['included'];
@@ -131,7 +131,7 @@ abstract class CoreCollector
      *
      * @phpstan-assert-if-true class-string $class
      */
-    protected function exists(string $class): bool
+    protected function isScannableName(string $class): bool
     {
         return class_exists($class);
     }
@@ -144,7 +144,7 @@ abstract class CoreCollector
      */
     protected function passesClassFilter(string $class): bool
     {
-        if (! $this->exists($class)) {
+        if (! $this->isScannableName($class)) {
             return false;
         }
 

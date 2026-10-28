@@ -29,7 +29,7 @@ class ClassTypesCollector extends CoreCollector
      * @phpstan-assert-if-true class-string $class
      */
     #[Override]
-    protected function exists(string $class): bool
+    protected function isScannableName(string $class): bool
     {
         return class_exists($class) || interface_exists($class);
     }
