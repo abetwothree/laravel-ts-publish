@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Support\Facades\Config;
 
@@ -38,12 +38,10 @@ trait RewritesEnumResourceProps
                 continue;
             }
 
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-
             $props[$name]['type'] = TsTypeString::substituteEnumType(
                 $props[$name]['type'],
-                $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type',
-                'AsEnum<typeof '.($tsInfo['enums'][0] ?? class_basename($fqcn)).'>',
+                ValueResult::enumTypeName($fqcn),
+                'AsEnum<typeof '.ValueResult::enumConstName($fqcn).'>',
             );
         }
 

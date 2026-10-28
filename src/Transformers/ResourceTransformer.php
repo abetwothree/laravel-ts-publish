@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -447,9 +446,8 @@ class ResourceTransformer extends CoreTransformer
         }
 
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-            $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-            $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
@@ -470,9 +468,8 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             }
             $this->propertyEnumFqcns[$propName] = $fqcn;
             $this->directEnumProperties[$propName] = $fqcn;
@@ -504,10 +501,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
-                if (! isset($this->enumConstMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
-                }
+                $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             }
             $this->propertyInlineEnumResourceFqcns[$propName] = $fqcns;
         }
@@ -515,9 +509,8 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumFqcnMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                    $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                    $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
                 }
             }
             $this->multiEnumResourceProperties[$propName] = $fqcns;
@@ -790,7 +783,7 @@ class ResourceTransformer extends CoreTransformer
         // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
         foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
             $this->enumFqcnMap[$fqcn] ??= $typeName;
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 

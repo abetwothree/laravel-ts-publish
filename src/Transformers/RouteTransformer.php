@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
@@ -850,7 +849,7 @@ class RouteTransformer extends CoreTransformer
         // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.
         foreach (array_unique(array_merge(...$this->actionPageEnumConstFqcns)) as $fqcn) {
             $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
-            $imports[$importPath][] = LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $imports[$importPath][] = ValueResult::enumConstName($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {

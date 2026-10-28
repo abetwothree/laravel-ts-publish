@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -72,9 +71,8 @@ final class InlineObjectResult
                 }
 
                 $fqcn = $analysis->enumResources[$prop['name']];
-                $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                $constName = $tsInfo['enums'][0] ?? class_basename($fqcn);
-                $bareTypeName = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
+                $constName = ValueResult::enumConstName($fqcn);
+                $bareTypeName = ValueResult::enumTypeName($fqcn);
                 $asEnumType = 'AsEnum<typeof '.$constName.'>';
 
                 // A mixed wrap/direct ternary needs both arms named, whether or not the merged union

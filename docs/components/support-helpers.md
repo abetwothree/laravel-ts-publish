@@ -77,7 +77,10 @@ TypeScript type string. The first reads PHPDoc, the engine's input, so it stays 
 
 The last row is the real test. A helper whose answer needs the engine's config maps or a call back into `toTsType()`
 belongs to the engine, however string-shaped its signature looks. Reflection alone does not decide it.
-`TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name.
+`TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name, and `TsNaming::enumName()`
+reads `#[TsEnum]` the same way. `toTsType()`'s enum step and every enum reference read it, so an enum whose `#[TsType]`
+answers `toTsType()` first keeps its own names. `ValueResult::enumConstName()` memoizes it per run and records the
+enum for the generation cache.
 
 ### `JsEmitter`
 

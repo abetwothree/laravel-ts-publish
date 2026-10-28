@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use Illuminate\Support\Facades\Config;
@@ -50,13 +49,12 @@ final class AnalysisImports
         $enumFqcnMap = [];
 
         foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-            $enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-            $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+            $enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
 
         foreach ($this->constOnlyEnumFqcns($analysis) as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
         foreach ($this->asEnumWrappedOnlyFqcns($analysis) as $fqcn) {

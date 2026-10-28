@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -292,11 +291,7 @@ class LaravelTsPublish
 
         // 3. PHP enum, before the partial match so "App\Enums\Status" can't hit the "enum" => "string" entry
         if (class_exists($phpType) && (new ReflectionClass($phpType))->isEnum()) {
-            $ref = new ReflectionClass($phpType);
-            $tsEnumAttrs = $ref->getAttributes(TsEnum::class);
-            $name = $tsEnumAttrs
-                ? $tsEnumAttrs[0]->newInstance()->name
-                : class_basename($phpType);
+            $name = TsNaming::enumName($phpType);
 
             $result['type'] = $name.'Type';
             $result['enums'] = [$name];

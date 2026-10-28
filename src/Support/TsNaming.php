@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Composer\ClassMapGenerator\PhpFileParser;
@@ -81,6 +82,19 @@ class TsNaming
         }
 
         return $this->resourceTypeNames[$fqcn] = $name;
+    }
+
+    /**
+     * Resolve the name an enum's file exports its const under, and its `…Type` and `…Kind` after.
+     *
+     * Read from #[TsEnum(name:)] alone, never via toTsType(), whose #[TsType] step answers an overridden enum first.
+     * EnumTransformer::initInstance() is the same rule.
+     */
+    public function enumName(string $fqcn): string
+    {
+        $attributes = class_exists($fqcn) ? new ReflectionClass($fqcn)->getAttributes(TsEnum::class) : [];
+
+        return $attributes === [] ? class_basename($fqcn) : $attributes[0]->newInstance()->name;
     }
 
     /**

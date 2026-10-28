@@ -23,7 +23,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -568,7 +567,7 @@ class InertiaPageAnalyzer
         return array_values(array_filter(
             array_unique($candidates),
             fn (string $fqcn): bool => preg_match(
-                TsTypeString::queuedTokenPattern([LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn)], 'typeof\s+\K'),
+                TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], 'typeof\s+\K'),
                 $pageType,
             ) === 1,
         ));

@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -38,14 +37,13 @@ use ReflectionClass;
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool
  * }
- * @phpstan-type EnumSpelling = array{string, string}
  *
  * @internal
  */
 final class ValueResult
 {
-    /** @var array<string, EnumSpelling> enum FQCN => its type name and its const name, read once per run */
-    private static array $enumSpellings = [];
+    /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
+    private static array $enumNames = [];
 
     /**
      * The fallback result for an expression that resolves to no useful type.
@@ -400,7 +398,7 @@ final class ValueResult
      */
     public static function enumTypeName(string $fqcn): string
     {
-        return self::enumSpelling($fqcn)[0];
+        return self::enumConstName($fqcn).'Type';
     }
 
     /**
@@ -408,7 +406,18 @@ final class ValueResult
      */
     public static function enumKindName(string $fqcn): string
     {
-        return self::enumSpelling($fqcn)[1].'Kind';
+        return self::enumConstName($fqcn).'Kind';
+    }
+
+    /**
+     * The name an enum's const is spelled with, as the enum's own file exports it, whatever #[TsType] it carries.
+     */
+    public static function enumConstName(string $fqcn): string
+    {
+        // On a memo hit too: each consumer's cache entry depends on the files the name is read from.
+        DependencyRecorder::recordClass($fqcn);
+
+        return self::$enumNames[$fqcn] ??= TsNaming::enumName($fqcn);
     }
 
     /**
@@ -462,33 +471,11 @@ final class ValueResult
     }
 
     /**
-     * Forget each enum's spelling, so a run reads its enums and `custom_ts_mappings` afresh.
+     * Forget each enum's spelling, so a run reads each enum's name afresh.
      */
     public static function forgetEnumSpellings(): void
     {
-        self::$enumSpellings = [];
-    }
-
-    /**
-     * An enum's type name and const name, as toTsType() spells them, read once per run.
-     *
-     * @return EnumSpelling
-     */
-    private static function enumSpelling(string $fqcn): array
-    {
-        if (! isset(self::$enumSpellings[$fqcn])) {
-            $info = LaravelTsPublish::toTsType($fqcn);
-
-            return self::$enumSpellings[$fqcn] = [
-                $info['enumTypes'][0] ?? class_basename($fqcn).'Type',
-                $info['enums'][0] ?? class_basename($fqcn),
-            ];
-        }
-
-        // toTsType() records the enum's files as it reads them, so a spelling read again records them too.
-        DependencyRecorder::recordClass($fqcn);
-
-        return self::$enumSpellings[$fqcn];
+        self::$enumNames = [];
     }
 
     /**

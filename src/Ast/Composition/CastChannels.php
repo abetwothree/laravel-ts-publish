@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -140,7 +139,7 @@ final class CastChannels
             // does not bring stays, and the publisher keeps the ones the text writes.
             $keptWraps = array_values(array_filter(
                 $wraps,
-                fn (string $fqcn): bool => ! in_array($this->enumConstName($fqcn), $brought, true),
+                fn (string $fqcn): bool => ! in_array(ValueResult::enumConstName($fqcn), $brought, true),
             ));
 
             if ($keptWraps !== []) {
@@ -339,11 +338,5 @@ final class CastChannels
                 $analysis->carried[$kind] = $left;
             }
         }
-    }
-
-    /** The name an enum's const is spelled with. */
-    private function enumConstName(string $fqcn): string
-    {
-        return LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
     }
 }
