@@ -52,16 +52,13 @@ final class ComposedClassTypes
     }
 
     /**
-     * Record a composed class a published value reached, so its module is written.
+     * Record a composed class a published value reached, by its declared name, so its module is written.
      *
      * @param  class-string  $fqcn
      */
     public static function register(string $fqcn): void
     {
-        /** @var class-string $class */
-        $class = ltrim($fqcn, '\\');
-
-        self::$registered[$class] = true;
+        self::$registered[$fqcn] = true;
     }
 
     /**

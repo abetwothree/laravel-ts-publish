@@ -15,15 +15,23 @@ use Workbench\App\Packages\Ui\Pennies;
  */
 final class PenniesCast implements CastsAttributes
 {
-    /** @param  array<string, mixed>  $attributes */
+    /**
+     * The stored integer as pennies.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
     public function get(Model $model, string $key, mixed $value, array $attributes): Pennies
     {
         return new Pennies(is_numeric($value) ? (int) $value : 0);
     }
 
-    /** @param  array<string, mixed>  $attributes */
+    /**
+     * The pennies, or a number given as one, as the stored integer.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
     public function set(Model $model, string $key, mixed $value, array $attributes): int
     {
-        return $value instanceof Pennies ? $value->value : 0;
+        return $value instanceof Pennies ? $value->value : (is_numeric($value) ? (int) $value : 0);
     }
 }

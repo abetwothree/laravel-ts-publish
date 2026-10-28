@@ -36,6 +36,9 @@ class TsTypeString
     protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
         .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
 
+    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
+    protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
+
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
 
@@ -370,6 +373,24 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * Whether a type can join an interface's `extends` list: one type reference, optionally dotted or generic, and
+     * never a keyword type.
+     */
+    public function isExtendable(string $type): bool
+    {
+        $type = trim($type);
+        $open = strpos($type, '<');
+        $name = $open === false ? $type : rtrim(substr($type, 0, $open));
+
+        if (in_array($name, static::KEYWORD_TYPES, true)
+            || ($open !== false && ! TsTypeShape::isWrapped(substr($type, $open), '<', '>'))) {
+            return false;
+        }
+
+        return array_all(explode('.', $name), fn (string $segment): bool => $this->extractImportableTypes($segment) === [$segment]);
     }
 
     /**

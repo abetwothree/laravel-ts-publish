@@ -22,12 +22,19 @@ class UiPanelHelperResource extends JsonResource
         ];
     }
 
+    /**
+     * A panel, by its declared class.
+     */
     protected function panel(): Panel
     {
         return new Panel;
     }
 
-    /** @return list<Panel> */
+    /**
+     * Two panels, by a `@return` list of their class.
+     *
+     * @return list<Panel>
+     */
     protected function panels(): array
     {
         return [new Panel, new Panel];

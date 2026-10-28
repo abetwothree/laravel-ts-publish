@@ -26,6 +26,9 @@ class UiReading extends Model
         return ['pennies' => PenniesCast::class];
     }
 
+    /**
+     * A badge, by a getter closure that declares its class.
+     */
     protected function badge(): Attribute
     {
         return Attribute::make(get: fn (): Badge => new Badge);

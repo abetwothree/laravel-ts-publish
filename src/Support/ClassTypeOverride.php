@@ -19,8 +19,8 @@ use ReflectionClass;
  * One contributor publishes as written; two or more publish the composed `{Basename}Type` that extends them all.
  *
  * @phpstan-type Contributor = array{type: string, import: ?string, declaredBy: class-string}
- * @phpstan-type ClassOverride = array{type: string, customImports: array<string, list<string>>, composed: bool,
- *     contributors: list<Contributor>, leftOut: list<Contributor>}
+ * @phpstan-type ClassOverride = array{class: class-string, type: string, customImports: array<string, list<string>>,
+ *     composed: bool, contributors: list<Contributor>, leftOut: list<Contributor>}
  *
  * @internal
  */
@@ -82,49 +82,30 @@ final class ClassTypeOverride
     /**
      * What a value of a class publishes: null when no contributor has an override. Two or more compose only when each
      * can be extended and no other publisher owns the class; otherwise the nearest wins and the rest are left out
-     * with one warning.
+     * with one warning. `class` is the class's declared name, however the caller spelled it.
      *
      * @return ClassOverride|null
      */
     public static function resolve(string $class): ?array
     {
-        // Every call, memoized or not: an ancestor gaining or losing an override changes the answer.
+        // On a memo hit too: each consumer's dependency recording needs the files this answer read.
         DependencyRecorder::recordClass($class);
-        $class = ltrim($class, '\\');
 
         if (array_key_exists($class, self::$resolved)) {
             return self::$resolved[$class];
         }
 
-        $contributors = self::contributors($class);
-
-        return self::$resolved[$class] = match (true) {
-            $contributors === [] => null,
-            self::isOwned($class) => self::ownAlone($class, $contributors),
-            default => self::composedOrNearest($class, $contributors),
-        };
-    }
-
-    /**
-     * Whether an override can join a composition: one type reference, optionally dotted or generic, never a keyword.
-     */
-    public static function extendable(string $type): bool
-    {
-        $type = trim($type);
-        $open = strpos($type, '<');
-        $name = $open === false ? $type : rtrim(substr($type, 0, $open));
-
-        if ($open !== false && ! TsTypeShape::isWrapped(substr($type, $open), '<', '>')) {
-            return false;
+        if (! class_exists($class) && ! interface_exists($class)) {
+            return self::$resolved[$class] = null;
         }
 
-        foreach (explode('.', $name) as $segment) {
-            if (TsTypeString::extractImportableTypes($segment) !== [$segment]) {
-                return false;
-            }
+        $declared = new ReflectionClass($class)->getName();
+
+        if (! array_key_exists($declared, self::$resolved)) {
+            self::$resolved[$declared] = self::resolveDeclared($declared);
         }
 
-        return true;
+        return self::$resolved[$class] = self::$resolved[$declared];
     }
 
     /**
@@ -147,6 +128,23 @@ final class ClassTypeOverride
         return is_array($tsType->type)
             ? ['type' => $tsType->type['type'], 'import' => $tsType->type['import'] ?? null, 'declaredBy' => $declaredBy]
             : ['type' => $tsType->type, 'import' => null, 'declaredBy' => $declaredBy];
+    }
+
+    /**
+     * What a value of a class publishes, for the class's declared name.
+     *
+     * @param  class-string  $class
+     * @return ClassOverride|null
+     */
+    private static function resolveDeclared(string $class): ?array
+    {
+        $contributors = self::contributors($class);
+
+        return match (true) {
+            $contributors === [] => null,
+            self::isOwned($class) => self::ownedOverride($class, $contributors),
+            default => self::composedOrNearest($class, $contributors),
+        };
     }
 
     /**
@@ -178,39 +176,50 @@ final class ClassTypeOverride
     }
 
     /**
-     * An owned class's own override, alone, with every inherited one left out.
+     * An owned class's own override, else its nearest parent class's, never composed. A trait's or interface's is left
+     * out with a warning; a parent class's that a nearer one shadows is left out silently, as inheritance does.
      *
+     * @param  class-string  $class
      * @param  non-empty-list<Contributor>  $contributors
      * @return ClassOverride|null
      */
-    private static function ownAlone(string $class, array $contributors): ?array
+    private static function ownedOverride(string $class, array $contributors): ?array
     {
-        $own = $contributors[0]['declaredBy'] === $class ? $contributors[0] : null;
-        $leftOut = array_slice($contributors, $own === null ? 0 : 1);
+        $classes = [$class, ...array_values(class_parents($class) ?: [])];
+        $fromClasses = static fn (array $contributor): bool => in_array($contributor['declaredBy'], $classes, true);
+        $published = array_find($contributors, $fromClasses);
+        $leftOut = array_values(array_filter($contributors, static fn (array $contributor): bool => ! $fromClasses($contributor)));
 
-        self::warnLeftOut($class, $own, $leftOut, 'a model, API resource, broadcast event, form request or enum publishes only its own');
+        self::warnLeftOut(
+            $class,
+            $published,
+            $leftOut,
+            "a model, API resource, broadcast event, form request or enum publishes only its own or a parent class's",
+        );
 
-        return $own === null ? null : self::asWritten($own, $leftOut);
+        return $published === null ? null : self::asWritten($class, $published, $leftOut);
     }
 
     /**
      * The composed type when every contributor can be extended, else the nearest contributor as written.
      *
+     * @param  class-string  $class
      * @param  non-empty-list<Contributor>  $contributors
      * @return ClassOverride
      */
     private static function composedOrNearest(string $class, array $contributors): array
     {
         if (count($contributors) === 1) {
-            return self::asWritten($contributors[0], []);
+            return self::asWritten($class, $contributors[0], []);
         }
 
-        $unextendable = array_find($contributors, static fn (array $contributor): bool => ! self::extendable($contributor['type']));
+        $unextendable = array_find($contributors, static fn (array $contributor): bool => ! TsTypeString::isExtendable($contributor['type']));
 
         if ($unextendable === null) {
             $typeName = ComposedClassTypes::typeName($class);
 
             return [
+                'class' => $class,
                 'type' => $typeName,
                 'customImports' => [ComposedClassTypes::marker($class) => [$typeName]],
                 'contributors' => $contributors,
@@ -221,23 +230,25 @@ final class ClassTypeOverride
 
         $leftOut = array_slice($contributors, 1);
 
-        self::warnLeftOut($class, $contributors[0], $leftOut, "an interface cannot extend [{$unextendable['type']}]");
+        self::warnLeftOut($class, $contributors[0], $leftOut, "a composed type cannot extend [{$unextendable['type']}]");
 
-        return self::asWritten($contributors[0], $leftOut);
+        return self::asWritten($class, $contributors[0], $leftOut);
     }
 
     /**
      * One contributor published as written, with the import its override names.
      *
+     * @param  class-string  $class
      * @param  Contributor  $contributor
      * @param  list<Contributor>  $leftOut
      * @return ClassOverride
      */
-    private static function asWritten(array $contributor, array $leftOut): array
+    private static function asWritten(string $class, array $contributor, array $leftOut): array
     {
         $names = $contributor['import'] === null ? [] : TsTypeString::extractImportableTypes($contributor['type']);
 
         return [
+            'class' => $class,
             'type' => $contributor['type'],
             'customImports' => $contributor['import'] === null || $names === [] ? [] : [$contributor['import'] => $names],
             'contributors' => [$contributor],

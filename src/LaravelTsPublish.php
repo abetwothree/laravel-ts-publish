@@ -283,7 +283,7 @@ class LaravelTsPublish
 
             if ($override !== null) {
                 if ($override['composed']) {
-                    ComposedClassTypes::register($phpType);
+                    ComposedClassTypes::register($override['class']);
                 }
 
                 return [...$result, 'type' => $override['type'], 'customImports' => $override['customImports']];

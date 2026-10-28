@@ -1151,6 +1151,30 @@ describe('isUnknownOnly', function () {
     ]);
 });
 
+describe('isExtendable', function () {
+    test('only one type reference that is no keyword can join an interface\'s extends list', function (string $type, bool $extendable) {
+        expect($this->service->isExtendable($type))->toBe($extendable);
+    })->with([
+        'an identifier' => ['UiNode', true],
+        'a dotted name' => ['Acme.Ui.Node', true],
+        'a generic' => ['Record<string, Chart>', true],
+        'a nested generic' => ['Map<string, Array<(a: string) => void>>', true],
+        'a keyword' => ['string', false],
+        'another keyword' => ['unknown', false],
+        'true' => ['true', false],
+        'false' => ['false', false],
+        'this' => ['this', false],
+        'a union' => ['UiNode | null', false],
+        'a union of generics' => ['Foo<A> | Bar<B>', false],
+        'an array' => ['UiNode[]', false],
+        'an array of a generic' => ['Foo<A>[]', false],
+        'a literal' => ["'a'", false],
+        'an intersection' => ['A & B', false],
+        'an object literal' => ['{ a: string }', false],
+        'a type query' => ['typeof UiNode', false],
+    ]);
+});
+
 describe('isVagueTsType', function () {
     test('a bare object is vague', function () {
         expect($this->service->isVagueTsType('object'))->toBeTrue();
