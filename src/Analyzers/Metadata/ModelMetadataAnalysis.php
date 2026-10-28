@@ -20,7 +20,8 @@ final readonly class ModelMetadataAnalysis
      * @param  array<string, TypeSource>  $sources  which source won each key
      * @param  array<string, true>  $requiredKeys  keys the docblock shape or #[TsCasts] declare as required
      * @param  array<string, string>  $importPaths  #[TsCasts] import path per key
-     * @param  TypesImportMap  $typeImports  imports the inferred and docblock types need, relative to the companion
+     * @param  TypesImportMap  $typeImports  imports the inferred types need, relative to the companion file
+     * @param  array<string, TypesImportMap>  $docblockImports  per key the docblock types, its overrides' imports
      */
     public function __construct(
         public array $types,
@@ -28,20 +29,24 @@ final readonly class ModelMetadataAnalysis
         public array $requiredKeys,
         public array $importPaths,
         public array $typeImports = [],
+        public array $docblockImports = [],
     ) {}
 
     /**
-     * Local names the inferred imports bring into the file (`X as Y` counts as `Y`).
+     * Local names the inferred imports bring into the file (`X as Y` counts as `Y`), with those a docblock key's own
+     * imports bring for that key, so one key never borrows another's.
      *
      * @return list<string>
      */
-    public function importedNames(): array
+    public function importedNames(?string $key = null): array
     {
         $names = [];
 
-        foreach ($this->typeImports as $imported) {
-            foreach ($imported as $name) {
-                $names[] = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+        foreach ([$this->typeImports, $key === null ? [] : $this->docblockImports[$key] ?? []] as $imports) {
+            foreach ($imports as $imported) {
+                foreach ($imported as $name) {
+                    $names[] = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+                }
             }
         }
 

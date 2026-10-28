@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportab
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BranchedAstModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingCastAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
@@ -305,6 +306,15 @@ test('imports an override a docblock shape names, at its top level and nested, a
         '../packages/ui' => ['ChartType'],
         '@js/types/ui' => ['UiNode'],
     ])->and($data->properties['nested']['n'])->toBe(1);
+});
+
+test("checks a docblock key against its own imports, never another key's", function () {
+    config()->set('ts-publish.model_metadata.provider_class', CollidingOverrideMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))->toThrow(
+        InvalidArgumentException::class,
+        'model [Workbench\\App\\Models\\User] property [either] has type [User | User] whose import cannot be inferred',
+    );
 });
 
 test('normalizes supported nested metadata values', function () {

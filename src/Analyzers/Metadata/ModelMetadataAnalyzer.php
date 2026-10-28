@@ -68,10 +68,8 @@ class ModelMetadataAnalyzer
             $result->sources,
             $result->requiredKeys,
             $result->importPaths,
-            $this->mergedImports(
-                $result->typeImports,
-                $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
-            ),
+            $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
+            $result->docblockImports,
         );
     }
 
@@ -297,30 +295,13 @@ class ModelMetadataAnalyzer
 
         // A key the docblock still types brings its overrides' custom imports; one a cast replaces brings none.
         $docblockKeys = array_filter($sources, fn (string $source): bool => $source === 'docblock');
-        $docblockImports = $this->mergedImports(...array_values(array_intersect_key($declared['imports'], $docblockKeys)));
 
-        return new ModelMetadataAnalysis($types, $sources, $requiredKeys, $casts['importPaths'], $docblockImports);
-    }
-
-    /**
-     * Join import maps, each name once per path, names and paths sorted.
-     *
-     * @param  TypesImportMap  ...$maps
-     * @return TypesImportMap
-     */
-    protected function mergedImports(array ...$maps): array
-    {
-        $merged = [];
-
-        foreach ($maps as $map) {
-            foreach ($map as $path => $names) {
-                $merged[$path] = array_values(array_unique([...$merged[$path] ?? [], ...$names]));
-                sort($merged[$path]);
-            }
-        }
-
-        ksort($merged);
-
-        return $merged;
+        return new ModelMetadataAnalysis(
+            $types,
+            $sources,
+            $requiredKeys,
+            $casts['importPaths'],
+            docblockImports: array_intersect_key($declared['imports'], $docblockKeys),
+        );
     }
 }

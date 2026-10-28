@@ -2020,8 +2020,10 @@ class LaravelTsPublish
 
         // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
         foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
-            if (TsTypeString::importsCover($info['type'], $info['customImports'])) {
-                return ['type' => $info['type'], 'customImports' => $info['customImports']];
+            $shape = $this->shapeTypeInfo($info);
+
+            if (TsTypeString::importsCover($shape['type'], $shape['customImports'])) {
+                return $shape;
             }
         }
 
@@ -2739,6 +2741,20 @@ class LaravelTsPublish
     }
 
     /**
+     * A resolved type as a shape carries it: with its custom imports only where no FQCN channel names a class in it, as
+     * a shape carries none, so a model or enum spelled like an override's name never borrows that override's import.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return ShapeTypeInfo
+     */
+    protected function shapeTypeInfo(array $info): array
+    {
+        $channels = $info['classFqcns'] !== [] || $info['enumFqcns'] !== [];
+
+        return ['type' => $info['type'], 'customImports' => $channels ? [] : $info['customImports']];
+    }
+
+    /**
      * The custom imports of a shape's members, each name once per module.
      *
      * @param  list<TypesImportMap>  $imports
@@ -2776,10 +2792,12 @@ class LaravelTsPublish
                 fn (string $part): array => $this->resolvePhpDocTypeToInfo($part, $useMap, $namespace),
                 $unionParts,
             );
+            // An arm its own imports do not cover, such as a model spelled like a sibling's override, borrows none.
+            $covered = array_all($infos, fn (array $info): bool => TsTypeString::importsCover($info['type'], $info['customImports']));
 
             return [
                 'type' => implode(' | ', array_column($infos, 'type')),
-                'customImports' => $this->mergeShapeImports(array_column($infos, 'customImports')),
+                'customImports' => $covered ? $this->mergeShapeImports(array_column($infos, 'customImports')) : [],
             ];
         }
 
@@ -2790,7 +2808,7 @@ class LaravelTsPublish
         $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
 
         if ($generic !== null) {
-            return ['type' => $generic['type'], 'customImports' => $generic['customImports']];
+            return $this->shapeTypeInfo($generic);
         }
 
         if (str_starts_with($phpType, '?')) {
@@ -2822,7 +2840,7 @@ class LaravelTsPublish
             $info = $this->isUnreadForm($resolved, '<{(') ? $this->emptyTypeScriptInfo() : $this->toTsType($resolved);
         }
 
-        return ['type' => $info['type'], 'customImports' => $info['customImports']];
+        return $this->shapeTypeInfo($info);
     }
 
     /**

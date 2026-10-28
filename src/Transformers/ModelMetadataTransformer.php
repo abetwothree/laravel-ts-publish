@@ -221,7 +221,7 @@ class ModelMetadataTransformer extends CoreTransformer
         foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
             $type = $this->analysis->types[$property];
 
-            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames($property))) {
                 throw new InvalidArgumentException(
                     "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
                     .'whose import cannot be inferred; declare it with #[TsCasts].',
@@ -248,9 +248,11 @@ class ModelMetadataTransformer extends CoreTransformer
 
         $typeImports = $resolved['typeImports'];
 
-        foreach ($this->analysis->typeImports as $path => $names) {
-            $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
-            sort($typeImports[$path]);
+        foreach ([$this->analysis->typeImports, ...array_values(array_intersect_key($this->analysis->docblockImports, $this->metadata))] as $imports) {
+            foreach ($imports as $path => $names) {
+                $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
+                sort($typeImports[$path]);
+            }
         }
 
         ksort($typeImports);

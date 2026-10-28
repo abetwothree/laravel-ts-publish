@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
@@ -28,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
@@ -876,6 +878,22 @@ describe("an overridden member of a value object's shape", function () {
             ->and($this->service->toTsType($holder::class))->toMatchArray(['type' => '{ local: unknown }', 'customImports' => []]);
     });
 
+    test('keeps unknown for a native union whose model or enum arm is spelled like the override beside it', function () {
+        $holder = new class
+        {
+            public function __construct(
+                public Person|User $either = new Person,
+                public ChartKind|UiChart $kind = new UiChart,
+                public UiChart $chart = new UiChart,
+            ) {}
+        };
+
+        expect($this->service->toTsType($holder::class))->toMatchArray([
+            'type' => '{ either: unknown; kind: unknown; chart: ChartType }',
+            'customImports' => [ComposedClassTypes::marker(UiChart::class) => ['ChartType']],
+        ]);
+    });
+
     test('sends each member in the shape it publishes', function () {
         $user = new User()->forceFill(['name' => 'Ada']);
         $sent = sentAsJson(new OwnedBoard($user, [$user], new InheritingChildModel()->forceFill(['id' => 1]), tags: ['a']));
@@ -960,6 +978,24 @@ describe('an overridden member of a docblock shape', function () {
             '{ meta: { panel: UiNode; n: number }; rows: { panel: UiNode }[] }',
         ],
     ]);
+
+    test('keeps unknown for a union whose model or enum arm is spelled like the override beside it', function () {
+        $shaped = new class implements Arrayable
+        {
+            /**
+             * @return array{either: Person|User, listed: list<Person|User>, kind: ChartKind|UiChart, chart: UiChart}
+             */
+            public function toArray(): array
+            {
+                return [];
+            }
+        };
+
+        expect($this->service->toTsType($shaped::class))->toMatchArray([
+            'type' => '{ either: unknown; listed: unknown; kind: unknown; chart: ChartType }',
+            'customImports' => [ComposedClassTypes::marker(UiChart::class) => ['ChartType']],
+        ]);
+    });
 
     test('keeps today\'s unknown for a model member and the type a type-string reader returns', function () {
         $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
