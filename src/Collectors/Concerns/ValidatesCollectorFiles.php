@@ -61,7 +61,7 @@ trait ValidatesCollectorFiles
             return false;
         }
 
-        return RoutedControllers::has($reflection->getName());
+        return RoutedControllers::dispatchesTo($reflection->getName());
     }
 
     /** @param ReflectionClass<covariant object> $reflection */

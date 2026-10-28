@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiHelloController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiNodeController;
 use Illuminate\Support\Facades\Route;
 
 it('reads a route\'s controller in any case, as PHP reads a class name', function () {
@@ -12,6 +13,16 @@ it('reads a route\'s controller in any case, as PHP reads a class name', functio
 
     expect(RoutedControllers::has(UiHelloController::class))->toBeTrue()
         ->and(RoutedControllers::has('\\'.strtoupper(UiHelloController::class)))->toBeTrue();
+});
+
+it('says a route dispatches to a class only when it spells the name exactly', function () {
+    Route::get('ui-hello', [UiHelloController::class, 'index']);
+    Route::get('ui-hello-cased', strtolower(UiNodeController::class).'@index');
+
+    expect(RoutedControllers::dispatchesTo(UiHelloController::class))->toBeTrue()
+        ->and(RoutedControllers::dispatchesTo('\\'.UiHelloController::class))->toBeTrue()
+        ->and(RoutedControllers::dispatchesTo(UiNodeController::class))->toBeFalse()
+        ->and(RoutedControllers::has(UiNodeController::class))->toBeTrue();
 });
 
 it('reads the routes once until flushed', function () {

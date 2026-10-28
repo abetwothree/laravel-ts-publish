@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiHelloController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
@@ -27,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Greets;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -205,6 +207,22 @@ test('a trait or interface --source run reads no model set', function (string $s
     'an interface' => [HasIcon::class],
     'a trait' => [AnnouncesHello::class],
 ]);
+
+test('throws for a controller whose only route spells its name in another case, and writes no route file', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-cased-route-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    // The routes publisher matches a controller's actions by its exact name, so this route gives it none.
+    Route::get('ui-hello-cased', strtolower(UiHelloController::class).'@index');
+
+    try {
+        expect(fn () => (new RunnerForSource(UiHelloController::class))->run())
+            ->toThrow(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller')
+            ->and(is_dir($outputDir))->toBeFalse();
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
 
 test('throws for a contributor while class type publishing is disabled', function () {
     $runner = new RunnerForSource(Node::class);
