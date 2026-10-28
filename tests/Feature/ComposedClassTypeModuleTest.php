@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiTwoChartsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiChartKindHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiGadgetHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartCastMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartZoneMetadataProvider;
@@ -266,6 +267,43 @@ it('drops a stale export another phase wrote a file of that name for in another 
 
     expect(file_exists($this->out.'/workbench/app/models/user.ts'))->toBeTrue()
         ->and(file_get_contents("$directory/index.ts"))->toBe("export * from './chart';\nexport * from './dial';");
+});
+
+it('keeps a failed metadata companion\'s export in its own namespace\'s barrel, and in no other', function () {
+    disableBarrelPhasesBut('models', 'model_metadata');
+    Config::set('ts-publish.models.included', [User::class]);
+    Config::set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    // A composed class in the models' namespace, so the class-type phase rewrites their barrel too.
+    $sources = $this->out.'-src';
+    mkdir($sources);
+    file_put_contents("$sources/UiModelsChart.php", (string) file_get_contents(__DIR__.'/../Fixtures/Stubs/ComposedModelNamespace/Chart.php.stub'));
+
+    if (! class_exists('Workbench\\App\\Models\\UiModelsChart')) {
+        require_once "$sources/UiModelsChart.php";
+    }
+    Config::set('ts-publish.class_types.additional_directories', [workbench_path('app/Packages/Ui'), 'Workbench\\App\\Models\\UiModelsChart']);
+
+    $models = $this->out.'/workbench/app/models';
+    $ui = $this->out.'/workbench/app/packages/ui';
+    mkdir($models, recursive: true);
+    mkdir($ui, recursive: true);
+    file_put_contents("$models/index.ts", "export * from './user';\nexport * from './user_meta';");
+    file_put_contents("$ui/index.ts", "export * from './chart';\nexport * from './user_meta';");
+
+    try {
+        $runner = classTypesOnlyRunner();
+        $runner->shouldPublishModels = true;
+        $runner->shouldPublishModelMetadata = true;
+        $runner->run();
+
+        expect($runner->modelMetadataFailures)->toHaveCount(1)
+            ->and(file_get_contents("$models/index.ts"))
+            ->toBe("export * from './ui-models-chart';\nexport * from './user';\nexport * from './user_meta';")
+            ->and(file_get_contents("$ui/index.ts"))->toBe("export * from './chart';\nexport * from './dial';");
+    } finally {
+        (new Filesystem)->deleteDirectory($sources);
+    }
 });
 
 it('keeps every existing export while a flag skips a phase that writes barrels', function () {

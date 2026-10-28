@@ -451,7 +451,7 @@ class Runner extends BaseRunner
             ModelMetadataTransformer::class,
         );
 
-        $failed = $this->failedMetadataFilenames();
+        $failed = array_merge(...array_values($this->failedMetadataFilenames()));
 
         if (! $keepModels && ! $keepMetadata && $failed === []) {
             return null;
@@ -463,12 +463,12 @@ class Runner extends BaseRunner
     }
 
     /**
-     * The companion filename of each model whose metadata threw, as the configured transformer names it; only those of
-     * models in `$namespacePath` when one is given.
+     * The companion filename of each model whose metadata threw, as the configured transformer names it, keyed by the
+     * namespace path its model's files are written in.
      *
-     * @return list<string>
+     * @return array<string, list<string>>
      */
-    protected function failedMetadataFilenames(?string $namespacePath = null): array
+    protected function failedMetadataFilenames(): array
     {
         /** @var class-string<ModelMetadataTransformer> $transformerClass */
         $transformerClass = Config::string(
@@ -476,16 +476,13 @@ class Runner extends BaseRunner
             ModelMetadataTransformer::class,
         );
 
-        $failures = array_filter(
-            $this->modelMetadataFailures,
-            static fn (array $failure): bool => $namespacePath === null
-                || TsNaming::namespaceToPath($failure['subject']) === $namespacePath,
-        );
+        $filenames = [];
 
-        return array_values(array_map(
-            static fn (array $failure): string => $transformerClass::filenameFor($failure['subject']),
-            $failures,
-        ));
+        foreach ($this->modelMetadataFailures as $failure) {
+            $filenames[TsNaming::namespaceToPath($failure['subject'])][] = $transformerClass::filenameFor($failure['subject']);
+        }
+
+        return $filenames;
     }
 
     protected function generateResources(): void
@@ -728,10 +725,15 @@ class Runner extends BaseRunner
         $this->classTypeGenerators = $generators;
 
         // One write per namespace, so each barrel keeps only the exports other phases wrote in that directory.
+        $keep = $this->preservedClassTypeBarrelExports();
         $barrels = [];
 
         foreach ($generators->groupBy(static fn (ClassTypeGenerator $generator): string => $generator->namespacePath()) as $namespacePath => $group) {
-            $barrels += $this->barrelWriter->writeModularPreserving($group, $this->preservedClassTypeBarrelExports((string) $namespacePath));
+            $namespacePath = (string) $namespacePath;
+            $barrels += $this->barrelWriter->writeModularPreserving(
+                $group,
+                static fn (string $filename): bool => $keep($namespacePath, $filename),
+            );
         }
 
         ksort($barrels);
@@ -810,29 +812,30 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Which existing exports of one namespace's class-type barrel outlive this run. While a flag skips a phase that
-     * writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own stale ones;
-     * otherwise only those another phase wrote in that namespace this run, so a class that stopped composing drops out.
+     * Which existing class-type barrel exports outlive this run, by namespace path and filename. While a flag skips a
+     * phase that writes `export *` barrels, every one does, since this phase cannot tell that phase's from its own stale
+     * ones; otherwise only those another phase wrote in that namespace this run, dropping a class that stopped composing.
      *
-     * @return Closure(string): bool
+     * @return Closure(string, string): bool
      */
-    protected function preservedClassTypeBarrelExports(string $namespacePath): Closure
+    protected function preservedClassTypeBarrelExports(): Closure
     {
         if (array_diff_key($this->skippedFeatureGenerators(), ['routes' => true, 'class_types' => true]) !== []) {
-            return static fn (string $filename): bool => true;
+            return static fn (string $namespacePath, string $filename): bool => true;
         }
 
-        $written = array_fill_keys($this->failedMetadataFilenames($namespacePath), true);
+        $written = array_map(
+            static fn (array $filenames): array => array_fill_keys($filenames, true),
+            $this->failedMetadataFilenames(),
+        );
 
         foreach ($this->publishedGenerators() as $generators) {
             foreach ($generators as $generator) {
-                if ($generator->namespacePath() === $namespacePath) {
-                    $written[$generator->filename()] = true;
-                }
+                $written[$generator->namespacePath()][$generator->filename()] = true;
             }
         }
 
-        return static fn (string $filename): bool => isset($written[$filename]);
+        return static fn (string $namespacePath, string $filename): bool => isset($written[$namespacePath][$filename]);
     }
 
     protected function generateGlobals(): void
