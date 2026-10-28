@@ -2,24 +2,32 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\UiChartKindBroadcast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\UiGadgetBroadcast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiChartKindPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UiGadgetWidget;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiGadgetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiPanelHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiChartKindHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UiGadgetHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UiChartMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\SelfNamed;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\TwoPaths;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\UiShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Unimported;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ClassTypeTransformer;
@@ -29,15 +37,28 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
+use Illuminate\Broadcasting\BroadcastEvent;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+
+use function Orchestra\Testbench\workbench_path;
+
+use Workbench\App\Events\UiBoardUpdated;
+use Workbench\App\Http\Controllers\UiDashboardController;
+use Workbench\App\Http\Resources\UiPanelResource;
+use Workbench\App\Models\UiBoard;
+use Workbench\App\Packages\Ui\Badge;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\Packages\Ui\Dial;
+use Workbench\App\Packages\Ui\Gauge;
+use Workbench\App\Packages\Ui\Panel;
+use Workbench\App\Packages\Ui\Pennies;
 
 /**
  * Runs the class-type generator for one class and returns the module it wrote.
@@ -325,10 +346,10 @@ describe('a class that may not compose', function () {
     it('does not compose when class types are disabled', function () {
         Config::set('ts-publish.class_types.enabled', false);
 
+        // Turning class types off is the project's choice, so the nearest override wins without a warning.
         expect(LaravelTsPublish::toTsType(Chart::class))
             ->toMatchArray(['type' => 'UiHello', 'customImports' => ['@js/types/ui' => ['UiHello']]])
-            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[Chart::class] ?? '')
-            ->toContain('Publishes the #[TsType] [UiHello] alone and leaves out [UiIcon]');
+            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject'))->not->toHaveKey(Chart::class);
 
         disableBarrelPhasesBut('resources');
         Config::set('ts-publish.resources.included', [UiGadgetResource::class]);
@@ -372,12 +393,174 @@ describe('a class that may not compose', function () {
         expect(ComposedClassTypes::composes($class))->toBeFalse()
             ->and(LaravelTsPublish::toTsType($class))
             ->toMatchArray(['type' => 'UiIcon', 'customImports' => ['@js/types/ui' => ['UiIcon']]])
-            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[$class] ?? '')->toContain('leaves out [UiNode]');
+            ->and(array_column(AnalysisWarnings::all(), 'message', 'subject'))->not->toHaveKey($class);
     })->with([
         'listed in class_types.excluded' => [Gadget::class, ['excluded' => [Gadget::class]]],
         'outside class_types.included' => [Gadget::class, ['included' => [Dial::class]]],
         'marked #[TsExclude]' => [HiddenGadget::class, []],
     ]);
+});
+
+describe('imports a composed type from its module in each publisher', function () {
+    $sent = fn (mixed $value): mixed => json_decode((string) json_encode($value), false);
+
+    /** Asserts no import line a transformer writes names a marker, and that its rehydrated snapshot still reports. */
+    $resolvedAndReported = function (CoreTransformer $transformer, array $typeImports, array $classes): void {
+        expect(array_filter(array_keys($typeImports), ComposedClassTypes::isMarker(...)))->toBe([])
+            ->and($transformer->composedClassTypes())->toBe($classes)
+            ->and(unserialize(serialize($transformer))->composedClassTypes())->toBe($classes);
+    };
+
+    it('in a broadcast event', function () use ($sent, $resolvedAndReported) {
+        $transformer = new BroadcastEventTransformer(UiBoardUpdated::class);
+        $event = new UiBoardUpdated(new Panel, new Gauge, new Pennies(5), new Badge, charts: [new Chart, new Chart]);
+        $broadcast = new BroadcastEvent($event);
+        $payload = $sent(new ReflectionMethod($broadcast, 'getPayloadFromEvent')->invoke($broadcast, $event));
+
+        expect(array_slice(array_map(fn (array $property): string => $property['type'], $transformer->properties), -4))
+            ->toBe(['chart' => 'ChartType', 'dial' => 'DialType', 'maybeChart' => 'ChartType | null', 'charts' => 'ChartType[]'])
+            ->and($transformer->typeImports)->toBe([
+                '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiIcon', 'UiNode'],
+                '../packages/ui' => ['ChartType', 'DialType'],
+            ])
+            ->and($payload->chart)->toBeObject()
+            ->and($payload->dial)->toBeObject()
+            ->and($payload->maybeChart)->toBeNull()
+            ->and($payload->charts)->toBeArray()->toHaveCount(2);
+
+        $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class, Dial::class]);
+    });
+
+    it('in an API resource', function () use ($sent, $resolvedAndReported) {
+        $transformer = new ResourceTransformer(UiPanelResource::class);
+        $body = fn (bool $dial): mixed => $sent(new UiPanelResource(null)->resolve(Request::create('/', 'GET', $dial ? ['dial' => 1] : [])));
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+            ->toBe(['chart' => 'ChartType', 'dial' => 'DialType | null'])
+            ->and($transformer->typeImports)->toBe(['../../packages/ui' => ['ChartType', 'DialType']])
+            ->and($body(true)->chart)->toBeObject()
+            ->and($body(true)->dial)->toBeObject()
+            ->and($body(false)->dial)->toBeNull();
+
+        $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class, Dial::class]);
+    });
+
+    it('in an Inertia page', function () use ($sent, $resolvedAndReported) {
+        Config::set('ts-publish.inertia.enabled', true);
+
+        $transformer = new RouteTransformer(UiDashboardController::class);
+        $request = Request::create('/ui/dashboard');
+        $request->headers->set('X-Inertia', 'true');
+        $props = $sent(json_decode((string) new UiDashboardController()->index()->toResponse($request)->getContent(), true)['props']);
+
+        expect($transformer->typeImports)->toBe(['@js/types/ui' => ['UiNode'], '../../packages/ui' => ['ChartType']])
+            ->and($props->chart)->toBeObject()
+            ->and($props->composed)->toBeObject();
+
+        $resolvedAndReported($transformer, $transformer->typeImports, [Chart::class]);
+    });
+
+    it('in a model', function () use ($sent, $resolvedAndReported) {
+        $transformer = new ModelTransformer(UiBoard::class);
+        $data = $transformer->data()->toArray();
+
+        expect($data['typeImports'])->toBe(['../packages/ui' => ['ChartType']])
+            ->and($data['appends']['chart']['type'] ?? $data['mutators']['chart']['type'] ?? null)->toBe('ChartType')
+            ->and($sent(UiBoard::query()->create()->fresh()?->toArray())->chart)->toBeObject();
+
+        $resolvedAndReported($transformer, $data['typeImports'], [Chart::class]);
+    });
+
+    it('in shared data', function () use ($sent) {
+        $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)->makePartial()->shouldAllowMockingProtectedMethods();
+        $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(UiShareMiddleware::class);
+        $shared = $analyzer->analyze();
+
+        expect($shared['sharedPageProps'] ?? null)->toBe('{ chart: ChartType }')
+            ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/packages/ui' => ['ChartType']])
+            ->and($sent(new UiShareMiddleware()->share(request()))->chart)->toBeObject();
+    });
+
+    it('in a model metadata companion', function () use ($resolvedAndReported) {
+        Config::set('ts-publish.model_metadata.provider_class', UiChartMetadataProvider::class);
+
+        $transformer = new ModelMetadataTransformer(UiBoard::class);
+        $typeImports = $transformer->data()->typeImports;
+
+        expect($transformer->propertyTypes)->toBe(['chart' => 'ChartType'])
+            ->and($typeImports)->toBe(['../packages/ui' => ['ChartType']]);
+
+        $resolvedAndReported($transformer, $typeImports, [Chart::class]);
+    });
+
+    it('in analyze()', function () {
+        $result = resolve(AstEngine::class)->analyze(UiPanelResource::class, fromNamespacePath: 'workbench/app/http/resources');
+
+        expect($result->typeImports)->toBe(['../../packages/ui' => ['ChartType', 'DialType']]);
+    });
+});
+
+describe('aliases an enum type that a composed name also spells', function () {
+    $composed = '../../../../../workbench/app/packages/ui';
+
+    it('in an API resource', function () use ($composed) {
+        $transformer = new ResourceTransformer(UiChartKindResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+            ->toBe(['chart' => 'ChartType', 'kind' => 'FixturesChartType'])
+            ->and($transformer->typeImports)->toBe([
+                '../'.$composed => ['ChartType'],
+                '../../enums' => ['ChartType as FixturesChartType'],
+            ]);
+    });
+
+    it('in a broadcast event', function () use ($composed) {
+        $transformer = new BroadcastEventTransformer(UiChartKindBroadcast::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+            ->toBe(['chart' => 'ChartType', 'kind' => 'FixturesChartType'])
+            ->and($transformer->typeImports)->toBe([
+                $composed => ['ChartType'],
+                '../enums' => ['ChartType as FixturesChartType'],
+            ]);
+    });
+
+    it('in a model', function () use ($composed) {
+        Schema::create('ui_chart_kind_holders', function (Blueprint $table) {
+            $table->id();
+            $table->string('kind');
+        });
+
+        $data = new ModelTransformer(UiChartKindHolder::class)->data()->toArray();
+
+        expect($data['columns']['kind']['type'])->toBe('FixturesChartType')
+            ->and($data['typeImports'])->toBe([
+                $composed => ['ChartType'],
+                '../enums' => ['ChartType as FixturesChartType'],
+            ]);
+    });
+
+    it('but not on an Inertia page, which aliases no import (a known gap)', function () use ($composed) {
+        Config::set('ts-publish.inertia.enabled', true);
+        Route::get('ui-chart-kind', [UiChartKindPageController::class, 'show'])->name('ui.chart-kind');
+
+        expect(new RouteTransformer(UiChartKindPageController::class)->typeImports)->toBe([
+            '../'.$composed => ['ChartType'],
+            '../../enums' => ['ChartType'],
+        ]);
+    });
+});
+
+it('writes no marker path in any generated file', function () {
+    $marked = [];
+
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(workbench_path('resources/js/types/data'), FilesystemIterator::SKIP_DOTS)) as $file) {
+        if (str_contains((string) file_get_contents($file->getPathname()), ComposedClassTypes::MARKER_PREFIX)) {
+            $marked[] = $file->getPathname();
+        }
+    }
+
+    expect($marked)->toBe([]);
 });
 
 describe('each publisher reports the composed classes its file imports', function () {

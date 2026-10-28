@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralKindPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
@@ -562,4 +565,42 @@ test('the globals view still receives the merged alias map, which a published te
 
     expect($viewData)->toHaveKey('globalAliasMap')
         ->and($viewData['globalAliasMap'])->toMatchArray(['CrmStatusType' => 'workbench.crm.enums.StatusType']);
+});
+
+test('declares a composed type in the globals file', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)
+        ->toContain("    export namespace workbench.app.packages.ui {\n"
+            ."        export interface ChartType extends UiHello, UiIcon, UiNode {}\n"
+            ."        export interface DialType extends UiDial, UiNode {}\n"
+            .'    }')
+        ->toMatch("/^import type \\{ [^}]*\\bUiDial, UiGauge, UiHello, UiIcon, UiNode\\b[^}]* \\} from '@js\\/types\\/ui';$/m")
+        ->toContain("            chart: workbench.app.packages.ui.ChartType;\n            dial: workbench.app.packages.ui.DialType;\n")
+        ->toContain('charts: workbench.app.packages.ui.ChartType[];')
+        ->not->toContain(ComposedClassTypes::MARKER_PREFIX);
+});
+
+test('qualifies a composed type by its own namespace beside an enum that publishes the same name', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.additional_directories', [ChartEnum::class]);
+    config()->set('ts-publish.enums.included', [ChartEnum::class]);
+    config()->set('ts-publish.resources.additional_directories', [UiChartKindResource::class]);
+    config()->set('ts-publish.resources.included', [UiChartKindResource::class]);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)->toContain("export interface UiChartKindResource {\n"
+        ."            chart: workbench.app.packages.ui.ChartType;\n"
+        ."            kind: abeTwoThree.laravelTsPublish.tests.fixtures.enums.ChartType;\n");
 });

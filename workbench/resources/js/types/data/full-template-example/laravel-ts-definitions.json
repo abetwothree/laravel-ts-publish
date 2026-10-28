@@ -470,6 +470,26 @@
                     "name": "maybe",
                     "type": "UiNode | null",
                     "optional": false
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType",
+                    "optional": false
+                },
+                {
+                    "name": "maybeChart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[]",
+                    "optional": false
                 }
             ]
         },
@@ -9183,6 +9203,27 @@
                 {
                     "name": "diff",
                     "type": "unknown[] | Record<string, unknown>"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\UiBoard": {
+            "name": "UiBoard",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType"
                 }
             ]
         },
@@ -21050,6 +21091,21 @@
                 {
                     "name": "extra",
                     "type": "Record<string, unknown>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\UiPanelResource": {
+            "name": "UiPanelResource",
+            "properties": [
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType | null",
                     "optional": false
                 }
             ]

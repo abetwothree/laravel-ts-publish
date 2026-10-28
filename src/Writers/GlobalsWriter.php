@@ -6,11 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
@@ -39,6 +41,7 @@ class GlobalsWriter
         $resources = $runner->resourceGenerators->concat($runner->retainedResourceGenerators);
         $formRequests = $runner->formRequestGenerators->concat($runner->retainedFormRequestGenerators);
         $broadcastEvents = $runner->broadcastEventGenerators->concat($runner->retainedBroadcastEventGenerators);
+        $classTypes = $runner->classTypeGenerators->concat($runner->retainedClassTypeGenerators);
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
@@ -79,14 +82,24 @@ class GlobalsWriter
             $globalTypesByNamespace[$ns][] = $t->eventName;
         }
 
+        foreach ($classTypes as $gen) {
+            $t = $gen->transformer;
+            $globalTypesByNamespace[$t->globalNamespace()][] = $t->typeName;
+        }
+
         // Collect external (non-relative) type imports needed at the top of the globals file.
         // A model's combined custom imports are the #[TsExtends], #[TsCasts] and #[TsType] ones its interface uses.
-        // Resource, broadcast-event and form-request typeImports hold all resolved imports; non-relative only.
+        // Resource, event, form-request and class-type typeImports hold all resolved imports; non-relative only.
         /** @var array<string, list<string>> $externalTypeImports */
         $externalTypeImports = [];
 
         foreach ($models as $gen) {
             foreach ($gen->transformer->combinedCustomImports() as $path => $types) {
+                // A composed type is declared in its namespace below, so a model names it there rather than imports it.
+                if (ComposedClassTypes::isMarker($path)) {
+                    continue;
+                }
+
                 foreach ($types as $type) {
                     if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
                         $externalTypeImports[$path][] = $type;
@@ -95,40 +108,17 @@ class GlobalsWriter
             }
         }
 
-        foreach ($resources as $gen) {
-            foreach ($gen->transformer->typeImports as $path => $types) {
-                if (str_starts_with($path, '.')) {
-                    continue;
-                }
-                foreach ($types as $type) {
-                    if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
-                        $externalTypeImports[$path][] = $type;
+        foreach ([$resources, $broadcastEvents, $formRequests, $classTypes] as $generators) {
+            foreach ($generators as $gen) {
+                foreach ($gen->transformer->typeImports as $path => $types) {
+                    if (str_starts_with($path, '.')) {
+                        continue;
                     }
-                }
-            }
-        }
 
-        foreach ($broadcastEvents as $gen) {
-            foreach ($gen->transformer->typeImports as $path => $types) {
-                if (str_starts_with($path, '.')) {
-                    continue;
-                }
-                foreach ($types as $type) {
-                    if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
-                        $externalTypeImports[$path][] = $type;
-                    }
-                }
-            }
-        }
-
-        foreach ($formRequests as $gen) {
-            foreach ($gen->transformer->typeImports as $path => $types) {
-                if (str_starts_with($path, '.')) {
-                    continue;
-                }
-                foreach ($types as $type) {
-                    if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
-                        $externalTypeImports[$path][] = $type;
+                    foreach ($types as $type) {
+                        if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
+                            $externalTypeImports[$path][] = $type;
+                        }
                     }
                 }
             }
@@ -188,6 +178,11 @@ class GlobalsWriter
         $viewData['groupedBroadcastEvents'] = $broadcastEvents
             ->groupBy(fn (BroadcastEventGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (BroadcastEventGenerator $g) => $g->transformer))
+            ->sortKeys();
+
+        $viewData['groupedClassTypes'] = $classTypes
+            ->groupBy(fn (ClassTypeGenerator $g) => $g->transformer->globalNamespace())
+            ->map(fn ($group) => $group->map(fn (ClassTypeGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $content = view($template, $viewData)->render();

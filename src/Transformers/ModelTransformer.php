@@ -319,7 +319,8 @@ class ModelTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initInstance(): self
@@ -971,8 +972,15 @@ class ModelTransformer extends CoreTransformer
             );
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
-        $combinedTypeImports = $this->mergeCustomImports($combinedTypeImports, $this->customImportsSpelledIn($types));
+        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
+        $typeImports = $this->mergeCustomImports(
+            $typeImports,
+            ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath),
+        );
+        $combinedTypeImports = $this->mergeCustomImports(
+            $combinedTypeImports,
+            ComposedClassTypes::resolveImports($this->customImportsSpelledIn($types), $this->namespacePath),
+        );
 
         return [
             'typeImports' => $this->deduplicateAndSortImports($typeImports),

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -387,7 +388,10 @@ final class AnalysisComposer
             }
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $analysis->customImports);
+        $typeImports = $this->mergeCustomImports(
+            $typeImports,
+            ComposedClassTypes::resolveImports($analysis->customImports, $this->namespacePath),
+        );
 
         return $this->deduplicateAndSortImports($this->pruneUnspelledImports($typeImports));
     }

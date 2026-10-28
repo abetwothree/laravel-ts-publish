@@ -174,4 +174,17 @@ $optional = $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' :
     }
 @endif
 @endforeach
+@php
+// A caller that renders this view itself may predate class types and pass no such key.
+$groupedClassTypes ??= [];
+@endphp
+@foreach ($groupedClassTypes as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+        export interface {{ $transformer->typeName }} extends {!! implode(', ', $transformer->extends) !!} {}
+@endforeach
+    }
+@endif
+@endforeach
 }

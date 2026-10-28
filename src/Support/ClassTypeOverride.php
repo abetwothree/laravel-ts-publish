@@ -81,8 +81,8 @@ final class ClassTypeOverride
 
     /**
      * What a value of a class publishes: null when no contributor has an override. Two or more compose only when each
-     * can be extended and no other publisher owns the class; otherwise the nearest wins and the rest are left out
-     * with one warning. `class` is the class's declared name, however the caller spelled it.
+     * can be extended, no other publisher owns the class and ComposedClassTypes::composes() admits it; otherwise the
+     * nearest wins. `class` is the class's declared name, however the caller spelled it.
      *
      * @return ClassOverride|null
      */
@@ -214,7 +214,8 @@ final class ClassTypeOverride
     }
 
     /**
-     * The composed type when every contributor can be extended and the class may compose, else the nearest contributor.
+     * The composed type when every contributor can be extended and the class may compose, else the nearest contributor,
+     * with a warning naming those left out when one cannot be extended.
      *
      * @param  class-string  $class
      * @param  non-empty-list<Contributor>  $contributors
@@ -242,11 +243,11 @@ final class ClassTypeOverride
         }
 
         $leftOut = array_slice($contributors, 1);
-        $reason = $unextendable === null
-            ? 'class types are disabled, or their filters or #[TsExclude] leave the class out'
-            : "a composed type cannot extend [{$unextendable['type']}]";
 
-        self::warnLeftOut($class, $contributors[0], $leftOut, $reason);
+        // Class types off, their filters or #[TsExclude] are the project's choice, so only an unextendable type warns.
+        if ($unextendable !== null) {
+            self::warnLeftOut($class, $contributors[0], $leftOut, "a composed type cannot extend [{$unextendable['type']}]");
+        }
 
         return self::asWritten($class, $contributors[0], $leftOut);
     }

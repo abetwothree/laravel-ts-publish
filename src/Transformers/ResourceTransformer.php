@@ -299,7 +299,8 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initReflection(): self
@@ -976,7 +977,11 @@ class ResourceTransformer extends CoreTransformer
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
+        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
+        $typeImports = $this->mergeCustomImports(
+            $typeImports,
+            ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath),
+        );
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);

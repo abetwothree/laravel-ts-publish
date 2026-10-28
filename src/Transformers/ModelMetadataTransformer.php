@@ -108,12 +108,16 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function data(): TsModelMetadataDto
     {
+        // Resolved here, not where they are stored: composedClassTypes() reads the markers back from a cached snapshot.
+        $typeImports = ComposedClassTypes::resolveImports($this->typeImports, $this->namespacePath);
+        ksort($typeImports);
+
         return new TsModelMetadataDto(
             modelName: $this->modelName,
             filename: $this->filename(),
             properties: $this->properties,
             propertyTypes: $this->propertyTypes,
-            typeImports: $this->typeImports,
+            typeImports: $typeImports,
         );
     }
 

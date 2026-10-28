@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Support\Facades\Config;
 
 /**
@@ -79,6 +80,53 @@ final class ComposedClassTypes
     public static function classOf(string $marker): ?string
     {
         return self::isMarker($marker) ? substr($marker, strlen(self::MARKER_PREFIX)) : null;
+    }
+
+    /**
+     * The module a custom-import key names from a file in `$fromNamespacePath`: a marker becomes the relative path of
+     * its class's namespace directory, whose barrel exports the module; any other key is a module specifier already.
+     */
+    public static function importPath(string $path, string $fromNamespacePath): string
+    {
+        $class = self::classOf($path);
+
+        return $class === null ? $path : TsNaming::relativeImportPath($fromNamespacePath, TsNaming::namespaceToPath($class));
+    }
+
+    /**
+     * An import map with each marker key resolved through importPath(), its names joining those its path already has.
+     * The order of the other keys is kept, so a caller sorts after.
+     *
+     * @param  array<string, list<string>>  $imports
+     * @return array<string, list<string>>
+     */
+    public static function resolveImports(array $imports, string $fromNamespacePath): array
+    {
+        $resolved = [];
+
+        foreach ($imports as $path => $names) {
+            $path = self::importPath((string) $path, $fromNamespacePath);
+            $resolved[$path] = array_values(array_unique([...($resolved[$path] ?? []), ...$names]));
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Each class's composed type name, mapped to that name qualified by the class's namespace in the globals file.
+     *
+     * @param  list<class-string>  $classes
+     * @return array<string, string>
+     */
+    public static function globalReferences(array $classes): array
+    {
+        $references = [];
+
+        foreach ($classes as $class) {
+            $references[self::typeName($class)] = TsNaming::globalNamespace($class).'.'.self::typeName($class);
+        }
+
+        return $references;
     }
 
     /**

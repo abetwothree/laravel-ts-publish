@@ -12,7 +12,7 @@ import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
-import type { UiAmount, UiGauge, UiIcon, UiNode } from '@js/types/ui';
+import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
@@ -1758,6 +1758,16 @@ declare global {
             // Mutators
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
             diff: unknown[] | Record<string, unknown>;
+        }
+        /** A board whose appended accessor is a value of a composed class, so its interface imports the class's module. */
+        export interface UiBoard {
+            // Columns
+            id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** A chart, by a getter closure that declares its class. */
+            chart: workbench.app.packages.ui.ChartType;
         }
         /**
          * Exercises the ModelTransformer unknown-type fallback paths
@@ -5694,6 +5704,11 @@ declare global {
             flag?: string | null;
             extra: Record<string, unknown>;
         }
+        /** Fixture: values of composed classes through declared helpers, so the file imports their `…Type` from their module. */
+        export interface UiPanelResource {
+            chart: workbench.app.packages.ui.ChartType;
+            dial: workbench.app.packages.ui.DialType | null;
+        }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
@@ -6572,6 +6587,10 @@ declare global {
             pennies: UiAmount;
             badge: UiIcon;
             maybe: UiNode | null;
+            chart: workbench.app.packages.ui.ChartType;
+            dial: workbench.app.packages.ui.DialType;
+            maybeChart: workbench.app.packages.ui.ChartType | null;
+            charts: workbench.app.packages.ui.ChartType[];
         }
         export interface UserNotification extends HasTimestamps {
             userId: number;
@@ -6596,5 +6615,9 @@ declare global {
             user: Partial<workbench.app.models.User>;
             crmUser: Partial<workbench.crm.models.User>;
         }
+    }
+    export namespace workbench.app.packages.ui {
+        export interface ChartType extends UiHello, UiIcon, UiNode {}
+        export interface DialType extends UiDial, UiNode {}
     }
 }

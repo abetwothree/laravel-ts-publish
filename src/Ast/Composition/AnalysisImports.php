@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Config;
  * No alias conflict resolution happens here; a caller whose file can emit two same-named tokens
  * runs Support\ImportNameRegistry over the result itself.
  *
+ * A composed class's custom-import marker stays a key: the event and metadata publishers store this map and read their
+ * composed classes back from it, so each caller resolves it with ComposedClassTypes::importPath() as it writes lines.
+ *
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal

@@ -229,7 +229,8 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     /** @return list<string> */
@@ -632,6 +633,8 @@ class BroadcastEventTransformer extends CoreTransformer
         // Skip what the loop above already settled: only it knows the alias a name collision forced,
         // and an unaliased duplicate would re-import the very name the alias exists to avoid.
         foreach ($this->analysisImports as $importPath => $typeNames) {
+            $importPath = ComposedClassTypes::importPath($importPath, $this->namespacePath);
+
             foreach ($typeNames as $typeName) {
                 if (! isset($aliasable[$importPath][$typeName])
                     && TsTypeString::typeNameOccursIn($typeName, ...$types)) {

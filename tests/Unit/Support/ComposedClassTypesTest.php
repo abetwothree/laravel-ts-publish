@@ -44,3 +44,35 @@ it('registers each composed class once, in the order values reach it', function 
 
     expect(ComposedClassTypes::registered())->toBe([]);
 });
+
+it('imports a composed class from its namespace directory, relative to the importing file', function (string $from, string $path) {
+    expect(ComposedClassTypes::importPath(ComposedClassTypes::marker(Chart::class), $from))->toBe($path);
+})->with([
+    'a sibling namespace' => ['workbench/app/events', '../packages/ui'],
+    'two levels up' => ['workbench/app/http/resources', '../../packages/ui'],
+    'the output root' => ['', './workbench/app/packages/ui'],
+    'its own namespace' => ['workbench/app/packages/ui', '.'],
+]);
+
+it('keeps a module specifier as it is', function (string $path) {
+    expect(ComposedClassTypes::importPath($path, 'workbench/app/events'))->toBe($path);
+})->with(['@js/types/ui', '../enums']);
+
+it('resolves each marker in an import map, joining the names a path already has', function () {
+    expect(ComposedClassTypes::resolveImports([
+        '@js/types/ui' => ['UiNode'],
+        '../packages/ui' => ['GaugeKind'],
+        ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+        ComposedClassTypes::marker(Dial::class) => ['DialType', 'ChartType'],
+    ], 'workbench/app/events'))->toBe([
+        '@js/types/ui' => ['UiNode'],
+        '../packages/ui' => ['GaugeKind', 'ChartType', 'DialType'],
+    ]);
+});
+
+it('qualifies each composed type name by its class namespace for the globals file', function () {
+    expect(ComposedClassTypes::globalReferences([Chart::class, Dial::class]))->toBe([
+        'ChartType' => 'workbench.app.packages.ui.ChartType',
+        'DialType' => 'workbench.app.packages.ui.DialType',
+    ]);
+});

@@ -1,4 +1,5 @@
 import type { UiAmount, UiGauge, UiIcon, UiNode } from '@js/types/ui';
+import type { ChartType, DialType } from '../packages/ui';
 
 /** @see Workbench\App\Events\UiBoardUpdated */
 export interface UiBoardUpdated {
@@ -7,4 +8,8 @@ export interface UiBoardUpdated {
     pennies: UiAmount;
     badge: UiIcon;
     maybe: UiNode | null;
+    chart: ChartType;
+    dial: DialType;
+    maybeChart: ChartType | null;
+    charts: ChartType[];
 }

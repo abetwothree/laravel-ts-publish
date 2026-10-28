@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -205,7 +206,7 @@ class InertiaSharedDataAnalyzer
         $imports = new AnalysisImports()->build($analysis, '');
 
         return [
-            'typeImports' => $this->keepSpelledNames($imports['typeImports'], $propsType),
+            'typeImports' => $this->keepSpelledNames(ComposedClassTypes::resolveImports($imports['typeImports'], ''), $propsType),
             'valueImports' => $this->keepSpelledNames($imports['valueImports'], $propsType),
         ];
     }

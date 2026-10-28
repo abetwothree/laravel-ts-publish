@@ -855,6 +855,8 @@ class RouteTransformer extends CoreTransformer
 
         foreach ($this->actionExternalImports as $externalImports) {
             foreach ($externalImports as $path => $types) {
+                $path = ComposedClassTypes::importPath($path, $this->namespacePath);
+
                 foreach ($types as $type) {
                     if (! in_array($type, $imports[$path] ?? [], true)) {
                         $imports[$path][] = $type;
