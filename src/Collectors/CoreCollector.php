@@ -137,7 +137,8 @@ abstract class CoreCollector
     }
 
     /**
-     * Whether a class exists, passes this collector's class filter and carries no #[TsExclude].
+     * Whether a class exists, carries no #[TsExclude] and passes this collector's class filter, asked last since a
+     * filter can warn about the class it reads.
      *
      * @phpstan-assert-if-true class-string $class
      */
@@ -149,7 +150,7 @@ abstract class CoreCollector
 
         $reflection = new ReflectionClass($class);
 
-        return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
+        return $reflection->getAttributes(TsExclude::class) === [] && $this->classFilter($reflection);
     }
 
     /**

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\ClassTypesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AnnouncingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Gadget;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GadgetShade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Greets;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenGreets;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\HiddenSpark;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -76,6 +78,13 @@ it('leaves interfaces out of every other collector\'s scan', function () {
     };
 
     expect($collector->collect()->all())->toBe([Badge::class, Chart::class]);
+});
+
+it('asks no class filter about a #[TsExclude] class, so the scan warns of nothing', function () {
+    config()->set('ts-publish.class_types.additional_directories', [HiddenSpark::class]);
+
+    expect(resolve(ClassTypesCollector::class)->collect()->all())->toBe([])
+        ->and(AnalysisWarnings::all())->toBe([]);
 });
 
 it('narrows the scan by included and excluded entries', function () {
