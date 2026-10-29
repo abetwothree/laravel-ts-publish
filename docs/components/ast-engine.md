@@ -520,38 +520,35 @@ property declared without a value publishes `null`; a public one left `null` dec
 fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
 operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
 as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
-property itself takes the default and constant writes under an `AnalysisMemo` guard. A helper the value calls while it
-is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own read of the property takes them too.
-Where reading the property as the type that joins, under `AnalysisMemo::seeding()`, would join an arm that type lacks,
-as a write nesting what the helper returns does, each such write reads the helper cut instead. Only the outermost
-property typed reads a helper again: one typed inside it reads its writes under `AnalysisMemo::cut()`, as before the
-re-entry. The work is the cut read's plus one read per call and property the outermost writes reach for the check and
-one for the fallback; a property typed inside adds none. A write counts only where the class runs its body: a trait's
-method the class overrides is skipped, unless an alias, the class's or a used trait's, still runs it, typed then under
-that alias in the trait method's own scope. An ancestor's method a subclass overrides still counts, since `parent::` may
-run it. A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
-object. One a closure or arrow function in the method holds joins even where the closure may never run, read in that
-closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure,
-only its imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that
-read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does. An element write, an element
-`unset()` and a by-reference `foreach`, which writes each value `VariableWrites::foreachElementValues()` reads for its
-element, apply one rule to every list or object arm of that join ([`ArrayArm`]): a write joins its value into each key
-it may reach, or makes each member it may remove optional, and a list it may key otherwise also becomes that object,
-kept beside the list. The writes run in any order until no arm changes, and a nested path reaches only a member every
-arm holds. In a re-indexing resource (`ResourceCollections::reindexesNumericKeys()`), an object literal keyed only by
-numbers joins another arm as `Record<number, T>`. An object the class may send as a list, there where only numeric keys
-may remain and in any other class where its keys may run 0, 1, …, also publishes that list unless its members admit it,
-`never[]` where it may hold none; a member gains its list once the writes settle, since a list holds no member a later
-path could reach. In a re-indexing resource the members admit it only where they share one type or come in the order the
-array holds them, which a join of two arms holding their numbers in other orders loses, as does every member a path
-reaches, since its type is read back from its printed join. Any other write declines: a value the engine cannot type, an
-element write on any other arm or path, a whole `unset()`, a computed `$this->{$name}` write in application code, or an
-argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan
-shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. A
-value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only assumes its
-runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a receiver it
-cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from outside
-the class.
+property itself takes the default and constant writes under an `AnalysisMemo` guard. A write counts only where the class
+runs its body: a trait's method the class overrides is skipped, unless an alias, the class's or a used trait's, still
+runs it, typed then under that alias in the trait method's own scope. An ancestor's method a subclass overrides still
+counts, since `parent::` may run it. A write inside a nested class, a named function or a static closure is skipped,
+since `$this` there is never the object. One a closure or arrow function in the method holds joins even where the
+closure may never run, read in that closure's scope: its declared parameters through `ParameterBinder::bindClosure()`,
+its body's locals and, for a closure, only its imports, as the method held them there, which leaves a by-reference
+import `unknown`; it declines where that read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped
+parameter does. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}`
+write in application code, or an argument to a by-reference parameter of a callee the scan can name
+([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
+`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
+method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
+receiver's declared class (`$this->holder()->views`), or a write from outside the class.
+
+A helper the value calls while it is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own
+read of the property takes the default and constant writes too. Where reading the property as the type that joins, under
+`AnalysisMemo::seeding()`, would join an arm that type lacks, as a write nesting what the helper returns does, each such
+write reads the helper cut instead. Only the outermost property typed reads a helper again: one typed inside it reads
+its writes under `AnalysisMemo::cut()`, as before the re-entry. The work is the cut read's plus one read per call and
+property the outermost writes reach for the check and one for the fallback; a property typed inside adds none.
+
+An element write, an element `unset()` and a by-reference `foreach`, whose values
+`VariableWrites::foreachElementValues()` reads, apply to each list or object arm of the joined type in any order until
+none changes, and decline on any other arm or on a path to a member an arm may lack ([`ArrayArm`]). An object the class
+may send as a list also publishes that list unless its members admit it, which in a re-indexing resource
+(`ResourceCollections::reindexesNumericKeys()`) needs one type or the array's order, and order is known only for the
+default and constant writes.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -618,13 +615,13 @@ shown them. A cycle can cut an answer short, so each answer is stored with the g
 `AnalysisMemo::reproducible()` reuses it only where nothing it read has changed and exactly those guards are held again.
 No answer depends on which entry point read it first. `AnalysisMemo::reenterOnce()` lifts each guard entered before the
 one its caller holds, so a property write's value enters a method already under way once more, and the
-`typing-property:` guard bounds the cycle. It never nests: `cut()` holds the lifted guards again for a property typed
-inside, and records a marker for each, so an answer it shaped is reused only where the same guards are lifted. A lifted
-guard counts as not held, so an answer computed under the lift is never reused where that guard is held. `reentries()`
-counts each entry into a lifted guard, and each reuse of an answer that entered one, so a caller can tell a read that
-went through an analysis under way whatever was read first. `seeding()` marks a guard that answers a seed in place of
-its cut: no answer that met it outside the check is reused there, and one computed there is reused only until the check
-ends. `computations()` counts the answers a run computes, which a test bounds.
+`typing-property:` guard bounds the cycle. It never nests, and throws if a call would: `cut()` holds the lifted guards
+again for a property typed inside, and records a marker for each, so an answer it shaped is reused only where the same
+guards are lifted. A lifted guard counts as not held, so an answer computed under the lift is never reused where that
+guard is held. `reentries()` counts each entry into a lifted guard, and each reuse of an answer that entered one, so a
+caller can tell a read that went through an analysis under way whatever was read first. `seeding()` marks a guard that
+answers a seed in place of its cut: no answer that met it outside the check is reused there, and one computed there is
+reused only until the check ends. `computations()` counts the answers a run computes, which a test bounds.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
 `ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard

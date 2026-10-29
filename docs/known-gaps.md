@@ -930,20 +930,22 @@ An untyped property publishes its default's type joined with each value its clas
 subclass writes it, whole, by a compound operator or by element, typed in the writing method's scope. It publishes
 `unknown` after a whole `unset()` of the property, since PHP then reads it through `__get()`, which a resource forwards
 to its model, and for a value the engine cannot type, such as an untyped method or closure parameter, a variable a
-closure imports by reference, or a `mixed` call. An element write publishes `unknown` too where the array may be `null`
-or a scalar, where it compounds, as `$this->tags['n']++` does, where a nested key follows a computed one or names a
-member the array may lack, and where a by-reference `foreach` passes its element on by reference. A `@param` on a
-closure passed inline, or on the statement above `$f = function ($n)`, is not read, so such a parameter counts as
-untyped. A write that nests the property's own value, as `$this->x = ['v' => $this->x]` does, publishes one level,
-though each call nests one more. Where it nests what a helper returns, as `['v' => $this->measure()]` does, that
-helper's own key publishes the nested value `unknown`. A helper read first publishes `unknown` where the write reaches
-it through another untyped property's write, as `$this->p = $this->mq()` beside `$this->q = $this->mp()` does. A
-by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from
-outside the class both change the value Laravel sends while the published type stays the default's. So does a write by a
-subclass of a receiver's declared class, such as the object behind `$this->holder()->views`. An array a plain class
-holds is typed as that class sends it, so where the holder's `$tags = [5 => 's']` may gain a `k` key, a resource reading
-`$this->holder()->tags` publishes `{ "5": string; k?: number }` though it re-indexes the array and may send `["s"]`.
-Declare the property's type, or give it a `@var` docblock.
+closure imports by reference, or a `mixed` call. Any other write publishes `unknown` as well: a by-reference argument,
+as in `array_push($this->queue, 1)` or `sort($this->tags)`, a `&` reference, a destructuring assignment, and
+`foreach (… as $this->p)`. An element write publishes `unknown` too where the array may be `null` or a scalar, where it
+compounds, as `$this->tags['n']++` does, where a nested key follows a computed one or names a member the array may lack,
+and where a by-reference `foreach` passes its element on by reference. A `@param` on a closure passed inline, or on the
+statement above `$f = function ($n)`, is not read, so such a parameter counts as untyped. A write that nests the
+property's own value, as `$this->x = ['v' => $this->x]` does, publishes one level, though each call nests one more.
+Where it nests what a helper returns, as `['v' => $this->measure()]` does, that helper's own key publishes the nested
+value `unknown`. A helper read first publishes `unknown` where the write reaches it through another untyped property's
+write, as `$this->p = $this->mq()` beside `$this->q = $this->mp()` does. A by-reference parameter on a receiver the scan
+cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel
+sends while the published type stays the default's. So does a write by a subclass of a receiver's declared class, such
+as the object behind `$this->holder()->views`. An array a plain class holds is typed as that class sends it, so where
+the holder's `$tags = [5 => 's']` may gain a `k` key, a resource reading `$this->holder()->tags` publishes
+`{ "5": string; k?: number }` though it re-indexes the array and may send `["s"]`. Declare the property's type, or give
+it a `@var` docblock.
 
 ### A receiver's body reads `static` as its declared class
 
