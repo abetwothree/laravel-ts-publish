@@ -52,9 +52,11 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Foreach_;
+use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
 use Throwable;
 use WeakMap;
@@ -411,9 +413,9 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it;
-     * null where no method holds it, a function inside it holds the write, the class runs another body under that
-     * method's name, or the value names `static` and the runtime class is only assumed.
+     * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it,
+     * under the name the class runs it by; null where no method holds it, a function inside it holds the write, or
+     * the value names `static` and the runtime class is only assumed.
      *
      * @param  PropertyWrite  $write
      * @param  ReflectionClass<object>  $subject
@@ -423,16 +425,20 @@ final class SubjectPropertyTypeResolver
     private function computedWrite(array $write, Expr $value, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
     {
         [$site, $self, $class, $file] = $write;
-        $method = array_find($class->getMethods(), fn (ClassMethod $method): bool => StatementBlocks::encloses($method, $site));
-        $methodName = $method?->name->toString() ?? '';
+        $method = $this->enclosingMethod($class, $site);
+        $running = $method === null ? null : $this->runningName($self, $class, $method);
 
-        // A trait's method the class overrides never runs as written, and the override's parameters are not its own.
-        if ($method === null || ! $self->hasMethod($methodName)
+        if ($method === null || $running === null
             || $this->functionHolds($method, $site)
-            || $self->getMethod($methodName)->getFileName() !== $file
             || ($knownRuntime === null && $this->namesStatic($value))
         ) {
             return null;
+        }
+
+        // PHP copies an aliased trait method under the alias, the name its parameters are reflected by.
+        if ($running !== $method->name->toString()) {
+            $method = clone $method;
+            $method->name = new Identifier($running);
         }
 
         return resolve(AstEngine::class)->analyzeExpressionValue(
@@ -441,6 +447,42 @@ final class SubjectPropertyTypeResolver
             $knownRuntime ?? $subject,
             assumesRuntime: $knownRuntime === null,
         );
+    }
+
+    /**
+     * The name the class runs a method body under: its own, or for a trait's method the class overrides, an alias it
+     * keeps; null where the class never runs the body.
+     *
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body
+     */
+    private function runningName(ReflectionClass $self, ClassLike $class, ClassMethod $method): ?string
+    {
+        $name = $method->name->toString();
+        $trait = $class instanceof Trait_ ? $class->namespacedName?->toString() : null;
+
+        if ($trait === null) {
+            return $name;
+        }
+
+        $declared = new ReflectionMethod($trait, $name);
+        $runs = fn (ReflectionMethod $running): bool => $running->getDeclaringClass()->getName() === $self->getName()
+            && $running->getFileName() === $declared->getFileName()
+            && $running->getStartLine() === $declared->getStartLine();
+
+        if ($self->hasMethod($name) && $runs($self->getMethod($name))) {
+            return $name;
+        }
+
+        // The class's own alias or one a trait it uses declares, as `use T { m as n; }` in a trait does.
+        return array_find($self->getMethods(), $runs)?->getName();
+    }
+
+    /**
+     * The method of a class body that holds a node, or null where none does.
+     */
+    private function enclosingMethod(ClassLike $class, Node $site): ?ClassMethod
+    {
+        return array_find($class->getMethods(), fn (ClassMethod $method): bool => StatementBlocks::encloses($method, $site));
     }
 
     /**
@@ -559,7 +601,13 @@ final class SubjectPropertyTypeResolver
             }
 
             foreach (self::writeSites($node) as [$site, $targets]) {
-                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
+                if (! $this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
+                    continue;
+                }
+
+                $method = $this->enclosingMethod($node, $site);
+
+                if ($method === null || $this->runningName($self, $node, $method) !== null) {
                     $writes[] = [$site, $self, $node, $file];
                 }
             }

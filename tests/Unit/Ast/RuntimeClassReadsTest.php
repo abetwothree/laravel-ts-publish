@@ -35,12 +35,16 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\TraitAliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrittenTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
@@ -261,10 +265,26 @@ it('leaves an untyped property `unknown` where a subclass writes it an untyped p
         ->and(json_encode(new UntypedTallyChild()->setTier(['x' => 1])->toArray()['tier']))->toBe('{"x":1}');
 });
 
-// The class's own `setTier()` binds a `string`, which the trait's body, run only as `setTierNumber()`, never sees.
-it('leaves an untyped property `unknown` where a trait method the class overrides writes it', function () {
-    expect(analyzedKeyTypes(AliasedTallyChild::class)['tier'])->toBe('unknown')
+it('skips a write in a trait method the class overrides, which never runs', function () {
+    expect(analyzedKeyTypes(OverriddenBumpChild::class)['tier'])->toBe('string')
+        ->and(tap(new OverriddenBumpChild)->bump()->toArray()['tier'])->toBe('silver');
+});
+
+it('types a trait method the class overrides but runs under an alias in the trait method\'s own scope', function () {
+    expect(analyzedKeyTypes(AliasedTallyChild::class)['tier'])->toBe('string | number')
         ->and(new AliasedTallyChild()->setTierNumber(5)->toArray()['tier'])->toBe(5);
+});
+
+// The alias is the used trait's, so the class's own getTraitAliases() does not list it.
+it('types a trait method an outer trait overrides but runs under an alias that trait declares', function () {
+    expect(analyzedKeyTypes(TraitAliasedTallyChild::class)['tier'])->toBe('string | number')
+        ->and(new TraitAliasedTallyChild()->setTierNumber(5)->toArray()['tier'])->toBe(5);
+});
+
+it('keeps the writes of an ancestor method the subclass overrides, which parent:: may still run', function () {
+    expect(analyzedKeyTypes(ParentBumpChild::class))->toBe(['tier' => 'string | number'])
+        ->and(json_encode(tap(new ParentBumpChild)->bump()->toArray()))->toBe('{"tier":"silver"}')
+        ->and(json_encode(tap(new BumpingBase)->bump()->toArray()))->toBe('{"tier":5}');
 });
 
 // A callback's parameter shadows the method's, so the method's scope cannot type a write the callback holds.
