@@ -940,8 +940,10 @@ helper's own key publishes the nested value `unknown`. A helper read first publi
 it through another untyped property's write, as `$this->p = $this->mq()` beside `$this->q = $this->mp()` does. A
 by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from
 outside the class both change the value Laravel sends while the published type stays the default's. So does a write by a
-subclass of a receiver's declared class, such as the object behind `$this->holder()->views`. Declare the property's
-type, or give it a `@var` docblock.
+subclass of a receiver's declared class, such as the object behind `$this->holder()->views`. An array a plain class
+holds is typed as that class sends it, so a resource reading `$this->holder()->tags` publishes
+`{ "5": string; k?: number }` though it re-indexes the array and may send `["s"]`. Declare the property's type, or give
+it a `@var` docblock.
 
 ### A receiver's body reads `static` as its declared class
 

@@ -538,9 +538,9 @@ read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped param
 element, apply one rule to every list or object arm of that join ([`ArrayArm`]): a write joins its value into each key
 it may reach, or makes each member it may remove optional, and a list it may key otherwise also becomes that object,
 kept beside the list. The writes run in any order until no arm changes, and a nested path reaches only a member every
-arm holds. An object literal keyed only by numbers joins another arm as `Record<number, T>`. An object the class may
-send as a list, a re-indexing resource (`ResourceCollections::reindexesNumericKeys()`) where only numeric keys may
-remain and any other class where its keys may run 0, 1, …, also publishes that list unless its members admit it,
+arm holds. In a re-indexing resource (`ResourceCollections::reindexesNumericKeys()`), an object literal keyed only by
+numbers joins another arm as `Record<number, T>`. An object the class may send as a list, there where only numeric keys
+may remain and in any other class where its keys may run 0, 1, …, also publishes that list unless its members admit it,
 `never[]` where it may hold none; a member gains its list once the writes settle, since a list holds no member a later
 path could reach. Any other write declines: a value the engine cannot type, an element write on any other arm or path, a
 whole `unset()`, a computed `$this->{$name}` write in application code, or an argument to a by-reference parameter of a
