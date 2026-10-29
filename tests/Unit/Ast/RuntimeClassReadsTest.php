@@ -58,6 +58,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReboundImportPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReorderedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
@@ -399,6 +400,14 @@ it('reads a closure another closure holds through each one\'s imports in turn', 
     expect(analyzedKeyTypes(ChainedCaptureChild::class))->toBe(['used' => 'string | boolean', 'anon' => 'string', 'loose' => 'string | number'])
         ->and(json_encode(new ChainedCaptureChild()->chain()->toArray()))
         ->toBe('{"used":true,"anon":"none","loose":5}');
+});
+
+// The scan reads an import a closure reassigns as that local wherever the read sits, so `rebound` would type `5`.
+it('leaves `unknown` a write a callback holds that reads an import the callback, or one around it, reassigns', function () {
+    expect(analyzedKeyTypes(ReboundImportPayload::class))
+        ->toBe(['rebound' => 'unknown', 'kept' => 'string | boolean', 'relayed' => 'unknown', 'arrowed' => 'unknown'])
+        ->and(json_encode(new ReboundImportPayload()->rebind()->keep()->relay()->arrow()->toArray()))
+        ->toBe('{"rebound":true,"kept":true,"relayed":true,"arrowed":true}');
 });
 
 // O3: a closure may run wherever it goes, so its write joins even where the body that builds it never calls it.

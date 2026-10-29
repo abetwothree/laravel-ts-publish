@@ -30,6 +30,7 @@ use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
+use PhpParser\Node\ClosureUse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
@@ -51,6 +52,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -244,6 +246,25 @@ final class SubjectPropertyTypeResolver
         };
 
         return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
+    }
+
+    /**
+     * The plain names these nodes spell where each is a variable, leaving out a variable variable.
+     *
+     * @param  array<Node>  $nodes
+     * @return list<string>
+     */
+    private static function variableNames(array $nodes): array
+    {
+        $names = [];
+
+        foreach ($nodes as $node) {
+            if ($node instanceof Variable && is_string($node->name)) {
+                $names[] = $node->name;
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -610,6 +631,10 @@ final class SubjectPropertyTypeResolver
 
         $closures = $this->enclosingClosures($method, $site);
 
+        if ($this->readsReassignedImport($value, $closures)) {
+            return null;
+        }
+
         // PHP copies an aliased trait method under the alias, the name its parameters are reflected by.
         if ($running !== $method->name->toString()) {
             $method = clone $method;
@@ -810,6 +835,32 @@ final class SubjectPropertyTypeResolver
             fn (Node $node): bool => ($node instanceof ClosureExpr || $node instanceof ArrowFunction)
                 && StatementBlocks::encloses($node, $site),
         );
+    }
+
+    /**
+     * Whether a value reads an import that a closure holding the write, or one the import passes through on its way in,
+     * assigns anywhere in its body: its scope reads such a name as the body's own local, which a read before the
+     * assignment never holds.
+     *
+     * @param  list<ArrowFunction|ClosureExpr>  $closures  outermost first
+     */
+    private function readsReassignedImport(Expr $value, array $closures): bool
+    {
+        $names = array_diff(self::variableNames(new NodeFinder()->findInstanceOf($value, Variable::class)), ['this']);
+
+        foreach (array_reverse($closures) as $closure) {
+            // A closure takes only the names it imports; an arrow function every name but its parameters.
+            $names = $closure instanceof ClosureExpr
+                ? array_intersect($names, self::variableNames(array_map(fn (ClosureUse $use): Expr => $use->var, $closure->uses)))
+                : array_diff($names, self::variableNames(array_map(fn (Param $param): Expr => $param->var, $closure->params)));
+            $body = $closure instanceof ClosureExpr ? $closure->stmts : [$closure->expr];
+
+            if (array_intersect($names, array_column(VariableWrites::of($body), 0)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

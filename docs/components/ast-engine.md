@@ -528,13 +528,14 @@ since `$this` there is never the object. One a closure or arrow function in the 
 closure may never run, read in that closure's scope: its declared parameters through `ParameterBinder::bindClosure()`,
 its body's locals and, for a closure, only its imports, as the method held them there, which leaves a by-reference
 import `unknown`; it declines where that read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped
-parameter does. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}`
-write in application code, or an argument to a by-reference parameter of a callee the scan can name
-([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
-`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
-method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
-receiver's declared class (`$this->holder()->views`), or a write from outside the class.
+parameter does, or reads an import that a closure it passes through reassigns, which the scope reads as that later
+local. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
+application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
+which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
+`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines
+where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
+by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
+(`$this->holder()->views`), or a write from outside the class.
 
 A helper the value calls while it is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own
 read of the property takes the default and constant writes too. Where reading the property as the type that joins, under
