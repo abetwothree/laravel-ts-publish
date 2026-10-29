@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -435,7 +436,7 @@ final class SubjectPropertyTypeResolver
     /**
      * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it,
      * under the name the class runs it by, and of each closure inside it that holds the write; null where no method
-     * holds it, or the value names `static` and the runtime class is only assumed.
+     * holds it, the value names `static` and the runtime class is only assumed, or a closure's read drops a union arm.
      *
      * @param  PropertyWrite  $write
      * @param  ReflectionClass<object>  $subject
@@ -460,13 +461,17 @@ final class SubjectPropertyTypeResolver
             $method->name = new Identifier($running);
         }
 
-        return resolve(AstEngine::class)->analyzeExpressionValue(
+        $dropped = DroppedUnionArms::dropped();
+        $written = resolve(AstEngine::class)->analyzeExpressionValue(
             new MethodContext($self, $method, resolve(AstParser::class)->parseFile($file)),
             $value,
             $knownRuntime ?? $subject,
             assumesRuntime: $knownRuntime === null,
             within: $closures,
         );
+
+        // A closure's untypable name, such as a by-reference import, read through `??` would leave only the fallback.
+        return $closures !== [] && DroppedUnionArms::dropped() !== $dropped ? null : $written;
     }
 
     /**

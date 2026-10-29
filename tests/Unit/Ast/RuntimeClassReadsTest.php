@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServicePr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
@@ -323,6 +324,13 @@ it('reads a nested callback in its outer callback\'s scope, and skips a write a 
     expect(analyzedKeyTypes(NestedCaptureChild::class))->toBe(['used' => 'unknown', 'anon' => 'string', 'loose' => 'string | number'])
         ->and(json_encode(new NestedCaptureChild()->captureByReference()->refuse()->nest()->toArray()))
         ->toBe('{"used":"late","anon":"none","loose":3}');
+});
+
+// `??` leaves out an arm it cannot type, so a callback's read through it would publish only the fallback PHP may skip.
+it('leaves `unknown` a write a callback holds that reads an untypable value through `??`', function () {
+    expect(analyzedKeyTypes(CoalescedCaptureChild::class))->toBe(['used' => 'unknown', 'anon' => 'string', 'loose' => 'unknown'])
+        ->and(json_encode(new CoalescedCaptureChild()->coalesceCapture()->coalesceParameter()->toArray()))
+        ->toBe('{"used":true,"anon":"none","loose":true}');
 });
 
 // An element unset(), an append onto an object, an append beside a key write, and a computed key keep the known gap.
