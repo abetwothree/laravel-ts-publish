@@ -301,7 +301,7 @@ it('keeps a property read after a helper that typed it inside a re-entry, which 
         ->and(json_encode(new SwappedPairPayload()->swapQ()->toArray()))->toBe('{"mp":"a","mq":"a","p":"a","q":"a"}');
 });
 
-it('reads properties written through each other\'s helpers as the cut read does, in work linear in keys and writes', function () {
+it('reads properties written through each other\'s helpers as the cut read does, adding a read per call and property', function () {
     $memo = resolve(AnalysisMemo::class);
     $memo->reset();
     $fanned = analyzedKeyTypes(FannedHelperPayload::class);
@@ -316,9 +316,10 @@ it('reads properties written through each other\'s helpers as the cut read does,
         ->and(json_encode(new FannedHelperPayload()->w0()->w0()->toArray()['h0']))->toBe('[["none","none","none","none"],"none","none","none"]')
         ->and($wrapped)->toBe(array_fill_keys(['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'], $chain))
         ->and(json_encode($wrapAll(new WrappedChainPayload)->toArray()['h0']))->toBe('{"v":{"v":{"v":{"v":{"v":{"v":{"v":"none"}}}}}}}')
-        // Each key reads each helper call and property its writes reach at most twice: keys × (calls + properties) × 2.
-        ->and($fannedWork)->toBeLessThanOrEqual(4 * (16 + 4) * 2)
-        ->and($wrappedWork)->toBeLessThanOrEqual(7 * (7 + 7) * 2);
+        // The cut read computes 74 and 114; the check and fallback add one read per call and property, 2 × (16 + 4) on
+        // the fan and none on the chain, whose cycle closes inside the cut read. The caps leave room above 114 and 114.
+        ->and($fannedWork)->toBeLessThanOrEqual(160)
+        ->and($wrappedWork)->toBeLessThanOrEqual(196);
 });
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.

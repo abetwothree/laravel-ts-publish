@@ -314,7 +314,8 @@ final class SubjectPropertyTypeResolver
      * a write's value is one the engine cannot type, or its elements fit no single shape.
      *
      * A write calling a helper already being read reads it again, or cut where the type that joins is no fixpoint; only
-     * the outermost property typed reads one again, so the work stays linear in the writes.
+     * the outermost property typed reads one again, so its check and fallback each add one read per call and property
+     * its writes reach to the cut read's work, and a property typed inside it adds none.
      *
      * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
      * @param  PropertyWrites  $computed  the whole, compound and element writes no constant evaluation types

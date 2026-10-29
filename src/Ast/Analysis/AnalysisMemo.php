@@ -22,6 +22,7 @@ use ReflectionClass;
  *     pathMark: int,
  *     recording: bool,
  *     dropped: int,
+ *     reentries: int,
  *     resources: int,
  *     models: int,
  *     enums: int,
@@ -33,6 +34,7 @@ use ReflectionClass;
  *     paths: list<string>,
  *     recording: bool,
  *     dropped: int,
+ *     reentries: int|null,
  *     resources: int,
  *     models: int,
  *     enums: int,
@@ -118,7 +120,9 @@ final class AnalysisMemo
     /**
      * Run a read with each guard entered before `$key`, which the caller holds, lifted, so it enters an analysis
      * already under way once more. SubjectPropertyTypeResolver's `typing-property:` guard is that key, so a read of the
-     * property inside ends the cycle at the type it held before; a property typed inside reads through cut() instead.
+     * property inside ends the cycle at the type it held before.
+     *
+     * It must not nest, since it replaces the lifted set: a property typed inside it reads through cut() instead.
      *
      * @template T
      *
@@ -242,6 +246,7 @@ final class AnalysisMemo
             'pathMark' => DependencyRecorder::mark(),
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
+            'reentries' => $this->reentries,
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
             'enums' => $enums,
@@ -330,7 +335,7 @@ final class AnalysisMemo
         }
 
         DroppedUnionArms::replay($entry['dropped']);
-        $this->reentries += count(array_intersect_key($entry['footprint'], $this->lifted));
+        $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
 
         $innermost = array_key_last($this->frames);
 
@@ -367,6 +372,8 @@ final class AnalysisMemo
     {
         $paths = $frame['recording'] ? DependencyRecorder::since($frame['pathMark']) : [];
         $held = array_intersect_key($frame['held'], $frame['footprint']);
+        // A guard a cut read entered held is in its footprint uncounted, so such an answer replays its own count.
+        $cut = array_any(array_keys($frame['footprint']), fn (string $key): bool => str_starts_with($key, self::LIFTED));
         $entry = [
             'value' => $value,
             'footprint' => $frame['footprint'],
@@ -374,6 +381,7 @@ final class AnalysisMemo
             'paths' => array_values(array_unique($paths)),
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
+            'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
             'resources' => $frame['resources'],
             'models' => $frame['models'],
             'enums' => $frame['enums'],

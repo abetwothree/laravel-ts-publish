@@ -184,6 +184,36 @@ test('an answer a cut read shaped is reused only where the guards it held again 
     expect([...$lifted, $plain()])->toBe([1, 1, 2]);
 });
 
+test('a reused answer a cut read shaped counts the re-entries its fresh computation counted', function () {
+    $memo = new AnalysisMemo;
+    $enters = function (string $key) use ($memo): string {
+        if ($memo->enter($key)) {
+            $memo->leave($key);
+        }
+
+        return $key;
+    };
+    $cutOnly = fn (): string => $memo->cut(fn (): string => $enters('method'));
+    $outerThenCut = fn (): string => $enters('outer').$memo->cut(fn (): string => $enters('method'));
+
+    $memo->enter('outer');
+    $memo->enter('method');
+    $memo->enter('property');
+    $counts = $memo->reenterOnce('property', function () use ($memo, $cutOnly, $outerThenCut): array {
+        $counts = [];
+
+        foreach (['h' => $cutOnly, 'g' => $outerThenCut, 'h2' => $cutOnly, 'g2' => $outerThenCut] as $key => $read) {
+            $before = $memo->reentries();
+            $memo->remember(rtrim($key, '2'), $read);
+            $counts[] = $memo->reentries() - $before;
+        }
+
+        return $counts;
+    });
+
+    expect($counts)->toBe([0, 1, 0, 1]);
+});
+
 test('counts each entry into a guard a re-entry lifted, and each reused answer that entered one, but none in a cut read', function () {
     $memo = new AnalysisMemo;
     $guarded = function () use ($memo): string {
