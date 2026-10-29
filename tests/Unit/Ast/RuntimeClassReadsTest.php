@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FannedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
@@ -47,12 +48,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MeasuredSizeChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SwappedPairPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\TraitAliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UncalledCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrappedChainPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrappedSizeChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrittenTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
@@ -251,7 +255,7 @@ it('types an untyped property a subclass writes through a typed setter as its de
 });
 
 // A write that reads the property it sets reads its default and constant writes there, and no later read may replay
-// that. Read through `labelled()` first, `copyLabel()` reaches that helper again, so the cycle cut leaves it `unknown`.
+// that. Read through `labelled()` first, `copyLabel()` reads that helper again with the label as it held before.
 it('types an untyped property\'s non-constant writes in the scope of the method that holds each', function () {
     $written = new WrittenTallyChild()->setTier(5)->keepTier()->bump()->tick()->relabel()->stress();
     $child = new ReflectionClass(WrittenTallyChild::class);
@@ -283,6 +287,38 @@ it('reads a helper a write calls with the property cut where reading it as the j
     expect([$helperFirst, analyzedKeyTypes(WrappedSizeChild::class)['h']])->toBe(['string | { v: unknown }', 'string | { v: unknown }'])
         ->and(json_encode(new WrappedSizeChild()->wrap()->toArray()['h']))->toBe('{"v":"none"}')
         ->and(json_encode(new WrappedSizeChild()->wrap()->wrap()->toArray()['h']))->toBe('{"v":{"v":"none"}}');
+});
+
+it('reads a property typed inside another\'s re-entry with the helpers under way cut, as without the re-entry', function () {
+    expect(analyzedKeyTypes(PairedWrapPayload::class)['h'])->toBe('{ p: string | { v: unknown }; q: string | { v: unknown } }')
+        ->and(json_encode(new PairedWrapPayload()->wrapQ()->wrapQ()->copyQ()->toArray()['h']))
+        ->toBe('{"p":{"v":{"v":"none"}},"q":{"v":{"v":"none"}}}');
+});
+
+it('keeps a property read after a helper that typed it inside a re-entry, which reused nothing that re-entry cut', function () {
+    expect(analyzedKeyTypes(SwappedPairPayload::class))->toMatchArray(['p' => 'string | number', 'q' => 'number | string'])
+        ->and(json_encode(new SwappedPairPayload()->swapP()->toArray()))->toBe('{"mp":1,"mq":1,"p":1,"q":1}')
+        ->and(json_encode(new SwappedPairPayload()->swapQ()->toArray()))->toBe('{"mp":"a","mq":"a","p":"a","q":"a"}');
+});
+
+it('reads properties written through each other\'s helpers as the cut read does, in work linear in keys and writes', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $memo->reset();
+    $fanned = analyzedKeyTypes(FannedHelperPayload::class);
+    $fannedWork = $memo->computations();
+    $memo->reset();
+    $wrapped = analyzedKeyTypes(WrappedChainPayload::class);
+    $wrappedWork = $memo->computations();
+    $chain = 'string | '.str_repeat('{ v: string | ', 6).'{ v: unknown }'.str_repeat(' }', 6);
+    $wrapAll = fn (WrappedChainPayload $payload): WrappedChainPayload => $payload->w6()->w5()->w4()->w3()->w2()->w1()->w0();
+
+    expect($fanned)->toBe(array_fill_keys(['h0', 'h1', 'h2', 'h3'], 'string | unknown[]'))
+        ->and(json_encode(new FannedHelperPayload()->w0()->w0()->toArray()['h0']))->toBe('[["none","none","none","none"],"none","none","none"]')
+        ->and($wrapped)->toBe(array_fill_keys(['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'], $chain))
+        ->and(json_encode($wrapAll(new WrappedChainPayload)->toArray()['h0']))->toBe('{"v":{"v":{"v":{"v":{"v":{"v":{"v":"none"}}}}}}}')
+        // Each key reads each helper call and property its writes reach at most twice: keys × (calls + properties) × 2.
+        ->and($fannedWork)->toBeLessThanOrEqual(4 * (16 + 4) * 2)
+        ->and($wrappedWork)->toBeLessThanOrEqual(7 * (7 + 7) * 2);
 });
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.

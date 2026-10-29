@@ -42,25 +42,32 @@ use ReflectionClass;
  */
 final class AnalysisMemo
 {
-    /** @var array<string, true> guard keys of the analyses on the stack */
+    /** The prefix of the marker held for each guard a re-entry lifts, so an answer a cut read shaped tells it apart. */
+    private const string LIFTED = 'lifted:';
+
+    /** @var array<string, true> guard keys of the analyses on the stack, in the order they were entered */
     private array $active = [];
 
-    /** @var array<string, true> the guard keys each re-entry under way is bounded by, which a nested one never lifts */
-    private array $bounds = [];
-
-    /** @var array<string, true> the guard keys the re-entries under way lifted */
+    /** @var array<string, true> the guard keys the re-entry under way lifted */
     private array $lifted = [];
 
     /** @var array<string, true> the guard keys answering a seed in place of their cut, while a fixpoint check reads */
     private array $seeded = [];
 
+    /** How often a read entered a guard a re-entry under way lifted, or reused an answer that entered one. */
     private int $reentries = 0;
+
+    /** How many answers this run computed rather than reused. */
+    private int $computations = 0;
 
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
 
     /** @var array<string, list<MemoEntry>> each key's answers, one per set of its guards held when it was computed */
     private array $entries = [];
+
+    /** @var array<string, list<MemoEntry>> the answers a seed shaped, reused only until the check that seeds ends */
+    private array $seededEntries = [];
 
     /**
      * The key suffix that tells a body's reads for one runtime class apart: none for the class read itself, since that
@@ -109,9 +116,9 @@ final class AnalysisMemo
     }
 
     /**
-     * Run a read with each guard on the stack lifted, so it enters an analysis already under way once more, but `$key`,
-     * which the caller holds, and each guard an enclosing re-entry is bounded by. SubjectPropertyTypeResolver's
-     * `typing-property:` guard is that key, so a read of the property inside ends the cycle at the type it held before.
+     * Run a read with each guard entered before `$key`, which the caller holds, lifted, so it enters an analysis
+     * already under way once more. SubjectPropertyTypeResolver's `typing-property:` guard is that key, so a read of the
+     * property inside ends the cycle at the type it held before; a property typed inside reads through cut() instead.
      *
      * @template T
      *
@@ -120,19 +127,49 @@ final class AnalysisMemo
      */
     public function reenterOnce(string $key, Closure $read): mixed
     {
-        $bounds = $this->bounds;
+        $position = array_search($key, array_keys($this->active), true);
+        $lifted = $position === false ? [] : array_slice($this->active, 0, $position, true);
+        $marks = self::marks($lifted);
         $liftedBefore = $this->lifted;
-        $this->bounds[$key] = true;
-        $lifted = array_diff_key($this->active, $this->bounds);
-        $this->active = array_diff_key($this->active, $lifted);
-        $this->lifted += $lifted;
+        $this->active = array_diff_key($this->active, $lifted) + $marks;
+        $this->lifted = $lifted;
 
         try {
             return $read();
         } finally {
-            $this->active += $lifted;
-            $this->bounds = $bounds;
+            $this->active = $lifted + array_diff_key($this->active, $marks);
             $this->lifted = $liftedBefore;
+        }
+    }
+
+    /**
+     * Run a read with each guard the re-entry under way lifted held again, so an analysis under way is cut short there
+     * as it was before the re-entry.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function cut(Closure $read): mixed
+    {
+        $lifted = $this->lifted;
+        $innermost = array_key_last($this->frames);
+
+        // Its answer holds a lifted guard where a fresh read in which that guard is absent would enter it.
+        if ($innermost !== null) {
+            $this->frames[$innermost]['footprint'] += self::marks($lifted);
+        }
+
+        $held = array_diff_key($lifted, $this->active);
+        $this->active += $held;
+        $this->lifted = [];
+
+        try {
+            return $read();
+        } finally {
+            $this->active = array_diff_key($this->active, $held);
+            $this->lifted = $lifted;
         }
     }
 
@@ -147,8 +184,8 @@ final class AnalysisMemo
 
     /**
      * Run a read while the guard `$key`, which the caller holds, answers a seed in place of its cut, as
-     * SubjectPropertyTypeResolver's `typing-property:` guard answers a joined type to check it is a fixpoint. No answer
-     * that met `$key` is reused in it or stored from it, since each read the seed and not what the cut gives.
+     * SubjectPropertyTypeResolver's `typing-property:` guard answers a joined type to check it is a fixpoint. An answer
+     * that met `$key` outside it is not reused in it, and one that meets it there is reused only until it ends.
      *
      * @template T
      *
@@ -164,12 +201,13 @@ final class AnalysisMemo
             return $read();
         } finally {
             $this->seeded = $seeded;
+            $this->seededEntries = $seeded === [] ? [] : $this->seededEntries;
         }
     }
 
     /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
-     * found held, since only those can cut a fresh computation short somewhere else; not stored where it met a seed.
+     * found held, since only those can cut a fresh computation short somewhere else; one a seed shaped is kept apart.
      *
      * @template T
      *
@@ -180,7 +218,12 @@ final class AnalysisMemo
     {
         $enums = PublishedEnums::version();
 
-        foreach ($this->entries[$key] ?? [] as $entry) {
+        $stored = $this->seeded === [] ? $this->entries[$key] ?? [] : [
+            ...array_filter($this->entries[$key] ?? [], fn (array $entry): bool => ! $this->seeds($entry['footprint'])),
+            ...$this->seededEntries[$key] ?? [],
+        ];
+
+        foreach ($stored as $entry) {
             if ($this->reproducible($entry, $enums)) {
                 $this->replay($entry);
 
@@ -191,6 +234,7 @@ final class AnalysisMemo
             }
         }
 
+        $this->computations++;
         $depth = count($this->frames);
         $this->frames[] = [
             'footprint' => [],
@@ -209,9 +253,7 @@ final class AnalysisMemo
             $frame = $this->closeFrame($depth);
         }
 
-        if (array_intersect_key($frame['footprint'], $this->seeded) === []) {
-            $this->store($key, $value, $frame);
-        }
+        $this->store($key, $value, $frame);
 
         return $value;
     }
@@ -222,11 +264,38 @@ final class AnalysisMemo
     public function reset(): void
     {
         $this->entries = [];
+        $this->seededEntries = [];
+        $this->computations = 0;
+    }
+
+    /**
+     * How many answers this run has computed rather than reused, the work a publish does that a test can bound.
+     */
+    public function computations(): int
+    {
+        return $this->computations;
+    }
+
+    /**
+     * The marker of each guard in $keys, which a re-entry holds while it lifts the guard.
+     *
+     * @param  array<string, true>  $keys
+     * @return array<string, true>
+     */
+    private static function marks(array $keys): array
+    {
+        $marks = [];
+
+        foreach (array_keys($keys) as $key) {
+            $marks[self::LIFTED.$key] = true;
+        }
+
+        return $marks;
     }
 
     /**
      * Whether computing an answer again now could only reproduce it: nothing it read has changed, the published enums
-     * at version $enums included, each guard it entered is held now exactly where it was held then, and none is seeded.
+     * at version $enums included, and each guard it entered is held now exactly where it was held then.
      *
      * @param  MemoEntry  $entry
      */
@@ -236,8 +305,7 @@ final class AnalysisMemo
         if ($entry['resources'] !== PublishedResourceRegistry::version()
             || $entry['models'] !== PublishedModelRegistry::version()
             || $entry['enums'] !== $enums
-            || (! $entry['recording'] && DependencyRecorder::isRecording())
-            || array_intersect_key($entry['footprint'], $this->seeded) !== []) {
+            || (! $entry['recording'] && DependencyRecorder::isRecording())) {
             return false;
         }
 
@@ -290,7 +358,8 @@ final class AnalysisMemo
     }
 
     /**
-     * Store a computed answer with what it recorded, in place of one computed under the same held guards.
+     * Store a computed answer with what it recorded, in place of one computed under the same held guards; one a seed
+     * shaped goes with the seeded answers.
      *
      * @param  MemoFrame  $frame
      */
@@ -310,15 +379,41 @@ final class AnalysisMemo
             'enums' => $frame['enums'],
         ];
 
-        foreach ($this->entries[$key] ?? [] as $index => $stored) {
-            // Loose `==`: two held sets are the same whatever order their guards were entered in.
-            if ($stored['held'] === $held) {
-                $this->entries[$key][$index] = $entry;
+        if ($this->seeds($frame['footprint'])) {
+            $this->seededEntries[$key] = $this->replaced($this->seededEntries[$key] ?? [], $entry);
+        } else {
+            $this->entries[$key] = $this->replaced($this->entries[$key] ?? [], $entry);
+        }
+    }
 
-                return;
+    /**
+     * A key's answers with one computed under the same held guards replaced by $entry, or $entry added.
+     *
+     * @param  list<MemoEntry>  $entries
+     * @param  MemoEntry  $entry
+     * @return list<MemoEntry>
+     */
+    private function replaced(array $entries, array $entry): array
+    {
+        foreach ($entries as $index => $stored) {
+            // Loose `==`: two held sets are the same whatever order their guards were entered in.
+            if ($stored['held'] === $entry['held']) {
+                $entries[$index] = $entry;
+
+                return $entries;
             }
         }
 
-        $this->entries[$key][] = $entry;
+        return [...$entries, $entry];
+    }
+
+    /**
+     * Whether an answer that entered the guards of $footprint met one a check has seeded.
+     *
+     * @param  array<string, true>  $footprint
+     */
+    private function seeds(array $footprint): bool
+    {
+        return array_intersect_key($footprint, $this->seeded) !== [];
     }
 }
