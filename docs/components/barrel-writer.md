@@ -2,9 +2,9 @@
 
 [`BarrelWriter`](../../src/Writers/BarrelWriter.php) writes the `index.ts` barrel in each namespace directory, with one
 `export * from './file';` line per generated file, sorted and de-duplicated. [`Runner`](../../src/Runners/Runner.php)
-resolves it through the `barrel_writer_class` config key, and calls it for the enum, model, resource, form request and
-broadcast event phases, after each writes its files. Barrels are generated files, so a write keeps only the export
-lines the writer decides on.
+resolves it through the `barrel_writer_class` config key, and calls it for the enum, model, resource, form request,
+broadcast event and class-type phases, after each writes its files. Barrels are generated files, so a write keeps only
+the export lines the writer decides on.
 
 ## Where things live
 
@@ -14,7 +14,9 @@ Barrel writing spans these classes:
   generators, and `writeModularPreserving()` also keeps the existing exports a predicate approves. Its flat `write()`
   has no caller in the runners.
 - [`Runner::preservedModelBarrelExports()`](../../src/Runners/Runner.php): builds that predicate for the model barrel,
-  the one barrel two phases share.
+  the one barrel two phases always share.
+- [`Runner::preservedClassTypeBarrelExports()`](../../src/Runners/Runner.php): builds it for one namespace's
+  composed-class barrel, which any other phase's namespace directory can hold.
 - [`ModelMetadataTransformer`](../../src/Transformers/ModelMetadataTransformer.php): `filenameFor()` names a metadata
   companion and `isMetadataFilename()` recognizes one.
 - [`RouteWriter::writeRouteBarrels()`](../../src/Writers/RouteWriter.php): writes route barrels instead, because they
@@ -67,6 +69,24 @@ names its own companions. Its `filenameFor()` and `isMetadataFilename()` must ag
 through `static::`, so an override of the pair changes the written file and its barrel ownership together. Failed
 models are matched through `filenameFor()`, so one model's failure preserves one export and no more.
 `tests/Unit/RunnerTest.php` pins the table row by row, including the custom transformer fixtures.
+
+## Class-type barrels
+
+A composed class's module lives in its namespace directory under the top-level `output_directory`, where every file
+importing it points, so class types have no output directory of their own. Any model, enum, API resource, form request
+or broadcast event there shares the barrel. Those phases rebuild their barrels from their own files, so the class-type
+phase runs after all of them and writes through `writeModularPreserving()`:
+
+| Run state | Existing exports kept |
+| --- | --- |
+| A flag skips another `export *` barrel phase that config enables | All: this phase cannot tell its stale ones apart |
+| Otherwise | Each another phase wrote in that directory this run, or a failed metadata companion there |
+
+A full run drops the export of a class that stopped composing only while another composed module remains in that
+directory: one with no module this run is not written at all, so its stale export stays.
+
+The other direction is not covered: see
+[known gaps](../known-gaps.md#a-composed-class-beside-another-publishers-files-can-lose-its-barrel-export).
 
 `RunnerForSource` writes no barrels, so a `--source` run neither prunes nor preserves. The barrel stays as the last full
 run left it.

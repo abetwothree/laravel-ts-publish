@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
@@ -145,13 +145,21 @@ trait InspectsAstNodes
     }
 
     /**
-     * The class a name spells from inside the subject: the subject for `self` and `static`, in any case, else the name.
-     *
-     * @param  ReflectionClass<object>  $subject
+     * The class a name spells in the body under read, in any case: AnalysisScope::relativeClass() for `self`, `static`
+     * and `parent`, else the name as written, which no class matches for a `parent` the declaring class lacks.
      */
-    protected function subjectClassName(Name $name, ReflectionClass $subject): string
+    protected function scopeClassName(Name $name, AnalysisScope $scope): string
     {
-        return in_array($name->toLowerString(), ['self', 'static'], true) ? $subject->getName() : $name->toString();
+        return $scope->relativeClass($name)?->getName() ?? $name->toString();
+    }
+
+    /**
+     * The class whose constant a fetch reads, as scopeClassName() names it, or null for a `parent` the declaring class
+     * lacks: defined() and constant() would read a name left as written against the calling class.
+     */
+    protected function constantClassName(Name $class, AnalysisScope $scope): ?string
+    {
+        return $class->isSpecialClassName() ? $scope->relativeClass($class)?->getName() : $class->toString();
     }
 
     /**
@@ -179,12 +187,12 @@ trait InspectsAstNodes
      * re-indexes an array whose keys are all numeric. A key built from literal text around a value is named by the
      * template-literal index signature that covers it.
      *
-     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
+     * @param  AnalysisScope  $scope  resolves `self`, `static` and `parent` in a constant key
      */
-    protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
+    protected function resolveKeyName(Expr $key, AnalysisScope $scope): ?string
     {
         if ($key instanceof String_) {
-            return $this->literalKeyName($key->value, $subject);
+            return $this->literalKeyName($key->value, $scope->subjectReflection);
         }
 
         if ($key instanceof Int_) {
@@ -192,8 +200,8 @@ trait InspectsAstNodes
         }
 
         if ($key instanceof ClassConstFetch) {
-            $value = $this->constantKeyValue($key, $subject);
-            $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
+            $value = $this->constantKeyValue($key, $scope);
+            $value = is_string($value) ? $this->literalKeyName($value, $scope->subjectReflection) : $value;
 
             return $value === null ? null : (string) $value;
         }
@@ -204,18 +212,15 @@ trait InspectsAstNodes
     /**
      * The int or string a class-constant key holds, or null when it holds neither or cannot be read.
      *
-     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent`
+     * @param  AnalysisScope  $scope  resolves `self`, `static` and `parent`
      */
-    protected function constantKeyValue(ClassConstFetch $key, ReflectionClass $subject): int|string|null
+    protected function constantKeyValue(ClassConstFetch $key, AnalysisScope $scope): int|string|null
     {
         if (! $key->class instanceof Name || ! $key->name instanceof Identifier) {
             return null;
         }
 
-        $parent = $subject->getParentClass();
-        $class = $key->class->toLowerString() === 'parent'
-            ? ($parent === false ? null : $parent->getName())
-            : $this->subjectClassName($key->class, $subject);
+        $class = $this->constantClassName($key->class, $scope);
         $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
         $value = $constant !== null && defined($constant) ? constant($constant) : null;
 
@@ -280,12 +285,12 @@ trait InspectsAstNodes
      * array_merge() renumbers every int key from 0, so a literal int key, or a constant holding one, takes its new
      * number until a spread, a `parent::` call or a constant that cannot be read, whose int keys cannot be counted.
      *
-     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
+     * @param  AnalysisScope  $scope  resolves `self`, `static` and `parent` in a constant key
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
     protected function mergedArrayLiteral(
         FuncCall $call,
-        ReflectionClass $subject,
+        AnalysisScope $scope,
         ?string $parentMethodName = null,
         array $localVarBindings = [],
     ): ?Array_ {
@@ -307,7 +312,7 @@ trait InspectsAstNodes
             if ($value instanceof Array_) {
                 foreach ($value->items as $item) {
                     $constant = $item->key instanceof ClassConstFetch
-                        ? $this->constantKeyValue($item->key, $subject)
+                        ? $this->constantKeyValue($item->key, $scope)
                         : null;
                     $intKey = match (true) {
                         $item->key === null => null,

@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\RelationMap;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Descendants;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\FirstRelated;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Siblings;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Workbench\App\Relations\CompositeMorphTo;
 
 beforeEach(function () {
     $reflection = new ReflectionClass(RelationMap::class);
@@ -117,4 +122,46 @@ test('strategyFor defaults to nullable for unknown relation types', function () 
     $relationMap = new RelationMap;
 
     expect($relationMap->strategyFor('UnknownRelation'))->toBe('nullable');
+});
+
+test('isToMany reads the short type, and a subclass of a to-many relation that keeps how an eager load starts or how it loads the collection', function () {
+    $toMany = fn (string $class): bool => RelationMap::isToMany(class_basename($class), $class);
+
+    expect($toMany(HasMany::class))->toBeTrue()
+        ->and($toMany(HasManyThrough::class))->toBeTrue()
+        ->and($toMany(BelongsToMany::class))->toBeTrue()
+        ->and($toMany(MorphMany::class))->toBeTrue()
+        ->and($toMany(MorphToMany::class))->toBeTrue()
+        ->and($toMany(Ancestors::class))->toBeTrue()
+        ->and($toMany(Descendants::class))->toBeTrue()
+        ->and($toMany(Siblings::class))->toBeTrue()
+        ->and($toMany(FirstRelated::class))->toBeFalse()
+        ->and($toMany(HasOne::class))->toBeFalse()
+        ->and($toMany(HasOneThrough::class))->toBeFalse()
+        ->and($toMany(MorphOne::class))->toBeFalse()
+        ->and($toMany(BelongsTo::class))->toBeFalse()
+        ->and($toMany(MorphTo::class))->toBeFalse()
+        ->and($toMany(CompositeMorphTo::class))->toBeFalse()
+        ->and(RelationMap::isToMany('HasManyDeep'))->toBeTrue()
+        ->and(RelationMap::isToMany('Ancestors'))->toBeFalse();
+});
+
+test('strategyFor gives a relation subclass the map does not name the strategy of its nearest parent the map names', function () {
+    $relationMap = new RelationMap;
+
+    expect($relationMap->strategyFor('Ancestors', Ancestors::class))->toBe('never')
+        ->and($relationMap->strategyFor('CompositeMorphTo', CompositeMorphTo::class))->toBe('morph')
+        ->and($relationMap->strategyFor('Ancestors'))->toBe('nullable');
+});
+
+test('strategyFor never gives a to-many parent\'s strategy to a subclass that loads one model', function () {
+    expect((new RelationMap)->strategyFor('FirstRelated', FirstRelated::class))->toBe('nullable');
+});
+
+test('strategyFor keeps a mapping that names the subclass over its parent\'s', function () {
+    config()->set('ts-publish.models.relation_nullability_map', [
+        Ancestors::class => 'nullable',
+    ]);
+
+    expect((new RelationMap)->strategyFor('Ancestors', Ancestors::class))->toBe('nullable');
 });

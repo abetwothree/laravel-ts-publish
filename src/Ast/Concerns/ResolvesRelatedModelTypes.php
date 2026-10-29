@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Resolve a property/method access against a related model — an explicitly bound one, or by
- * default the ambient whenLoaded closure's related model.
+ * Resolve a property/method access against a related model the caller names.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -22,22 +21,15 @@ use Illuminate\Database\Eloquent\Model;
 trait ResolvesRelatedModelTypes
 {
     /**
-     * Resolve a property access on a related model — an explicitly bound model, or by default the
-     * ambient whenLoaded closure's related model.
+     * Resolve a property access on a related model.
      *
      * Uses the same resolution chain as model attributes: accessor → cast → DB column type.
      *
-     * @param  class-string<Model>|null  $modelFqcn
+     * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult
      */
-    protected function analyzeRelatedModelProperty(string $propertyName, AnalysisScope $scope, ?string $modelFqcn = null): array
+    protected function analyzeRelatedModelProperty(string $propertyName, AnalysisScope $scope, string $modelFqcn): array
     {
-        $modelFqcn ??= $scope->closureRelationModelClass;
-
-        if ($modelFqcn === null) {
-            return ValueResult::unknown(); // @codeCoverageIgnore
-        }
-
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($modelFqcn, $propertyName, $scope->carriesImports);
 
         if ($tsInfo['type'] === 'unknown') {
@@ -48,23 +40,16 @@ trait ResolvesRelatedModelTypes
     }
 
     /**
-     * Resolve a method call (instance or static) on a related model — an explicitly bound model, or
-     * by default the ambient whenLoaded closure's related model.
+     * Resolve a method call on a related model.
      *
      * Accepted only when its tokens can be imported and every model it names is published; see
      * ReflectedTypeAcceptor::accept() and ValueResult::namesOnlyPublishedModels().
      *
-     * @param  class-string<Model>|null  $modelFqcn
+     * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult
      */
-    protected function analyzeRelatedModelMethodCall(string $methodName, AnalysisScope $scope, ?string $modelFqcn = null): array
+    protected function analyzeRelatedModelMethodCall(string $methodName, string $modelFqcn): array
     {
-        $modelFqcn ??= $scope->closureRelationModelClass;
-
-        if ($modelFqcn === null) {
-            return ValueResult::unknown(); // @codeCoverageIgnore
-        }
-
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveMethodReturnType($modelFqcn, $methodName);
         $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 

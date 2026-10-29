@@ -16,15 +16,15 @@ final class PriceQuoteService
 
     public const int TIER_PRO = 2;
 
-    /** A vague signature over a literal body: the body is the only place the shape is written. */
-    public function quote(): array
-    {
-        return ['unit' => '1.00', 'minimum' => 10, 'discounted' => ['unit' => '0.90']];
-    }
-
     /** Keys are class constants, so the JSON is an object keyed "1" and "2", not a list. */
     public static function tierLabels(): array
     {
         return [self::TIER_BASIC => 'Basic', self::TIER_PRO => 'Pro'];
+    }
+
+    /** A vague signature over a literal body: the body is the only place the shape is written. */
+    public function quote(): array
+    {
+        return ['unit' => '1.00', 'minimum' => 10, 'discounted' => ['unit' => '0.90']];
     }
 }

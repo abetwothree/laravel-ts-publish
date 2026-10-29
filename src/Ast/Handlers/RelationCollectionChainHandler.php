@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -17,11 +17,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
-use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectHelperReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -30,14 +32,11 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Scalar\Int_;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -52,6 +51,7 @@ use ReflectionMethod;
 final class RelationCollectionChainHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use BindsMapCallbacks;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
@@ -96,8 +96,10 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name instanceof Identifier
             && $expr->name instanceof Identifier
         ) {
-            return $this->heldPropertyMethodReturn($expr->var->name->toString(), $expr->name->toString(), $scope)
-                ?? $this->subjectPropertyMethodReturn($expr, $expr->name->toString(), $scope, $engine);
+            $property = $expr->var->name->toString();
+
+            return $this->heldPropertyMethodReturn($property, $expr->name->toString(), $scope)
+                ?? $this->subjectPropertyMethodReturn($expr, $property, $expr->name->toString(), $scope, $engine);
         }
 
         // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
@@ -183,12 +185,9 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         foreach (array_reverse($ops) as $op) {
             if (in_array($op['name'], $identityOps, true)) {
-                $sequentialKeys = match ($op['name']) {
-                    'values' => true,
-                    'take' => $sequentialKeys && $this->isFrontAnchoredTake($op['node']),
-                    'load', 'loadMissing', 'all' => $sequentialKeys,
-                    default => false,
-                };
+                $sequentialKeys = $op['name'] === 'all' || CollectionSteps::keepsKeys($op['name'])
+                    ? $sequentialKeys
+                    : ! CollectionSteps::keyedAfter($op['node'], $op['name'], ! $sequentialKeys, true);
 
                 continue;
             }
@@ -246,14 +245,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         if ($pluckNode !== null) {
-            $previousContext = $scope->closureRelationModelClass;
-            $scope->closureRelationModelClass = $elementModel;
-
-            try {
-                $pluckResult = $this->analyzeVariablePluckCall($pluckNode, $scope);
-            } finally {
-                $scope->closureRelationModelClass = $previousContext;
-            }
+            $pluckResult = $this->analyzeVariablePluckCall($pluckNode, $scope, $elementModel);
 
             // analyzeVariablePluckCall() degrades an unresolved field to 'unknown[]'; normalize to null
             // so the caller's fallthrough produces plain 'unknown' like every other unrecognized chain.
@@ -268,46 +260,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return [...ValueResult::unknown(), ...$pluckResult];
         }
 
-        // The map argument must be a Closure/ArrowFunction: a callable-array (`[$this, 'method']`) or a
-        // bare string callable (`'strtoupper'`) is itself a valid expression node, so analyzeValueExpression()
-        // would resolve *that* — 'strtoupper' → 'string', wrongly wrapped here to 'string[]'.
+        // filter() reaches a mapped item only where the chain hands back an array.
         /** @var MethodCall $mapNode */
-        $mapArg = $this->collectionArguments($mapNode, 'map')->named('callback')?->value;
+        $bodyResult = $this->resolveMapCallback(
+            $this->collectionArguments($mapNode, 'map')->named('callback')?->value,
+            $elementModel,
+            null,
+            $terminalOp === 'all',
+            $scope,
+            $engine,
+        );
 
-        if ($mapArg === null) {
-            return null; // @codeCoverageIgnore
-        }
-
-        if (! $mapArg instanceof ArrowFunction && ! $mapArg instanceof ClosureExpr) {
-            return null;
-        }
-
-        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
-        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
-            return null;
-        }
-
-        $previousContext = $scope->closureRelationModelClass;
-        $previousNameBindings = $scope->nameBindings();
-
-        try {
-            $scope->closureRelationModelClass = $elementModel;
-            $scope->claimParameters($mapArg);
-
-            if ($mapArg->params !== []
-                && $mapArg->params[0]->var instanceof Variable
-                && is_string($mapArg->params[0]->var->name)
-            ) {
-                $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
-            }
-
-            $bodyResult = $engine->resolve($mapArg);
-        } finally {
-            $scope->closureRelationModelClass = $previousContext;
-            $scope->restoreNameBindings($previousNameBindings);
-        }
-
-        if ($bodyResult['type'] === 'unknown') {
+        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
         }
 
@@ -379,13 +343,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function subjectPropertyMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
+    private function subjectPropertyMethodReturn(
+        MethodCall $call,
+        string $property,
+        string $methodName,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
         if ($scope->modelClass !== null || $this->resolveWrappedClass($scope) !== null) {
             return null;
         }
 
-        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->subjectReflection, $call->var);
+        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->thisMemberClass($property, false), $call->var);
 
         if ($propertyClass === null
             || (is_a($propertyClass, Model::class, true) && $this->callsAttributeFilter($call))
@@ -396,22 +365,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         return resolve(SubjectMethodTypeResolver::class)
             ->forwardedOn($propertyClass, $methodName, $scope, new CallSite($call, $scope, $engine));
-    }
-
-    /**
-     * Whether a `take()` call slices from the front, where a sequentially keyed receiver stays sequential.
-     *
-     * A negative count takes from the tail and a non-literal count could be either, so both are rejected.
-     */
-    private function isFrontAnchoredTake(MethodCall $call): bool
-    {
-        if ($call->isFirstClassCallable()) {
-            return false;
-        }
-
-        $args = $this->collectionArguments($call, 'take');
-
-        return $args->passedCount() === 1 && ! $args->hasUnpack() && $args->named('limit')?->value instanceof Int_;
     }
 
     /**

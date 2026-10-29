@@ -4,20 +4,21 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
@@ -25,6 +26,7 @@ use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
@@ -37,9 +39,9 @@ use ReflectionMethod;
 use stdClass;
 
 /**
- * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its reflected return
- * type, plus the Laravel helpers whose shape is knowable: `config('literal')`, `config()->get()` and its typed
- * accessors, `auth()->user()`/`auth()->id()`, and `now()`, `today()`, `str()`, `url()` and `collect()`.
+ * A call to a known PHP built-in function typed from its reflected return type, `array_filter()` and `array_values()`
+ * as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`, `now()`,
+ * `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -71,6 +73,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'data_get') {
                 return $this->dataGetRule(CallArguments::for($expr, new ReflectionFunction('data_get')), $scope, $engine);
+            }
+
+            if ($name === 'array_filter') {
+                return $this->arrayFilterRule(CallArguments::for($expr, new ReflectionFunction('array_filter')), $engine);
+            }
+
+            if ($name === 'array_values') {
+                return $this->arrayValuesRule(CallArguments::for($expr, new ReflectionFunction('array_values')), $engine);
             }
 
             $helper = $this->valueHelperRule($name, $expr, $scope, $engine);
@@ -223,13 +233,158 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $defaultResult = $engine->resolve($default);
 
         // This path resolves its arms itself, so it records its own drop: analyzeClosureUnion() never sees it.
-        if ($defaultResult['type'] === 'unknown') {
+        $dropped = $defaultResult['type'] === 'unknown' ? [$default] : [];
+
+        if ($dropped !== []) {
             DroppedUnionArms::record($default, $scope, 'data-get-default');
         }
 
         // The default stands in only for a MISSING key, never for a present-but-null value, so it
         // unions alongside the chain's own `null` arm rather than removing it.
-        return ValueResult::unionResults([$result, $defaultResult]);
+        return DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults([$result, $defaultResult]), $dropped, $scope);
+    }
+
+    /**
+     * `array_filter($array)` as the array it is passed, arm by arm: each key it keeps is kept, so a list it leaves a
+     * gap in sends json_encode()'s object of int keys, and with no callback no value is null. A `null` arm is left out,
+     * as PHP throws a TypeError on null; null when another arm, such as a shape or a tuple, leaves the array unread.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function arrayFilterRule(CallArguments $args, ExpressionEngine $engine): ?array
+    {
+        $array = $args->named('array')?->value;
+
+        if ($array === null || $args->hasUnpack()) {
+            return null;
+        }
+
+        $callback = $args->named('callback')?->value;
+        $dropsNull = $callback === null || ($callback instanceof ConstFetch && $callback->name->toLowerString() === 'null');
+        $result = $engine->resolve($array);
+        $arms = [];
+
+        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            if ($arm === 'null') {
+                continue;
+            }
+
+            $kept = $this->filteredArm($arm, $dropsNull);
+
+            if ($kept === null) {
+                return null;
+            }
+
+            $arms[] = $kept;
+        }
+
+        if ($arms === []) {
+            return null;
+        }
+
+        unset($result['keepsKeys']);
+
+        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+    }
+
+    /**
+     * `array_values($array)` as the list of its values, arm by arm: a list or tuple as itself, a Record as its values,
+     * an object literal as a list of its member types. A `null` arm is left out, as PHP throws a TypeError on null;
+     * null when another arm leaves the array unread.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function arrayValuesRule(CallArguments $args, ExpressionEngine $engine): ?array
+    {
+        $array = $args->named('array')?->value;
+
+        if ($array === null || $args->hasUnpack()) {
+            return null;
+        }
+
+        $result = $engine->resolve($array);
+        $arms = [];
+
+        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            if ($arm === 'null') {
+                continue;
+            }
+
+            $values = $this->valuesOfArm($arm);
+
+            if ($values === null) {
+                return null;
+            }
+
+            $arms[] = $values;
+        }
+
+        if ($arms === []) {
+            return null;
+        }
+
+        unset($result['keepsKeys']);
+
+        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+    }
+
+    /**
+     * What array_values() makes of one arm of its array; null for an arm it cannot read.
+     */
+    private function valuesOfArm(string $arm): ?string
+    {
+        if ($arm === 'never[]' || TsTypeShape::isWrapped($arm, '[', ']')) {
+            return $arm;
+        }
+
+        $record = TsTypeShape::recordArguments($arm);
+
+        if ($record !== null) {
+            return TsTypeShape::listType([$record[1]]);
+        }
+
+        $members = TsTypeShape::members($arm);
+
+        if ($members !== null) {
+            return TsTypeShape::listType(array_column($members, 1));
+        }
+
+        return TsTypeShape::elementType($arm) === null ? null : $arm;
+    }
+
+    /**
+     * What array_filter() leaves of one arm of its array: a Record as itself, a list as itself or the object its gaps
+     * make, each value without its `null` arm where the filter drops nulls; null for any other arm.
+     */
+    private function filteredArm(string $arm, bool $dropsNull): ?string
+    {
+        $record = TsTypeShape::recordArguments($arm);
+
+        if ($record !== null) {
+            return 'Record<'.$record[0].', '.$this->filteredValue($record[1], $dropsNull).'>';
+        }
+
+        $element = TsTypeShape::isWrapped($arm, '[', ']') ? null : TsTypeShape::elementType($arm);
+
+        if ($element === null) {
+            return null;
+        }
+
+        $value = $this->filteredValue($element, $dropsNull);
+
+        return TsTypeShape::listType([$value]).' | Record<number, '.$value.'>';
+    }
+
+    /**
+     * A value array_filter() keeps: without its `null` arm where the filter drops nulls, `never` where null is all.
+     */
+    private function filteredValue(string $type, bool $dropsNull): string
+    {
+        return match (true) {
+            ! $dropsNull || ! ValueResult::hasNullArm($type) => $type,
+            $type === 'null' => 'never',
+            default => ValueResult::stripNullArm($type),
+        };
     }
 
     /**

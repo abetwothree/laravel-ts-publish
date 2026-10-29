@@ -40,4 +40,6 @@ export interface UserExceptResource
     ownedTeams: Team[];
     images: Image[];
     notifications: DatabaseNotification[];
+    readNotifications: DatabaseNotification[];
+    unreadNotifications: DatabaseNotification[];
 }

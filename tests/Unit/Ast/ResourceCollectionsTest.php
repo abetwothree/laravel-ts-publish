@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;

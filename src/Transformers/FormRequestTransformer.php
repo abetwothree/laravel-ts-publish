@@ -43,6 +43,20 @@ class FormRequestTransformer extends CoreTransformer
     public protected(set) array $fields = [];
 
     /**
+     * Resolved type imports: import path => list of type names.
+     *
+     * @var TypesImportMap
+     */
+    public protected(set) array $typeImports = [];
+
+    /**
+     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
+     *
+     * @var list<string>
+     */
+    public protected(set) array $tsExtends = [];
+
+    /**
      * TsCasts attribute overrides: field path => TypeScript type string.
      *
      * @var array<string, string>
@@ -64,20 +78,6 @@ class FormRequestTransformer extends CoreTransformer
     protected array $optionalOverrides = [];
 
     /**
-     * Resolved type imports: import path => list of type names.
-     *
-     * @var TypesImportMap
-     */
-    public protected(set) array $typeImports = [];
-
-    /**
-     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
-     *
-     * @var list<string>
-     */
-    public protected(set) array $tsExtends = [];
-
-    /**
      * Import entries from TsExtends to be merged into typeImports.
      *
      * @var array<string, list<string>>
@@ -86,12 +86,6 @@ class FormRequestTransformer extends CoreTransformer
 
     /** @var ReflectionClass<FormRequest> */
     protected ReflectionClass $reflection;
-
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflection'];
-    }
 
     #[Override]
     public function transform(): self
@@ -126,6 +120,12 @@ class FormRequestTransformer extends CoreTransformer
             typeImports: $this->typeImports,
             tsExtends: $this->tsExtends,
         );
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflection'];
     }
 
     /**

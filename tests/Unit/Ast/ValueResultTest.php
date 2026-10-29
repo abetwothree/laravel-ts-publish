@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Comment;
@@ -327,6 +328,16 @@ describe('ValueResult::enumTypeName()', function () {
     });
 });
 
+describe('ValueResult::readsEnumType()', function () {
+    test("tells a value spelling its enum's type from one of an overridden enum, which spells the override", function () {
+        expect(ValueResult::readsEnumType(['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class]))
+            ->toBeTrue()
+            ->and(ValueResult::readsEnumType(['type' => 'UiToneDto', 'optional' => false, 'directEnumFqcn' => UiTone::class]))
+            ->toBeFalse()
+            ->and(ValueResult::readsEnumType(['type' => 'StatusType', 'optional' => false]))->toBeFalse();
+    });
+});
+
 describe('ValueResult::unionResults() over model, resource and class-less arms', function () {
     $app = ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class];
     $crm = ['type' => 'User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]];
@@ -578,4 +589,26 @@ describe('ValueResult::unionResults() over an arm that can be a MissingValue', f
             ['type' => 'number', 'optional' => false],
         ])['optional'])->toBeFalse();
     });
+});
+
+describe('ValueResult::unionResults() over an empty array beside a list', function () {
+    test('folds never[] into a list it is assignable to, and keeps it beside anything else', function (array $types, string $union) {
+        $arms = array_map(fn (string $type): array => ['type' => $type, 'optional' => false], $types);
+
+        expect(ValueResult::unionResults($arms)['type'])->toBe($union);
+    })->with([
+        'a list' => [['string[]', 'never[]'], 'string[]'],
+        'a list of unknown' => [['unknown[]', 'never[]'], 'unknown[]'],
+        'an empty array first' => [['never[]', '{ id: number }[]'], '{ id: number }[]'],
+        'a nullable list' => [['string[] | null', 'never[]'], 'string[] | null'],
+        'an Array<> spelling' => [['Array<string>', 'never[]'], 'Array<string>'],
+        'a list of a union' => [['(string | number)[]', 'never[]'], '(string | number)[]'],
+        'a list beside null' => [['never[]', 'null', 'number[]'], 'number[] | null'],
+        'an empty array alone' => [['never[]'], 'never[]'],
+        'an empty array beside null' => [['never[]', 'null'], 'never[] | null'],
+        'a tuple' => [['[string, number]', 'never[]'], '[string, number] | never[]'],
+        'a record' => [['Record<string, string>', 'never[]'], 'Record<string, string> | never[]'],
+        'a named type' => [['UserCollection', 'never[]'], 'UserCollection | never[]'],
+        'an empty array nested in a shape' => [['{ a: never[] }', 'string[]'], '{ a: never[] } | string[]'],
+    ]);
 });

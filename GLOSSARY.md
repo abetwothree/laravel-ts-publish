@@ -75,6 +75,10 @@ _Avoid_: metadata
 One of the built-in functions a published enum gets, such as `.from()`, `.tryFrom()`, and `.cases()`.
 _Avoid_: helper
 
+**Published enum**:
+An enum a run writes a file for, because enum publishing is on and the configured enum collector lists it. A `->value` or `->name` read publishes an enum's alias only for a published enum, since only its file can be imported.
+_Avoid_: collected enum, exported enum
+
 **Route helper**:
 The published function for one controller action, which builds its URL and binds its parameters.
 _Avoid_: helper
@@ -90,7 +94,11 @@ _Avoid_: accessor
 ### Typing
 
 **Override**:
-A type the application states for a class or property, which replaces whatever the package would infer.
+A type the application states for a class or property, which replaces whatever the package would infer. A class's override comes from itself, its traits, its parents and its interfaces.
+
+**Composed type**:
+The `{Basename}Type` interface a class publishes when two or more overrides reach it, extending each of them.
+_Avoid_: merged type, combined type
 
 **Custom import**:
 An import named inside an override, so a hand-written TypeScript type can be used in published output.
@@ -107,8 +115,12 @@ _Avoid_: signature key, pattern key
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
 **Runtime class**:
-The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
+The class `$this` and `static` are when a body runs; for a collection, the one Laravel instantiates. Where it is known and where only assumed: [AST engine § Known or assumed runtime class](docs/components/ast-engine.md#known-or-assumed-runtime-class).
 _Avoid_: leaf, publishing collection, called class
+
+**Declaring class**:
+The class that declares the method body being read, which `self` names and whose parent `parent` names; for a trait's method, the class that uses the trait. See [AST engine § AnalysisScope](docs/components/ast-engine.md#analysisscope).
+_Avoid_: defining class, lexical class, scope class
 
 **Resource proxy**:
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
@@ -119,6 +131,14 @@ Working out a property's type from PHP code when no override or docblock states 
 
 **Vague type**:
 A declared PHP type too broad to publish usefully, such as `mixed` or `array`, which sends inference to look further.
+
+**Narrowing**:
+Proving a value's class for the reads a test covers, such as an `instanceof` check in an `if` or a ternary.
+_Avoid_: type guard, refinement
+
+**Dropped arm**:
+A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left.
+_Avoid_: lost arm, untyped branch
 
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.

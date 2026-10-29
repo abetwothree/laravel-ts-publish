@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
@@ -64,7 +64,7 @@ function relationFilterStubEngine(array $result): ExpressionEngine
         }
 
         /** Fails the test: no method is spread in this case. */
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -105,7 +105,7 @@ function relationFilterHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }

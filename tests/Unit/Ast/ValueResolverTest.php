@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InertiaPropertyLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ResponsableLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
@@ -26,6 +28,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Models\User;
@@ -185,11 +188,16 @@ it('types a pure enum case as its enum too, the names a model or a metadata file
     expect($result)->toBe(['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class]);
 });
 
-it('declines an enum case in a scope that carries no import', function () {
+it('types an enum case in a scope that carries no import as the value it sends, or not at all for a pure enum', function () {
     $scope = valueResolverTestScope();
     $scope->carriesImports = false;
+    $resolve = fn (string $enum, string $case): ?array => new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch($enum, $case), $scope);
 
-    expect(new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch(Status::class, 'Draft'), $scope))->toBeNull();
+    expect($resolve(Status::class, 'Draft'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve(ChartKind::class, 'Bar'))->toBe(['type' => "'bar'", 'optional' => false])
+        ->and($resolve(UnsafeIntegerBackedStatus::class, 'Huge'))->toBe(['type' => 'number', 'optional' => false])
+        ->and($resolve(Visibility::class, 'Public'))->toBeNull()
+        ->and($resolve(UiTone::class, 'Bright'))->toMatchArray(['type' => 'UiToneDto', 'customImports' => ['@js/types/ui' => ['UiToneDto']]]);
 });
 
 it('declines a constant whose lazily-evaluated initializer throws, instead of aborting', function () {
@@ -303,7 +311,7 @@ it('types a new of a class that is not a resource as json_encode() writes it', f
     'a plain class with typed public properties' => [Coordinate::class, '{ lat: number; lng: number }'],
     'a Carbon subclass whose mixed jsonSerialize() says string' => [StampedDate::class, 'string'],
     'a model, which a fresh instance writes as no attributes' => [User::class, null],
-    'a class json_encode() writes as {} with no __toString()' => [stdClass::class, null],
+    'a stdClass, which json_encode() writes as {} until it gains properties' => [stdClass::class, 'Record<string, unknown>'],
     'an Arrayable, whose JSON depends on who serializes it' => [ArrayableData::class, null],
     'an Arrayable with a toArray() shape' => [Money::class, null],
     'a Collection, an Arrayable' => [Collection::class, null],

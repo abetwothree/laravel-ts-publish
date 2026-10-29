@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use ReflectionClass;
 

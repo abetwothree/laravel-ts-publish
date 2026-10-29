@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp;
 
@@ -45,15 +45,21 @@ final class CoalesceHandler implements ExpressionHandler
 
             // unionResults() leaves out an operand the engine could not type, so only the audit is told which one:
             // the left one alone when neither has a type.
+            $dropped = [];
+
             if ($leftResult['type'] === 'unknown') {
                 DroppedUnionArms::record($expr->left, $scope, 'coalesce-left');
+                $dropped[] = $expr->left;
             } elseif ($rightResult['type'] === 'unknown') {
                 DroppedUnionArms::record($expr->right, $scope, 'coalesce-right');
+                $dropped[] = $expr->right;
             }
 
             // Two arms that render alike are one member, unless they spell one name for two classes, which
             // unionResults() keeps apart.
-            return [...ValueResult::unionResults([$leftResult, $rightResult]), 'optional' => $optional];
+            $union = ValueResult::unionResults([$leftResult, $rightResult]);
+
+            return [...DroppedUnionArms::warnOfPlaceholder($union, $dropped, $scope), 'optional' => $optional];
         }
 
         return null;

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;

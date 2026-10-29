@@ -43,58 +43,15 @@ class Post extends Model
         'is_pinned',
     ];
 
-    #[TsCasts(['metadata' => 'Record<string, {title: string, content: string}>'])]
-    protected function casts(): array
+    public static function className(): string
     {
-        return [
-            'options' => 'array',
-            'metadata' => 'array',
-            'status' => Status::class,
-            'visibility' => Visibility::class,
-            'priority' => Priority::class,
-            'published_at' => 'datetime',
-            'rating' => 'decimal:2',
-            'word_count' => 'integer',
-            'reading_time_minutes' => 'float',
-            'is_pinned' => 'boolean',
-        ];
+        return self::class;
     }
 
-    /** Title displayed in uppercase */
-    protected function titleDisplay(): Attribute
+    /** @return string */
+    public static function tableName()
     {
-        return Attribute::make(
-            get: fn ($value): ?string => strtoupper($value),
-            set: fn ($value): string => strtolower($value),
-        );
-    }
-
-    /** Excerpt of the post content */
-    protected function excerpt(): Attribute
-    {
-        return Attribute::make(
-            get: fn (): ?string => $this->content ? substr(strip_tags($this->content), 0, 200).'...' : null,
-        );
-    }
-
-    /** Estimated reading time formatted */
-    protected function readingTime(): Attribute
-    {
-        return Attribute::make(
-            get: fn (): string => $this->reading_time_minutes
-                ? round($this->reading_time_minutes).' min read'
-                : 'Quick read',
-        );
-    }
-
-    /**
-     * Newest comment, typed by a single model FQCN and deliberately not appended.
-     *
-     * @return Attribute<Comment|null, never>
-     */
-    protected function latestComment(): Attribute
-    {
-        return Attribute::get(fn (): ?Comment => $this->comments()->latest()->first());
+        return (new self)->getTable();
     }
 
     public function author(): BelongsTo
@@ -154,14 +111,57 @@ class Post extends Model
         return $this->priority === Priority::High;
     }
 
-    public static function className(): string
+    #[TsCasts(['metadata' => 'Record<string, {title: string, content: string}>'])]
+    protected function casts(): array
     {
-        return self::class;
+        return [
+            'options' => 'array',
+            'metadata' => 'array',
+            'status' => Status::class,
+            'visibility' => Visibility::class,
+            'priority' => Priority::class,
+            'published_at' => 'datetime',
+            'rating' => 'decimal:2',
+            'word_count' => 'integer',
+            'reading_time_minutes' => 'float',
+            'is_pinned' => 'boolean',
+        ];
     }
 
-    /** @return string */
-    public static function tableName()
+    /** Title displayed in uppercase */
+    protected function titleDisplay(): Attribute
     {
-        return (new self)->getTable();
+        return Attribute::make(
+            get: fn ($value): ?string => strtoupper($value),
+            set: fn ($value): string => strtolower($value),
+        );
+    }
+
+    /** Excerpt of the post content */
+    protected function excerpt(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): ?string => $this->content ? substr(strip_tags($this->content), 0, 200).'...' : null,
+        );
+    }
+
+    /** Estimated reading time formatted */
+    protected function readingTime(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => $this->reading_time_minutes
+                ? round($this->reading_time_minutes).' min read'
+                : 'Quick read',
+        );
+    }
+
+    /**
+     * Newest comment, typed by a single model FQCN and deliberately not appended.
+     *
+     * @return Attribute<Comment|null, never>
+     */
+    protected function latestComment(): Attribute
+    {
+        return Attribute::get(fn (): ?Comment => $this->comments()->latest()->first());
     }
 }

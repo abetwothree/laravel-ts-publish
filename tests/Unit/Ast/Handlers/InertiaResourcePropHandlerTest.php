@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -25,6 +27,9 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
@@ -43,12 +48,6 @@ use Throwable;
  */
 abstract class BaseRunner
 {
-    protected BarrelWriter $barrelWriter;
-
-    protected GlobalsWriter $globalsWriter;
-
-    protected ?GenerationManifest $manifest = null;
-
     /** Control flags (set by TsPublishCommand before run()) */
     public bool $shouldPublishEnums = true;
 
@@ -65,6 +64,8 @@ abstract class BaseRunner
     public bool $shouldPublishBroadcastChannels = true;
 
     public bool $shouldPublishBroadcastEvents = true;
+
+    public bool $shouldPublishClassTypes = true;
 
     /** @var Collection<int, EnumGenerator> */
     public protected(set) Collection $enumGenerators;
@@ -114,6 +115,12 @@ abstract class BaseRunner
 
     public protected(set) string $broadcastEventsEchoContent = '';
 
+    /** @var Collection<int, ClassTypeGenerator> */
+    public protected(set) Collection $classTypeGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $classTypeModularBarrels = [];
+
     /** Cross-cutting outputs */
     public protected(set) string $globalsContent = '';
 
@@ -129,6 +136,12 @@ abstract class BaseRunner
      * Live task logger for per-phase status output during a run.
      */
     public protected(set) ?Logger $logger = null;
+
+    protected BarrelWriter $barrelWriter;
+
+    protected GlobalsWriter $globalsWriter;
+
+    protected ?GenerationManifest $manifest = null;
 
     abstract public function run(): void;
 
@@ -171,6 +184,10 @@ abstract class BaseRunner
         TsTypeString::forgetQualifiedTypes();
         resolve(ModelAttributeResolver::class)->reset();
         TypeScriptMap::reset();
+        ClassTypeOverride::flush();
+        ComposedClassTypes::flush();
+        RoutedControllers::flush();
+        ValueResult::forgetEnumNames();
         RelationMap::reset();
         $this->forgetRenderedViews();
     }

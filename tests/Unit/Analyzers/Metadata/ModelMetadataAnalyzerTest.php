@@ -5,12 +5,15 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BaseTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ClassNamedKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProvideDecoyProvider;
@@ -18,13 +21,17 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DeclaredLocalMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NinthTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
+use Workbench\App\Models\Post;
 
 /**
  * @param  class-string<ModelMetadataProvider>  $providerClass
@@ -72,6 +79,47 @@ test('an inherited provide() keeps the parameter binding', function () {
     $analysis = analyzeMetadataTypesFor(InheritedModelMetadataProvider::class, ['enabled', 'table']);
 
     expect($analysis->types)->toBe(['enabled' => 'boolean', 'table' => 'string']);
+});
+
+test('an inherited provide() reads $this-> on the provider and self:: on its declaring class', function () {
+    expect(analyzeMetadataTypesFor(HelperOverrideMetadataProvider::class, ['helper', 'doc', 'own', 'late'])->types)
+        ->toBe(['helper' => 'string', 'doc' => 'string', 'own' => 'string | number', 'late' => 'string'])
+        ->and(new HelperOverrideMetadataProvider()->provide(new Post))
+        ->toBe(['helper' => 'x', 'doc' => 'x', 'own' => 1, 'late' => 'x']);
+});
+
+test('a trait-supplied provide() reads $this-> and self:: on the class that uses it', function () {
+    expect(analyzeMetadataTypesFor(TraitHelperMetadataProvider::class, ['helper', 'own'])->types)
+        ->toBe(['helper' => 'string', 'own' => 'string'])
+        ->and(new TraitHelperMetadataProvider()->provide(new Post))->toBe(['helper' => 'x', 'own' => 'x']);
+});
+
+// The transformer passes the class of the provider instance it ran, so an inherited provide() runs on exactly that.
+test('reads an inherited provide()\'s static:: read and write as the provider\'s class', function () {
+    $own = analyzeMetadataTypesFor(BaseTierMetadataProvider::class, ['tier', 'constant']);
+    $inherited = analyzeMetadataTypesFor(NinthTierMetadataProvider::class, ['tier', 'constant']);
+
+    expect($own->types)->toBe(['tier' => 'string', 'constant' => 'string'])
+        ->and(new BaseTierMetadataProvider()->provide(new Post))->toBe(['tier' => 'a', 'constant' => 'a'])
+        ->and($inherited->types)->toBe(['tier' => 'string | number', 'constant' => 'number'])
+        ->and(new NinthTierMetadataProvider()->provide(new Post))->toBe(['tier' => 9, 'constant' => 9]);
+});
+
+// Pins the runtime class the fallback passes; with an unreadable file the real locator leaves the keys undeclared.
+test('reads an inherited provide() the locator cannot place through the provider\'s parent walk', function () {
+    app()->instance(MethodLocator::class, new class(resolve(AstParser::class)) extends MethodLocator
+    {
+        /** Decline NinthTierMetadataProvider's provide(), then locate as usual. */
+        public function locate(string $class, string $method): ?MethodContext
+        {
+            return $class === NinthTierMetadataProvider::class && $method === 'provide'
+                ? null
+                : parent::locate($class, $method);
+        }
+    });
+
+    expect(analyzeMetadataTypesFor(NinthTierMetadataProvider::class, ['tier', 'constant'])->types)
+        ->toBe(['tier' => 'string | number', 'constant' => 'number']);
 });
 
 test('drops unknown inferences and reports payload keys no source typed', function () {

@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -31,7 +31,7 @@ function inertiaWrapperEngine(): ExpressionEngine
             return ['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model'];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -135,7 +135,7 @@ it('reads the wrapped value by name when the group is written first', function (
             return ['type' => 'Post[]', 'optional' => false];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }

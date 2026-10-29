@@ -16,23 +16,6 @@ class ExcludableModel extends Model
 {
     protected $table = 'users';
 
-    /** Included mutator — should appear in TS output */
-    protected function displayName(): Attribute
-    {
-        return Attribute::make(
-            get: fn (): string => strtoupper($this->name ?? ''),
-        );
-    }
-
-    /** Excluded mutator — should NOT appear in TS output */
-    #[TsExclude]
-    protected function secretToken(): Attribute
-    {
-        return Attribute::make(
-            get: fn (): string => 'hidden-token',
-        );
-    }
-
     /** Included relation — should appear in TS output */
     public function posts(): HasMany
     {
@@ -51,5 +34,22 @@ class ExcludableModel extends Model
     public function getLegacyTokenAttribute(): string
     {
         return 'old-style-hidden';
+    }
+
+    /** Included mutator — should appear in TS output */
+    protected function displayName(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => strtoupper($this->name ?? ''),
+        );
+    }
+
+    /** Excluded mutator — should NOT appear in TS output */
+    #[TsExclude]
+    protected function secretToken(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => 'hidden-token',
+        );
     }
 }

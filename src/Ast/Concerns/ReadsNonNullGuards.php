@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use Closure;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -87,7 +87,7 @@ trait ReadsNonNullGuards
     }
 
     /**
-     * Resolve with each read path proven non-null, then restore the table.
+     * Resolve with each read path proven non-null, then restore the scope.
      *
      * @template TResult
      *
@@ -97,15 +97,7 @@ trait ReadsNonNullGuards
      */
     protected function resolveProvenNonNull(array $reads, AnalysisScope $scope, Closure $resolve): mixed
     {
-        $previous = $scope->nonNullReads;
-
-        try {
-            $this->proveNonNull($reads, $scope);
-
-            return $resolve();
-        } finally {
-            $scope->nonNullReads = $previous;
-        }
+        return $scope->within(fn () => $this->proveNonNull($reads, $scope), $resolve);
     }
 
     /**

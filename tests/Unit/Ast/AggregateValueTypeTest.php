@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 
 // Each column type is spelled as Schema::getColumns() reports it on that driver.
 // A DECIMAL or NUMERIC result is a string on MySQL, MariaDB and PostgreSQL, which never convert one, and SQLite stores

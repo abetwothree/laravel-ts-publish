@@ -38,6 +38,7 @@ To see what the package writes, browse the [generated output examples](workbench
 - 🎤 [Broadcast events](#broadcast-events)
 - 🌉 [Inertia](#inertia)
 - 🔑 [Vite env](#vite-env)
+- 🎯 [Custom types](#custom-types-with-tstype)
 - 🧬 [Extending interfaces](#extending-interfaces-with-tsextends--configs)
 - ❌ [Excluding content](#excluding-with-tsexclude)
 - 🔤 [Casing configurations](#casing-configurations)
@@ -175,7 +176,7 @@ Key capabilities include:
 - **Nullable relations**: singular relations get `| null` from their type and foreign key, configurable per type.
 - **Related models**: a model outside your configured directories publishes when a published model relates to it.
 - **Serialized casts**: a cast publishes what Laravel serializes, so `decimal:2` is a `string` and `timestamp` a `number`.
-- **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types every column that uses a custom cast class.
+- **Overrides**: `#[TsCasts]` retypes a property; `#[TsType]` types every value of a class and of the classes inheriting it.
 - **Enum columns**: a parallel `{Model}Resource` interface types each enum column as a resolved `AsEnum<>` instance.
 - **Hidden columns**: `$hidden` attributes publish unless you turn on `models.exclude_hidden`.
 - **Laravel 13 attributes**: `#[Table]`, `#[Hidden]`, `#[Visible]`, `#[Appends]`, and `#[Connection]` apply with no setup.
@@ -502,6 +503,38 @@ Key capabilities include:
 - **No empty file**: with no `VITE_` variables, or no source file, nothing is written.
 
 For the parsing rules and source-file order, see the [Vite Env documentation](https://tolki.abe.dev/ts/vite-env.html).
+
+## Custom types with `#[TsType]`
+
+`#[TsType]` on a class sets the TypeScript type its values publish as, wherever the package meets one. Subclasses inherit it, and so do classes that use a trait or implement an interface carrying one:
+
+```php
+#[TsType(['type' => 'UiNode', 'import' => '@js/types/ui'])]
+abstract class Node {}
+
+#[TsType(['type' => 'UiIcon', 'import' => '@js/types/ui'])]
+interface HasIcon {}
+
+final class Panel extends Node {}
+
+final class Chart extends Node implements HasIcon {}
+```
+
+A `Panel` publishes `UiNode`. A `Chart` inherits two overrides, so the package writes a composed interface for it:
+
+```typescript
+import type { UiIcon, UiNode } from '@js/types/ui';
+
+export interface ChartType extends UiIcon, UiNode {}
+```
+
+Key capabilities include:
+
+- **Every context**: page props, shared data, API resources, model casts and accessors, and broadcast events.
+- **Standing alone**: `inherit: false` publishes a class's own override as written instead of composing it.
+- **Lists and nullables**: `list<Chart>` publishes `ChartType[]`, and `?Chart` publishes `ChartType | null`.
+
+For inheritance order, the `class_types` config, and the warning for a type that cannot be extended, see the [Custom Types documentation](https://tolki.abe.dev/ts/custom-types.html).
 
 ## Extending interfaces with `#[TsExtends]` & configs
 

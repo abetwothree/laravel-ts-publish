@@ -5,22 +5,23 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
-use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -82,6 +83,12 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var ValuesImportMap */
     public protected(set) array $valueImports = [];
+
+    /** @var list<string> TypeScript extends clauses */
+    public protected(set) array $tsExtends = [];
+
+    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
+    public protected(set) ?string $typeAlias = null;
 
     /** @var array<array-key, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
@@ -171,12 +178,6 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<array-key, bool> property name => optional flag from model's #[TsCasts] */
     protected array $modelTsCastsOptionalOverrides = [];
 
-    /** @var list<string> TypeScript extends clauses */
-    public protected(set) array $tsExtends = [];
-
-    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
-    public protected(set) ?string $typeAlias = null;
-
     #[Override]
     public function transform(): self
     {
@@ -223,6 +224,83 @@ class ResourceTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->resourceName);
+    }
+
+    /**
+     * The composed classes whose module this resource's file imports, read from its custom imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->customImports, $this->analysisCustomImports);
+    }
+
+    /**
+     * Build a map of per-file enum const aliases to namespace-qualified type names, walking
+     * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
+     * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
+     *
+     * @return array<string, string> constAlias => 'namespace.TypeName'
+     */
+    public function globalEnumConstMap(): array
+    {
+        $map = [];
+
+        foreach ($this->enumPropertyFqcns() as $fqcn) {
+            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
+
+            // rewriteEnumResourceTypes() may have cleared enumFqcnMap; enumConstMap is never cleared.
+            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
+
+            if ($constAlias === null || $originalConstName === null) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $typeName = $originalConstName.'Type';
+            $ns = TsNaming::globalNamespace($fqcn);
+
+            $map[$constAlias] = $ns.'.'.$typeName;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->resourceFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map + $this->siblingGlobalAliases();
+    }
+
+    /**
+     * Map every type name this resource's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initReflection(): self
@@ -369,9 +447,8 @@ class ResourceTransformer extends CoreTransformer
         }
 
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-            $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-            $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
@@ -392,9 +469,8 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             }
             $this->propertyEnumFqcns[$propName] = $fqcn;
             $this->directEnumProperties[$propName] = $fqcn;
@@ -426,10 +502,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
-                if (! isset($this->enumConstMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
-                }
+                $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             }
             $this->propertyInlineEnumResourceFqcns[$propName] = $fqcns;
         }
@@ -437,9 +510,8 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumFqcnMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                    $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+                    $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
                 }
             }
             $this->multiEnumResourceProperties[$propName] = $fqcns;
@@ -712,11 +784,11 @@ class ResourceTransformer extends CoreTransformer
         // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
         foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
             $this->enumFqcnMap[$fqcn] ??= $typeName;
-            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 
-        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends);
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends, ValueResult::enumNames(...));
 
         return $this;
     }
@@ -784,16 +856,21 @@ class ResourceTransformer extends CoreTransformer
      * @param  array<TFqcn, string>  $map  FQCN => unaliased name
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
      * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  (Closure(TFqcn): list<string>)|null  $namesOf  every name a class's tokens are spelled with; null for
+     *                                                        its unaliased name alone
      * @return array<TFqcn, string>
      */
-    protected function keepSpelled(array $map, array $attributed, array $extra): array
+    protected function keepSpelled(array $map, array $attributed, array $extra, ?Closure $namesOf = null): array
     {
         $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
         $ownNames = $this->ownNames($map, $attributed);
 
-        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra): bool {
+        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra, $namesOf): bool {
+            $names = $namesOf === null ? [$name] : $namesOf($fqcn);
+
             foreach ($types as $property => $type) {
-                if (in_array($fqcn, $attributed[$property] ?? [], true) && TsTypeString::typeNameOccursIn($name, $type)) {
+                if (in_array($fqcn, $attributed[$property] ?? [], true)
+                    && array_any($names, static fn (string $spelled): bool => TsTypeString::typeNameOccursIn($spelled, $type))) {
                     return true;
                 }
             }
@@ -849,9 +926,9 @@ class ResourceTransformer extends CoreTransformer
     {
         $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
 
-        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
-            $this->localImportName($fqcn, $typeName),
-            ...$types,
+        $spelled = fn (string $typeName, string $fqcn): bool => array_any(
+            $this->localImportNames($fqcn, $typeName),
+            static fn (string $local): bool => TsTypeString::typeNameOccursIn($local, ...$types),
         );
         $this->enumFqcnMap = array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
         $this->resourceFqcnMap = array_filter($this->resourceFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
@@ -860,7 +937,7 @@ class ResourceTransformer extends CoreTransformer
         foreach ($this->customImports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$types),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$types),
             ));
 
             if ($kept === []) {
@@ -882,8 +959,10 @@ class ResourceTransformer extends CoreTransformer
         $valueImports = [];
         $hasEnums = $this->shouldGenerateHasEnums();
 
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
+
         $typeImports = [
-            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->enumFqcnMap, $types),
             ...$this->collectModularTypeImports($this->resourceFqcnMap),
             ...$this->collectModularTypeImports($this->modelFqcnMap),
         ];
@@ -892,7 +971,7 @@ class ResourceTransformer extends CoreTransformer
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);
@@ -1223,6 +1302,8 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->mergePropertyFqcnMaps());
+
         $this->applyImportNameRegistries(
             $registry,
             $constRegistry,
@@ -1250,6 +1331,7 @@ class ResourceTransformer extends CoreTransformer
                 $propFqcns,
                 $nameMap,
                 $this->importAliases,
+                $this->siblingImportNames,
             );
         }
     }
@@ -1272,7 +1354,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The inline lists go models first, then resources: InlineArrayHandler::sharedNames() relies on that order.
+        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([
             $this->propertyModelFqcnsList,
             $this->propertyEnumFqcnsList,
@@ -1286,71 +1368,6 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $merged;
-    }
-
-    /**
-     * Build a map of per-file enum const aliases to namespace-qualified type names, walking
-     * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
-     * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
-     *
-     * @return array<string, string> constAlias => 'namespace.TypeName'
-     */
-    public function globalEnumConstMap(): array
-    {
-        $map = [];
-
-        foreach ($this->enumPropertyFqcns() as $fqcn) {
-            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
-
-            // rewriteEnumResourceTypes() may have cleared enumFqcnMap; enumConstMap is never cleared.
-            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
-
-            if ($constAlias === null || $originalConstName === null) {
-                continue; // @codeCoverageIgnore
-            }
-
-            $typeName = $originalConstName.'Type';
-            $ns = TsNaming::globalNamespace($fqcn);
-
-            $map[$constAlias] = $ns.'.'.$typeName;
-        }
-
-        return $map;
-    }
-
-    /**
-     * Build a map of per-file import aliases → namespace-qualified global names.
-     *
-     * @return array<string, string> alias => 'namespace.OriginalName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type name this resource's file imports, as the file spells it, to its globally-qualified name.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
     }
 
     /** @return list<string> */

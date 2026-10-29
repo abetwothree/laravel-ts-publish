@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr\New_;
@@ -18,7 +18,8 @@ use PhpParser\Node\Name;
 
 /**
  * The type of a resource built around a payload that can serialize as null. Only JsonResource::filter() turns a
- * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null.
+ * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null, and
+ * only where filter() reaches the wrap: it recurses into arrays, never into a Collection.
  *
  * @internal
  */
@@ -83,7 +84,10 @@ trait ReadsNullablePayloads
             return null;
         }
 
-        if (! ValueResult::hasNullArm($resolved['type']) || $this->isProvenNonNull($payload, $scope)) {
+        if (! $scope->filtersNestedResources
+            || ! ValueResult::hasNullArm($resolved['type'])
+            || $this->isProvenNonNull($payload, $scope)
+        ) {
             return null;
         }
 
@@ -91,7 +95,7 @@ trait ReadsNullablePayloads
     }
 
     /**
-     * Whether a static call's class is a resource, `self` and `static` reading as the subject.
+     * Whether a static call's class is a resource, `self` and `static` read by scopeClassName().
      */
     private function callsResourceClass(StaticCall $call, AnalysisScope $scope): bool
     {
@@ -99,6 +103,6 @@ trait ReadsNullablePayloads
             return false;
         }
 
-        return $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
+        return $this->isResourceClass($this->scopeClassName($call->class, $scope));
     }
 }

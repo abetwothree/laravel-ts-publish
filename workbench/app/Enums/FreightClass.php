@@ -22,6 +22,12 @@ enum FreightClass: string
     case Standard = 'standard';
     case Express = 'express';
 
+    #[TsEnumStaticMethod]
+    public static function defaultRate(): RateCard
+    {
+        return new RateCard(50);
+    }
+
     #[TsEnumMethod(description: 'Rate card for the class')]
     public function rateCard(): RateCard
     {
@@ -57,11 +63,5 @@ enum FreightClass: string
     public function manifest(): SealedManifest
     {
         return new SealedManifest;
-    }
-
-    #[TsEnumStaticMethod]
-    public static function defaultRate(): RateCard
-    {
-        return new RateCard(50);
     }
 }

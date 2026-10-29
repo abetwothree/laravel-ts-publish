@@ -35,17 +35,6 @@ class Image extends Model
         'metadata',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'size_bytes' => 'integer',
-            'width' => 'integer',
-            'height' => 'integer',
-            'sort_order' => 'integer',
-            'metadata' => 'array',
-        ];
-    }
-
     /** Polymorphic parent (Product, Post, User, etc.) */
     public function imageable(): MorphTo
     {
@@ -56,6 +45,17 @@ class Image extends Model
     public function reviewable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'size_bytes' => 'integer',
+            'width' => 'integer',
+            'height' => 'integer',
+            'sort_order' => 'integer',
+            'metadata' => 'array',
+        ];
     }
 
     /** Human-readable file size */

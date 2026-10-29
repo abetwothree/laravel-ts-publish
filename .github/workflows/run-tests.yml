@@ -51,7 +51,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
-          coverage: ${{ (matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5') && 'xdebug' || 'none' }}
+          coverage: ${{ (matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5') && 'pcov' || 'none' }}
 
       - name: Setup problem matchers
         run: |
@@ -119,7 +119,7 @@ jobs:
           npm ci
 
       - name: Regenerate the workbench type trees
-        run: vendor/bin/pest --ci
+        run: vendor/bin/pest --ci --parallel
 
       - name: Fail if the committed type trees are stale
         run: |

@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
-use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaFormatterController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedArgumentResource;
@@ -60,7 +60,7 @@ test('each call publishes its own argument, a written parameter its local, and a
         'post_label' => '{ title: string; name: unknown }',
         'author_label' => '{ title: unknown; name: string }',
         'unknown_label' => '{ title: unknown; name: unknown }',
-        'nested' => '{ deeper: unknown[] }',
+        'nested' => '{ deeper: Record<string, unknown> }',
         'written' => '{ author_name: string }',
         'shout' => '?string',
         'fallback' => '{ value: unknown }',
@@ -150,7 +150,7 @@ test('the signature is empty for a call that binds nothing, and one for two argu
 
     expect(CallSite::signature([]))->toBe('')
         ->and($binder->passedBinding(['type' => 'unknown', 'optional' => false], null))->toBeNull()
-        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => false])
+        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => false])
         ->and(CallSite::signature(['post' => $held]))->toBe(CallSite::signature(['post' => $typed]))
         ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $nullable]));
 });

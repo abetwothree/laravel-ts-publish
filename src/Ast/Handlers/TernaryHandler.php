@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Ternary;
 
@@ -26,7 +25,6 @@ use PhpParser\Node\Expr\Ternary;
  */
 final class TernaryHandler implements ExpressionHandler
 {
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
@@ -98,14 +96,19 @@ final class TernaryHandler implements ExpressionHandler
         }
 
         // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
+        $dropped = [];
+
         foreach ($results as $index => $armResult) {
             if ($armResult['type'] === 'unknown') {
                 DroppedUnionArms::record($arms[$index], $scope, 'ternary-narrowed');
+                $dropped[] = $arms[$index];
             }
         }
 
         // The narrowed results, not a second resolution of the arms: that would drop the narrowing and let two
         // resolutions of the same arm disagree by construction.
-        return ValueResult::withEnumArmShapes(ValueResult::unionResults($results), $results);
+        $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
+
+        return ValueResult::withEnumArmShapes($union, $results);
     }
 }

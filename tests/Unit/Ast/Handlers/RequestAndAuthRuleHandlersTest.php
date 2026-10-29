@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
@@ -57,7 +57,7 @@ function requestRuleEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }

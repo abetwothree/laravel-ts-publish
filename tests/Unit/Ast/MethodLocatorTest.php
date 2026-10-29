@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOfParentOwnedMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOverridesParentWithTrait;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedAnonymousClassMethod;

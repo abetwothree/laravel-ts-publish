@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Closure;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
@@ -49,7 +50,7 @@ trait ResolvesAccessorType
 
             if ($attrInstance instanceof Attribute) {
                 if ($attrInstance->get !== null) {
-                    /** @var \Closure $getter */
+                    /** @var Closure $getter */
                     $getter = $attrInstance->get;
 
                     // Model::toArray() runs serializeDate() on a date a new-style getter returns, not an old-style one.

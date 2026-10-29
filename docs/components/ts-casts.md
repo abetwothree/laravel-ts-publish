@@ -7,12 +7,12 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 
 | File | Role |
 | --- | --- |
-| [`TsCastsReader`](../../src/Ast/TsCastsReader.php) | Unpacks `#[TsCasts]` instances into types, import paths and optional flags, a later one winning. |
+| [`TsCastsReader`](../../src/Ast/Composition/TsCastsReader.php) | Unpacks `#[TsCasts]` instances into types, import paths and optional flags, a later one winning. |
 | [`ParsesTsCasts`](../../src/Concerns/ParsesTsCasts.php) | Reads a class's three locations: the class, `$casts` and `casts()`. |
 | [`ResourceAstAnalyzer::applyTsCastsFromMethod()`](../../src/Analyzers/ResourceAstAnalyzer.php) | Applies a method's own casts during analysis and records each one. |
-| [`MethodAnalysis::$casts`](../../src/Ast/MethodAnalysis.php) | Each method cast's text, its import path and its `optional` flag, if any; `merge()` lets the later one win. |
-| [`MethodAnalysis::$carried`](../../src/Ast/MethodAnalysis.php) | The classes a cast displaced and its text does not spell, kept apart from every queue. |
-| [`CastChannels`](../../src/Ast/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
+| [`MethodAnalysis::$casts`](../../src/Ast/Analysis/MethodAnalysis.php) | Each method cast's text, its import path and its `optional` flag, if any; `merge()` lets the later one win. |
+| [`MethodAnalysis::$carried`](../../src/Ast/Analysis/MethodAnalysis.php) | The classes a cast displaced and its text does not spell, kept apart from every queue. |
+| [`CastChannels`](../../src/Ast/Composition/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
 | [`ResourceTransformer::collectCastsInForce()`](../../src/Transformers/ResourceTransformer.php) | Picks the cast in force per key from the method, model and resource casts. |
 | [`JsEmitter::castTargets()`](../../src/Support/JsEmitter.php) | Decides which published key a cast key retypes. |
 
@@ -68,10 +68,14 @@ published text still needs it.
 `CastChannels::fit()` applies the rule once, over the casts in force, so no `AsEnum` rewrite, `Partial<>` or alias
 queue meets the displaced value. `ResourceTransformer::runAstAnalysis()` and
 `BroadcastEventTransformer::transformProperties()` call it after the reconcile, `AnalysisComposer::compose()` first,
-for `AstEngine::analyze()`, and `InlineArrayHandler` over an inline array's members, whose casts no outer cast can
+for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can
 retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
 method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
-cast key's import channels with `forgetChannels()`.
+cast key's import channels with `forgetChannels()`. Shared data carries the custom imports its `@return` shape keeps
+only for a key no cast replaces, and drops an inferred import of a name a cast brings from another module, by the rule a
+resource's fit applies too (`CastChannels::withoutOtherPaths()`, which reads `X as Y` as `Y`). Unlike
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
+key there that names a model or an enum publishes the name with no import, not `unknown`.
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.

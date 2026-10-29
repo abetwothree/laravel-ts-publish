@@ -17,6 +17,26 @@ enum Priority: int
     case High = 2;
     case Critical = 3;
 
+    /** Static method that requires a parameter — params provided via attribute */
+    #[TsEnumStaticMethod(description: 'Filter by minimum', params: ['minimum' => 1])]
+    public static function filterByMinimum(int $minimum): array
+    {
+        return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
+    }
+
+    /** Static method that requires a parameter — no params provided, should be skipped */
+    #[TsEnumStaticMethod(description: 'Filter by maximum')]
+    public static function filterByMaximum(int $maximum): array
+    {
+        return array_filter(self::cases(), fn (self $case) => $case->value <= $maximum);
+    }
+
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function highestValue(): int
+    {
+        return self::Critical->value;
+    }
+
     #[TsEnumMethod(description: 'Human-readable label')]
     public function label(): string
     {
@@ -64,29 +84,9 @@ enum Priority: int
         return $this->value > $ceiling;
     }
 
-    /** Static method that requires a parameter — params provided via attribute */
-    #[TsEnumStaticMethod(description: 'Filter by minimum', params: ['minimum' => 1])]
-    public static function filterByMinimum(int $minimum): array
-    {
-        return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
-    }
-
-    /** Static method that requires a parameter — no params provided, should be skipped */
-    #[TsEnumStaticMethod(description: 'Filter by maximum')]
-    public static function filterByMaximum(int $maximum): array
-    {
-        return array_filter(self::cases(), fn (self $case) => $case->value <= $maximum);
-    }
-
     /** Should NOT be published — no TsEnumMethod attribute */
     public function numericWeight(): int
     {
         return ($this->value + 1) * 10;
-    }
-
-    /** Should NOT be published — no TsEnumStaticMethod attribute */
-    public static function highestValue(): int
-    {
-        return self::Critical->value;
     }
 }

@@ -13,7 +13,7 @@ use Workbench\App\Models\Order;
  *
  * `shadowed` is a Task 12 regression: a variable assigned at the top level AND
  * reassigned inside nested control flow must not resolve through the (possibly
- * stale) top-level binding — it degrades to unknown instead.
+ * stale) top-level binding alone — it joins the values that can reach the read.
  *
  * @mixin Order
  */

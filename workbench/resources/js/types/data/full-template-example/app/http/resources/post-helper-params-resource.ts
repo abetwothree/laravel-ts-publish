@@ -1,4 +1,4 @@
-import type { StatusType } from '../../enums';
+import type { StatusKind, StatusType } from '../../enums';
 
 /**
  * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
@@ -18,8 +18,8 @@ export interface PostHelperParamsResource
     headline_id: number;
     headline: string;
     maybe: { maybe_title: string | null };
-    status_label: { label: string; value: number };
-    status_payload: { payload_status: unknown; payload_name: string };
+    status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
+    status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
     payload_status: StatusType;
-    payload_name: string;
+    payload_name: StatusKind;
 }

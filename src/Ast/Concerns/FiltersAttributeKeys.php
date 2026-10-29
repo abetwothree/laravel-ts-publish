@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;

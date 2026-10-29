@@ -40,6 +40,16 @@ final class PostHelperParamsResource extends JsonResource
     }
 
     /**
+     * The post's identity from a static helper.
+     *
+     * @return array<string, mixed>
+     */
+    private static function staticCard(Post $post): array
+    {
+        return ['static_id' => $post->id];
+    }
+
+    /**
      * The post's identity, spread from its own only().
      *
      * @return array<string, mixed>
@@ -67,16 +77,6 @@ final class PostHelperParamsResource extends JsonResource
     private function nested(Post $post): array
     {
         return ['inner' => $this->card($post)];
-    }
-
-    /**
-     * The post's identity from a static helper.
-     *
-     * @return array<string, mixed>
-     */
-    private static function staticCard(Post $post): array
-    {
-        return ['static_id' => $post->id];
     }
 
     /**

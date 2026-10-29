@@ -34,6 +34,23 @@ class Product extends Model
         'metadata',
     ];
 
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    /** Polymorphic many-to-many with tags */
+    public function tags(): MorphToMany
+    {
+        return $this->morphToMany(Tag::class, 'taggable');
+    }
+
+    /** Polymorphic one-to-many with images */
+    public function images(): MorphMany
+    {
+        return $this->morphMany(Image::class, 'imageable');
+    }
+
     #[TsCasts([
         'dimensions' => '{ length: number; width: number; height: number; unit: "cm" | "in" }',
         'metadata' => [
@@ -58,23 +75,6 @@ class Product extends Model
             'order_items_sum_unit_price' => 'decimal:2',
             'order_items_min_created_at' => 'timestamp',
         ];
-    }
-
-    public function orderItems(): HasMany
-    {
-        return $this->hasMany(OrderItem::class);
-    }
-
-    /** Polymorphic many-to-many with tags */
-    public function tags(): MorphToMany
-    {
-        return $this->morphToMany(Tag::class, 'taggable');
-    }
-
-    /** Polymorphic one-to-many with images */
-    public function images(): MorphMany
-    {
-        return $this->morphMany(Image::class, 'imageable');
     }
 
     /** Whether the product is on sale */

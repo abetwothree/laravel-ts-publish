@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -64,7 +65,7 @@ final class NewResourceHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        $className = $this->subjectClassName($expr->class, $scope->subjectReflection);
+        $className = $this->scopeClassName($expr->class, $scope);
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {
@@ -74,9 +75,12 @@ final class NewResourceHandler implements ExpressionHandler
                 return $result;
             }
 
-            return $this->resolveEnumFromPropertyArg($payload, $scope)
-                ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
-                ?? $result;
+            return $this->enumWrapValue($payload, $scope, $engine) ?? $result;
+        }
+
+        // `new parent(...)` over JsonResource or ResourceCollection builds a resource no file publishes.
+        if ($this->isResourceClass($className) && FrameworkClasses::is($className)) {
+            return $result;
         }
 
         // new SomeCollection($this->items). Must precede the generic isResourceClass() branch below, for the same

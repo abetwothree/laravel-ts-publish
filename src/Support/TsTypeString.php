@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
  * top-level unions, null hoisting, same-basename aliasing, enum substitution, global qualification.
+ *
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -33,6 +38,9 @@ class TsTypeString
      */
     protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
         .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
+
+    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
+    protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
@@ -100,6 +108,17 @@ class TsTypeString
     }
 
     /**
+     * Whether a shape value's own custom imports bring in every name it spells, a composed class's marker included, so
+     * a shape that carries custom imports and no FQCN channel may keep it.
+     *
+     * @param  TypesImportMap  $customImports
+     */
+    public function importsCover(string $type, array $customImports): bool
+    {
+        return ! $this->shapeValueHasUnimportableToken($type, ImportMaps::localNames($customImports));
+    }
+
+    /**
      * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
      * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left.
      *
@@ -140,10 +159,11 @@ class TsTypeString
      *                                   aliasPropertyType() consumes only the matching prefix, in order
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  SiblingImportNames  $siblings  each sibling name an FQCN is imported under, such as an enum's `…Kind`
      */
-    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
+    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases, array $siblings = []): string
     {
-        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '');
+        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '', $siblings);
     }
 
     /**
@@ -370,40 +390,96 @@ class TsTypeString
     }
 
     /**
+     * Whether a type can join an interface's `extends` list: one type reference, optionally dotted or generic, and
+     * never a keyword type or a `Record<…>`.
+     */
+    public function isExtendable(string $type): bool
+    {
+        $type = trim($type);
+        $open = strpos($type, '<');
+        $name = $open === false ? $type : rtrim(substr($type, 0, $open));
+
+        // A record's index signature fails beside another contributor's named member of a different type (TS2411).
+        if (in_array($name, [...static::KEYWORD_TYPES, 'Record'], true)
+            || ($open !== false && ! TsTypeShape::isWrapped(substr($type, $open), '<', '>'))) {
+            return false;
+        }
+
+        return array_all(explode('.', $name), fn (string $segment): bool => $this->extractImportableTypes($segment) === [$segment]);
+    }
+
+    /**
+     * Whether a type is a vague list type's arms with an `unknown[]` spelled as a `Record<…>`: a string-keyed array
+     * encodes as an object, never as the list a native `array` publishes.
+     */
+    public function spellsListAsRecord(string $list, string $record): bool
+    {
+        $arms = $this->splitTopLevelUnion($record);
+        $listed = array_map(
+            fn (string $arm): string => TsTypeShape::recordArguments($arm) === null ? $arm : 'unknown[]',
+            $arms,
+        );
+        $spellsRecord = $listed !== $arms;
+        $listArms = $this->splitTopLevelUnion($list);
+
+        sort($listed);
+        sort($listArms);
+
+        return $spellsRecord && $listed === $listArms;
+    }
+
+    /**
      * Replace each registered name with its alias, the Nth occurrence of a name taking the Nth FQCN queued under it.
      *
-     * $anchor is a pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
+     * A sibling name reads its class's queue, so an enum's `…Type` and `…Kind` tokens share one order. $anchor is a
+     * pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
      *
      * @param  list<string>  $itemFqcns
      * @param  array<string, string>  $nameMap  FQCN => unaliased name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  SiblingImportNames  $siblings
      */
-    protected function aliasInQueueOrder(string $type, array $itemFqcns, array $nameMap, array $aliases, string $anchor): string
-    {
-        /** @var array<string, non-empty-list<string>> $queues */
+    protected function aliasInQueueOrder(
+        string $type,
+        array $itemFqcns,
+        array $nameMap,
+        array $aliases,
+        string $anchor,
+        array $siblings = [],
+    ): string {
+        /** @var array<string, non-empty-list<string>> $queues name => the FQCN behind each of its occurrences */
         $queues = [];
+        /** @var array<string, string> $queueOf each name a token is spelled with => the name its queue is kept under */
+        $queueOf = [];
 
         foreach ($itemFqcns as $fqcn) {
             $name = $nameMap[$fqcn] ?? null;
 
             if ($name !== null) {
-                $queues[$name][] = $aliases[$fqcn] ?? $name;
+                $queues[$name][] = $fqcn;
+                $queueOf[$name] = $name;
+
+                foreach (array_keys($siblings[$fqcn] ?? []) as $sibling) {
+                    $queueOf[$sibling] ??= $name;
+                }
             }
         }
 
-        if ($queues === []) {
+        if ($queueOf === []) {
             return $type;
         }
 
-        $pattern = $this->queuedTokenPattern(array_keys($queues), $anchor);
+        $pattern = $this->queuedTokenPattern(array_keys($queueOf), $anchor);
         $seen = [];
 
-        return preg_replace_callback($pattern, function (array $match) use ($queues, &$seen): string {
-            $name = $match[0];
+        return preg_replace_callback($pattern, function (array $match) use ($queues, $queueOf, $aliases, $siblings, &$seen): string {
+            $spelled = $match[0];
+            $name = $queueOf[$spelled];
             $occurrence = $seen[$name] ?? 0;
             $seen[$name] = $occurrence + 1;
+            $fqcn = $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
 
-            return $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
+            return $spelled === $name ? ($aliases[$fqcn] ?? $name) : ($siblings[$fqcn][$spelled] ?? $spelled);
         }, $type) ?? $type;
     }
 

@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon as SupportCarbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use stdClass;
 
 class TypeScriptMap
 {
@@ -68,6 +69,8 @@ class TypeScriptMap
             AsEnumCollection::class => 'unknown[]',
             EloquentCollection::class => 'Record<string, unknown>',
             Collection::class => 'unknown[] | Record<string, unknown>',
+            // An instance gains properties at run time, so even a fresh one may hold any key.
+            stdClass::class => 'Record<string, unknown>',
 
             // Array types
             'array' => 'unknown[]',

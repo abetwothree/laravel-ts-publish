@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -49,7 +50,8 @@ const METHOD_CALL_PINNED = [
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
 {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler], $scope);
+    // ClosureHandler claims no MethodCall, so it joins no pair, but every map writer reads its callback through it.
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler, new ClosureHandler], $scope);
 
     return $handler->resolve($expr, $scope, $engine) !== null;
 }
@@ -155,7 +157,7 @@ function inertEngine(): ExpressionEngine
             throw new RuntimeException('the matrix never resolves through make()');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('the matrix never resolves through make()');
         }

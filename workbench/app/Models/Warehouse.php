@@ -37,6 +37,21 @@ class Warehouse extends Model
         'current_crm_status',
     ];
 
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    public function primaryContact(): BelongsTo
+    {
+        return $this->belongsTo(CrmUser::class, 'primary_contact_id');
+    }
+
+    public function secondaryContact(): BelongsTo
+    {
+        return $this->belongsTo(CrmUser::class, 'secondary_contact_id');
+    }
+
     protected function casts(): array
     {
         return [
@@ -77,21 +92,6 @@ class Warehouse extends Model
         return Attribute::make(
             get: fn (): ?CrmStatus => null,
         );
-    }
-
-    public function manager(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'manager_id');
-    }
-
-    public function primaryContact(): BelongsTo
-    {
-        return $this->belongsTo(CrmUser::class, 'primary_contact_id');
-    }
-
-    public function secondaryContact(): BelongsTo
-    {
-        return $this->belongsTo(CrmUser::class, 'secondary_contact_id');
     }
 
     /** @return Attribute<CrmUser|User|null, never> */

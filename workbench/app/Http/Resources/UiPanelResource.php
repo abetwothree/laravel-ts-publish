@@ -1,0 +1,87 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\App\Http\Resources;
+
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\UiTone;
+use Workbench\App\Models\UiBoard;
+use Workbench\App\Packages\Ui\Board;
+use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Dial;
+use Workbench\App\Packages\Ui\Gauge;
+use Workbench\App\Packages\Ui\Panel;
+
+/**
+ * Fixture: values of overridden classes, through declared helpers, `new` and a mixed-in model's accessor, so the file
+ * imports each override and each composed class's `…Type`; an overridden enum's case and its `EnumResource`; and a
+ * value object, a docblock shape and an untyped array, each keeping its members' overrides.
+ *
+ * @mixin UiBoard
+ */
+class UiPanelResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            'chart' => $this->chart(),
+            'dial' => $this->dial($request->boolean('dial')),
+            'panel' => new Panel,
+            'panels' => [new Panel, new Panel],
+            'when_panel' => $this->when($request->boolean('panel'), new Panel),
+            'maybe_chart' => $request->boolean('chart') ? new Chart : null,
+            'tone' => UiTone::Bright,
+            'tone_resource' => EnumResource::make(UiTone::Bright),
+            'board' => $this->board(),
+            'shaped' => $this->shaped(),
+            'untyped' => $this->untyped(),
+            'gauge_attr' => $this->gauge_attr,
+        ];
+    }
+
+    /**
+     * A chart, by its declared class.
+     */
+    protected function chart(): Chart
+    {
+        return new Chart;
+    }
+
+    /**
+     * A dial when asked for one.
+     */
+    protected function dial(bool $flag): ?Dial
+    {
+        return $flag ? new Dial : null;
+    }
+
+    /**
+     * A board of charts, with no gauge.
+     */
+    protected function board(): Board
+    {
+        return new Board(charts: [new Chart, new Chart]);
+    }
+
+    /**
+     * A chart, a panel and their gauges, by a docblock shape.
+     *
+     * @return array{chart: Chart, panel: Panel, gauges: list<Gauge>}
+     */
+    protected function shaped(): array
+    {
+        return ['chart' => new Chart, 'panel' => new Panel, 'gauges' => [new Gauge, new Gauge]];
+    }
+
+    /**
+     * A panel and a chart, with no declared return type.
+     */
+    protected function untyped()
+    {
+        return ['panel' => new Panel, 'chart' => new Chart];
+    }
+}

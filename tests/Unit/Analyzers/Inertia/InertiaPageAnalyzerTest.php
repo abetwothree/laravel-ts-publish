@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
@@ -21,9 +22,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTierProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
@@ -37,17 +43,12 @@ use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
+use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
-
-/** Analyze one `Controller@action` through the page analyzer. */
-function pageData(string $uses): ?array
-{
-    return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
-}
 
 afterEach(function () {
     JsonResource::flushState();
@@ -176,11 +177,16 @@ it('types the route-bound model parameter and the injected service call', functi
     expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } }');
 });
 
-// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
-// model, in a branch or not, keeps the parameter's binding.
+it('types a route-bound model\'s relation reads by the models they load', function () {
+    expect(pageData(TypedActionParametersController::class.'@relations')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { author: User, comments: Comment[] }');
+});
+
+// `$post->author` reads as the relation's model through a model-bound variable, so `bare` follows it there; a copy of
+// the same model, in a branch or not, keeps the parameter's binding.
 it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
     expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
@@ -188,7 +194,7 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->toBe('Inertia.SharedData & { post: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
@@ -199,6 +205,12 @@ it('reads a route-bound parameter past its reassignment through what the action 
 it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
     expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
+});
+
+// keyBy() keys the rows by id, so Inertia sends an object unless the ids run 0..n-1.
+it('a keyed map and an offset read type in a page\'s props', function () {
+    expect(pageData(MappedPagePropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { rows: { id: number }[] | Record<string, { id: number }>, a: number }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract
@@ -272,6 +284,16 @@ it('types props delegated to a collaborator, and reads both inertia() helper for
         ->and($helper['pageType'])->toBe('Inertia.SharedData & { label: string }')
         ->and($chain['component'])->toBe('Dashboard/HelperChain')
         ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
+it('reads a delegated props body as the collaborator\'s class only where that class is final', function () {
+    app()->bind(TierPropsBuilder::class, NinthTierPropsBuilder::class);
+
+    // The container may inject a subclass of a class that is not final, whose `static::` write the body only assumes.
+    expect(pageData(ControllerWithTierProps::class.'@index')['pageType'])->toBe('Inertia.SharedData & { tier: unknown }')
+        ->and(app(TierPropsBuilder::class)->build())->toBe(['tier' => 9])
+        ->and(pageData(ControllerWithTierProps::class.'@exact')['pageType'])->toBe('Inertia.SharedData & { tier: string | number }')
+        ->and(app(FinalTierPropsBuilder::class)->build())->toBe(['tier' => 9]);
 });
 
 it('types an action a trait in another file supplies', function () {
@@ -761,11 +783,11 @@ it('quotes a page prop key that is not an identifier', function () {
         ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
 });
 
-it('types a bare enum case prop as its enum, and imports it once, beside a new value', function () {
+it('types a bare enum case prop as its enum, and imports it once, beside a case name and a new value', function () {
     $data = pageData(InertiaEnumCaseController::class.'@show');
 
     expect($data['pageType'])
-        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, status_name: StatusKind, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
         ->and($data['classFqcns'])->toBe([Status::class]);
 });
 
@@ -788,4 +810,17 @@ test('the page type prints no ? after a signature, whatever flag reaches it', fu
         ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
         ['a-b' => 'string'],
     ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, "a-b": string }');
+});
+
+it("imports a docblock-typed accessor's class and override on a page", function () {
+    $data = pageData(UiDashboardController::class.'@index');
+    $sent = inertiaProps(new UiDashboardController()->index(request()));
+
+    expect($data['pageType'])->toContain('uploader: User | null, gauge_from_docblock: UiGauge }')
+        ->and($data['externalImports']['@js/types/ui'])->toContain('UiGauge')
+        ->and($data['externalImports']['@js/types/ui'])->toBe(['UiNode', 'UiGauge', 'UiAmount'])
+        ->and(new RouteTransformer(UiDashboardController::class)->typeImports['../../models'])->toBe(['User'])
+        ->and($sent->uploader)->toBeNull()
+        ->and($sent->gauge_from_docblock)->toBeObject()->kind->toBe('node')
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

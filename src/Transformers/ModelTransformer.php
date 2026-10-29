@@ -16,8 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -99,6 +101,12 @@ class ModelTransformer extends CoreTransformer
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
+    /** @var array<string, list<string>> */
+    public protected(set) array $customImports = [];
+
+    /** @var list<string> TypeScript extends clauses */
+    public protected(set) array $tsExtends = [];
+
     /** @var array<string, bool> */
     protected array $optionalOverrides = [];
 
@@ -122,9 +130,6 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> relation_name => target FQCNs, one per occurrence, in type-string order */
     protected array $relationFqcns = [];
 
-    /** @var array<string, list<string>> */
-    public protected(set) array $customImports = [];
-
     /** @var array<string, EnumFqcnInfo> column_name => enum property info */
     protected array $enumColumnProperties = [];
 
@@ -136,9 +141,6 @@ class ModelTransformer extends CoreTransformer
 
     /** @var list<string> Attribute names from model's array */
     protected array $appendedAttributes = [];
-
-    /** @var list<string> TypeScript extends clauses */
-    public protected(set) array $tsExtends = [];
 
     #[Override]
     public function transform(): self
@@ -200,6 +202,17 @@ class ModelTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->modelName);
+    }
+
+    /**
+     * The composed classes whose module this model's file imports, read from its custom imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->customImports);
     }
 
     /**
@@ -275,6 +288,39 @@ class ModelTransformer extends CoreTransformer
     public function relationExistsKeys(): array
     {
         return $this->freeRelationKeys('_exists');
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map + $this->siblingGlobalAliases();
+    }
+
+    /**
+     * Map every type name this model's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
     protected function initInstance(): self
@@ -542,7 +588,7 @@ class ModelTransformer extends CoreTransformer
 
             $isMorphTo = $isMorphToRelation($relation);
             $relatedBasename = class_basename($relation['related']);
-            $containsMany = str_contains(strtolower($relation['type']), 'many');
+            $toMany = RelationMap::isToMany($relation['type'], $relation['class']);
 
             // Default for a non-morph relation; the morph branch below overrides it either way.
             $relationTargetFqcns = [$relation['related']];
@@ -579,7 +625,7 @@ class ModelTransformer extends CoreTransformer
                     $relationType = 'unknown';
                     $relationTargetFqcns = [];
                 }
-            } elseif ($containsMany) {
+            } elseif ($toMany) {
                 $relationType = $relatedBasename.'[]';
             } else {
                 $relationType = $relatedBasename;
@@ -826,6 +872,10 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->columns, $this->columnFqcns);
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->mutators, $this->mutatorFqcns);
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->appends, $this->appendsFqcns);
+
         $this->applyImportNameRegistries(
             $registry,
             $constRegistry,
@@ -845,25 +895,25 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($this->columns as $key => $entry) {
             $this->columns[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->mutators as $key => $entry) {
             $this->mutators[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->appends as $key => $entry) {
             $this->appends[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
 
         foreach ($this->relations as $key => $entry) {
             $this->relations[$key]['type'] = TsTypeString::aliasPropertyType(
-                $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases,
+                $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases, $this->siblingImportNames,
             );
         }
     }
@@ -891,19 +941,27 @@ class ModelTransformer extends CoreTransformer
             ARRAY_FILTER_USE_BOTH,
         );
 
+        $ownTypes = [
+            ...$this->tsExtends,
+            ...array_column($this->columns, 'type'),
+            ...array_column($this->mutators, 'type'),
+            ...array_column($this->appends, 'type'),
+            ...array_column($this->relations, 'type'),
+        ];
+
         $typeImports = [
-            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->enumFqcnMap, $ownTypes),
             ...$this->collectModularTypeImports($modelFqcnMap),
         ];
 
         $types = $this->combinedTypes();
-        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
-            $this->localImportName($fqcn, $typeName),
-            ...$types,
+        $spelled = fn (string $typeName, string $fqcn): bool => array_any(
+            $this->localImportNames($fqcn, $typeName),
+            static fn (string $local): bool => TsTypeString::typeNameOccursIn($local, ...$types),
         );
 
         $combinedTypeImports = [
-            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH), $types),
             ...$this->collectModularTypeImports(array_filter($modelFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
         ];
 
@@ -914,8 +972,12 @@ class ModelTransformer extends CoreTransformer
             );
         }
 
-        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
-        $combinedTypeImports = $this->mergeCustomImports($combinedTypeImports, $this->customImportsSpelledIn($types));
+        $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
+        $combinedTypeImports = ComposedClassTypes::resolveImports(
+            $this->customImportsSpelledIn($types),
+            $this->namespacePath,
+            $combinedTypeImports,
+        );
 
         return [
             'typeImports' => $this->deduplicateAndSortImports($typeImports),
@@ -923,38 +985,6 @@ class ModelTransformer extends CoreTransformer
             'combinedTypeImports' => $this->deduplicateAndSortImports($combinedTypeImports),
             'combinedValueImports' => $this->deduplicateAndSortImports($combinedValueImports),
         ];
-    }
-
-    /**
-     * Build a map of per-file import aliases → namespace-qualified global names.
-     *
-     * @return array<string, string> alias => 'namespace.OriginalName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type name this model's file imports, as the file spells it, to its globally-qualified name.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /** @return list<string> */

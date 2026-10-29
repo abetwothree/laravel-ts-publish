@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use Workbench\App\Packages\Ui\Chart;
 
 /**
  * @param  list<array{name: string, type: string, optional?: bool}>  $properties
@@ -65,6 +67,35 @@ test('a shape value lists each arm once, and one left unknown fills nothing', fu
     'two unknown arms' => ['spare', 'unknown'],
     'string literals' => ['mode', "'draft' | 'live'"],
 ]);
+
+test('a shape value naming an overridden class fills with the override and brings its import', function () {
+    $analysis = refinedAnalysis([
+        ['name' => 'chart', 'type' => 'unknown'],
+        ['name' => 'nested', 'type' => 'unknown'],
+        ['name' => 'owner', 'type' => 'unknown'],
+    ], 'overridden');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'chart' => 'ChartType',
+        'nested' => '{ panel: UiNode; n: number }',
+        'owner' => 'unknown',
+    ])->and($analysis->customImports)->toBe([
+        '@js/types/ui' => ['UiNode'],
+        ComposedClassTypes::marker(Chart::class) => ['ChartType'],
+    ]);
+});
+
+test('an array<string, V> return naming an overridden class fills with the override and brings its import', function () {
+    $analysis = refinedAnalysis([
+        ['name' => 'a', 'type' => 'unknown'],
+        ['name' => '[key: `${string}_tag`]', 'type' => 'unknown | undefined'],
+    ], 'overriddenRecord');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'a' => 'UiNode',
+        '[key: `${string}_tag`]' => 'UiNode | undefined',
+    ])->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode']]);
+});
 
 test('a key the shape declares optional becomes optional, keeping its own type', function () {
     $props = collect(refinedAnalysis([['name' => 'maybe', 'type' => 'unknown']], 'shaped')->properties)->keyBy('name');

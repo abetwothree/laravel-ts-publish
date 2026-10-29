@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
@@ -19,6 +19,8 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\Access;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\AccessKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\AccessType;
@@ -60,6 +62,8 @@ use Workbench\App\Packages\Audit\Models\AuditArchive;
 use Workbench\App\Packages\Audit\Models\AuditInspector;
 use Workbench\App\Packages\Audit\Models\AuditNote;
 use Workbench\App\Packages\Audit\Models\AuditTrail;
+use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\Packages\Ui\Spark;
 use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Blog\Enums\ContentType;
 use Workbench\Blog\Models\Article;
@@ -1117,6 +1121,7 @@ describe('PublishedModelRegistry run boundary', function () {
         $secondRunner->shouldPublishRoutes = false;
         $secondRunner->shouldPublishFormRequests = false;
         $secondRunner->shouldPublishBroadcastEvents = false;
+        $secondRunner->shouldPublishClassTypes = false;
         $secondRunner->run();
 
         expect(PublishedModelRegistry::isEmpty())->toBeTrue();
@@ -1142,6 +1147,7 @@ describe('PublishedModelRegistry run boundary', function () {
         $runner->shouldPublishRoutes = false;
         $runner->shouldPublishFormRequests = false;
         $runner->shouldPublishBroadcastEvents = false;
+        $runner->shouldPublishClassTypes = false;
 
         return $runner;
     };
@@ -1483,6 +1489,33 @@ describe('config-derived maps run boundary', function () {
         $second = $modelsRunner([Post::class, User::class]);
         $second->run();
         expect($post($second))->toMatch('/\n\s+author: User \| null;/');
+    });
+});
+
+describe('class type override run boundary', function () {
+    test('a run forgets the composed classes and the override lookup the run before left', function () {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.included', [User::class]);
+        // A scan would resolve Spark during the run and raise the warning this test expects only a flushed memo to.
+        config()->set('ts-publish.class_types.additional_directories', []);
+        ClassTypeOverride::resolve(Spark::class);
+        ComposedClassTypes::register(Chart::class);
+
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishResources = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastChannels = false;
+        $runner->shouldPublishBroadcastEvents = false;
+        $runner->run();
+
+        // A memo the run kept would answer from the last run, so the warning the run reset would not come back.
+        ClassTypeOverride::resolve(Spark::class);
+
+        expect(ComposedClassTypes::registered())->toBe([])
+            ->and(array_column(AnalysisWarnings::all(), 'subject'))->toContain(Spark::class);
     });
 });
 

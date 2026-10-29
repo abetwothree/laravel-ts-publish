@@ -11,14 +11,26 @@ use Illuminate\Foundation\Auth\User as AuthUser;
 /** A plain class a resource wraps, whose methods the resource forwards. */
 final class CallPathWrapped
 {
-    /** A string: the control. */
-    public function label(): string
+    /** A static string: the control. */
+    public static function staticLabel(): string
     {
         return '';
     }
 
-    /** A static string: the control. */
-    public static function staticLabel(): string
+    /** A static plain DateTime. */
+    public static function staticDate(): DateTime
+    {
+        return new DateTime;
+    }
+
+    /** A static framework base model. */
+    public static function staticBaseModel(): Model
+    {
+        return new AuthUser;
+    }
+
+    /** A string: the control. */
+    public function label(): string
     {
         return '';
     }
@@ -37,18 +49,6 @@ final class CallPathWrapped
 
     /** A concrete framework model. */
     public function authUser(): AuthUser
-    {
-        return new AuthUser;
-    }
-
-    /** A static plain DateTime. */
-    public static function staticDate(): DateTime
-    {
-        return new DateTime;
-    }
-
-    /** A static framework base model. */
-    public static function staticBaseModel(): Model
     {
         return new AuthUser;
     }

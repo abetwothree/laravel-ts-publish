@@ -19,7 +19,7 @@ The registry and its consumers live in these files:
   [`ModelTransformer`](../../src/Transformers/ModelTransformer.php),
   [`ResourceTransformer`](../../src/Transformers/ResourceTransformer.php),
   [`BroadcastEventTransformer`](../../src/Transformers/BroadcastEventTransformer.php), and
-  [`AnalysisComposer`](../../src/Ast/AnalysisComposer.php), which serves `AstEngine::analyze()`.
+  [`AnalysisComposer`](../../src/Ast/Composition/AnalysisComposer.php), which serves `AstEngine::analyze()`.
 
 ## How a name is chosen
 
@@ -73,7 +73,7 @@ to `classFqcns`.
 
 Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
 class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
-classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineArrayHandler::memberFqcns()`
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineObjectResult::memberFqcns()`
 queues each member of an inline array through `ClassTokenQueue::perToken()`, as `mergeTypeScriptInfos()` does for each
 decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
 resource do not both queue, so `User[] | Record<string, User>` queues its class twice.
@@ -107,6 +107,10 @@ maps, and passes the result to `applyResolvedImportNames()`. `AnalysisComposer` 
 Only `ModelTransformer` suggests preferred aliases, derived from relation names. The others have no relation to derive
 one from.
 
+A backed enum's `…Kind` that a type spells registers as a sibling of its enum's entry, and `resolveSiblings()` gives it
+the prefix and tiebreak its `…Type` gets, so `StatusKind as CrmStatusKind` sits beside `StatusType as CrmStatusType`.
+`aliasPropertyType()` reads a `…Kind` token from its enum's queue, which keeps two same-named enums' tokens in order.
+
 Every consumer unions its FQCN maps with `+`, which is safe only because no FQCN lands in two of them. The analyzers
 put only `JsonResource` subclasses in a resource map and only Eloquent models in a model map, and an enum is neither.
 PHP does not enforce the resource and model split, and a class extending both would break it.
@@ -120,6 +124,15 @@ they took in the const registry. An enum `Role` (type `RoleType`) imported besid
 keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's const. The `Badge`
 fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom imports bring
 (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
+
+A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
+[marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the
+same name is aliased and the composed type never is. Inertia pages and shared data run no registry, so a page that
+reads both imports the name twice
+([known gaps](../known-gaps.md#a-page-that-reads-a-composed-type-and-a-class-named-like-it-imports-the-name-twice)).
+Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
+composed classes with one basename
+([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different

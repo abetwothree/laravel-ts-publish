@@ -50,6 +50,7 @@ use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\Prism\Prism\PrismController as NestedPrismController;
 use Workbench\App\Http\Controllers\Prism\PrismController;
 use Workbench\App\Http\Controllers\TypedParamController;
+use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Middleware\TestMiddleware;
 
 Route::get('/posts', [PostController::class, 'index'])->name('posts.index');
@@ -186,3 +187,5 @@ Route::get('/user-shapes/profile', [InertiaUserShapesController::class, 'profile
 Route::get('/user-shapes/merged', [InertiaUserShapesController::class, 'merged'])->name('user-shapes.merged');
 Route::get('/user-shapes/branched', [InertiaUserShapesController::class, 'branched'])->name('user-shapes.branched');
 Route::get('/user-shapes/bound/{post}', [InertiaUserShapesController::class, 'bound'])->name('user-shapes.bound');
+
+Route::get('/ui/dashboard', [UiDashboardController::class, 'index'])->name('ui.dashboard');

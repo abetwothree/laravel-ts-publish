@@ -14,14 +14,26 @@ final class CallPathModel extends Model
 {
     protected $table = 'posts';
 
-    /** A string: the control. */
-    public function label(): string
+    /** A static string: the control. */
+    public static function staticLabel(): string
     {
         return '';
     }
 
-    /** A static string: the control. */
-    public static function staticLabel(): string
+    /** A static plain DateTime. */
+    public static function staticDate(): DateTime
+    {
+        return new DateTime;
+    }
+
+    /** A static framework base model. */
+    public static function staticBaseModel(): Model
+    {
+        return new AuthUser;
+    }
+
+    /** A string: the control. */
+    public function label(): string
     {
         return '';
     }
@@ -46,18 +58,6 @@ final class CallPathModel extends Model
 
     /** A concrete framework model. */
     public function authUser(): AuthUser
-    {
-        return new AuthUser;
-    }
-
-    /** A static plain DateTime. */
-    public static function staticDate(): DateTime
-    {
-        return new DateTime;
-    }
-
-    /** A static framework base model. */
-    public static function staticBaseModel(): Model
     {
         return new AuthUser;
     }

@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -24,6 +28,7 @@ use ReflectionClass;
 /**
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type TsCastsParseResult = array{
  *     overrides: array<string, string>,
@@ -114,13 +119,15 @@ class InertiaSharedDataAnalyzer
             ->castTargets($this->tsCastsAttributesFromMiddleware($middlewareClass), $keys);
         $tsCasts = $this->parseTsCastsFromMiddleware($middlewareClass);
         JsEmitter::warnAmbiguousCasts($middlewareClass, array_keys($tsCasts['overrides']), $keys);
-        $docblockOverrides = $this->parseDocblockFromMiddleware($middlewareClass);
+        $docblock = $this->parseDocblockFromMiddleware($middlewareClass);
+        $docblockOverrides = array_map(fn (array $info): string => $info['type'], $docblock);
 
         $resolver = new TsCastsImportResolver;
         $resolvedTsCasts = $resolver->resolve(
             JsEmitter::retargetCasts($tsCasts['overrides'], $targets),
             JsEmitter::retargetCasts($tsCasts['importPaths'], $targets),
         );
+        $this->carryDocblockImports($analysis, $docblock, $resolvedTsCasts['overrides']);
 
         $mergedOverrides = JsEmitter::castsByKey(
             $this->normalizeOverrideKeys(
@@ -139,6 +146,7 @@ class InertiaSharedDataAnalyzer
         );
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
+        SharedEnumKinds::spellApart($analysis);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
@@ -149,12 +157,13 @@ class InertiaSharedDataAnalyzer
         );
 
         $inferredImports = $this->buildInferredImports($analysis, $propsType);
+        ComposedClassTypes::warnOfSharedNames($middlewareClass, ComposedClassTypes::classesIn($analysis->customImports));
 
         return [
             'sharedPageProps' => $propsType,
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
-            'typeImports' => $this->mergeTypeImports(
-                $inferredImports['typeImports'],
+            'typeImports' => ImportMaps::merge(
+                CastChannels::withoutOtherPaths($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
                 $resolvedTsCasts['typeImports'],
             ),
             'valueImports' => $inferredImports['valueImports'],
@@ -203,7 +212,7 @@ class InertiaSharedDataAnalyzer
         $imports = new AnalysisImports()->build($analysis, '');
 
         return [
-            'typeImports' => $this->keepSpelledNames($imports['typeImports'], $propsType),
+            'typeImports' => $this->keepSpelledNames(ComposedClassTypes::resolveImports($imports['typeImports'], ''), $propsType),
             'valueImports' => $this->keepSpelledNames($imports['valueImports'], $propsType),
         ];
     }
@@ -230,31 +239,6 @@ class InertiaSharedDataAnalyzer
 
             $imports[$path] = $used;
         }
-
-        return $imports;
-    }
-
-    /**
-     * Merge type import maps and keep their paths and names deterministic.
-     *
-     * @param  TypesImportMap  ...$maps
-     * @return TypesImportMap
-     */
-    protected function mergeTypeImports(array ...$maps): array
-    {
-        $imports = [];
-
-        foreach ($maps as $map) {
-            foreach ($map as $path => $types) {
-                $imports[$path] = array_values(array_unique([
-                    ...($imports[$path] ?? []),
-                    ...$types,
-                ]));
-                sort($imports[$path]);
-            }
-        }
-
-        ksort($imports);
 
         return $imports;
     }
@@ -318,10 +302,33 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Extract per-key type overrides from the `@return array{...}` docblock on the middleware's share().
+     * Add the custom imports of each docblock entry no #[TsCasts] entry replaces, as a key a cast replaces imports the
+     * cast's alone.
+     *
+     * @param  array<string, ShapeTypeInfo>  $docblock
+     * @param  array<array-key, string>  $castOverrides
+     */
+    protected function carryDocblockImports(MethodAnalysis $analysis, array $docblock, array $castOverrides): void
+    {
+        $imports = [];
+
+        foreach ($docblock as $key => $info) {
+            if (! array_key_exists(rtrim((string) $key, '?'), $castOverrides) && $info['customImports'] !== []) {
+                $imports[] = $info['customImports'];
+            }
+        }
+
+        if ($imports !== []) {
+            $analysis->customImports = ImportMaps::merge($analysis->customImports, ...$imports);
+        }
+    }
+
+    /**
+     * Extract per-key type overrides from the `@return array{...}` docblock on the middleware's share(), each with the
+     * custom imports of the overrides it spells.
      *
      * @param  class-string  $className
-     * @return array<string, string>
+     * @return array<string, ShapeTypeInfo>
      */
     protected function parseDocblockFromMiddleware(string $className): array
     {
@@ -332,7 +339,7 @@ class InertiaSharedDataAnalyzer
             return [];
         }
 
-        return LaravelTsPublish::parseDocblockReturnArrayShape($reflection->getMethod('share'));
+        return LaravelTsPublish::docblockReturnShapeInfos($reflection->getMethod('share'));
     }
 
     /**

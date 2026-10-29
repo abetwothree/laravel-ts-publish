@@ -17,12 +17,6 @@ final class ClassNamingMemberModel extends Model
 {
     protected $table = 'articles';
 
-    /** @return array<string, ArticleStatus> */
-    protected function casts(): array
-    {
-        return ['status' => ArticleStatus::class];
-    }
-
     /** @return BelongsTo<User, $this> */
     public function author(): BelongsTo
     {
@@ -39,5 +33,11 @@ final class ClassNamingMemberModel extends Model
     public function withEnumResource(): array
     {
         return ['s' => EnumResource::make($this->status), 'title' => $this->title];
+    }
+
+    /** @return array<string, ArticleStatus> */
+    protected function casts(): array
+    {
+        return ['status' => ArticleStatus::class];
     }
 }

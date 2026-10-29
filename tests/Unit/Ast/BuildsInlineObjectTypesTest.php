@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 
 test('a nested shape prints each key as TypeScript reads it', function (array $property, string $expected) {
     $builder = new class

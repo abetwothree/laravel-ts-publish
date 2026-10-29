@@ -34,6 +34,11 @@ class Address extends Model
         'full_address',
     ];
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -41,11 +46,6 @@ class Address extends Model
             'longitude' => 'decimal:7',
             'is_default' => 'boolean',
         ];
-    }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
     }
 
     /** Full single-line address string */

@@ -39,19 +39,6 @@ class RouteWriter extends CoreWriter
         return $content;
     }
 
-    protected function writeRouteFile(string $filename, string $content, string $namespacePath): void
-    {
-        $routesOutputPath = Config::string('ts-publish.routes.output_directory');
-        $outputBase = ! empty($routesOutputPath)
-            ? $routesOutputPath
-            : Config::string('ts-publish.output_directory');
-
-        $outputPath = $outputBase.'/'.$namespacePath;
-
-        $this->ensureDirectoryExists($outputPath);
-        $this->putIfChanged("$outputPath/$filename.ts", $content);
-    }
-
     /**
      * Write per-namespace barrel files for routes.
      *
@@ -104,5 +91,18 @@ class RouteWriter extends CoreWriter
         ksort($results);
 
         return $results;
+    }
+
+    protected function writeRouteFile(string $filename, string $content, string $namespacePath): void
+    {
+        $routesOutputPath = Config::string('ts-publish.routes.output_directory');
+        $outputBase = ! empty($routesOutputPath)
+            ? $routesOutputPath
+            : Config::string('ts-publish.output_directory');
+
+        $outputPath = $outputBase.'/'.$namespacePath;
+
+        $this->ensureDirectoryExists($outputPath);
+        $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 }

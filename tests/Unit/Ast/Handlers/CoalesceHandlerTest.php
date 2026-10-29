@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -37,7 +37,7 @@ function coalesceHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -77,7 +77,7 @@ final class CoalesceArmStubEngine implements ExpressionEngine
         throw new RuntimeException('Unexpected expression passed to CoalesceArmStubEngine');
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }

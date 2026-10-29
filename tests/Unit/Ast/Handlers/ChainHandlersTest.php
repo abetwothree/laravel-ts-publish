@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
@@ -27,6 +27,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Role;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
@@ -49,8 +50,6 @@ use Workbench\App\Models\User;
  */
 final class ChainHandlersMapStubEngine implements ExpressionEngine
 {
-    public ?string $boundRelationModel = null;
-
     public ?string $boundParamModel = null;
 
     /** @param array<string, mixed> $bodyResult */
@@ -67,13 +66,12 @@ final class ChainHandlersMapStubEngine implements ExpressionEngine
             throw new RuntimeException('Unexpected expression passed to ChainHandlersMapStubEngine');
         }
 
-        $this->boundRelationModel = $this->scope->closureRelationModelClass;
         $this->boundParamModel = $this->scope->varModelBindings['member'] ?? null;
 
         return $this->bodyResult;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -143,8 +141,8 @@ it('resolves $this->resource->name / ->value on an enum-wrapped resource', funct
     $name = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine());
     $value = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'value'), $scope, chainHandlersThrowingEngine());
 
-    expect($name)->toBe(['type' => 'string', 'optional' => false])
-        ->and($value)->toBe(['type' => 'string', 'optional' => false]);
+    expect($name)->toBe(['type' => 'MediaTypeKind', 'optional' => false, 'directEnumFqcn' => MediaType::class])
+        ->and($value)->toBe(['type' => 'MediaTypeType', 'optional' => false, 'directEnumFqcn' => MediaType::class]);
 });
 
 // Guard-order pin: the wrapped-ENUM branch must run before the wrapped-MODEL branch, and BOTH must
@@ -207,9 +205,7 @@ it('resolves a take()->map()->values() chain through the engine, array-wrapping 
     $result = (new RelationCollectionChainHandler)->resolve($chain, $scope, $engine);
 
     expect($result)->toBe(['type' => '{ id: number }[]', 'optional' => false])
-        ->and($engine->boundRelationModel)->toBe(User::class)
         ->and($engine->boundParamModel)->toBe(User::class)
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe([]);
 });
 
@@ -297,11 +293,11 @@ it('reads take(limit: …) and map(callback: …) by name', function () {
     expect($result)->toBe(['type' => '{ id: number }[]', 'optional' => false]);
 });
 
-// Inside a whenLoaded closure the scope carries the relation's model, but `$this->resource` is always
+// Inside a whenLoaded closure the parameter holds the relation's model, but `$this->resource` is always
 // the resource's own model — so these chains must walk Post, never the closure's Comment.
 test('$this->resource inside a whenLoaded closure roots at the resource model', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
-    $scope->closureRelationModelClass = Comment::class;
+    $scope->varModelBindings['comment'] = Comment::class;
     $resource = chainThisProp('resource');
     $handler = new PropertyChainHandler;
 
@@ -314,12 +310,11 @@ test('$this->resource inside a whenLoaded closure roots at the resource model', 
         ->and($nullsafe)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
-// The discriminating pin for the `resolve()` exclusion: both models declare `options`, and they resolve
-// differently — Post's docblock gives Record<string, string> | null, User's cast gives unknown[] | null.
-// Dropping the exclusion lets the closure arm answer with User's, which is wrong and less specific.
+// Both models declare `options`, and they resolve differently — Post's docblock gives Record<string, string> | null,
+// User's cast gives unknown[] | null. Reading the closure parameter's model would answer with User's, which is wrong.
 test('$this->resource->options reads the resource model type, not the closure model type', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varModelBindings['user'] = User::class;
 
     $result = (new PropertyChainHandler)->resolve(
         new PropertyFetch(chainThisProp('resource'), 'options'),

@@ -30,16 +30,6 @@ class Article extends Model
         'published_at',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'status' => ArticleStatus::class,
-            'content_type' => ContentType::class,
-            'is_featured' => 'boolean',
-            'published_at' => 'datetime',
-        ];
-    }
-
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
@@ -48,5 +38,15 @@ class Article extends Model
     public function reactions(): HasMany
     {
         return $this->hasMany(Reaction::class);
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'status' => ArticleStatus::class,
+            'content_type' => ContentType::class,
+            'is_featured' => 'boolean',
+            'published_at' => 'datetime',
+        ];
     }
 }

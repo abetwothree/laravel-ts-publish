@@ -26,6 +26,16 @@ class Invoice extends Model
         'notes',
     ];
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -37,16 +47,6 @@ class Invoice extends Model
             'issued_at' => 'date',
             'paid_at' => 'datetime',
         ];
-    }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function payments(): HasMany
-    {
-        return $this->hasMany(Payment::class);
     }
 
     protected function latestPayment(): Attribute

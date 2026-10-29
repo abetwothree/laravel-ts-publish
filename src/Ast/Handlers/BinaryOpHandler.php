@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -127,17 +128,14 @@ final class BinaryOpHandler implements ExpressionHandler
      */
     private function resolvePlus(BinaryOp\Plus $plus, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $bindings = $scope->varValueBindings;
-
-        try {
+        // The operands bind as the read resolves them, so there is nothing to enter.
+        return $scope->within(static function (): void {}, function () use ($plus, $scope, $engine): array {
             [$kind, $union] = $this->boundUnion($plus, $scope, $engine);
 
             return $kind === self::ARRAY
                 ? $engine->resolve($this->arrayUnionLiteral($union, $scope->literalLocalBindings()))
                 : ['type' => 'number', 'optional' => false];
-        } finally {
-            $scope->varValueBindings = $bindings;
-        }
+        });
     }
 
     /**
@@ -177,7 +175,7 @@ final class BinaryOpHandler implements ExpressionHandler
      */
     private function boundOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $local = $operand instanceof Variable && is_string($operand->name) ? ($scope->literalLocalBindings()[$operand->name] ?? null) : null;
+        $local = $operand instanceof Variable && is_string($operand->name) ? $scope->literalLocalBinding($operand->name) : null;
 
         if ($operand instanceof Array_ || $local instanceof Array_) {
             return [self::ARRAY, $operand];
@@ -218,20 +216,10 @@ final class BinaryOpHandler implements ExpressionHandler
             $type === 'unknown' => self::UNTYPED,
             array_all(
                 TsTypeString::splitTopLevelUnion($type),
-                fn (string $arm): bool => $this->isScalarType($arm) || in_array($arm, $enumTokens, true),
+                fn (string $arm): bool => TsTypeShape::isScalar($arm) || in_array($arm, $enumTokens, true),
             ) => self::SCALAR,
             default => self::HIDDEN_KEYS,
         };
-    }
-
-    /**
-     * Whether one union arm is a JSON scalar: a number, string or boolean, or a literal of one.
-     */
-    private function isScalarType(string $arm): bool
-    {
-        return in_array($arm, ['number', 'string', 'boolean', 'true', 'false'], true)
-            || is_numeric($arm)
-            || (strlen($arm) >= 2 && in_array($arm[0], ['"', "'"], true) && $arm[-1] === $arm[0]);
     }
 
     /**

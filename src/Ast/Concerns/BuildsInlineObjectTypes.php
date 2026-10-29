@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 
 /**
  * Flatten an analysis's properties into an inline TypeScript object literal type.
  *
- * The single home for this: InlineArrayHandler and StaticCallHandler both render one, and neither
+ * The single home for this: InlineObjectResult and StaticCallHandler both render one, and neither
  * could reach the other's private copy before this trait.
  *
  * @internal

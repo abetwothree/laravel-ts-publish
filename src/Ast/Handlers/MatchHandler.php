@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\Throw_;
@@ -40,6 +40,7 @@ final class MatchHandler implements ExpressionHandler
         }
 
         $results = [];
+        $dropped = [];
 
         foreach ($expr->arms as $arm) {
             // A `throw` arm returns nothing, so it is neither a union member nor an arm the engine failed to type.
@@ -51,6 +52,7 @@ final class MatchHandler implements ExpressionHandler
 
             if ($result['type'] === 'unknown') {
                 DroppedUnionArms::record($arm->body, $scope, 'match-arm');
+                $dropped[] = $arm->body;
             }
 
             $results[] = $result;
@@ -60,6 +62,8 @@ final class MatchHandler implements ExpressionHandler
             return null;
         }
 
-        return ValueResult::withEnumArmShapes(ValueResult::unionResults($results), $results);
+        $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
+
+        return ValueResult::withEnumArmShapes($union, $results);
     }
 }

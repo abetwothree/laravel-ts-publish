@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use BackedEnum;
@@ -49,6 +50,7 @@ class WatcherJsonWriter
             ...$this->collectRoutePaths(),
             ...$this->collectFormRequestPaths(),
             ...$this->collectBroadcastEventPaths(),
+            ...$this->collectClassTypePaths(),
         ]));
 
         sort($paths, SORT_STRING);
@@ -248,5 +250,24 @@ class WatcherJsonWriter
                 })
                 ->all()
         );
+    }
+
+    /**
+     * The file of each scanned composed class and of each override it composes, since editing one changes its module.
+     *
+     * @return list<string>
+     */
+    protected function collectClassTypePaths(): array
+    {
+        $classes = [];
+
+        foreach (ComposedClassTypes::scanned() as $class => $declaredBy) {
+            array_push($classes, $class, ...$declaredBy);
+        }
+
+        return array_values(array_map(
+            static fn (string $class): string => TsNaming::resolveRelativePath((string) new ReflectionClass($class)->getFileName()),
+            array_unique($classes),
+        ));
     }
 }

@@ -43,5 +43,7 @@ export interface SpreadWithClosureResource
     owned_teams?: Team[];
     images?: Image[];
     notifications?: DatabaseNotification[];
+    read_notifications?: DatabaseNotification[];
+    unread_notifications?: DatabaseNotification[];
     metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
 }

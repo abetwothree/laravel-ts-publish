@@ -532,6 +532,7 @@ test('ts:publish warns and exits when every publishing phase is disabled', funct
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
     config()->set('ts-publish.broadcast_events.enabled', false);
+    config()->set('ts-publish.class_types.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -637,6 +638,7 @@ test('ts:publish --source exits successfully when every publishing phase is disa
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
     config()->set('ts-publish.broadcast_events.enabled', false);
+    config()->set('ts-publish.class_types.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful()
@@ -818,6 +820,7 @@ test('ts:publish --only-functional warns when all functional options disabled', 
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
     config()->set('ts-publish.broadcast_events.enabled', false);
+    config()->set('ts-publish.class_types.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
         ->assertSuccessful()
@@ -1043,4 +1046,126 @@ test('ts:publish generates metadata from a partial model_metadata config block',
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
         ->expectsOutputToContain('export const UserModelMetadata');
+});
+
+test('ts:publish --only-class-types publishes only the composed class modules', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-class-types-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-class-types' => true])
+            ->assertSuccessful();
+
+        expect(file_exists("$outputDir/workbench/app/packages/ui/chart.ts"))->toBeTrue()
+            ->and(file_exists("$outputDir/workbench/app/packages/ui/dial.ts"))->toBeTrue()
+            ->and(file_get_contents("$outputDir/workbench/app/packages/ui/index.ts"))
+            ->toBe("export * from './chart';\nexport * from './dial';")
+            ->and(is_dir("$outputDir/workbench/app/models"))->toBeFalse()
+            ->and(is_dir("$outputDir/workbench/app/enums"))->toBeFalse()
+            ->and(is_dir("$outputDir/workbench/app/http"))->toBeFalse();
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('ts:publish --only-class-types previews the modules and their barrels', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-class-types' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Class Types:')
+        ->expectsOutputToContain('export interface ChartType extends UiHello, UiIcon, UiNode {}')
+        ->expectsOutputToContain('Class Type Barrel Files:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish --only-class-types exits when class types are disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.class_types.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-class-types' => true, '--no-interaction' => true])
+        ->assertSuccessful()
+        ->doesntExpectOutputToContain('Class Types:');
+});
+
+test('ts:publish fails when both --only-class-types and --only-enums are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-class-types' => true, '--only-enums' => true])
+        ->assertFailed();
+});
+
+test('ts:publish --source with a composed class publishes its module alone', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-class-type-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Packages\Ui\Chart'])
+            ->assertSuccessful()
+            ->expectsOutputToContain('class type');
+
+        expect(file_get_contents("$outputDir/workbench/app/packages/ui/chart.ts"))
+            ->toContain('export interface ChartType extends UiHello, UiIcon, UiNode {}')
+            ->and(file_exists("$outputDir/workbench/app/packages/ui/dial.ts"))->toBeFalse()
+            ->and(file_exists("$outputDir/workbench/app/packages/ui/index.ts"))->toBeFalse();
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('ts:publish --source with a watched contributor file republishes each scanned module composed from it', function (string $file, array $modules) {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-contributor-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    $directory = "$outputDir/workbench/app/packages/ui";
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--source' => workbench_path($file)])
+            ->assertSuccessful();
+
+        expect(array_map(basename(...), glob("$directory/*.ts") ?: []))->toBe($modules)
+            ->and(file_get_contents("$directory/chart.ts"))
+            ->toContain('export interface ChartType extends UiHello, UiIcon, UiNode {}');
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+})->with([
+    'a parent class' => ['app/Packages/Ui/Node.php', ['chart.ts', 'dial.ts']],
+    'an interface' => ['app/Packages/Ui/HasIcon.php', ['chart.ts']],
+    'a trait' => ['app/Packages/Ui/Concerns/AnnouncesHello.php', ['chart.ts']],
+]);
+
+test('ts:publish --source with a class that composes only while class types are enabled fails when they are not', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.class_types.enabled', false);
+
+    $this->artisan('ts:publish', ['--source' => 'Workbench\App\Packages\Ui\Chart', '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('or composed class: Workbench\App\Packages\Ui\Chart');
+});
+
+test('ts:publish --source with a class whose override does not compose reports it is not publishable', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--source' => 'Workbench\App\Packages\Ui\Panel', '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('composed class');
+});
+
+test('ts:publish verbose mode lists the composed class modules', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-verbose-class-types-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-class-types' => true, '-v' => true])
+            ->assertSuccessful()
+            ->expectsOutputToContain('Class Types')
+            ->expectsOutputToContain('ChartType')
+            ->expectsOutputToContain('Class Type Barrel');
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
 });

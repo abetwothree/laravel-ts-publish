@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\InheritedToAttributesSpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\JsonApiValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingOverrideApiResource;
@@ -16,6 +17,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingTo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PartlyReadAttributesDocumentApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PartlyReadLinksDocumentApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PlainRelationshipApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ResolveSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SerializingAttributesApiResource;
@@ -216,6 +219,16 @@ test('a parent::toAttributes() spread reads the $attributes names JsonApiResourc
         ->toMatchArray(['attributes' => '{ title: string; extra: number }']);
 });
 
+test('an inherited toAttributes() reads its parent::toAttributes() as its declaring class\'s parent\'s', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 1, 'title' => 'x']);
+
+    expect(publishedResourceKeyTypes(InheritedToAttributesSpreadApiResource::class, Post::class))
+        ->toMatchArray(['attributes' => '{ title: string; extra: number }'])
+        ->and(json_encode(new InheritedToAttributesSpreadApiResource($post)->resolve(request())))
+        ->toContain('"attributes":{"title":"x","extra":1}');
+});
+
 test('a keyless name an own toArray() returns reads the model attribute', function () {
     expect(publishedResourceKeyTypes(KeylessToArrayApiResource::class, Post::class))
         ->toMatchArray(['attributes' => '{ title: string; content: string }']);
@@ -376,3 +389,15 @@ test('a reused JSON:API include read records the file of every resource it reach
     expect($first)->toContain((string) new ReflectionClass(CommentResource::class)->getFileName())
         ->and($reused)->toEqualCanonicalizing($first);
 });
+
+test('a variable built on a resolve() whose resource object is read only partly is skipped beside a literal', function (string $class) {
+    $members = array_map(
+        fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
+        resolve(AstEngine::class)->analyze($class, 'payload')->properties,
+    );
+
+    expect($members)->toBe(['data: number', 'extra: number']);
+})->with([
+    'its attributes' => [PartlyReadAttributesDocumentApiResource::class],
+    'its links' => [PartlyReadLinksDocumentApiResource::class],
+]);

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisComposer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
 use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;

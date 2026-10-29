@@ -17,7 +17,7 @@ The body step spans these classes:
   shared by `ModelAttributeResolver` and `ModelTransformer`, including the choice between body and annotation.
 - [`AstEngine`](../../src/Ast/AstEngine.php): `analyzeModelClosure()` seeds the scope and runs the getter on the
   `ResourceExpressionHandlers::forModelClosures()` profile.
-- [`AnalysisMemo`](../../src/Ast/AnalysisMemo.php): the cycle guard and the memo for the run.
+- [`AnalysisMemo`](../../src/Ast/Analysis/AnalysisMemo.php): the cycle guard and the memo for the run.
 
 ## When the body is read
 
@@ -86,12 +86,12 @@ in a closure.
 
 ## A reader that carries no import
 
-A method body reached by the body fallback carries no import, so it drops any shape that names a token; see
-[The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel). When such a
-scope reads an accessor, `analyze()` takes `carriesImports: false`, and `analyzeModelClosure()` sets it on the
-getter's scope. The getter's filters then publish what they would inside the method body: an inline shape with
-`unknown` for a member naming a token, `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many
-relation. The model file and every resource still publish the analysis with imports.
+A method body reached by the body fallback carries no FQCN channel, so it drops any shape that names a model or an enum;
+see [The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel). When such
+a scope reads an accessor, `analyze()` takes `carriesImports: false`, and `analyzeModelClosure()` sets it on the
+getter's scope. The getter's filters then publish what they would inside the method body: an inline shape with `unknown`
+for a member naming a token, `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
+The model file and every resource still publish the analysis with imports.
 
 `ResolvesAccessorType::resolveAccessorBodyType()` then chooses between that spelling and the annotation. Without
 imports, a spelling can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
@@ -124,9 +124,10 @@ without them. A shared key would cut that read short and make the published type
 ## What stays vague
 
 The body step inherits the engine's limits and adds only the declines above. Loop-built keys, as in
-`Release::dynamicTotals()`, stay `unknown[]`, and a body that delegates to an untyped helper gets whatever the engine
-makes of that call. The fix for those is an accurate `@return Attribute<Get, Set>`, which is read before the body; see
-the tolki [annotation checklist](https://tolki.abe.dev/ts/models.html#annotation-checklist).
+`Release::dynamicTotals()`, publish the signature entry the returned-variable walk reads, its values untyped, and a body
+that delegates to an untyped helper gets whatever the engine makes of that call. The fix for those is an accurate
+`@return Attribute<Get, Set>`, which is read before the body; see the tolki
+[annotation checklist](https://tolki.abe.dev/ts/models.html#annotation-checklist).
 
 ## Related
 

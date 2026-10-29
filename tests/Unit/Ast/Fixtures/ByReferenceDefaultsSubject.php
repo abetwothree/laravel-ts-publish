@@ -52,7 +52,7 @@ final class ByReferenceDefaultsSubject extends ByReferenceDefaultsParent
      *
      * @param  list<mixed>  $into
      */
-    private function fill(array &$into): void
+    private static function stash(array &$into): void
     {
         $into[] = 1;
     }
@@ -62,7 +62,7 @@ final class ByReferenceDefaultsSubject extends ByReferenceDefaultsParent
      *
      * @param  list<mixed>  $into
      */
-    private static function stash(array &$into): void
+    private function fill(array &$into): void
     {
         $into[] = 1;
     }

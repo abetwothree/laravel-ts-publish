@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
-/** A model-less subject whose methods write most of its untyped defaults, so only `label` keeps its default's type. */
+/** A model-less subject whose methods write each untyped default but `label`: by parameter, element and increment. */
 class ReassignedDefaultsSubject
 {
     protected $note = '';

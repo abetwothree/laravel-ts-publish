@@ -36,6 +36,9 @@ class EnumTransformer extends CoreTransformer
 {
     use SnapshotsTransformerState;
 
+    /** @var list<string> */
+    private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
+
     public protected(set) string $enumName;
 
     public protected(set) string $description = '';
@@ -64,15 +67,6 @@ class EnumTransformer extends CoreTransformer
 
     /** @var CaseTypesList */
     public protected(set) array $caseTypes = [];
-
-    /** @var list<string> */
-    private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
-
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflectionEnum'];
-    }
 
     #[Override]
     public function transform(): self
@@ -114,23 +108,22 @@ class EnumTransformer extends CoreTransformer
         return Str::kebab($this->enumName);
     }
 
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionEnum'];
+    }
+
     protected function initInstance(): self
     {
         $this->reflectionEnum = new ReflectionEnum($this->findable);
         $this->backed = $this->reflectionEnum->isBacked();
 
-        $tsEnumAttrs = $this->reflectionEnum->getAttributes(TsEnum::class);
-
-        if ($tsEnumAttrs) {
-            $tsEnumInstance = $tsEnumAttrs[0]->newInstance();
-            $this->enumName = $tsEnumInstance->name;
-            $this->description = $tsEnumInstance->description !== ''
-                ? $tsEnumInstance->description
-                : JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
-        } else {
-            $this->enumName = $this->reflectionEnum->getShortName();
-            $this->description = JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
-        }
+        $tsEnum = ($this->reflectionEnum->getAttributes(TsEnum::class)[0] ?? null)?->newInstance();
+        $this->enumName = TsNaming::enumName($this->findable);
+        $this->description = $tsEnum !== null && $tsEnum->description !== ''
+            ? $tsEnum->description
+            : JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
         $this->namespacePath = TsNaming::namespaceToPath($this->findable);

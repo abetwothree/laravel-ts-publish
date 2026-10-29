@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class UuidPost extends Model
 {
+    public $incrementing = false;
+
     protected $table = 'posts';
 
     protected $primaryKey = 'uuid';
 
     protected $keyType = 'string';
-
-    public $incrementing = false;
 }

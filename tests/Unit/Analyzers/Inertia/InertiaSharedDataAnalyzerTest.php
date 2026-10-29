@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSameNamedEnumNames;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
@@ -45,25 +46,6 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadSha
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
-
-/**
- * Analyze one fixture middleware without touching the filesystem discovery pass.
- *
- * @phpstan-import-type SharedDataResult from InertiaSharedDataAnalyzer
- *
- * @param  class-string  $middlewareClass
- * @return SharedDataResult|null
- */
-function analyzeSharedDataFor(string $middlewareClass): ?array
-{
-    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
-        ->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-
-    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn($middlewareClass);
-
-    return $analyzer->analyze();
-}
 
 afterEach(function () {
     JsonResource::flushState();
@@ -320,7 +302,7 @@ test('an override drops the type import the displaced type kept alive', function
         ->shouldAllowMockingProtectedMethods();
 
     $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(StarterKitArrayMergeMiddleware::class);
-    $analyzer->shouldReceive('parseDocblockFromMiddleware')->andReturn(['auth' => '{ user: null }']);
+    $analyzer->shouldReceive('parseDocblockFromMiddleware')->andReturn(['auth' => ['type' => '{ user: null }', 'customImports' => []]]);
 
     $result = $analyzer->analyze();
 
@@ -341,6 +323,17 @@ test('an EnumResource shared prop is rewritten to AsEnum and imports the enum co
         )
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']])
         ->and($result['typeImports'])->toBe([]);
+});
+
+// The shared-data file aliases no import, so two same-named enums' `…Kind` would import one name twice.
+test('spells two same-named enums\' case names as literals, and imports a third enum\'s Kind', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithSameNamedEnumNames::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            "{ app_name: 'Draft' | 'Published', crm_name: 'Lead' | 'Prospect' | 'Active' | 'Churned', priority_name: PriorityKind }"
+        )
+        ->and(array_merge(...array_values($result['typeImports'])))->toBe(['PriorityKind']);
 });
 
 // Inertia runs shared data through the props resolver, so a shared resource is sent as a page prop's is.

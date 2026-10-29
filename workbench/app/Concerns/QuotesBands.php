@@ -11,14 +11,14 @@ namespace Workbench\App\Concerns;
  */
 trait QuotesBands
 {
-    /** An instance helper. */
-    public function bandQuote(): array
+    /** A static helper. */
+    public static function staticBandQuote(): array
     {
         return ['band' => 'B', 'ceiling' => 50];
     }
 
-    /** A static helper. */
-    public static function staticBandQuote(): array
+    /** An instance helper. */
+    public function bandQuote(): array
     {
         return ['band' => 'B', 'ceiling' => 50];
     }

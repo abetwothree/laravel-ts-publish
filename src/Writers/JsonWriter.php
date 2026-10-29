@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -60,6 +61,7 @@ class JsonWriter
     {
         $data = [
             'broadcastEvents' => $this->createJsonForBroadcastEvents($runner),
+            'classTypes' => $this->createJsonForClassTypes($runner),
             'enums' => $this->createJsonForEnums($runner),
             'formRequests' => $this->createJsonForFormRequests($runner),
             'models' => $this->createJsonForModels($runner),
@@ -244,6 +246,27 @@ class JsonWriter
                     $transformer->properties,
                     array_keys($transformer->properties),
                 ),
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Each composed class's interface name and the types it extends.
+     *
+     * @return array<class-string, array{name: string, extends: list<string>}>
+     */
+    protected function createJsonForClassTypes(Runner $runner): array
+    {
+        $data = [];
+
+        foreach ($runner->classTypeGenerators->concat($runner->retainedClassTypeGenerators) as $generator) {
+            /** @var ClassTypeGenerator $generator */
+            $transformer = $generator->transformer;
+            $data[$transformer->fqcn()] = [
+                'name' => $transformer->typeName,
+                'extends' => $transformer->extends,
             ];
         }
 

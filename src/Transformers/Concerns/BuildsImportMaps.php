@@ -6,28 +6,62 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  */
 trait BuildsImportMaps
 {
     /**
-     * Collect modular (per-file) type imports for a set of FQCNs.
+     * @var SiblingImportNames each sibling name an FQCN is imported under, such as an enum's `…Kind`; declared as
+     *                         ResolvesImportConflicts declares it, so a class using both holds one property
+     */
+    protected array $siblingImportNames = [];
+
+    /**
+     * The import name a sibling name, such as an enum's `…Kind`, takes under its local name.
+     */
+    abstract protected function formatSiblingImportName(string $name, string $local): string;
+
+    /**
+     * Collect modular (per-file) type imports for a set of FQCNs, each beside the sibling names it is imported under.
+     *
+     * With `$spelledIn`, a class imported under a sibling name keeps only the names those types spell: an enum a type
+     * reads by its `…Kind` alone does not import its `…Type`.
      *
      * @param  array<string, string>  $fqcnMap  FQCN => TypeScript type name
+     * @param  list<string>|null  $spelledIn  the types the file publishes, as it spells them
      * @return TypesImportMap
      */
-    protected function collectModularTypeImports(array $fqcnMap): array
+    protected function collectModularTypeImports(array $fqcnMap, ?array $spelledIn = null): array
     {
         $imports = [];
 
         foreach ($fqcnMap as $fqcn => $typeName) {
             $targetPath = TsNaming::namespaceToPath($fqcn);
             $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+            $names = [$this->formatImportName($fqcn, $typeName)];
+
+            foreach ($this->siblingImportNames[$fqcn] ?? [] as $name => $local) {
+                $names[] = $this->formatSiblingImportName($name, $local);
+            }
+
+            if ($spelledIn !== null && count($names) > 1) {
+                $names = array_filter(
+                    $names,
+                    static fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), ...$spelledIn),
+                );
+            }
+
+            if ($names !== []) {
+                $imports[$importPath] = [...($imports[$importPath] ?? []), ...array_values($names)];
+            }
         }
 
         return $imports;

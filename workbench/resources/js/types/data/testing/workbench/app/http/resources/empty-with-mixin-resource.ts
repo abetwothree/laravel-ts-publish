@@ -36,4 +36,6 @@ export interface EmptyWithMixinResource
     owned_teams?: Team[];
     images?: Image[];
     notifications?: DatabaseNotification[];
+    read_notifications?: DatabaseNotification[];
+    unread_notifications?: DatabaseNotification[];
 }

@@ -25,14 +25,15 @@ class Category extends Model
         'metadata',
     ];
 
-    #[TsCasts(['metadata' => 'Record<string, string | number>'])]
-    protected function casts(): array
+    public static function className(): string
     {
-        return [
-            'is_active' => 'boolean',
-            'metadata' => 'array',
-            'sort_order' => 'integer',
-        ];
+        return self::class;
+    }
+
+    /** @return string */
+    public static function tableName()
+    {
+        return (new self)->getTable();
     }
 
     /** Self-referencing: parent category */
@@ -53,16 +54,6 @@ class Category extends Model
         return $this->hasMany(Post::class);
     }
 
-    /** Full path breadcrumb (e.g. "Electronics > Phones > Smartphones") */
-    protected function breadcrumb(): Attribute
-    {
-        return Attribute::make(
-            get: fn (): string => $this->parent
-                ? $this->parent->breadcrumb.' > '.$this->name
-                : $this->name,
-        );
-    }
-
     public function isFirst(): bool
     {
         return $this->sort_order === 1;
@@ -74,14 +65,23 @@ class Category extends Model
         return $this->is_active;
     }
 
-    public static function className(): string
+    #[TsCasts(['metadata' => 'Record<string, string | number>'])]
+    protected function casts(): array
     {
-        return self::class;
+        return [
+            'is_active' => 'boolean',
+            'metadata' => 'array',
+            'sort_order' => 'integer',
+        ];
     }
 
-    /** @return string */
-    public static function tableName()
+    /** Full path breadcrumb (e.g. "Electronics > Phones > Smartphones") */
+    protected function breadcrumb(): Attribute
     {
-        return (new self)->getTable();
+        return Attribute::make(
+            get: fn (): string => $this->parent
+                ? $this->parent->breadcrumb.' > '.$this->name
+                : $this->name,
+        );
     }
 }

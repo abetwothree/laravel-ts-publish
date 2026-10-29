@@ -3,13 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -46,7 +45,6 @@ function inlineVarSeededBody(string $body): array
 
     $host = new class
     {
-        use CollectsInstanceofGuards;
         use CollectsLocalVarBindings;
 
         /**
@@ -56,8 +54,7 @@ function inlineVarSeededBody(string $body): array
          */
         public function run(array $stmts, AnalysisScope $scope): void
         {
-            $this->collectLocalVarBindings($stmts, $scope);
-            $this->collectInstanceofGuards($stmts, $scope);
+            $this->seedBody($stmts, $scope);
         }
     };
 
@@ -181,6 +178,19 @@ describe('an inline @var on a local assignment', function () {
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = ($x = null) ?? json_decode(""); $x->a; /** @var \Workbench\App\Models\User $x */ $x = json_decode(""); $x->b;',
             [null, [User::class]],
         ],
+        'a tag nested in a block, for the reads after it in that block' => [
+            '$x->a; if (true) { /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->b; } $x->c;',
+            [null, [CartTotals::class], null],
+        ],
+        // The span kept for a join holds no read, and a local written once is joined nowhere.
+        'a tag on its block\'s last statement, for no read past the block' => [
+            '$x->a; if (true) { /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); } $x->c;',
+            [null, null],
+        ],
+        'a tag nested in a loop, up to the statement holding its next write' => [
+            'foreach ([1] as $i) { $x->a; /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->b; if (true) { $x = null; } $x->c; }',
+            [null, [CartTotals::class], null],
+        ],
     ]);
 
     test('keeps what the assignment reads when it names a class, and a union or ?T names each class it does not', function () {
@@ -237,7 +247,7 @@ describe('an inline @var on a local assignment', function () {
         expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)->resolve($closure)['type'])
             ->toBe('string');
     });
-    test('keeps a reading the declaration admits, and the loaded relation\'s model a vague declaration admits', function () {
+    test('keeps a reading the declaration admits, and reads a vaguely declared local\'s relation from its value', function () {
         config()->set('ts-publish.output_to_files', false);
 
         expect(resolve(ResourceGenerator::class, ['findable' => DeclaredReadingResource::class])->content)
@@ -419,18 +429,20 @@ describe('an inline @var on a local assignment', function () {
             ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
     });
 
-    test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {
-        $closure = fn (string $declared): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
+    // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
+    test('never reads a member of a declared local through the loaded relation\'s model', function () {
+        $closure = fn (string $declared, string $value): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
             /** @var '.$declared.' $o */
-            $o = json_decode("");
+            $o = '.$value.';
 
             return $o->name;
         });')[0]->expr;
-        $resolved = fn (string $declared): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
-            ->resolve($closure($declared))['type'];
+        $resolved = fn (string $declared, string $value = 'json_decode("")'): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
+            ->resolve($closure($declared, $value))['type'];
 
-        expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('string')
-            ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown');
+        expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('unknown')
+            ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown')
+            ->and($resolved('\Illuminate\Database\Eloquent\Model', '$this->resource->getRelationValue("author")'))->toBe('string');
     });
     test('types a local from its assigned value when the engine reads it, and from the tag only where that is vague', function () {
         $value = function (string $body, ?string $modelOf = null): string {

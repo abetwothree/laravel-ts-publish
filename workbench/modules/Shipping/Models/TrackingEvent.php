@@ -18,16 +18,16 @@ class TrackingEvent extends Model
         'occurred_at',
     ];
 
+    public function shipment(): BelongsTo
+    {
+        return $this->belongsTo(Shipment::class);
+    }
+
     protected function casts(): array
     {
         return [
             'status' => Status::class,
             'occurred_at' => 'datetime',
         ];
-    }
-
-    public function shipment(): BelongsTo
-    {
-        return $this->belongsTo(Shipment::class);
     }
 }

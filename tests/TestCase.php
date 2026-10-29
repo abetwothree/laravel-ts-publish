@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -13,6 +14,9 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -65,20 +69,16 @@ class TestCase extends Orchestra
         PublishedResourceRegistry::reset();
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
+        ClassTypeOverride::flush();
+        ComposedClassTypes::flush();
+        RoutedControllers::flush();
         CallArguments::reset();
+        ValueResult::forgetEnumNames();
         CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
-    }
-
-    protected function getPackageProviders($app)
-    {
-        return [
-            LaravelTsPublishServiceProvider::class,
-            WorkbenchServiceProvider::class,
-        ];
     }
 
     public function getEnvironmentSetUp($app)
@@ -144,6 +144,15 @@ class TestCase extends Orchestra
             'ts-publish.resources.additional_directories' => $modules,
             'ts-publish.form_requests.additional_directories' => $modules,
             'ts-publish.broadcast_events.additional_directories' => $modules,
+            'ts-publish.class_types.additional_directories' => [workbench_path('app/Packages/Ui')],
         ]);
+    }
+
+    protected function getPackageProviders($app)
+    {
+        return [
+            LaravelTsPublishServiceProvider::class,
+            WorkbenchServiceProvider::class,
+        ];
     }
 }

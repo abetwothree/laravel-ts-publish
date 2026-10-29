@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MatchEnumShapesResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use PhpParser\Node\Expr;

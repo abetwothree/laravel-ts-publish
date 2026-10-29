@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Commands;
 
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -43,6 +45,9 @@ use Throwable;
 
 /**
  * @phpstan-import-type AnalysisWarning from AnalysisWarnings
+ *
+ * @phpstan-type PublishFlags = array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool, 7: bool, 8: bool}
+ * @phpstan-type PublishType = array{enabled: bool, option: string, label: string, functional: bool}
  */
 class TsPublishCommand extends Command
 {
@@ -54,6 +59,7 @@ class TsPublishCommand extends Command
         {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
+        {--only-class-types : Only publish composed class type modules (ignoring all other types)}
         {--only-form-requests : Only publish form requests (ignoring all other types)}
         {--only-functional : Only publish enabled functional content, skipping model and resource interfaces}
         {--only-enums : Only publish enums (ignoring all other types)}
@@ -62,7 +68,7 @@ class TsPublishCommand extends Command
         {--only-resources : Only publish resources (ignoring all other types)}
         {--only-routes : Only publish routes (ignoring all other types)}';
 
-    protected $description = 'Publish TypeScript files from enums, models, model metadata, resources, routes, form requests, broadcast channels, and broadcast events';
+    protected $description = 'Publish TypeScript files from enums, models, model metadata, resources, routes, form requests, broadcast channels, broadcast events, and composed class types';
 
     public function handle(): int
     {
@@ -95,6 +101,7 @@ class TsPublishCommand extends Command
 
         $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
         $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
+        $onlyClassTypes = (bool) $this->option('only-class-types');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyFormRequests = (bool) $this->option('only-form-requests');
         $onlyModelMetadata = (bool) $this->option('only-model-metadata');
@@ -102,7 +109,7 @@ class TsPublishCommand extends Command
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
 
-        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyModelMetadata + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents;
+        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyModelMetadata + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents + (int) $onlyClassTypes;
 
         if ($onlyCount > 1) {
             $this->reportError('Cannot use multiple --only-* options together. Please specify only one or none of these options.');
@@ -188,6 +195,7 @@ class TsPublishCommand extends Command
             $runner->shouldPublishFormRequests,
             $runner->shouldPublishBroadcastChannels,
             $runner->shouldPublishBroadcastEvents,
+            $runner->shouldPublishClassTypes,
         ] = $flags;
 
         try {
@@ -262,6 +270,7 @@ class TsPublishCommand extends Command
                 $runner->shouldPublishFormRequests,
                 $runner->shouldPublishBroadcastChannels,
                 $runner->shouldPublishBroadcastEvents,
+                $runner->shouldPublishClassTypes,
             ] = $flags;
             $runner->run();
         } catch (Throwable $e) {
@@ -286,7 +295,8 @@ class TsPublishCommand extends Command
     /**
      * Resolve the final publish flags from config values and command options.
      *
-     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool, 7: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishModelMetadata, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests, shouldPublishBroadcastChannels, shouldPublishBroadcastEvents] or null to abort
+     * @return PublishFlags|null whether to publish enums, models, model metadata, resources, routes, form requests,
+     *                           broadcast channels, broadcast events and class types, in that order; null to abort
      */
     protected function resolvePublishFlags(): ?array
     {
@@ -298,16 +308,18 @@ class TsPublishCommand extends Command
         // set because a route's annotateRequestPayload<T>() import follows form_requests.enabled rather
         // than this run's flag, so skipping the phase leaves that import pointing at a file no run wrote.
         // Enums, routes, metadata and both broadcast index files are the ones that emit runtime values.
-        /** @var array<string, array{config: string, option: string, label: string, functional: bool}> $types */
+        /** @var array<string, PublishType> $types */
         $types = [
-            'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
-            'broadcast_events' => ['config' => 'ts-publish.broadcast_events.enabled', 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
-            'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
-            'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
-            'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
-            'model_metadata' => ['config' => 'ts-publish.model_metadata.enabled', 'option' => 'only-model-metadata', 'label' => 'model metadata', 'functional' => true],
-            'resources' => ['config' => 'ts-publish.resources.enabled', 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
-            'routes' => ['config' => 'ts-publish.routes.enabled', 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
+            'broadcast_channels' => ['enabled' => Config::boolean('ts-publish.broadcast_channels.enabled', false), 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
+            'broadcast_events' => ['enabled' => Config::boolean('ts-publish.broadcast_events.enabled', false), 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
+            // Kept for the reason form requests are: a file another phase writes can import a composed module.
+            'class_types' => ['enabled' => ComposedClassTypes::enabled(), 'option' => 'only-class-types', 'label' => 'class types', 'functional' => true],
+            'form_requests' => ['enabled' => Config::boolean('ts-publish.form_requests.enabled', false), 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
+            'enums' => ['enabled' => Config::boolean('ts-publish.enums.enabled', false), 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
+            'models' => ['enabled' => Config::boolean('ts-publish.models.enabled', false), 'option' => 'only-models', 'label' => 'models', 'functional' => false],
+            'model_metadata' => ['enabled' => Config::boolean('ts-publish.model_metadata.enabled', false), 'option' => 'only-model-metadata', 'label' => 'model metadata', 'functional' => true],
+            'resources' => ['enabled' => Config::boolean('ts-publish.resources.enabled', false), 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
+            'routes' => ['enabled' => Config::boolean('ts-publish.routes.enabled', false), 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
         ];
 
         /** @var array<string, bool> $flags */
@@ -316,7 +328,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config'], false);
+                : $type['enabled'];
         }
 
         if ($onlyFunctional) {
@@ -328,7 +340,7 @@ class TsPublishCommand extends Command
                 return null;
             }
 
-            return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
+            return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events'], $flags['class_types']];
         }
 
         // validateOnlyOptions() already guaranteed at most one --only-* flag is set.
@@ -348,7 +360,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'], false)) {
+            if ($activeType['enabled']) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);
@@ -361,13 +373,13 @@ class TsPublishCommand extends Command
 
         if (! in_array(true, $flags, true)) {
             if (! $this->output->isQuiet()) {
-                warning('Enums, models, model metadata, resources, routes, form requests, broadcast channels, and broadcast events are all disabled in config. Nothing to publish.');
+                warning('Enums, models, model metadata, resources, routes, form requests, broadcast channels, broadcast events, and class types are all disabled in config. Nothing to publish.');
             }
 
             return null;
         }
 
-        return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
+        return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events'], $flags['class_types']];
     }
 
     protected function promptConfigOverride(string $type): bool
@@ -493,6 +505,26 @@ class TsPublishCommand extends Command
             }
         }
 
+        if (count($runner->classTypeGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Class Types:');
+            foreach ($runner->classTypeGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+
+        if (count($runner->classTypeModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Class Type Barrel Files:');
+            foreach ($runner->classTypeModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
         if (! empty($runner->viteEnvContent)) {
             $viteEnvFilename = Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts');
             $this->newLine();
@@ -594,6 +626,7 @@ class TsPublishCommand extends Command
             'route controller' => $runner->routeGenerators->count(),
             'form request' => $runner->formRequestGenerators->count(),
             'broadcast event' => $runner->broadcastEventGenerators->count(),
+            'class type' => $runner->classTypeGenerators->count(),
         ], fn (int $count) => $count > 0);
     }
 
@@ -769,6 +802,22 @@ class TsPublishCommand extends Command
             );
         }
 
+        if (count($runner->classTypeGenerators) > 0) {
+            note('Class Types');
+
+            /** @var array<int, array<int, string>> $classTypeRows */
+            $classTypeRows = $runner->classTypeGenerators->map(fn (ClassTypeGenerator $g) => [
+                $g->transformer->typeName,
+                $g->transformer->namespacePath.'/'.$g->filename().'.ts',
+                (string) count($g->transformer->extends),
+            ])->toArray();
+
+            table(
+                headers: ['Class Type', 'File', 'Extends'],
+                rows: $classTypeRows,
+            );
+        }
+
         $extras = $this->collectExtras($runner);
 
         if (count($extras) > 0) {
@@ -794,6 +843,7 @@ class TsPublishCommand extends Command
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
             ...array_map(fn (string $path) => ['Form Request Barrel', "{$path}/index.ts"], array_keys($runner->formRequestModularBarrels)),
             ...array_map(fn (string $path) => ['Broadcast Event Barrel', "{$path}/index.ts"], array_keys($runner->broadcastEventModularBarrels)),
+            ...array_map(fn (string $path) => ['Class Type Barrel', "{$path}/index.ts"], array_keys($runner->classTypeModularBarrels)),
             $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,

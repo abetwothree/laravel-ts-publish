@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\DependencyFiles;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use Illuminate\Support\Str;
 use Workbench\App\Models\Post;
 

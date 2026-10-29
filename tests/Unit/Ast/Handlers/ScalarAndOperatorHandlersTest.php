@@ -3,15 +3,15 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\BinaryOpHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -31,6 +31,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\String_;
@@ -63,7 +64,7 @@ function throwingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -99,7 +100,7 @@ final class SpyExpressionEngine implements ExpressionEngine
         return $this->result;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -137,7 +138,7 @@ it('resolves a first-class callable as the call it stands for where the caller i
             return ['type' => $expr instanceof MethodCall && $expr->args === [] ? 'string' : 'wrong', 'optional' => false];
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             return null;
         }
@@ -221,23 +222,112 @@ it('resolves an array cast of an array literal by delegating to the engine for t
         ->and($engine->receivedExpr)->toBe($inner);
 });
 
-it('resolves an array cast of a non-array operand to unknown[] without calling the engine', function () {
-    $handler = new CastHandler;
-    $expr = new CastArray_(new Variable('x'));
+// An array a filter enters again once cast, so a key an object kept is no longer kept.
+it('resolves an array cast of an operand typed as an array to the operand', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false, 'keepsKeys' => true]);
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
+    expect(new CastHandler()->resolve(new CastArray_(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    'a list' => ['string[]'],
+    'an empty list' => ['never[]'],
+    'a tuple' => ['[number, string]'],
+    'a record' => ['Record<string, number>'],
+    'an object literal' => ['{ a: number }'],
+    'a list or the object its gaps make' => ['string[] | Record<number, string>'],
+]);
 
-    expect($result)->toBe(['type' => 'unknown[]', 'optional' => false]);
+it('resolves an array cast of an operand not typed as an array to unknown[]', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastArray_(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => 'unknown[]', 'optional' => false]);
+})->with([
+    'an untyped value' => ['unknown'],
+    'a scalar, which PHP wraps in a list' => ['string'],
+    'a list or null' => ['string[] | null'],
+    'a named type' => ['PostResource'],
+]);
+
+// An object's array form holds its private and protected members under mangled keys.
+it('resolves an array cast of an operand the receiver resolver names a class for to unknown[] without calling the engine', function () {
+    $expr = new CastArray_(new FuncCall(new Name('collect')));
+
+    expect(new CastHandler()->resolve($expr, handlerTestScope(), throwingEngine()))
+        ->toBe(['type' => 'unknown[]', 'optional' => false]);
 });
 
-it('declines an object cast', function () {
-    $handler = new CastHandler;
-    $expr = new CastObject(new Variable('x'));
+// An API resource's filter never enters an object, so every result keeps its keys.
+it('resolves an object cast arm by arm as the stdClass PHP builds', function (string $type, string $object) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
+    expect(new CastHandler()->resolve(new CastObject(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => $object, 'optional' => false, 'keepsKeys' => true]);
+})->with([
+    'null' => ['null', 'Record<string, never>'],
+    'a list' => ['string[]', 'Record<string, string>'],
+    'a list of a union' => ['(number | string)[]', 'Record<string, number | string>'],
+    'an empty list' => ['never[]', 'Record<string, never>'],
+    'a tuple' => ['[number, string]', 'Record<string, number | string>'],
+    'a tuple with an optional member' => ['[number, (string | null)?]', 'Record<string, number | string | null>'],
+    'an empty tuple' => ['[]', 'Record<string, never>'],
+    'a record' => ['Record<number, string>', 'Record<number, string>'],
+    'an object literal' => ['{ a: number }', '{ a: number }'],
+    'an intersection of objects' => ['{ a: number } & Record<number, string>', '{ a: number } & Record<number, string>'],
+    'a string literal' => ["'x'", "{ scalar: 'x' }"],
+    'a number literal' => ['1.5', '{ scalar: 1.5 }'],
+    'a boolean literal' => ['true', '{ scalar: true }'],
+    'a literal or null' => ["'x' | null", "{ scalar: 'x' } | Record<string, never>"],
+    'a list or the object its gaps make' => ['string[] | Record<number, string>', 'Record<string, string> | Record<number, string>'],
+    'two arms that build one object' => ['string[] | Record<string, string>', 'Record<string, string>'],
+]);
 
-    expect($result)->toBeNull();
+it('declines an object cast of an arm it cannot read', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new Variable('x')), handlerTestScope(), $engine))->toBeNull();
+})->with([
+    'an untyped value' => ['unknown'],
+    'an untyped value or null' => ['unknown | null'],
+    'a named type' => ['PostResource'],
+    'a list or a named type' => ['string[] | PostResource'],
+    // A Carbon date or a Stringable the resolver cannot name types as `string`, and PHP returns it unchanged.
+    'a string a variable holds' => ['string'],
+    'a number a variable holds' => ['number'],
+    'a boolean a variable holds' => ['boolean'],
+    'a string or null a variable holds' => ['string | null'],
+]);
+
+it('resolves an object cast of a scalar literal to the stdClass holding it under scalar', function (Expr $operand, string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject($operand), handlerTestScope(), $engine))
+        ->toBe(['type' => "{ scalar: {$type} }", 'optional' => false, 'keepsKeys' => true]);
+})->with([
+    'a string' => [fn (): Expr => new String_('x'), 'string'],
+    'an int' => [fn (): Expr => new Int_(1), 'number'],
+    'a float' => [fn (): Expr => new Float_(1.5), 'number'],
+    'true' => [fn (): Expr => new ConstFetch(new Name('true')), 'boolean'],
+    'false' => [fn (): Expr => new ConstFetch(new Name('FALSE')), 'boolean'],
+]);
+
+// PHP returns an object it casts unchanged, and builds an empty stdClass of null.
+it('resolves an object cast of an operand the receiver resolver names a class for to the operand', function () {
+    $engine = new SpyExpressionEngine(['type' => 'string[] | null', 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
+        ->toBe(['type' => 'string[] | Record<string, never>', 'optional' => false, 'keepsKeys' => true]);
 });
+
+it('declines an object cast of an operand the receiver resolver names a class for where an arm is untyped', function (string $type) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
+        ->toBeNull();
+})->with([
+    'an untyped value' => ['unknown'],
+    'a list or an untyped value' => ['string[] | unknown'],
+]);
 
 // ScalarHandler
 

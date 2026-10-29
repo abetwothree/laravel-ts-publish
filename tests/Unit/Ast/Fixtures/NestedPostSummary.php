@@ -19,36 +19,36 @@ final class NestedPostSummary
     /** The level below, reached twice. */
     public function level1(): array
     {
-        return ['inner' => (new NestedPostSummary)->level0() ?? (new NestedPostSummary)->level0()];
+        return ['inner' => (new self)->level0() ?? (new self)->level0()];
     }
 
     /** The level below, reached twice. */
     public function level2(): array
     {
-        return ['inner' => (new NestedPostSummary)->level1() ?? (new NestedPostSummary)->level1()];
+        return ['inner' => (new self)->level1() ?? (new self)->level1()];
     }
 
     /** The level below, reached twice. */
     public function level3(): array
     {
-        return ['inner' => (new NestedPostSummary)->level2() ?? (new NestedPostSummary)->level2()];
+        return ['inner' => (new self)->level2() ?? (new self)->level2()];
     }
 
     /** The level below, reached twice. */
     public function level4(): array
     {
-        return ['inner' => (new NestedPostSummary)->level3() ?? (new NestedPostSummary)->level3()];
+        return ['inner' => (new self)->level3() ?? (new self)->level3()];
     }
 
     /** The level below, reached twice. */
     public function level5(): array
     {
-        return ['inner' => (new NestedPostSummary)->level4() ?? (new NestedPostSummary)->level4()];
+        return ['inner' => (new self)->level4() ?? (new self)->level4()];
     }
 
     /** The level below, reached twice. */
     public function level6(): array
     {
-        return ['inner' => (new NestedPostSummary)->level5() ?? (new NestedPostSummary)->level5()];
+        return ['inner' => (new self)->level5() ?? (new self)->level5()];
     }
 }

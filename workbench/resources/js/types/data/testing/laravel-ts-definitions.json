@@ -302,6 +302,11 @@
                     "name": "kept",
                     "type": "AppStatusType",
                     "optional": false
+                },
+                {
+                    "name": "status_name",
+                    "type": "AppStatusKind",
+                    "optional": false
                 }
             ]
         },
@@ -436,6 +441,63 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\UiBoardUpdated": {
+            "name": "UiBoardUpdated",
+            "eventName": "UiBoardUpdated",
+            "broadcastName": ".Workbench.App.Events.UiBoardUpdated",
+            "properties": [
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "gauge",
+                    "type": "UiGauge",
+                    "optional": false
+                },
+                {
+                    "name": "pennies",
+                    "type": "UiAmount",
+                    "optional": false
+                },
+                {
+                    "name": "badge",
+                    "type": "UiIcon",
+                    "optional": false
+                },
+                {
+                    "name": "maybe",
+                    "type": "UiNode | null",
+                    "optional": false
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType",
+                    "optional": false
+                },
+                {
+                    "name": "maybeChart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[]",
+                    "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\UserNotification": {
             "name": "UserNotification",
             "eventName": "UserNotification",
@@ -524,6 +586,23 @@
                     "type": "Partial<CrmUser>",
                     "optional": false
                 }
+            ]
+        }
+    },
+    "classTypes": {
+        "Workbench\\App\\Packages\\Ui\\Chart": {
+            "name": "ChartType",
+            "extends": [
+                "UiHello",
+                "UiIcon",
+                "UiNode"
+            ]
+        },
+        "Workbench\\App\\Packages\\Ui\\Dial": {
+            "name": "DialType",
+            "extends": [
+                "UiDial",
+                "UiNode"
             ]
         }
     },
@@ -1660,6 +1739,31 @@
                     }
                 }
             }
+        },
+        "Workbench\\App\\Enums\\UiTone": {
+            "name": "UiTone",
+            "cases": [
+                {
+                    "name": "Bright",
+                    "value": "bright",
+                    "description": ""
+                },
+                {
+                    "name": "Dim",
+                    "value": "dim",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Bright'",
+                "'Dim'"
+            ],
+            "caseTypes": [
+                "'bright'",
+                "'dim'"
+            ],
+            "methods": [],
+            "staticMethods": []
         },
         "Workbench\\App\\Enums\\Visibility": {
             "name": "Visibility",
@@ -7838,15 +7942,15 @@
                     "type": "string | null"
                 },
                 {
+                    "name": "formatted_bio",
+                    "type": "string"
+                },
+                {
                     "name": "age",
                     "type": "number | null"
                 },
                 {
                     "name": "display_summary",
-                    "type": "string"
-                },
-                {
-                    "name": "formatted_bio",
                     "type": "string"
                 },
                 {
@@ -8159,7 +8263,7 @@
                 },
                 {
                     "name": "dynamic_totals",
-                    "type": "unknown[]"
+                    "type": "{ [key: `k${string}`]: unknown | undefined }"
                 },
                 {
                     "name": "length_callable",
@@ -9132,6 +9236,47 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\UiBoard": {
+            "name": "UiBoard",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "panels",
+                    "type": "UiNode[] | null"
+                },
+                {
+                    "name": "charts",
+                    "type": "ChartType[] | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "chart",
+                    "type": "ChartType"
+                },
+                {
+                    "name": "uploader_from_docblock",
+                    "type": "User | null"
+                },
+                {
+                    "name": "gauge_from_docblock",
+                    "type": "UiGauge"
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\UntypedColumn": {
             "name": "UntypedColumn",
             "properties": [
@@ -9273,6 +9418,14 @@
                     "type": "DatabaseNotification[]"
                 },
                 {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]"
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]"
+                },
+                {
                     "name": "profile_count",
                     "type": "number"
                 },
@@ -9313,6 +9466,14 @@
                     "type": "number"
                 },
                 {
+                    "name": "read_notifications_count",
+                    "type": "number"
+                },
+                {
+                    "name": "unread_notifications_count",
+                    "type": "number"
+                },
+                {
                     "name": "profile_exists",
                     "type": "boolean"
                 },
@@ -9350,6 +9511,14 @@
                 },
                 {
                     "name": "notifications_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "read_notifications_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "unread_notifications_exists",
                     "type": "boolean"
                 }
             ]
@@ -10790,9 +10959,74 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BaseNoticeResource": {
+            "name": "BaseNoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BaseSharedResource": {
             "name": "BaseSharedResource",
             "properties": []
+        },
+        "Workbench\\App\\Http\\Resources\\BlockScopedBindingsResource": {
+            "name": "BlockScopedBindingsResource",
+            "properties": [
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "bytes",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "loop_post_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "guarded_post_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "positive_title",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "positive_email",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_post_key",
+                    "type": "{ k: number } | null",
+                    "optional": true
+                }
+            ]
         },
         "Workbench\\App\\Http\\Resources\\BodylessOrderResource": {
             "name": "BodylessOrderResource",
@@ -11501,6 +11735,46 @@
                     "name": "main_tag",
                     "type": "number",
                     "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\CategoryBranchesResource": {
+            "name": "CategoryBranchesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "mode",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "top",
+                    "type": "CategoryResource | null",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string | number | boolean",
+                    "optional": false
+                },
+                {
+                    "name": "first_only",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "described",
+                    "type": "boolean",
+                    "optional": true
                 }
             ]
         },
@@ -12698,7 +12972,7 @@
                 },
                 {
                     "name": "user_role",
-                    "type": "AsEnum<typeof Role>",
+                    "type": "AsEnum<typeof Role> | null",
                     "optional": true
                 }
             ]
@@ -13319,6 +13593,16 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
                 }
             ]
         },
@@ -13357,7 +13641,7 @@
                 },
                 {
                     "name": "stage_name",
-                    "type": "string",
+                    "type": "StatusKind",
                     "optional": true
                 }
             ]
@@ -13618,6 +13902,16 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
                 }
             ]
         },
@@ -13696,7 +13990,7 @@
             "properties": [
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 }
             ]
@@ -15151,12 +15445,12 @@
             "properties": [
                 {
                     "name": "early",
-                    "type": "unknown",
+                    "type": "string | null",
                     "optional": true
                 },
                 {
                     "name": "late",
-                    "type": "unknown",
+                    "type": "number",
                     "optional": true
                 }
             ]
@@ -15216,7 +15510,7 @@
                 },
                 {
                     "name": "shadowed",
-                    "type": "unknown",
+                    "type": "string | null",
                     "optional": false
                 }
             ]
@@ -15271,17 +15565,117 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MappedCollectionsResource": {
+            "name": "MappedCollectionsResource",
+            "properties": [
+                {
+                    "name": "collected_spread",
+                    "type": "(Omit<Comment, 'flag'> & { flag: boolean })[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_reads",
+                    "type": "({ content: string; who: string | null })[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_spread_in_author",
+                    "type": "(Omit<Comment, 'flag'> & { flag: boolean })[]",
+                    "optional": true
+                },
+                {
+                    "name": "local_rows",
+                    "type": "({ who: string | null })[]",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_rows",
+                    "type": "(Pick<Comment, 'id' | 'content'>)[]",
+                    "optional": false
+                },
+                {
+                    "name": "local_proxy",
+                    "type": "{ id: number; content: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "reassigned_parameter",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "keyed_rows",
+                    "type": "{ id: number }[] | Record<string, { id: number }>",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_ids",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_listed_ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_first",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_values",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "mapped_values",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "query_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "declared_first",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "all_posts",
+                    "type": "PostResource[]",
+                    "optional": false
+                },
+                {
+                    "name": "post_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "query_service_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "unflagged_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MediaTypeInstanceOfResource": {
             "name": "MediaTypeInstanceOfResource",
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15296,12 +15690,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": true
                 },
                 {
@@ -15321,12 +15715,12 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "MediaTypeKind",
                     "optional": false
                 },
                 {
                     "name": "value",
-                    "type": "string",
+                    "type": "MediaTypeType",
                     "optional": false
                 },
                 {
@@ -15673,6 +16067,21 @@
                     "name": "currency",
                     "type": "CurrencyType",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MergedPostResource": {
+            "name": "MergedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },
@@ -16106,6 +16515,36 @@
             "properties": [
                 {
                     "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NoticeResource": {
+            "name": "NoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "child_only",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "meta",
                     "type": "number",
                     "optional": false
                 }
@@ -16825,6 +17264,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostBuiltValuesResource": {
+            "name": "PostBuiltValuesResource",
+            "properties": [
+                {
+                    "name": "built",
+                    "type": "{ id: number; title: string }",
+                    "optional": true
+                },
+                {
+                    "name": "branched",
+                    "type": "{ id: number; flag: string | number }",
+                    "optional": true
+                },
+                {
+                    "name": "key_written",
+                    "type": "{ id: number } | { id: number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "unset_beside",
+                    "type": "{ id: number }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostCollection": {
             "name": "PostCollection",
             "properties": [
@@ -17044,12 +17508,12 @@
                 },
                 {
                     "name": "status_label",
-                    "type": "{ label: string; value: number }",
+                    "type": "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
                     "optional": false
                 },
                 {
                     "name": "status_payload",
-                    "type": "{ payload_status: unknown; payload_name: string }",
+                    "type": "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
                     "optional": false
                 },
                 {
@@ -17059,7 +17523,7 @@
                 },
                 {
                     "name": "payload_name",
-                    "type": "string",
+                    "type": "StatusKind",
                     "optional": false
                 }
             ]
@@ -18162,7 +18626,7 @@
                 },
                 {
                     "name": "formatted",
-                    "type": "unknown",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -19315,6 +19779,16 @@
                     "optional": true
                 },
                 {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
                     "name": "full_name",
                     "type": "string",
                     "optional": false
@@ -19456,6 +19930,16 @@
                 },
                 {
                     "name": "notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
                 },
@@ -20086,6 +20570,71 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TagDefaultsResource": {
+            "name": "TagDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TagParentDefaultsResource": {
+            "name": "TagParentDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "color",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "posts",
+                    "type": "Post[]",
+                    "optional": true
+                },
+                {
+                    "name": "products",
+                    "type": "Product[]",
+                    "optional": true
+                },
+                {
+                    "name": "note",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\TagResource": {
             "name": "TagResource",
             "properties": [
@@ -20396,6 +20945,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TieredNoticeResource": {
+            "name": "TieredNoticeResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "base_only",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ToArrayCastsResource": {
             "name": "ToArrayCastsResource",
             "properties": [
@@ -20571,6 +21145,71 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\UiPanelResource": {
+            "name": "UiPanelResource",
+            "properties": [
+                {
+                    "name": "chart",
+                    "type": "ChartType",
+                    "optional": false
+                },
+                {
+                    "name": "dial",
+                    "type": "DialType | null",
+                    "optional": false
+                },
+                {
+                    "name": "panel",
+                    "type": "UiNode",
+                    "optional": false
+                },
+                {
+                    "name": "panels",
+                    "type": "UiNode[]",
+                    "optional": false
+                },
+                {
+                    "name": "when_panel",
+                    "type": "UiNode",
+                    "optional": true
+                },
+                {
+                    "name": "maybe_chart",
+                    "type": "ChartType | null",
+                    "optional": false
+                },
+                {
+                    "name": "tone",
+                    "type": "UiToneDto",
+                    "optional": false
+                },
+                {
+                    "name": "tone_resource",
+                    "type": "AsEnum<typeof UiTone>",
+                    "optional": false
+                },
+                {
+                    "name": "board",
+                    "type": "{ panel: UiNode; chart: ChartType; gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }",
+                    "optional": false
+                },
+                {
+                    "name": "shaped",
+                    "type": "{ chart: ChartType; panel: UiNode; gauges: UiGauge[] }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped",
+                    "type": "{ panel: UiNode; chart: ChartType }",
+                    "optional": false
+                },
+                {
+                    "name": "gauge_attr",
+                    "type": "UiGauge",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\UnionHonestyResource": {
             "name": "UnionHonestyResource",
             "properties": [
@@ -20613,6 +21252,26 @@
                     "name": "coalesce_right",
                     "type": "string",
                     "optional": false
+                },
+                {
+                    "name": "binding_join_old",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "binding_join_written",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "walk_branch_join",
+                    "type": "{ id: number; value: string }",
+                    "optional": true
+                },
+                {
+                    "name": "merge_branch_join",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },
@@ -20621,7 +21280,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "string",
+                    "type": "VisibilityType",
                     "optional": false
                 },
                 {
@@ -20801,6 +21460,16 @@
                 },
                 {
                     "name": "notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": false
+                },
+                {
+                    "name": "readNotifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": false
+                },
+                {
+                    "name": "unreadNotifications",
                     "type": "DatabaseNotification[]",
                     "optional": false
                 }

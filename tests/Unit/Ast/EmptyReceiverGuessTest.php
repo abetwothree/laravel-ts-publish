@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\EmptyReceiverGuess;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\EmptyReceiverGuess;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFlatCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\HandoverCollection;

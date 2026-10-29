@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -104,7 +104,7 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -143,7 +143,7 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('Unexpected expression passed to ConditionalMethodHandlerArmStubEngine');
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -185,17 +185,13 @@ function conditionalMethodHandlerResolveArms(string $method, array $value, ?arra
 }
 
 /**
- * An engine that records the scope's closureRelationModelClass/varModelBindings/
- * varCollectionBindings at the moment it is called, proving whenLoaded()'s bindings are live only
- * for the closure body's own resolution — and, for a to-many relation, that varModelBindings is
- * never written at all (the documented asymmetry: binding the element model to a bare param would
- * resolve it to a wrong-but-plausible singular type).
+ * An engine that records the scope's varModelBindings and varCollectionBindings when called: whenLoaded()'s bindings
+ * are live only for the closure body, and a to-many relation never writes varModelBindings (binding its element model
+ * to a bare parameter would type it as a wrong-but-plausible single model).
  */
 final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
 {
     public bool $wasCalled = false;
-
-    public ?string $relationModelClassDuringCall = null;
 
     /** @var array<string, class-string> */
     public array $varModelBindingsDuringCall = [];
@@ -210,14 +206,13 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
     public function resolve(Expr $expr): array
     {
         $this->wasCalled = true;
-        $this->relationModelClassDuringCall = $this->scope->closureRelationModelClass;
         $this->varModelBindingsDuringCall = $this->scope->varModelBindings;
         $this->varCollectionBindingsDuringCall = $this->scope->varCollectionBindings;
 
         return $this->result;
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -294,7 +289,6 @@ it('resolves whenCounted() with an explicit default as required and unioned', fu
 
 it('binds whenLoaded()\'s closure param to the related model only for the closure body, then restores scope', function () {
     $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
-    $scope->closureRelationModelClass = null;
     $scope->varModelBindings = ['unrelated' => Address::class];
     $scope->varCollectionBindings = [];
 
@@ -310,10 +304,8 @@ it('binds whenLoaded()\'s closure param to the related model only for the closur
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
     expect($engine->wasCalled)->toBeTrue()
-        ->and($engine->relationModelClassDuringCall)->toBe(Profile::class)
         ->and($engine->varModelBindingsDuringCall)->toBe(['unrelated' => Address::class, 'profile' => Profile::class])
         ->and($engine->varCollectionBindingsDuringCall)->toBe([])
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($result)->toBe(['type' => 'string | null', 'optional' => true]);
@@ -324,7 +316,6 @@ it('binds a to-many whenLoaded()\'s closure param to the collection type, never 
     // The asymmetry this pins: the element model is never bound to the bare param — only the whole
     // collection type is — because a wrong-but-plausible singular binding would be worse than none.
     $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
-    $scope->closureRelationModelClass = null;
     $scope->varModelBindings = ['unrelated' => Address::class];
     $scope->varCollectionBindings = [];
 
@@ -340,12 +331,10 @@ it('binds a to-many whenLoaded()\'s closure param to the collection type, never 
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
     expect($engine->wasCalled)->toBeTrue()
-        ->and($engine->relationModelClassDuringCall)->toBe(Post::class)
         ->and($engine->varModelBindingsDuringCall)->toBe(['unrelated' => Address::class])
         ->and($engine->varCollectionBindingsDuringCall)->toBe([
             'posts' => ['type' => 'Post[]', 'modelFqcn' => Post::class],
         ])
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($result)->toBe(['type' => 'string', 'optional' => true]);
@@ -947,8 +936,8 @@ it('reads a parameter bound to an enum case default as that enum', function (str
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
         ->toBe($type);
 })->with([
-    '->value' => ['->value', 'number'],
-    '->name' => ['->name', 'string'],
+    '->value' => ['->value', 'StatusType'],
+    '->name' => ['->name', 'StatusKind'],
     'a method' => ['->icon()', 'string'],
 ]);
 
@@ -1277,7 +1266,7 @@ it('warns that a when() or unless() closure requiring a parameter throws, and ke
         ]);
 });
 
-it('records one warning, naming the call, for a when() or unless() closure that requires a parameter', function (string $php, string $message) {
+it('records one warning, naming the call, for a when(), unless() or whenNotNull() closure that requires a parameter', function (string $php, string $message) {
     conditionalMethodHandlerResolveOnPost($php);
 
     expect(AnalysisWarnings::all())->toBe([['subject' => PostResource::class, 'message' => $message]]);
@@ -1293,6 +1282,10 @@ it('records one warning, naming the call, for a when() or unless() closure that 
     'a condition that binds nothing' => [
         '$this->when($this->id > 0, fn ($t) => $t)',
         'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'whenNotNull(), whose closure is never null' => [
+        '$this->whenNotNull(fn ($t) => $t)',
+        'whenNotNull() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
     ],
 ]);
 
@@ -1314,6 +1307,7 @@ it('records no warning for a when() or unless() value Laravel can call with no a
     'no parameter' => ['$this->when($this->title, fn () => $this->title)'],
     'a value that is no closure' => ['$this->when($this->title, $this->title)'],
     'unless(), an optional parameter' => ['$this->unless($this->title, fn ($t = null) => $t)'],
+    'whenNotNull(), an optional parameter' => ['$this->whenNotNull(fn ($t = null) => $t)'],
 ]);
 
 // Conditionable::when() passes its callback the object and the value, so a callback that takes them is right. Only an

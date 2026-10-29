@@ -16,6 +16,13 @@ use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\EnumCasePayload;
+use Workbench\App\ValueObjects\EnumValuesPayload;
+use Workbench\App\ValueObjects\GuardedLinkPayload;
+use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\ReshapedListsPayload;
+use Workbench\App\ValueObjects\SameNamedKindsPayload;
+use Workbench\App\ValueObjects\TraitPanelPayload;
 
 /**
  * Renders `AstEngine::analyze()`'s three fields into real `.ts` modules, mechanically — no
@@ -53,6 +60,26 @@ function analysisProbeCases(): array
         'UserModel' => [User::class, 'toArray', User::class],
         // A form request, whose published interface is NOT an engine product — see the docs.
         'StorePostRequest' => [StorePostRequest::class, 'rules', null],
+        // Enum `->value` and `->name` reads, each the published alias with its import or the literal union.
+        'EnumValuesPayload' => [EnumValuesPayload::class, 'toArray', null],
+        // An enum case, a local holding one and a ternary of cases read as receivers of their enum.
+        'EnumCasePayload' => [EnumCasePayload::class, 'toArray', null],
+        // Two same-named enums' `->value` and `->name` reads, each `…Kind` aliased with its `…Type`'s prefix.
+        'SameNamedKindsPayload' => [SameNamedKindsPayload::class, 'toArray', null],
+        // One enum's `…Type` token and its same-named sibling's `…Kind` token in one union.
+        'SameNamedKindsUnions' => [SameNamedKindsPayload::class, 'unions', null],
+        // Two same-named enums' `->name` reads inside one nested array, each `…Kind` aliased with its own prefix.
+        'SameNamedKindsInner' => [SameNamedKindsPayload::class, 'inner', null],
+        // array_values() and (object) and (array) casts of a list, a Record and an object literal, and stdClass values.
+        'ReshapedListsPayload' => [ReshapedListsPayload::class, 'toArray', null],
+        // A helper that returns the array it is passed, its writes joined onto the argument's shape.
+        'GuardedLinkPayload' => [GuardedLinkPayload::class, 'toArray', null],
+        // The same helper and its kin read as values: a nested argument, a +=, a declared shape and an unread one.
+        'GuardedLinkPayloadValues' => [GuardedLinkPayload::class, 'values', null],
+        // An inherited toArray() whose `$this`, `static`, `self` and `parent` each name another class at run time.
+        'PanelPayload' => [PanelPayload::class, 'toArray', null],
+        // A trait-supplied toArray() whose `self` and `parent` name the class that uses the trait and its parent.
+        'TraitPanelPayload' => [TraitPanelPayload::class, 'toArray', null],
     ];
 }
 

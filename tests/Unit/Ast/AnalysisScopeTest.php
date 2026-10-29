@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -14,11 +17,17 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Http\Resources\BareFuncCallResource;
+use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\BasePanelPayload;
+use Workbench\App\ValueObjects\PanelPayload;
 
 it('constructs with the given subject reflection and model class', function () {
     $reflection = new ReflectionClass(stdClass::class);
@@ -29,13 +38,14 @@ it('constructs with the given subject reflection and model class', function () {
         ->and($scope->modelClass)->toBe('App\\Models\\Post')
         ->and($scope->instanceOfWrappedClass)->toBeNull()
         ->and($scope->forwardsUndeclaredMembersTo)->toBeNull()
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->closureParamExprBindings)->toBe([])
         ->and($scope->varModelBindings)->toBe([])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($scope->localVarBindings)->toBe([])
         ->and($scope->varDocBindings)->toBe([])
         ->and($scope->declaringFileClass)->toBe($reflection)
+        ->and($scope->declaringClass)->toBe($reflection)
+        ->and($scope->runtimeReflection)->toBe($reflection)
         ->and($scope->resolvingLocalVars)->toBe([])
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
@@ -60,7 +70,7 @@ it('derives no forwarding target without both a proxying subject and a backing m
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
-it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file', function () {
+it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file and declaring class', function () {
     $model = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);
     $scope = new AnalysisScope($model, Post::class);
@@ -70,7 +80,9 @@ it('rebases a model scope onto an API resource over the model, which forwards to
     expect($scope->subjectReflection)->toBe($resource)
         ->and($scope->modelClass)->toBe(Post::class)
         ->and($scope->forwardsUndeclaredMembersTo)->toBe(Post::class)
-        ->and($scope->declaringFileClass)->toBe($model);
+        ->and($scope->declaringFileClass)->toBe($model)
+        ->and($scope->runtimeReflection)->toBe($resource)
+        ->and($scope->declaringClass)->toBe($model);
 });
 
 it('rebases a resource scope onto a resource collection, which forwards nothing: its items are the proxy', function () {
@@ -93,18 +105,20 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
     foreach (['item', 'key', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
-        $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
+        $scope->varGuardBindings[$name] = [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varDeclaredBindings[$name] = [User::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
-        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null]];
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null, false]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
+        $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
+        $scope->passedValues[$name] = $expr;
     }
 
     return $scope;
@@ -153,26 +167,28 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });
 
-// A proof spells the read it proves, `$item` here, so it never holds for a read of another name, and a binding's end
-// is an offset in the caller's body, which the parameter's body never reaches.
-it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs, ends and gaps', function () {
+// A proof spells the read it proves, `$item` here, so it never holds for a read of another name; a binding's end is an
+// offset in the caller's body, which the parameter's body never reaches, and a key-built local walks the caller's body.
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs, ends, gaps and key-built locals', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     $scope->copyBindings(new Variable('item'), 'param', $captured);
 
-    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true, 'bindingGaps' => true])))->each->toBe(['param'])
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true, 'bindingGaps' => true, 'keyBuiltLocals' => true])))->each->toBe(['param'])
         ->and($scope->nonNullReads)->toBe([])
         ->and($scope->bindingEnds)->toBe([])
         ->and($scope->bindingGaps)->toBe([])
+        ->and($scope->keyBuiltLocals)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
-        ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
+        ->and($scope->varGuardBindings['param'])->toBe($captured['varGuardBindings']['item'])
         ->and($scope->varDocBindings['param'])->toBe($captured['varDocBindings']['item'])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
         ->and($scope->varDeclaredBindings['param'])->toBe([User::class])
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
+        ->and($scope->passedValues['param'])->toBe($captured['passedValues']['item'])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
         ->and($scope->byReferenceForms['param'])->toBe($captured['byReferenceForms']['item'])
         ->and($scope->requestVarNames['param'])->toBe(Request::class);
@@ -192,7 +208,7 @@ it('holds a binding for a read up to its end, and always for a name with no end 
 
 it('holds no binding inside a gap, and holds it again past the gap', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $scope->bindingGaps['post'] = [[10, 20, null, false]];
+    $scope->bindingGaps['post'] = [[10, 20, null, false, false]];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
     expect($scope->holdsBinding($at(10)))->toBeTrue()
@@ -203,9 +219,9 @@ it('holds no binding inside a gap, and holds it again past the gap', function ()
 
 it('finds the gap a read falls in, the one whose write came latest', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $first = [10, 30, [new Variable('first')], false];
-    $second = [20, 30, [new Variable('second')], true];
-    $third = [40, 50, null, false];
+    $first = [10, 30, [new Variable('first')], false, false];
+    $second = [20, 30, [new Variable('second')], true, false];
+    $third = [40, 50, null, false, false];
     $scope->bindingGaps['post'] = [$first, $second, $third];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
@@ -215,10 +231,70 @@ it('finds the gap a read falls in, the one whose write came latest', function ()
         ->and($scope->gapAt($at(35)))->toBeNull();
 });
 
+it('finds the guard a read falls in, the one that starts latest, or the one bound last where two start together', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $outer = ['classes' => [Post::class], 'after' => 10, 'before' => null];
+    $inner = ['classes' => [User::class], 'after' => 20, 'before' => 30];
+    $sameStart = ['classes' => [SubscribedTeam::class], 'after' => 20, 'before' => 30];
+    $scope->varGuardBindings['post'] = [$outer, $inner];
+    $at = fn (string $name, int $offset): Variable => new Variable($name, ['startFilePos' => $offset]);
+
+    expect($scope->guardAt($at('post', 10)))->toBeNull()
+        ->and($scope->guardAt($at('post', 15)))->toBe($outer)
+        ->and($scope->guardAt($at('post', 25)))->toBe($inner)
+        ->and($scope->guardAt($at('post', 30)))->toBe($inner)
+        ->and($scope->guardAt($at('post', 31)))->toBe($outer)
+        ->and($scope->guardAt($at('other', 25)))->toBeNull()
+        ->and($scope->guardAt(new Variable(new Variable('post'), ['startFilePos' => 25])))->toBeNull();
+
+    $scope->varGuardBindings['post'][] = $sameStart;
+
+    expect($scope->guardAt($at('post', 25)))->toBe($sameStart);
+});
+
+// The parameter holds the value the call passed, so the guard in force at the call holds for each of its reads.
+it('passes a parameter the guard in force where its variable is passed, for every read of the parameter', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $captured['varGuardBindings']['item'] = [
+        ['classes' => [Post::class], 'after' => 10, 'before' => null],
+        ['classes' => [SubscribedTeam::class], 'after' => 20, 'before' => 30],
+    ];
+    $passedAt = function (int $offset) use ($captured): array {
+        $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $scope->copyBindings(new Variable('item', ['startFilePos' => $offset]), 'param', $captured);
+
+        return $scope->varGuardBindings;
+    };
+
+    expect($passedAt(5))->toBe([])
+        ->and($passedAt(25))->toBe(['param' => [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]]])
+        ->and($passedAt(35))->toBe(['param' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]]]);
+});
+
+// The proofs on `$this->resource` sit under a key no variable spells, and their offsets are the body's that set them.
+it('keeps the proofs on $this->resource from every parameter, and sets them aside for a subject method\'s body', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $proof = [['classes' => [SubscribedTeam::class], 'after' => 0, 'before' => 99]];
+    $scope->varGuardBindings = [AnalysisScope::PROXY_GUARDS => $proof, 'item' => $proof];
+    $captured = $scope->nameBindings();
+
+    $scope->claimParameters(new ArrowFunction(['params' => [new Param(new Variable('item'))], 'expr' => new Variable('item')]));
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 5]), 'param', $captured);
+    $claimed = array_keys($scope->varGuardBindings);
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
+        fn (): array => $scope->varGuardBindings,
+    );
+
+    expect($claimed)->toBe([AnalysisScope::PROXY_GUARDS, 'param'])
+        ->and($inside)->toBe([])
+        ->and($scope->varGuardBindings[AnalysisScope::PROXY_GUARDS])->toBe($proof);
+});
+
 it('lifts one gap for a read, and puts it back', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $lifted = [10, 30, null, true];
-    $kept = [40, 50, null, false];
+    $lifted = [10, 30, null, true, false];
+    $kept = [40, 50, null, false, false];
     $scope->bindingGaps['post'] = [$lifted, $kept];
 
     $during = $scope->beforeGap('post', $lifted, fn (): array => $scope->bindingGaps);
@@ -238,6 +314,23 @@ it('passes a variable inside a gap on as one past its end', function () {
 
     expect($scope->varModelBindings)->toBe([])
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
+});
+
+// The old binding may still hold where it is passed, so the parameter holds it and the writes the gap carries alike.
+it('passes a variable inside a gap its old binding may hold past as that binding joined with the gap\'s writes', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $written = new Variable('written');
+    $captured['bindingEnds'] = [];
+    $captured['bindingGaps']['item'] = [[5, 9, [$written], true, true]];
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 6]), 'param', $captured);
+
+    expect($scope->varModelBindings)->toBe(['param' => User::class])
+        ->and($scope->varValueBindings)->toBe(['param' => ['type' => 'string', 'optional' => false]])
+        ->and($scope->bindingEnds)->toBe([])
+        ->and($scope->bindingGaps)->toBe(['param' => [[PHP_INT_MIN, PHP_INT_MAX, [$written], true, true]]])
+        ->and($scope->gapAt(new Variable('param', ['startFilePos' => 0])))->toBe([PHP_INT_MIN, PHP_INT_MAX, [$written], true, true]);
 });
 
 it('binds a name a parameter or a seeded binding holds, never one only the body\'s own tables hold', function () {
@@ -260,6 +353,23 @@ it('binds a name a parameter or a seeded binding holds, never one only the body\
         ->and($scope->bindsName('missing'))->toBeFalse();
 });
 
+it('binds a class name from every parameter table but the plain values', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $bodyOnly = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bodyOnly->localVarBindings['item'] = new Variable('outer');
+    $tables = ['varModelBindings', 'varDeclaredBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
+
+    foreach ($tables as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $scope->{$table}['item'];
+
+        expect($one->bindsClassName('item'))->toBe($table !== 'varValueBindings', $table);
+    }
+
+    expect($bodyOnly->bindsClassName('item'))->toBeFalse()
+        ->and($scope->bindsClassName('missing'))->toBeFalse();
+});
+
 // Past its end the variable holds only what the body assigned, so the parameter must not inherit the old class.
 it('copies only the body\'s own bindings of a variable passed past its end, and ends the parameter\'s before any read', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
@@ -268,7 +378,7 @@ it('copies only the body\'s own bindings of a variable passed past its end, and 
     $scope->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
 
     expect(array_keys(array_filter(array_diff_key($scope->nameBindings(), ['claimedClosures' => true]))))
-        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds'])
+        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds', 'passedValues'])
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
 });
 
@@ -291,7 +401,7 @@ it('ends a name\'s binding in exactly the tables a variable passed past its end 
     }
 });
 
-it('captures every public array table but the re-entrancy guards as a name binding', function () {
+it('captures every public array table but the re-entrancy guards and the narrowed `$this` reads as a name binding', function () {
     $tables = array_map(
         fn (ReflectionProperty $property): string => $property->getName(),
         array_filter(
@@ -299,43 +409,253 @@ it('captures every public array table but the re-entrancy guards as a name bindi
             fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
         ),
     );
-    $guards = ['resolvingLocalVars', 'visitedSpreadMethods'];
+    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads'];
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
-    expect(array_values(array_diff($tables, $guards)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
+    expect(array_values(array_diff($tables, $notNameKeyed)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
         ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
 });
 
-// leaveSubjectMethod() restores by hand each field enterSubjectMethod() set aside, so this round trip guards it.
-it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
+/**
+ * The scope fields a builder sets once, which within() leaves alone.
+ *
+ * @return list<string>
+ */
+function analysisScopeSetOnceFields(): array
+{
+    return [
+        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement',
+        'assumesRuntime',
+    ];
+}
+
+/**
+ * The bool fields within() puts back, one dataset row each; a placeholder row where there are none, so the test runs.
+ *
+ * @return list<string>
+ */
+function analysisScopeRestoredBools(): array
+{
+    $bools = array_values(array_map(
+        fn (ReflectionProperty $field): string => $field->getName(),
+        array_filter(
+            new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+            fn (ReflectionProperty $field): bool => ! $field->isStatic() && (string) $field->getType() === 'bool'
+                && ! in_array($field->getName(), analysisScopeSetOnceFields(), true),
+        ),
+    ));
+
+    return $bools === [] ? [''] : $bools;
+}
+
+/**
+ * A value for a scope field, from its name and the phase, so a field each phase sets reads as changed and a field
+ * put back from another's value differs. A bool holds one of two values, so only $odd starts apart from the others.
+ */
+function analysisScopeFieldValue(ReflectionProperty $field, string $phase, string $odd): mixed
+{
+    $name = $field->getName();
+
+    return match ((string) $field->getType()) {
+        'array', '?array' => [$name.$phase => true],
+        '?string' => "{$name}:{$phase}",
+        'bool' => ($phase === 'before') === ($name === $odd),
+        'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
+        default => throw new LogicException("No value for {$name}'s type."),
+    };
+}
+
+// Every field but those a builder sets once is given a value, and $enter changes each, so a field added to the scope
+// fails here until within() puts it back or it joins the fields set once.
+it('within() restores every name table and ambient field after a read, a throw included', function (string $throws, string $odd) {
+    $setOnce = analysisScopeSetOnceFields();
+    $ambient = [
+        'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
+        'runtimeReflection', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
+    ];
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $fields = array_values(array_filter(
+        new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+        fn (ReflectionProperty $field): bool => ! $field->isStatic() && ! in_array($field->getName(), $setOnce, true),
+    ));
+    $names = array_map(fn (ReflectionProperty $field): string => $field->getName(), $fields);
+
+    foreach ($fields as $field) {
+        $field->setValue($scope, analysisScopeFieldValue($field, 'before', $odd));
+    }
+
+    $before = get_object_vars($scope);
+    $seen = [];
+    $read = null;
+
+    try {
+        $read = $scope->within(
+            function (AnalysisScope $entered) use ($fields, &$seen, $throws, $odd): void {
+                foreach ($fields as $field) {
+                    $field->setValue($entered, analysisScopeFieldValue($field, 'entered', $odd));
+                }
+
+                if ($throws === 'enter') {
+                    $seen = get_object_vars($entered);
+
+                    throw new RuntimeException('The enter failed.');
+                }
+            },
+            function () use ($scope, &$seen, $throws): string {
+                $seen = get_object_vars($scope);
+
+                return $throws === 'read' ? throw new RuntimeException('The read failed.') : 'read';
+            },
+        );
+    } catch (RuntimeException) {
+    }
+
+    expect($names)->toEqualCanonicalizing([...array_keys(AnalysisScope::NO_NAME_BINDINGS), ...$ambient])
+        ->and(array_keys(array_filter($seen, fn (mixed $value, string $name): bool => $value !== $before[$name], ARRAY_FILTER_USE_BOTH)))
+        ->toEqualCanonicalizing($names)
+        ->and(get_object_vars($scope))->toBe($before)
+        ->and($read)->toBe($throws === 'none' ? 'read' : null);
+})->with([
+    'a read that returns' => ['none'],
+    'a read that throws' => ['read'],
+    'an enter that throws' => ['enter'],
+])->with(analysisScopeRestoredBools());
+
+// within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
+it('restores every field a subject method read sets aside', function () {
     $scope = analysisScopeWithEveryTableBound();
     $scope->resolvingLocalVars = ['item' => true];
-    $scope->closureRelationModelClass = User::class;
     $declaring = $scope->declaringFileClass;
     $before = $scope->nameBindings();
     $proofs = ['this' => [['read' => new Variable('this'), 'after' => null, 'before' => null]]];
+    $inside = [];
 
-    $caller = $scope->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs);
+    $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(Post::class, 'publishable'), $proofs),
+        function () use ($scope, &$inside): void {
+            $inside = [
+                $scope->nameBindings(),
+                $scope->resolvingLocalVars,
+                $scope->declaringFileClass->getName(),
+                $scope->visitedSpreadMethods,
+                $scope->readsSpreadMethod(new ReflectionMethod(DraftPost::class, 'publishable')),
+                $scope->readsSpreadMethod(new ReflectionMethod(StaticSyntaxResource::class, 'publishable')),
+            ];
 
-    expect($scope->nameBindings())->toBe([...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs])
-        ->and($scope->resolvingLocalVars)->toBe([])
-        ->and($scope->closureRelationModelClass)->toBeNull()
-        ->and($scope->declaringFileClass->getName())->toBe(Post::class)
-        ->and($scope->visitedSpreadMethods)->toBe(['helper' => true]);
+            $scope->localVarBindings['inner'] = new Variable('body');
+            $scope->bindingEnds['inner'] = 3;
+            $scope->resolvingLocalVars['inner'] = true;
+            $scope->declaringFileClass = new ReflectionClass(User::class);
+        },
+    );
 
-    $scope->localVarBindings['inner'] = new Variable('body');
-    $scope->bindingEnds['inner'] = 3;
-    $scope->resolvingLocalVars['inner'] = true;
-    $scope->closureRelationModelClass = Post::class;
-    $scope->declaringFileClass = new ReflectionClass(User::class);
-
-    $scope->leaveSubjectMethod('helper', $caller);
-
-    expect($scope->nameBindings())->toBe($before)
+    expect($inside)->toBe([
+        [...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, [Post::class.'::publishable' => true], true, false,
+    ])
+        ->and($scope->nameBindings())->toBe($before)
         ->and($scope->resolvingLocalVars)->toBe(['item' => true])
-        ->and($scope->closureRelationModelClass)->toBe(User::class)
         ->and($scope->declaringFileClass)->toBe($declaring)
         ->and($scope->visitedSpreadMethods)->toBe([]);
+});
+
+// `self` names the class whose method the body is, and a trait's method is the using class's own.
+it('restores the declaring class with the rest of the state', function (string $subject, string $method, string $declaring, string $file) {
+    $scope = new AnalysisScope(new ReflectionClass($subject));
+    $inside = [];
+
+    $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod($subject, $method), []),
+        function () use ($scope, &$inside): void {
+            $inside = [
+                $scope->declaringClass->getName(),
+                $scope->declaringFileClass->getName(),
+                $scope->runtimeReflection->getName(),
+            ];
+
+            $scope->declaringClass = new ReflectionClass(User::class);
+        },
+    );
+
+    expect($inside)->toBe([$declaring, $file, $subject])
+        ->and($scope->declaringClass->getName())->toBe($subject)
+        ->and($scope->declaringFileClass->getName())->toBe($subject)
+        ->and($scope->runtimeReflection->getName())->toBe($subject);
+})->with([
+    'an inherited method' => [PanelPayload::class, 'toArray', BasePanelPayload::class, BasePanelPayload::class],
+    'a trait\'s method' => [BareFuncCallResource::class, 'includeMorphValue', BareFuncCallResource::class, IncludesMorphValue::class],
+]);
+
+// PHP binds a private member to the class whose body reads it; any other member is the runtime class's.
+it('reaches a $this member on the declaring class only where it declares that member private', function (string $member, bool $isMethod, string $reached) {
+    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
+    $scope->declaringClass = new ReflectionClass(BasePanelPayload::class);
+
+    expect($scope->thisMemberClass($member, $isMethod)->getName())->toBe($reached);
+})->with([
+    'a private method' => ['weight', true, BasePanelPayload::class],
+    'a private property' => ['secret', false, BasePanelPayload::class],
+    'a public method the runtime class overrides' => ['title', true, PanelPayload::class],
+    'a protected method the runtime class overrides' => ['extra', true, PanelPayload::class],
+    'a protected property the runtime class redeclares' => ['tier', false, PanelPayload::class],
+    'a member neither declares' => ['missing', true, PanelPayload::class],
+]);
+
+it('reaches an ancestor\'s private member on the runtime class, since the declaring class cannot see it', function () {
+    $child = new ReflectionClass(new class extends BasePanelPayload {});
+    $scope = new AnalysisScope($child);
+
+    expect($scope->thisMemberClass('weight', true))->toBe($child)
+        ->and($scope->thisMemberClass('secret', false))->toBe($child);
+});
+
+// A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
+it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
+    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
+    $scope->assumesRuntime = $assumed;
+
+    expect([
+        $scope->assumesCallee(true), $scope->assumesCallee(false),
+        $scope->assumesBuilt(PanelPayload::class), $scope->assumesBuilt(BasePanelPayload::class),
+    ])->toBe([$assumed, true, $assumed, false])
+        ->and([AnalysisScope::assumesInjected(true), AnalysisScope::assumesInjected(false), AnalysisScope::ASSUMES_HELD_OBJECT])
+        ->toBe([false, true, true]);
+})->with(['a known scope' => [false], 'an assumed scope' => [true]]);
+
+// A write replaces what the caller's test saw on that path and every path through it, and only those.
+it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->provenProxy = [SubscribedTeam::class];
+    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)], [['author', 'team'], ReceiverType::of(Team::class)]];
+    $before = $scope->narrowedReads;
+
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
+        fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
+    );
+
+    expect($inside)->toBe([$keepsProxy ? [SubscribedTeam::class] : null, $kept])
+        ->and($scope->provenProxy)->toBe([SubscribedTeam::class])
+        ->and($scope->narrowedReads)->toBe($before);
+})->with([
+    'a body that writes nothing' => [[], true, [['author'], ['author', 'team']]],
+    'an unrelated $this->marker' => [[['marker']], true, [['author'], ['author', 'team']]],
+    'a member of $this->resource' => [[['resource', 'title']], true, [['author'], ['author', 'team']]],
+    'the inner path' => [[['author', 'team']], true, [['author']]],
+    'the outer path, and every path through it' => [[['author']], true, []],
+    '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
+]);
+
+it('takes one local by its syntax as the whole list does, leaving out one a by-reference call keeps in some form', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $bound = new Int_(1);
+    $scope->localVarBindings = ['kept' => $bound, 'sorted' => new Int_(2)];
+    $scope->byReferenceForms['sorted'] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
+
+    expect($scope->literalLocalBinding('kept'))->toBe($bound)
+        ->and($scope->literalLocalBinding('sorted'))->toBeNull()
+        ->and($scope->literalLocalBinding('missing'))->toBeNull()
+        ->and($scope->literalLocalBindings())->toBe(['kept' => $bound]);
 });
 
 it('binds any name only while a parameter table holds one', function () {

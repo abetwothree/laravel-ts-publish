@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
  * Spell the object arm `json_encode()` emits for a collection whose keys are no longer 0..n-1, and the list `values()`
- * turns it back into: RelationCollectionChainHandler and CollectionPipelineHandler add the arm, and VariableHandler
- * reads a trailing `values()` through the list.
+ * turns it back into: RelationCollectionChainHandler, CollectionPipelineHandler and ReceiverMethodReturnResolver add
+ * the arm, and VariableHandler reads a trailing `values()` through the list.
  *
  * @internal
  */

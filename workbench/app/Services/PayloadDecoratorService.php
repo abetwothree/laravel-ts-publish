@@ -11,6 +11,19 @@ namespace Workbench\App\Services;
 final class PayloadDecoratorService
 {
     /**
+     * Adds one key, called statically.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function decorateStatic(array $data): array
+    {
+        $data['seen'] = true;
+
+        return $data;
+    }
+
+    /**
      * Adds one key.
      *
      * @param  array<string, mixed>  $data
@@ -98,19 +111,6 @@ final class PayloadDecoratorService
      * @return array{seen: bool}
      */
     public function declared(array $data): array
-    {
-        $data['seen'] = true;
-
-        return $data;
-    }
-
-    /**
-     * Adds one key, called statically.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
-     */
-    public static function decorateStatic(array $data): array
     {
         $data['seen'] = true;
 

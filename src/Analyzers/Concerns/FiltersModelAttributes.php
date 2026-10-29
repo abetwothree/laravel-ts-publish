@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;

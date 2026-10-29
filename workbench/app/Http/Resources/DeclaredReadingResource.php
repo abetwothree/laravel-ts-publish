@@ -12,8 +12,8 @@ use Workbench\App\Models\User;
 
 /**
  * The engine reads each local's assigned value as a known type, so that reading stands over the inline `@var` and a
- * wider declaration never widens it. It cannot read what `$opaque` holds, so the declaration applies there, and inside
- * whenLoaded() the loaded relation's model, which is a `Model` too, types the member read.
+ * wider declaration never widens it. `$opaque` holds the author `getRelationValue()` loads, so its member read inside
+ * whenLoaded() types from that relation, not from the `Model` the declaration names.
  *
  * @mixin Post
  */

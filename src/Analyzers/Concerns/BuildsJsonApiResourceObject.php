@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
-use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
@@ -29,7 +29,7 @@ use ReflectionClass;
  * The resource object a `JsonApiResource` sends as `data`, composed from the analyzer's own reads of the runtime class:
  * `id`, `type`, `attributes`, and the `relationships`, `links` and `meta` Laravel sends only when they hold a key.
  *
- * The host also holds `$methodName`, `$context`, `$readsCall`, `$scope`, `$methodsOnStack` and `$lenientReads`.
+ * The host also holds `$methodName`, `$context`, `$readsCall`, `$scope` and `$methodsOnStack`.
  *
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type JsonApiRelationship from JsonApiResources
@@ -159,6 +159,9 @@ trait BuildsJsonApiResourceObject
         // Laravel drops an empty attributes object, so it is sure to be sent only while one member always is.
         $analysis->addProperty('attributes', $this->inlineObject($attributes), optional: ! self::sendsMemberAlways($attributes));
 
+        // A member read only partly leaves the whole object read only partly.
+        $analysis->readsCompletely = $attributes->readsCompletely;
+
         $relationships = JsonApiResources::relationships($runtime->getName(), $this->scope->modelClass);
 
         if ($relationships !== []) {
@@ -172,6 +175,7 @@ trait BuildsJsonApiResourceObject
 
             if ($member !== null) {
                 $analysis->addProperty($key, $this->inlineObject($member), optional: true);
+                $analysis->readsCompletely = $analysis->readsCompletely && $member->readsCompletely;
             }
         }
 
@@ -198,6 +202,7 @@ trait BuildsJsonApiResourceObject
 
         $analysis = new ResourceAnalysis;
         $analysis->addProperty('data', $this->inlineObject($object));
+        $analysis->readsCompletely = $object->readsCompletely;
 
         return $analysis;
     }
@@ -207,7 +212,7 @@ trait BuildsJsonApiResourceObject
      */
     protected function spreadsFrameworkToAttributes(ArrayItem $item): bool
     {
-        $parent = $this->scope->subjectReflection->getParentClass();
+        $parent = $this->scope->declaringClass->getParentClass();
 
         return $item->key === null
             && $item->unpack
@@ -303,10 +308,7 @@ trait BuildsJsonApiResourceObject
             return new ResourceAnalysis;
         }
 
-        $analysis = $analyzer->analyze();
-        $this->lenientReads += $analyzer->lenientReads;
-
-        return $analysis;
+        return $analyzer->analyze();
     }
 
     /**
@@ -397,7 +399,7 @@ trait BuildsJsonApiResourceObject
      */
     private function inlineObject(MethodAnalysis $analysis): array
     {
-        return new InlineArrayHandler()->inlineObjectResult($analysis);
+        return new InlineObjectResult()->of($analysis);
     }
 
     /**

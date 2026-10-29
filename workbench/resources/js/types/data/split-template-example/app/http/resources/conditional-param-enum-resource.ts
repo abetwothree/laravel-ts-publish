@@ -18,5 +18,5 @@ export interface ConditionalParamEnumResource
     status_resource?: AsEnum<typeof OrderStatus>;
     status_bare?: OrderStatusType;
     currency_resource?: AsEnum<typeof Currency>;
-    user_role?: AsEnum<typeof Role>;
+    user_role?: AsEnum<typeof Role> | null;
 }

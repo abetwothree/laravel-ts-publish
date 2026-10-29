@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;

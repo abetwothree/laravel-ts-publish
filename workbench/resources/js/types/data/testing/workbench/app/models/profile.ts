@@ -24,12 +24,12 @@ export interface Profile
 
 export interface ProfileMutators
 {
+    /** Old-style mutator for avatar URL capitalization */
+    formatted_bio: string;
     /** Computed age from date_of_birth */
     age: number | null;
     /** Full display name combining user name and bio snippet */
     display_summary: string;
-    /** Old-style mutator for avatar URL capitalization */
-    formatted_bio: string;
 }
 
 export interface ProfileRelations

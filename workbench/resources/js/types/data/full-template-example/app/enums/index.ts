@@ -13,5 +13,6 @@ export * from './role';
 export * from './season';
 export * from './size';
 export * from './status';
+export * from './ui-tone';
 export * from './visibility';
 export * from './week-days';

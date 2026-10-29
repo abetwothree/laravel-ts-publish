@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
@@ -28,6 +30,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 
 /**
+ * @phpstan-import-type PageKinds from InertiaPageAnalyzer
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
  * @phpstan-import-type TypesImportMap from Datable
@@ -38,6 +41,8 @@ class RouteTransformer extends CoreTransformer
 {
     use FiltersRoutes;
     use SnapshotsTransformerState;
+
+    protected const INVOKE = '__invoke';
 
     public protected(set) string $controllerName;
 
@@ -54,6 +59,9 @@ class RouteTransformer extends CoreTransformer
     /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
     protected array $actionPageTypeFqcns = [];
 
+    /** @var array<string, PageKinds> action method, as actions dedupe => per page type, each `…Kind` => its enum */
+    protected array $actionPageKinds = [];
+
     /** @var array<int, list<class-string>> Action index => enums whose const a page type reads through `typeof` */
     protected array $actionPageEnumConstFqcns = [];
 
@@ -68,8 +76,6 @@ class RouteTransformer extends CoreTransformer
 
     protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
 
-    protected const INVOKE = '__invoke';
-
     /** Whether any actions have page types that require the annotatePageProps import. */
     protected bool $hasPageTypes = false;
 
@@ -79,12 +85,21 @@ class RouteTransformer extends CoreTransformer
     /** Whether this controller is invokable (an action maps to __invoke). */
     protected bool $isInvokable = false;
 
+    /**
+     * Clear the static model instance cache.
+     */
+    public static function clearModelInstanceCache(): void
+    {
+        self::$modelInstanceCache = [];
+    }
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
             ->initInertiaAnalyzer()
             ->initActions()
+            ->spellSharedKindsApart()
             ->detectInvokable()
             ->buildTypeImports();
 
@@ -111,6 +126,17 @@ class RouteTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->controllerName);
+    }
+
+    /**
+     * The composed classes whose module a page type of this controller imports, read from its pages' imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn(...$this->actionExternalImports);
     }
 
     /** @return list<string> */
@@ -151,6 +177,41 @@ class RouteTransformer extends CoreTransformer
     protected function initActions(): self
     {
         $this->actions = $this->collectActions();
+
+        return $this;
+    }
+
+    /**
+     * Spell each `…Kind` that two actions' page types read off different enums as each enum's literal case-name union:
+     * a route file aliases no import, so both would import one name. A page's own pair is already spelled apart.
+     */
+    protected function spellSharedKindsApart(): self
+    {
+        $shared = SharedEnumKinds::sharedAcross(array_merge(...array_values($this->actionPageKinds)));
+
+        foreach ($shared === [] ? [] : $this->actions as $index => $action) {
+            if (! isset($action['pageType'], $this->actionPageKinds[$action['originalMethodName']])) {
+                continue;
+            }
+
+            $pages = $this->actionPageKinds[$action['originalMethodName']];
+            $pageType = $action['pageType'];
+
+            if (is_string($pageType)) {
+                $this->actions[$index]['pageType'] = SharedEnumKinds::spellShared($pageType, $pages[0] ?? [], $shared);
+
+                continue;
+            }
+
+            // A keyed page type lists one type per component, in the order the page analysis typed them.
+            $position = 0;
+
+            foreach ($pageType as $key => $type) {
+                $pageType[$key] = SharedEnumKinds::spellShared($type, $pages[$position++] ?? [], $shared);
+            }
+
+            $this->actions[$index]['pageType'] = $pageType;
+        }
 
         return $this;
     }
@@ -335,6 +396,7 @@ class RouteTransformer extends CoreTransformer
 
                     $action['shouldAnnotate'] = true;
                     $this->hasPageTypes = true;
+                    $this->actionPageKinds[$originalMethodName] = $inertiaData['pageKinds'] ?? [];
                 }
 
                 if ($inertiaData['classFqcns'] !== []) {
@@ -641,100 +703,6 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Clear the static model instance cache.
-     */
-    public static function clearModelInstanceCache(): void
-    {
-        self::$modelInstanceCache = [];
-    }
-
-    /**
-     * Build a TypeScript import map for all FormRequest types referenced in route actions.
-     *
-     * @return TypesImportMap
-     */
-    private function resolveRequestTypeImports(): array
-    {
-        /** @var TypesImportMap $imports */
-        $imports = [];
-
-        foreach ($this->actions as $action) {
-            if (! isset($action['requestImportPath'], $action['requestTypeAlias'])) {
-                continue;
-            }
-
-            $path = $action['requestImportPath'];
-            $alias = $action['requestTypeAlias'];
-
-            if (! in_array($alias, $imports[$path] ?? [], true)) {
-                $imports[$path][] = $alias;
-            }
-        }
-
-        return $imports;
-    }
-
-    /**
-     * Build a TypeScript import map for all PHP classes/enums referenced in page-prop types.
-     *
-     * @return TypesImportMap
-     */
-    private function resolvePageTypeImports(): array
-    {
-        if ($this->actionPageTypeFqcns === [] && $this->actionPageEnumConstFqcns === [] && $this->actionExternalImports === []) {
-            return [];
-        }
-
-        /** @var list<class-string> $allFqcns */
-        $allFqcns = $this->actionPageTypeFqcns !== []
-            ? array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))))
-            : [];
-
-        /** @var TypesImportMap $imports */
-        $imports = [];
-
-        foreach ($allFqcns as $fqcn) {
-            // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
-            if (isset(TolkiTypes::MAP[$fqcn])) {
-                $imports[TolkiTypes::MODULE][] = TolkiTypes::MAP[$fqcn];
-
-                continue;
-            }
-
-            $targetPath = TsNaming::namespaceToPath($fqcn);
-            $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
-            // An enum's TypeScript name follows #[TsEnum(name:)]; resourceTypeName() only knows #[TsResource].
-            $imports[$importPath][] = enum_exists($fqcn)
-                ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
-                : TsNaming::resourceTypeName($fqcn);
-        }
-
-        // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.
-        foreach (array_unique(array_merge(...$this->actionPageEnumConstFqcns)) as $fqcn) {
-            $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
-            $imports[$importPath][] = LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
-        }
-
-        foreach ($this->actionExternalImports as $externalImports) {
-            foreach ($externalImports as $path => $types) {
-                foreach ($types as $type) {
-                    if (! in_array($type, $imports[$path] ?? [], true)) {
-                        $imports[$path][] = $type;
-                    }
-                }
-            }
-        }
-
-        foreach ($imports as $path => $types) {
-            $unique = array_values(array_unique($types));
-            sort($unique);
-            $imports[$path] = $unique;
-        }
-
-        return TsNaming::sortImportPaths($imports);
-    }
-
-    /**
      * Normalize Inertia component data for the route action.
      *
      * @param  string|list<string>  $component
@@ -799,6 +767,110 @@ class RouteTransformer extends CoreTransformer
             fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
             array_keys($pageType)
         ));
+    }
+
+    /**
+     * Build a TypeScript import map for all FormRequest types referenced in route actions.
+     *
+     * @return TypesImportMap
+     */
+    private function resolveRequestTypeImports(): array
+    {
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($this->actions as $action) {
+            if (! isset($action['requestImportPath'], $action['requestTypeAlias'])) {
+                continue;
+            }
+
+            $path = $action['requestImportPath'];
+            $alias = $action['requestTypeAlias'];
+
+            if (! in_array($alias, $imports[$path] ?? [], true)) {
+                $imports[$path][] = $alias;
+            }
+        }
+
+        return $imports;
+    }
+
+    /**
+     * Build a TypeScript import map for all PHP classes/enums referenced in page-prop types.
+     *
+     * @return TypesImportMap
+     */
+    private function resolvePageTypeImports(): array
+    {
+        if ($this->actionPageTypeFqcns === [] && $this->actionPageEnumConstFqcns === [] && $this->actionExternalImports === []) {
+            return [];
+        }
+
+        /** @var list<class-string> $allFqcns */
+        $allFqcns = $this->actionPageTypeFqcns !== []
+            ? array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))))
+            : [];
+
+        /** @var TypesImportMap $imports */
+        $imports = [];
+        $pageTypes = array_merge(...array_map(
+            static fn (array $action): array => array_values((array) ($action['pageType'] ?? [])),
+            $this->actions,
+        ));
+
+        foreach ($allFqcns as $fqcn) {
+            // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
+            if (isset(TolkiTypes::MAP[$fqcn])) {
+                $imports[TolkiTypes::MODULE][] = TolkiTypes::MAP[$fqcn];
+
+                continue;
+            }
+
+            $targetPath = TsNaming::namespaceToPath($fqcn);
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
+
+            if (! enum_exists($fqcn)) {
+                $imports[$importPath][] = TsNaming::resourceTypeName($fqcn);
+
+                continue;
+            }
+
+            // An enum's TypeScript name follows #[TsEnum(name:)]; a page reading only its `…Kind` needs no `…Type`.
+            $names = array_filter(
+                ValueResult::enumNames($fqcn),
+                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$pageTypes),
+            );
+
+            if ($names !== []) {
+                $imports[$importPath] = [...($imports[$importPath] ?? []), ...array_values($names)];
+            }
+        }
+
+        // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.
+        foreach (array_unique(array_merge(...$this->actionPageEnumConstFqcns)) as $fqcn) {
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
+            $imports[$importPath][] = ValueResult::enumConstName($fqcn);
+        }
+
+        foreach ($this->actionExternalImports as $externalImports) {
+            foreach ($externalImports as $path => $types) {
+                $path = ComposedClassTypes::importPath($path, $this->namespacePath);
+
+                foreach ($types as $type) {
+                    if (! in_array($type, $imports[$path] ?? [], true)) {
+                        $imports[$path][] = $type;
+                    }
+                }
+            }
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        return TsNaming::sortImportPaths($imports);
     }
 
     /**

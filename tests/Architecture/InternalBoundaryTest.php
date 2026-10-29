@@ -5,10 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
+use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Symfony\Component\Finder\Finder;
@@ -64,10 +68,14 @@ it('tags every class under src/Ast except the two the engine exposes', function 
     // ClassTokenQueue moved to src/Support and stay internal, so they are named here to keep the tag enforced.
     $alsoInternal = [
         ClassTokenQueue::class,
+        ClassTypeOverride::class,
+        ComposedClassTypes::class,
+        ImportMaps::class,
         IndexSignatureKey::class,
         PhpArrayKey::class,
         ResourceReindexing::class,
         ResourceWrapping::class,
+        RoutedControllers::class,
         StringSerialization::class,
         TopLevelRenumbering::class,
     ];

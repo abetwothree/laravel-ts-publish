@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
@@ -32,12 +32,17 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
         ['tag_list', '{ name: string }[]'],
         ['channels', 'string[]'],
         ['summary', '{ major: number }'],
-        ['dynamic_totals', 'unknown[]'],
+        ['dynamic_totals', '{ [key: `k${string}`]: unknown | undefined }'],
         ['length_callable', 'Record<string, never>'],
         ['key_callable', 'Record<string, never>'],
         ['checked_at', 'string'],
         ['channel_ids', 'number[]'],
     ]);
+
+    test('a getter that builds its array by key writes sends the object those keys type', function () {
+        expect((new Release)->dynamic_totals)->toBe(['k1' => 1, 'k2' => 2])
+            ->and(json_encode((new Release)->dynamic_totals))->toBe('{"k1":1,"k2":2}');
+    });
 
     test('keys a constant-keyed getter body by the constant values', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'channel_options')['type'])
@@ -139,7 +144,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
             'method' => fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null,
             'import-less' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report', false)['type'],
         ];
-        $report = '{ self: { v: { id: number }; report: unknown[] }; id: number }';
+        $report = '{ self: { v: { id: number }; report: Record<string, unknown> }; id: number }';
 
         $types = [$first => $reads[$first]()];
 

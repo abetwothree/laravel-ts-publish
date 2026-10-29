@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Scalar;
@@ -33,7 +33,7 @@ function dispatcherTestEngine(): ExpressionEngine
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }

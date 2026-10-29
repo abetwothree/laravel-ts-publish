@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredVarTraitResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\TraitTierPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTraitShare;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -77,4 +78,14 @@ test('analyzing a body a trait supplies records the trait file as a dependency',
 
 test('a toArray() a trait supplies reads its @var tags against the trait file', function () {
     expect(traitDeclaredMembers(DeclaredVarTraitResource::class))->toBe('title: string');
+});
+
+test('a constant a trait body writes through self:: joins the default as the class that uses the trait declares it', function () {
+    $payload = new TraitTierPayload;
+    $sent = $payload->toArray();
+    $payload->promote();
+
+    expect(analyzedKeyTypes(TraitTierPayload::class))->toBe(['tier' => 'string | number'])
+        ->and($sent)->toBe(['tier' => 'gold'])
+        ->and($payload->toArray())->toBe(['tier' => 5]);
 });

@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
@@ -60,6 +60,7 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'items()' => [PageItemCollection::class, '$this->resource->items()', 'PageItemResource[]'],
         'getCollection()' => [PageItemCollection::class, '$this->resource->getCollection()', 'PageItemResource[]'],
         'map() stays unread' => [PageItemCollection::class, '$this->resource->map(fn ($item) => $item->id)', 'unknown'],
+        'a map() a model hint types stays unread' => [PageItemCollection::class, '$this->resource->map(fn (\Workbench\App\Models\Post $item) => $item->id)', 'unknown'],
         'a read on an item stays unread' => [PageItemCollection::class, '$this->resource->first()?->title', 'unknown'],
         'only() keeps the items under the keys it names' => [PageItemCollection::class, "\$this->resource->only(['id'])", 'PageItemResource[] | Record<string, PageItemResource>'],
         'except() keeps the items under the other keys' => [PageItemCollection::class, "\$this->resource->except(['id'])", 'PageItemResource[] | Record<string, PageItemResource>'],

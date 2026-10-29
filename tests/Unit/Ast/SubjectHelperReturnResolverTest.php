@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
@@ -29,7 +29,6 @@ use Workbench\App\Enums\WeekDays;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
-use Workbench\App\Models\User;
 
 /**
  * Helpers the workbench fixture leaves out, one per edge of the rule: each wraps one of the team's enums, or returns a
@@ -136,7 +135,7 @@ function subjectHelperReturnThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -173,9 +172,8 @@ function subjectHelperReturn(
     $scope->localVarBindings['status'] = new PropertyFetch(new Variable('this'), 'title');
     $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'visibility');
     $scope->resolvingLocalVars['status'] = true;
-    $scope->closureRelationModelClass = User::class;
     $engine ??= new ResourceAstAnalyzer(new ReflectionClass($subject), $model, 'toArray', null, $scope);
-    $callerState = fn (): array => [$scope->nameBindings(), $scope->resolvingLocalVars, $scope->closureRelationModelClass, $scope->declaringFileClass];
+    $callerState = fn (): array => [$scope->nameBindings(), $scope->resolvingLocalVars, $scope->declaringFileClass];
     $before = $callerState();
 
     $result = resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn(

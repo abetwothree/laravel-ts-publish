@@ -31,6 +31,23 @@ The helpers and the test that pins them live in these files:
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
+- [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
+  and paths sorted, and the name each import binds, `X as Y` binding `Y`. Static and `@internal`. Every merge of import
+  maps added since goes through it; five older inline merges stay as they are, `ComposedClassTypes::resolveImports()`
+  among them, since it keeps key order by contract. Every reader of an import's local name goes through `localName()`
+  or `localNames()`.
+- [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
+  `#[TsType]` and its traits', interfaces' and parents', and whether a `new` of the class publishes it. It reads
+  attributes by reflection and never calls `toTsType()`, whose step 2 calls it. Static, memoized per run and
+  `@internal`.
+- [`Support\ComposedClassTypes`](../../src/Support/ComposedClassTypes.php): a composed type's name and custom-import
+  marker, the path a file imports its module from, the composed classes values reached this run or the scan found,
+  and whether a class may compose at all. That last asks the configured class-types collector, so the scan and the
+  composer share one filter. Static and `@internal`.
+- [`Support\RoutedControllers`](../../src/Support/RoutedControllers.php): whether a registered route dispatches to a
+  class, read from the router once per run. `has()` matches in any case, as PHP reads a class name, for the owned-class
+  rule; `dispatchesTo()` matches exactly, as the routes publisher finds a controller's actions, for the controller
+  validator. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -48,7 +65,16 @@ Ask what the helper's input domain is, not what calls it:
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| What is one import map, path => names, made of these? | `ImportMaps` |
+| Which name does this import, or this import map, bind in the file? | `ImportMaps::localName()`, `localNames()` |
+| Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
+| Does a `new` of this class publish its override, or the class itself? | `ClassTypeOverride::appliesToNew()` |
+| What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
+| Does a registered route dispatch to this class? | `RoutedControllers` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
+| Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
+| What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
+| What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
@@ -60,7 +86,10 @@ TypeScript type string. The first reads PHPDoc, the engine's input, so it stays 
 
 The last row is the real test. A helper whose answer needs the engine's config maps or a call back into `toTsType()`
 belongs to the engine, however string-shaped its signature looks. Reflection alone does not decide it.
-`TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name.
+`TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name, and `TsNaming::enumName()`
+reads `#[TsEnum]` the same way. `toTsType()`'s enum step and every enum reference read it, so an enum whose `#[TsType]`
+answers `toTsType()` first keeps its own names. `ValueResult::enumConstName()` memoizes it per run and records the
+enum for the generation cache.
 
 ### `JsEmitter`
 
@@ -101,13 +130,15 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()` and `IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to
-lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
+`IndexSignatureKey::PATTERN` and `ImportMaps::localNames()`. That one-way dependency is what made the class safe to lift
+out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
-`ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, so a
-name two namespaces publish resolves as that file's import does. For a name no FQCN map carries, such as one a
+`ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, and
+`ComposedClassTypes::globalReferences()` extends with each composed `{Basename}Type` it imports, so a name two
+namespaces publish resolves as that file's import does. For a name no FQCN map carries, such as one a
 `#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
 `GlobalsWriterTest` pins both collection orders.
 
@@ -141,16 +172,30 @@ It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/Internal
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay
 internal needs the same entry.
 
+### `ComposedClassTypes`
+
+`ComposedClassTypes` is the one Support class that asks a collector, which
+[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins. The class-types collector's filter
+asks `ClassTypeOverride::resolve()`, which asks `composes()`, which asks the collector's `admits()`. Only `admits()`
+ends that loop, by reading the filters and `#[TsExclude]` and never the class filter, so a project's collector whose
+`admits()` or `allows()` calls `collect()` recurses. `scanned()` is the one list of scanned composed classes and the
+files their overrides come from: the watcher lists those files, and `--source` on one republishes each module.
+
 ## What stayed on `LaravelTsPublish`, and why the docblock engine could not follow
 
 What stays is the engine, what only the engine uses, and the delegations. The docblock sub-engine is the largest
 remaining block and the obvious next candidate, but it cannot move the way the three helpers did, because it and
 `toTsType()` are mutually recursive. Five calls close the cycle:
 
-- **Docblock to engine**: `resolveDocblockTypePart()`, `resolveDocblockContainerValue()` and `resolvePhpDocTypeToTs()`
-  each call `toTsType()`.
-- **Engine to docblock**: `arrayableShapeType()` calls `parseDocblockReturnArrayShape()`, and
+- **Docblock to engine**: `resolveDocblockTypePart()`, `resolveDocblockContainerValue()` and
+  `resolvePhpDocTypeToInfo()` each call `toTsType()`.
+- **Engine to docblock**: `arrayableShapeType()` calls `docblockReturnShapeInfos()`, and
   `methodOrDocblockReturnTypes()` calls `docblockReturnTypes()`.
+
+`resolvePhpDocTypeToTs()`, `parseArrayShapeToTsTypes()` and `parseDocblockReturnArrayShape()` return a type string, so
+they read through `withoutShapeImports()`: a shape, a docblock's or a value object's, keeps no member only an import
+makes valid (`shapeKeeps()`), and each answers as before shapes carried custom imports. Every caller in the package
+reads their info siblings instead.
 
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use PhpParser\Node\Expr;
 
@@ -35,6 +35,9 @@ use PhpParser\Node\Expr;
  *      keepsKeys?: bool,
  *      absentReadsNull?: bool
  * }
+ *
+ * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
+ * `…Type`, so test ValueResult::readsEnumType() before treating the enum's name as spelled.
  *
  * @internal
  */

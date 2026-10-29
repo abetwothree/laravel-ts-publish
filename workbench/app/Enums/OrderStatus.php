@@ -35,6 +35,33 @@ enum OrderStatus: int
     #[TsCase(description: 'Order is on hold')]
     case OnHold = 6;
 
+    #[TsEnumStaticMethod(description: 'Get statuses that represent a completed order')]
+    public static function completedStatuses(): array
+    {
+        return [
+            self::Delivered->value,
+            self::Cancelled->value,
+            self::Refunded->value,
+        ];
+    }
+
+    #[TsEnumStaticMethod(description: 'Get statuses that represent an active order')]
+    public static function activeStatuses(): array
+    {
+        return [
+            self::Pending->value,
+            self::Processing->value,
+            self::Shipped->value,
+            self::OnHold->value,
+        ];
+    }
+
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function defaultStatus(): self
+    {
+        return self::Pending;
+    }
+
     #[TsEnumMethod(description: 'Human-readable label')]
     public function label(): string
     {
@@ -69,27 +96,6 @@ enum OrderStatus: int
         return in_array($this, [self::Pending, self::Processing, self::OnHold]);
     }
 
-    #[TsEnumStaticMethod(description: 'Get statuses that represent a completed order')]
-    public static function completedStatuses(): array
-    {
-        return [
-            self::Delivered->value,
-            self::Cancelled->value,
-            self::Refunded->value,
-        ];
-    }
-
-    #[TsEnumStaticMethod(description: 'Get statuses that represent an active order')]
-    public static function activeStatuses(): array
-    {
-        return [
-            self::Pending->value,
-            self::Processing->value,
-            self::Shipped->value,
-            self::OnHold->value,
-        ];
-    }
-
     /** Should NOT be published — no TsEnumMethod attribute */
     public function transitionTo(self $next): bool
     {
@@ -100,11 +106,5 @@ enum OrderStatus: int
             self::OnHold => in_array($next, [self::Processing, self::Cancelled]),
             default => false,
         };
-    }
-
-    /** Should NOT be published — no TsEnumStaticMethod attribute */
-    public static function defaultStatus(): self
-    {
-        return self::Pending;
     }
 }

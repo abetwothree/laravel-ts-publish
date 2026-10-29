@@ -71,6 +71,7 @@ export * from './task-assignment';
 export * from './task-owner';
 export * from './team';
 export * from './tracking-event';
+export * from './ui-board';
 export * from './untyped-column';
 export * from './user';
 export * from './user_meta';

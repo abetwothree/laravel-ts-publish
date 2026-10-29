@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;

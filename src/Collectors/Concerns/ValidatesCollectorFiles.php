@@ -6,12 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Collectors\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
+use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Routing\Router;
 use ReflectionClass;
 
 trait ValidatesCollectorFiles
@@ -57,22 +58,10 @@ trait ValidatesCollectorFiles
 
         // Must be a concrete, non-abstract class
         if ($reflection->isAbstract() || $reflection->isInterface() || $reflection->isTrait()) {
-            return false; // @codeCoverageIgnore
+            return false;
         }
 
-        // Must have at least one route registered for this controller
-        /** @var Router $router */
-        $router = app(Router::class);
-
-        $fqcn = $reflection->getName();
-
-        foreach ($router->getRoutes()->getRoutes() as $route) {
-            if (ltrim((string) $route->getControllerClass(), '\\') === $fqcn) {
-                return true;
-            }
-        }
-
-        return false;
+        return RoutedControllers::dispatchesTo($reflection->getName());
     }
 
     /** @param ReflectionClass<covariant object> $reflection */
@@ -89,6 +78,17 @@ trait ValidatesCollectorFiles
         }
 
         return $reflection->isSubclassOf(FormRequest::class) && ! $reflection->isAbstract();
+    }
+
+    /**
+     * Whether a class's or interface's override composes, so it publishes a module of its own. resolve() already keeps
+     * an owned or opted-out class from composing, so neither is checked twice.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     */
+    protected function validateClassType(ReflectionClass $reflection): bool
+    {
+        return ClassTypeOverride::resolve($reflection->getName())['composed'] ?? false;
     }
 
     /** @param ReflectionClass<object> $reflection */

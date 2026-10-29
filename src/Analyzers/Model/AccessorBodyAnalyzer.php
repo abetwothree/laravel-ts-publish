@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Model;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -80,25 +81,46 @@ final class AccessorBodyAnalyzer
         $dropped = DroppedUnionArms::dropped();
 
         try {
-            $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
+            // A body declined here gives way to what the model declares, so its placeholder is never published.
+            return DroppedUnionArms::replaceable(
+                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $dropped),
+                fn (?array $info): bool => $info !== null,
+            );
         } finally {
             $memo->leave($key);
         }
+    }
 
-        // `never[]` is what an empty `[]` literal resolves to — no element information at all, so a
-        // @property tag or a cast still knows the elements better than the body does.
-        if ($result === null || $result['type'] === 'unknown' || $result['type'] === 'never[]') {
-            return null;
-        }
+    /**
+     * The type a getter body publishes; null where it does not stand or spells a class the model file cannot name.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return TypeScriptTypeInfo|null
+     */
+    private function publishedBody(string $modelFqcn, string $attributeName, bool $carriesImports, int $dropped): ?array
+    {
+        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
 
-        // A bare `null` left once a ternary or `??` dropped the arm it could not type says nothing about the value.
-        if ($result['type'] === 'null' && DroppedUnionArms::dropped() > $dropped) {
+        if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
         }
 
         $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
 
         return $this->namesEveryClass($result, $info) ? $info : null;
+    }
+
+    /**
+     * Whether a body's type stands over a `@property` tag or a cast: not `unknown`, not the `never[]` of an empty `[]`,
+     * which says nothing of the elements, and not a bare `null` a ternary or `??` left when it dropped an untyped arm.
+     *
+     * @param  ValueExpressionResult|null  $result
+     */
+    private function bodyStands(?array $result, int $dropped): bool
+    {
+        return $result !== null
+            && ! in_array($result['type'], ['unknown', 'never[]'], true)
+            && ! DroppedUnionArms::leftNullSince($result['type'], $dropped);
     }
 
     /**
@@ -112,9 +134,18 @@ final class AccessorBodyAnalyzer
      */
     private function namesEveryClass(array $result, array $info): bool
     {
-        foreach ([$info['enumTypes'], $info['classes']] as $names) {
+        // A backed enum's `…Kind` token is one of its occurrences too.
+        /** @var array<string, non-empty-list<string>> $spellings enum type name => the names its tokens spell */
+        $spellings = [];
+
+        foreach ($info['enumFqcns'] as $i => $fqcn) {
+            $name = $info['enumTypes'][$i];
+            $spellings[$name] = [...($spellings[$name] ?? []), ...ValueResult::enumNames($fqcn)];
+        }
+
+        foreach ([[$info['enumTypes'], $spellings], [$info['classes'], []]] as [$names, $spelledAs]) {
             foreach (array_count_values($names) as $name => $count) {
-                $pattern = TsTypeString::queuedTokenPattern([(string) $name]);
+                $pattern = TsTypeString::queuedTokenPattern(array_values(array_unique($spelledAs[$name] ?? [(string) $name])));
 
                 if ($count > 1 && preg_match_all($pattern, $info['type']) < $count) {
                     return false;

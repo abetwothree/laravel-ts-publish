@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;

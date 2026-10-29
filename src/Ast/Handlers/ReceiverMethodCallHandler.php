@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MacroCallResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
@@ -54,19 +54,25 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
+        $method = $expr->name->toString();
 
         // PHP sends a static-syntax call the subject lacks to `__call()`, so it reads as `$this->m()` does.
         $onThis = $expr instanceof StaticCall
             ? $receivers->sendsToSubjectCall($expr, $scope)
             : $expr->var instanceof Variable && $expr->var->name === 'this';
+        $reached = match (true) {
+            ! $onThis => null,
+            $expr instanceof StaticCall => $scope->staticCallClass($expr),
+            default => $scope->thisMemberClass($method, true),
+        };
 
         // A macro runs before anything the subject forwards to; `$this` is never null, so `?->` adds no `| null`.
-        if ($onThis && resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $expr->name->toString())) {
-            return resolve(MacroCallResolver::class)->resolve($scope, $expr->name->toString());
+        if ($reached !== null && resolve(MacroCallResolver::class)->runsMacro($reached, $method)) {
+            return resolve(MacroCallResolver::class)->resolve($scope, $method);
         }
 
         $receiver = match (true) {
-            $onThis => $receivers->forwardedThisReceiver($expr->name->toString(), $scope) ?? $this->filteredModelSubject($expr, $scope),
+            $reached !== null => $receivers->forwardedThisReceiver($method, $scope, $reached) ?? $this->filteredModelSubject($expr, $scope),
             $expr instanceof StaticCall => $receivers->resolveStaticReceiver($expr, $scope),
             default => $receivers->resolve($expr->var, $scope),
         };

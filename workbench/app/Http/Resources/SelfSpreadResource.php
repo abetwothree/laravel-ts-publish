@@ -17,7 +17,7 @@ class SelfSpreadResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            ...SelfSpreadResource::make($this->resource)->resolve(),
+            ...self::make($this->resource)->resolve(),
             'marker' => true,
         ];
     }

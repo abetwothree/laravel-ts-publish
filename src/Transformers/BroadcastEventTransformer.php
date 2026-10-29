@@ -4,20 +4,21 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
-use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
-use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -61,6 +62,20 @@ class BroadcastEventTransformer extends CoreTransformer
     public protected(set) array $properties = [];
 
     /**
+     * Resolved type imports: import path => list of type names.
+     *
+     * @var TypesImportMap
+     */
+    public protected(set) array $typeImports = [];
+
+    /**
+     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
+     *
+     * @var list<string>
+     */
+    public protected(set) array $tsExtends = [];
+
+    /**
      * Model FQCNs found in properties (FQCN => short TS type name).
      *
      * @var array<class-string, string>
@@ -73,13 +88,6 @@ class BroadcastEventTransformer extends CoreTransformer
      * @var array<class-string, string>
      */
     protected array $enumFqcnMap = [];
-
-    /**
-     * Resolved type imports: import path => list of type names.
-     *
-     * @var TypesImportMap
-     */
-    public protected(set) array $typeImports = [];
 
     /**
      * Imports the analysis channels the enum and model maps do not cover need (nested resources,
@@ -132,13 +140,6 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $optionalOverrides = [];
 
     /**
-     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
-     *
-     * @var list<string>
-     */
-    public protected(set) array $tsExtends = [];
-
-    /**
      * Import entries from TsExtends to be merged into typeImports.
      *
      * @var array<string, list<string>>
@@ -147,12 +148,6 @@ class BroadcastEventTransformer extends CoreTransformer
 
     /** @var ReflectionClass<ShouldBroadcast> */
     protected ReflectionClass $reflection;
-
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflection'];
-    }
 
     #[Override]
     public function transform(): self
@@ -167,6 +162,81 @@ class BroadcastEventTransformer extends CoreTransformer
             ->renumberTopLevelKeys();
 
         return $this;
+    }
+
+    #[Override]
+    public function filename(): string
+    {
+        return $this->eventName;
+    }
+
+    /**
+     * The composed classes whose module this event's file imports, read from its analysis imports.
+     *
+     * @return list<class-string>
+     */
+    #[Override]
+    public function composedClassTypes(): array
+    {
+        return ComposedClassTypes::classesIn($this->analysisCustomImports, $this->analysisImports);
+    }
+
+    #[Override]
+    public function data(): TsBroadcastEventDto
+    {
+        return new TsBroadcastEventDto(
+            eventName: $this->eventName,
+            broadcastName: $this->broadcastName,
+            fqcn: $this->fqcn(),
+            description: '@see '.$this->fqcn(),
+            filename: $this->filename(),
+            namespacePath: $this->namespacePath,
+            properties: $this->properties,
+            typeImports: $this->typeImports,
+            tsExtends: $this->tsExtends,
+        );
+    }
+
+    /**
+     * Build a map of import aliases to their globally-qualified names.
+     *
+     * @return array<string, string> alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map + $this->siblingGlobalAliases();
+    }
+
+    /**
+     * Map every type token appearing in this event's properties to its globally-qualified name.
+     *
+     * Name-based qualification alone is ambiguous when one short name exists in several namespaces
+     * (App\Models\User vs Crm\Models\User), so GlobalsWriter resolves through this map instead.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
+            + ComposedClassTypes::globalReferences($this->composedClassTypes());
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflection'];
     }
 
     /**
@@ -274,28 +344,6 @@ class BroadcastEventTransformer extends CoreTransformer
         return $this;
     }
 
-    #[Override]
-    public function filename(): string
-    {
-        return $this->eventName;
-    }
-
-    #[Override]
-    public function data(): TsBroadcastEventDto
-    {
-        return new TsBroadcastEventDto(
-            eventName: $this->eventName,
-            broadcastName: $this->broadcastName,
-            fqcn: $this->fqcn(),
-            description: '@see '.$this->fqcn(),
-            filename: $this->filename(),
-            namespacePath: $this->namespacePath,
-            properties: $this->properties,
-            typeImports: $this->typeImports,
-            tsExtends: $this->tsExtends,
-        );
-    }
-
     /**
      * Resolve the Echo broadcast event string.
      *
@@ -354,8 +402,7 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function registerAnalysisFqcns(MethodAnalysis $analysis): void
     {
         foreach ($this->enumFqcns($analysis) as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
-                ?? class_basename($fqcn).'Type';
+            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
         }
 
         foreach ($analysis->modelFqcns as $fqcn) {
@@ -434,7 +481,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $modelNames = $this->ownNames($this->modelFqcnMap);
 
         foreach ($analysis->carried['enums'] ?? [] as $fqcn) {
-            $typeName = LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+            $typeName = ValueResult::enumTypeName($fqcn);
 
             if (CastChannels::spelledUnclaimed($typeName, $types, $enumNames, $this->tsExtends)) {
                 $this->enumFqcnMap[$fqcn] ??= $typeName;
@@ -497,9 +544,13 @@ class BroadcastEventTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName);
         }
 
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->propertyFqcns);
+        $resolved = $registry->resolve();
+
         $this->applyResolvedImportNames(
-            $registry->resolve(),
+            $resolved,
             $this->enumFqcnMap + $this->modelFqcnMap,
+            siblings: $registry->resolveSiblings($resolved),
         );
 
         return $this;
@@ -539,6 +590,7 @@ class BroadcastEventTransformer extends CoreTransformer
                 $this->propertyFqcns[$key] ?? [],
                 $nameMap,
                 $this->importAliases,
+                $this->siblingImportNames,
             );
         }
     }
@@ -567,11 +619,21 @@ class BroadcastEventTransformer extends CoreTransformer
             if (TsTypeString::typeNameOccursIn($this->localImportName($fqcn, $typeName), ...$types)) {
                 $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
+
+            foreach ($this->siblingImportNames[$fqcn] ?? [] as $name => $local) {
+                $aliasable[$importPath][$name] = true;
+
+                if (TsTypeString::typeNameOccursIn($local, ...$types)) {
+                    $imports[$importPath][] = $this->formatSiblingImportName($name, $local);
+                }
+            }
         }
 
         // Skip what the loop above already settled: only it knows the alias a name collision forced,
         // and an unaliased duplicate would re-import the very name the alias exists to avoid.
         foreach ($this->analysisImports as $importPath => $typeNames) {
+            $importPath = ComposedClassTypes::importPath($importPath, $this->namespacePath);
+
             foreach ($typeNames as $typeName) {
                 if (! isset($aliasable[$importPath][$typeName])
                     && TsTypeString::typeNameOccursIn($typeName, ...$types)) {
@@ -620,41 +682,6 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->properties = TopLevelRenumbering::rekey($this->properties, $renumbered);
 
         return $this;
-    }
-
-    /**
-     * Build a map of import aliases to their globally-qualified names.
-     *
-     * @return array<string, string> alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type token appearing in this event's properties to its globally-qualified name.
-     *
-     * Name-based qualification alone is ambiguous when one short name exists in several namespaces
-     * (App\Models\User vs Crm\Models\User), so GlobalsWriter resolves through this map instead.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /**

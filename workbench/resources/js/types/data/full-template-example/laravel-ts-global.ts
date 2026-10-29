@@ -12,6 +12,7 @@ import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
+import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode, UiToneDto } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
@@ -1235,12 +1236,12 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Old-style mutator for avatar URL capitalization */
+            formatted_bio: string;
             /** Computed age from date_of_birth */
             age: number | null;
             /** Full display name combining user name and bio snippet */
             display_summary: string;
-            /** Old-style mutator for avatar URL capitalization */
-            formatted_bio: string;
             // Relations
             user: User;
             user_count: number;
@@ -1403,8 +1404,8 @@ declare global {
             loop_b: unknown;
             /** The same four filters on the model itself, read as a getter body. */
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
-            /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
-            dynamic_totals: unknown[];
+            /** Loop-built dynamic keys: an object of the `k`-prefixed keys the loop writes, their values untyped. */
+            dynamic_totals: { [key: `k${string}`]: unknown | undefined };
             /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
             length_callable: Record<string, never>;
             /** The same for a first-class callable on the model's own method. */
@@ -1740,6 +1741,24 @@ declare global {
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
             diff: unknown[] | Record<string, unknown>;
         }
+        /** A board whose appended accessor is a value of a composed class, so its interface imports the class's module. */
+        export interface UiBoard {
+            // Columns
+            id: number;
+            panels: UiNode[] | null;
+            charts: app.packages.ui.ChartType[] | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** An uploader, typed only by this docblock. */
+            uploader_from_docblock: User | null;
+            /** A gauge, typed only by this docblock. */
+            gauge_from_docblock: UiGauge;
+            /** A gauge, by a getter closure that declares its class. */
+            gauge_attr: UiGauge;
+            /** A chart, by a getter closure that declares its class. */
+            chart: app.packages.ui.ChartType;
+        }
         /**
          * Exercises the ModelTransformer unknown-type fallback paths
          * using untyped SQLite columns.
@@ -1819,6 +1838,14 @@ declare global {
             notifications: illuminate.notifications.DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
+            /** Get the entity's read notifications. */
+            read_notifications: illuminate.notifications.DatabaseNotification[];
+            read_notifications_count: number;
+            read_notifications_exists: boolean;
+            /** Get the entity's unread notifications. */
+            unread_notifications: illuminate.notifications.DatabaseNotification[];
+            unread_notifications_count: number;
+            unread_notifications_exists: boolean;
         }
         export interface UuidPost {
             // Columns
@@ -2362,6 +2389,18 @@ declare global {
         export type StatusKind = 'Draft' | 'Published';
 
         /**
+         * Fixture: an enum with an override, which a value of the enum publishes, while its own file, an `EnumResource`, its
+         * `->value` and its `->name` keep the enum's names.
+         */
+        export interface UiTone
+        {
+            Bright: 'bright',
+            Dim: 'dim',
+        }
+        export type UiToneType = 'bright' | 'dim';
+        export type UiToneKind = 'Bright' | 'Dim';
+
+        /**
          * Pure unit enum (no backing type) — tests that the publisher handles unit enums
          * where case names become the values in TypeScript.
          */
@@ -2621,8 +2660,34 @@ declare global {
             id: number;
             slug: string;
         }
+        /**
+         * Fixture: a model-less resource whose `toArray()` calls and spreads helpers NoticeResource overrides, spreads the
+         * `with()` it leaves to JsonResource, and reads a constant and an untyped property NoticeResource redeclares.
+         */
+        export interface BaseNoticeResource {
+            headline: string | number;
+            label: string;
+            tier: string;
+            base_only: number;
+        }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
+        }
+        /**
+         * Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there; an early-exit
+         * `instanceof` guard nested in a block, for the rest of that block; and a positive `instanceof` test, in its block.
+         *
+         * `imageable` is a morphTo over int-keyed Post and User and string-keyed Product, so a narrowed key read loses the
+         * string arm.
+         */
+        export interface BlockScopedBindingsResource {
+            label?: string;
+            bytes?: number;
+            loop_post_key?: number;
+            guarded_post_key?: number;
+            positive_title?: string;
+            positive_email?: string;
+            loaded_post_key?: { k: number } | null;
         }
         /**
          * Declares neither a toArray() nor a @mixin — pins parent-docblock model inheritance: the model
@@ -2832,6 +2897,20 @@ declare global {
         export interface CastRestoredFillResource {
             [key: `${string}_tag`]: string | number | undefined;
             main_tag: number;
+        }
+        /**
+         * Exercises: a returned variable whose keys exclusive branches write. Each branch of an if chain holds its own value
+         * for a key, so a key every branch of a chain ending in else writes is required with each branch's type, and a key a
+         * chain without else writes keeps the value it held before as one more arm.
+         */
+        export interface CategoryBranchesResource {
+            id: number;
+            label: number | string;
+            mode: number | string;
+            top: CategoryResource | null;
+            tier: string | number | boolean;
+            first_only?: boolean;
+            described?: boolean;
         }
         /**
          * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
@@ -3172,7 +3251,7 @@ declare global {
             status_resource?: app.enums.OrderStatusType;
             status_bare?: app.enums.OrderStatusType;
             currency_resource?: app.enums.CurrencyType;
-            user_role?: app.enums.RoleType;
+            user_role?: app.enums.RoleType | null;
         }
         /**
          * Exercises issue #38 using non-arrow (full) closures with a parameter.
@@ -3313,8 +3392,8 @@ declare global {
         }
         /**
          * The engine reads each local's assigned value as a known type, so that reading stands over the inline `@var` and a
-         * wider declaration never widens it. It cannot read what `$opaque` holds, so the declaration applies there, and inside
-         * whenLoaded() the loaded relation's model, which is a `Model` too, types the member read.
+         * wider declaration never widens it. `$opaque` holds the author `getRelationValue()` loads, so its member read inside
+         * whenLoaded() types from that relation, not from the `Model` the declaration names.
          */
         export interface DeclaredReadingResource {
             title: string;
@@ -3372,6 +3451,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
@@ -3384,7 +3465,7 @@ declare global {
             limits: { daily: number; codes: string[] };
             tags: (string | number)[];
             notes: never[];
-            stage_name?: string;
+            stage_name?: app.enums.StatusKind;
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {
@@ -3453,6 +3534,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -3478,7 +3561,7 @@ declare global {
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
-            value: string;
+            value: app.enums.MediaTypeType;
         }
         /**
          * Resource with non-conventional name — tests #[UseResource] attribute model resolution.
@@ -3843,15 +3926,12 @@ declare global {
         }
         /**
          * Regression fixture (Task 12 review, Critical 2): two TOP-LEVEL assignments to the
-         * same variable, separated by a guard-clause return, must not resolve either return
-         * branch through a single static binding — which assignment was "last" depends on
-         * which branch actually ran, and this analyzer does not do flow analysis. Both
-         * `early` and `late` must degrade to unknown rather than resolving through
-         * whichever assignment happens to be recorded.
+         * same variable, separated by a guard-clause return. Each branch reads the assignment
+         * that reaches it: `early` the notes and `late` the key, never the one recorded last.
          */
         export interface LocalVarGuardClauseResource {
-            early?: unknown;
-            late?: unknown;
+            early?: string | null;
+            late?: number;
         }
         /**
          * Regression fixture (Task 12 review, Important 3): a variable reassigned through a
@@ -3888,12 +3968,12 @@ declare global {
          *
          * `shadowed` is a Task 12 regression: a variable assigned at the top level AND
          * reassigned inside nested control flow must not resolve through the (possibly
-         * stale) top-level binding — it degrades to unknown instead.
+         * stale) top-level binding alone — it joins the values that can reach the read.
          */
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: unknown;
+            shadowed: string | null;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for
@@ -3925,9 +4005,34 @@ declare global {
             id: number;
             map: Pick<app.models.User, 'id' | 'name'>;
         }
+        /**
+         * Maps a post's comments through receivers other than `$this->comments`: a `collect()` root, a local holding the
+         * relation, `getRelation()`, a key-breaking step, a query and a helper whose body maps them.
+         */
+        export interface MappedCollectionsResource {
+            collected_spread: (Omit<app.models.Comment, 'flag'> & { flag: boolean })[];
+            collected_reads: ({ content: string; who: string | null })[];
+            collected_spread_in_author?: (Omit<app.models.Comment, 'flag'> & { flag: boolean })[];
+            local_rows: ({ who: string | null })[];
+            loaded_rows: (Pick<app.models.Comment, 'id' | 'content'>)[];
+            local_proxy: { id: number; content: string }[];
+            reassigned_parameter: string[];
+            keyed_rows: { id: number }[] | Record<string, { id: number }>;
+            sorted_ids: number[] | Record<string, number>;
+            sorted_listed_ids: number[];
+            sorted_first: string | null;
+            loaded_values: { id: number }[];
+            mapped_values: { id: number }[];
+            query_rows: { id: number }[];
+            declared_first: string | null;
+            all_posts: PostResource[];
+            post_rows: { id: number }[];
+            query_service_rows: { id: number }[];
+            unflagged_rows: { id: number }[];
+        }
         export interface MediaTypeInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: app.enums.MediaTypeKind;
+            value?: app.enums.MediaTypeType;
             meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
@@ -3936,14 +4041,14 @@ declare global {
          * to exercise additional coverage paths.
          */
         export interface MediaTypePositiveInstanceOfResource {
-            name?: string;
-            value?: string;
+            name?: app.enums.MediaTypeKind;
+            value?: app.enums.MediaTypeType;
             meta?: { label?: string };
             empty?: never[];
         }
         export interface MediaTypeResource {
-            name: string;
-            value: string;
+            name: app.enums.MediaTypeKind;
+            value: app.enums.MediaTypeType;
             meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
@@ -4045,6 +4150,14 @@ declare global {
             archived_at?: string | null;
             total?: string;
             currency?: app.enums.CurrencyType;
+        }
+        /**
+         * Fixture: builds its response in a local, then merges keys into it inside an `if` and a loop, which keeps every key
+         * the local held. The merged keys stay unpublished, the known gap of a returned variable the walk reads only partly.
+         */
+        export interface MergedPostResource {
+            id: number;
+            title: string;
         }
         /**
          * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
@@ -4209,6 +4322,17 @@ declare global {
          */
         export interface NonThisReceiverSpreadResource {
             id: number;
+        }
+        /**
+         * Fixture: the runtime class of BaseNoticeResource's `toArray()`, overriding the helper it calls, the helper it
+         * spreads, the `with()` it spreads, and the constant and property it reads.
+         */
+        export interface NoticeResource {
+            headline: string;
+            label: number;
+            tier: number;
+            child_only: boolean;
+            meta: number;
         }
         /**
          * only() away from a relation receiver: a top-level spread that names a withCount() virtual the schema
@@ -4420,6 +4544,17 @@ declare global {
             attachment_public: Pick<app.models.Attachment, 'id' | 'filename'>;
             attachment_hidden: Pick<app.models.Attachment, 'id' | 'internal_notes'>;
         }
+        /**
+         * Exercises: a value-position closure, and a helper read as a value, that build an array in a variable through key
+         * writes and return it. Each reads the variable through its writes, as a method's own returned variable is read, and
+         * a helper's literal return stands beside it as one more arm.
+         */
+        export interface PostBuiltValuesResource {
+            built?: { id: number; title: string };
+            branched?: { id: number; flag: string | number };
+            key_written: { id: number } | { id: number; title: string };
+            unset_beside: { id: number };
+        }
         export interface PostCollection {
             data: PostResource[];
         }
@@ -4491,10 +4626,10 @@ declare global {
             headline_id: number;
             headline: string;
             maybe: { maybe_title: string | null };
-            status_label: { label: string; value: number };
-            status_payload: { payload_status: unknown; payload_name: string };
+            status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
+            status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
             payload_status: app.enums.StatusType;
-            payload_name: string;
+            payload_name: app.enums.StatusKind;
         }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
@@ -4816,7 +4951,7 @@ declare global {
             extra: string;
             dynamic?: string;
             normal_merge_key?: string;
-            formatted: unknown;
+            formatted: string;
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
@@ -5184,6 +5319,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -5224,6 +5361,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
@@ -5395,6 +5534,23 @@ declare global {
         export interface SupplierSummaryResource {
             id: number;
         }
+        /** Exercises: a whole return that adds a local's defaults with `+`, whose keys the left side keeps. */
+        export interface TagDefaultsResource {
+            id: number;
+            note: string;
+        }
+        /** Exercises: parent::toArray() `+` a local's defaults, as the whole return. */
+        export interface TagParentDefaultsResource {
+            id: number;
+            name: string;
+            slug: string;
+            color: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
+            note: string;
+        }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
             id: number;
@@ -5506,6 +5662,16 @@ declare global {
             nested_ternary_label: string | null;
         }
         /**
+         * Fixture: a runtime class of BaseNoticeResource's `toArray()` that writes the untyped `$tier` it inherits through a
+         * typed setter.
+         */
+        export interface TieredNoticeResource {
+            headline: string | number;
+            label: string;
+            tier: string;
+            base_only: number;
+        }
+        /**
          * Fixture resource used to test #[TsCasts] placed on the toArray() method
          * rather than on the class. No class-level annotation is present on purpose so that
          * method-level behavior is tested in isolation.
@@ -5559,11 +5725,30 @@ declare global {
             extra: Record<string, unknown>;
         }
         /**
+         * Fixture: values of overridden classes, through declared helpers, `new` and a mixed-in model's accessor, so the file
+         * imports each override and each composed class's `…Type`; an overridden enum's case and its `EnumResource`; and a
+         * value object, a docblock shape and an untyped array, each keeping its members' overrides.
+         */
+        export interface UiPanelResource {
+            chart: app.packages.ui.ChartType;
+            dial: app.packages.ui.DialType | null;
+            panel: UiNode;
+            panels: UiNode[];
+            when_panel?: UiNode;
+            maybe_chart: app.packages.ui.ChartType | null;
+            tone: UiToneDto;
+            tone_resource: app.enums.UiToneType;
+            board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
+            shaped: { chart: app.packages.ui.ChartType; panel: UiNode; gauges: UiGauge[] };
+            untyped: { panel: UiNode; chart: app.packages.ui.ChartType };
+            gauge_attr: UiGauge;
+        }
+        /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
-         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
-         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
+         * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
+         * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
+         * 'binding_join' keys, 'walk_branch_join' and 'merge_branch_join' through a parameter's, a local's and a merge's join.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -5574,13 +5759,17 @@ declare global {
             conditional_default: string;
             match_arm: string;
             coalesce_right: string;
+            binding_join_old?: string;
+            binding_join_written?: string;
+            walk_branch_join?: { id: number; value: string };
+            merge_branch_join: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
          * Also accesses an unknown property to test the unknown enum property path.
          */
         export interface UnitEnumResource {
-            name: string;
+            name: app.enums.VisibilityType;
             value: string | number;
             custom: unknown;
         }
@@ -5625,6 +5814,8 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
+            readNotifications: illuminate.notifications.DatabaseNotification[];
+            unreadNotifications: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * A map over a relation loaded under a name the model does not declare, so nothing names what the local holds. The
@@ -6391,6 +6582,7 @@ declare global {
             status: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
             kept: app.enums.StatusType;
+            status_name: app.enums.StatusKind;
         }
         export interface PureEnumEvent {
             role: app.enums.RoleType;
@@ -6423,6 +6615,18 @@ declare global {
         export interface TeamRosterSynced {
             team: app.http.resources.TeamResource;
         }
+        export interface UiBoardUpdated {
+            panel: UiNode;
+            gauge: UiGauge;
+            pennies: UiAmount;
+            badge: UiIcon;
+            maybe: UiNode | null;
+            chart: app.packages.ui.ChartType;
+            dial: app.packages.ui.DialType;
+            maybeChart: app.packages.ui.ChartType | null;
+            charts: app.packages.ui.ChartType[];
+            board: { panel: UiNode; chart: app.packages.ui.ChartType; gauge: UiGauge | null; total: UiAmount; charts: app.packages.ui.ChartType[] };
+        }
         export interface UserNotification extends HasTimestamps {
             userId: number;
             title: string;
@@ -6446,5 +6650,9 @@ declare global {
             user: Partial<app.models.User>;
             crmUser: Partial<crm.models.User>;
         }
+    }
+    export namespace app.packages.ui {
+        export interface ChartType extends UiHello, UiIcon, UiNode {}
+        export interface DialType extends UiDial, UiNode {}
     }
 }

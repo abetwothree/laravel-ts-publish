@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -139,20 +139,16 @@ trait GuessesModelResources
     /**
      * Resolve the model class backing a toResource()/toResourceCollection() receiver: a whenLoaded closure parameter
      * (ConditionalMethodHandler::analyzeWhenLoaded()'s bindings) or `$this->relation` accessed directly. Past the write
-     * that ended a parameter's binding, the receiver resolver reads what the body assigned instead.
+     * that ended a parameter's binding, or under a narrowing, the receiver resolver reads what the variable holds.
      *
      * @return class-string<Model>|null
      */
     protected function resolveToResourceReceiverModel(Expr $receiver, AnalysisScope $scope): ?string
     {
-        if ($receiver instanceof Variable && is_string($receiver->name)) {
-            if (! $scope->holdsBinding($receiver)) {
-                return null;
-            }
+        if ($receiver instanceof Variable) {
+            $receivers = resolve(ReceiverClassResolver::class);
 
-            return $scope->varModelBindings[$receiver->name]
-                ?? $scope->varCollectionBindings[$receiver->name]['modelFqcn']
-                ?? $scope->closureRelationModelClass;
+            return $receivers->boundModel($receiver, $scope) ?? $receivers->boundElementModel($receiver, $scope);
         }
 
         if ($receiver instanceof PropertyFetch && $this->isThisPropertyFetch($receiver) && $receiver->name instanceof Identifier) {

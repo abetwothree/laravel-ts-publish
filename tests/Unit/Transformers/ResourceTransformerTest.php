@@ -2005,8 +2005,8 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe('string');
-        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['name']['type'])->toBe('MediaTypeKind');
+        expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
             ->toEndWith(' }')
@@ -2020,10 +2020,10 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         expect($data->modelClass)->toBeNull();
     });
 
-    test('enum-backed resource has no type imports', function () {
+    test('enum-backed resource imports only its enum\'s name and value types', function () {
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
-        expect($data->typeImports)->toBeEmpty();
+        expect($data->typeImports)->toBe(['../../enums' => ['MediaTypeKind', 'MediaTypeType']]);
     });
 });
 
@@ -2032,8 +2032,8 @@ describe('ResourceTransformer with MediaTypeInstanceOfResource (instanceof guard
         $data = (new ResourceTransformer(MediaTypeInstanceOfResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe('string');
-        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['name']['type'])->toBe('MediaTypeKind');
+        expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
             ->toEndWith(' }')
@@ -2778,7 +2778,7 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
             ->and($m[1][0])->toBe($m[1][2])
             ->and($m[1][1])->not->toBe($m[1][0])
             // Pins the shape too: a flat inline array renders one object, never a union of two, and
-            // reaches InlineArrayHandler's own queue instead of mergeUnion().
+            // reaches InlineObjectResult's own queue instead of mergeUnion().
             ->and($trio)->toBe('{ a: CrmUser | null } | { b: WorkbenchUser | null; c: CrmUser | null }');
     });
 
@@ -3465,9 +3465,9 @@ it('types the resource\'s own untyped properties from their defaults, over a sam
         'limits' => '{ daily: number; codes: string[] }',
         'tags' => '(string | number)[]',
         'notes' => 'never[]',
-        'stage_name' => 'string',
+        'stage_name' => 'StatusKind',
     ])
-        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusType \\} from '[^']+';$/m");
+        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusKind, StatusType \\} from '[^']+';$/m");
 });
 
 // A method cast is final for its key, so the publisher's re-index leaves its text as written.

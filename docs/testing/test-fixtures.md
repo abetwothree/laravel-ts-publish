@@ -6,13 +6,14 @@ follows the folder.
 
 | Folder | Holds |
 |---|---|
-| `Models/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
+| `Models/`, `Relations/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
 | `Http/Resources/`, `Http/Requests/`, `Http/Controllers/` | API resources and collections, form requests, Inertia controllers |
 | `Tables/` | Inertia UI tables |
 | `Providers/` | service providers a test registers |
 | `Mixins/` | mixins and invokables a test registers as macros on a `Macroable` class |
 | `TsPublish/` | subclasses and implementations of this package's extension points, in the folder of their parent in `src/`: a `ModelTransformer` subclass in `TsPublish/Transformers/` |
 | `Packages/InertiaUiTable/` | a stand-in for the `inertiaui/table` package, autoloaded as `InertiaUI\Table\` from `composer.json` |
+| `Ui/` | classes, traits and interfaces whose `#[TsType]` overrides join those of the workbench's `app/Packages/Ui/`, and a share middleware that reads them |
 | `Stubs/` | `.php.stub` sources a test requires or copies; never autoloaded |
 
 A trait goes in a `Concerns/` folder beside the classes that use it. Fixtures that one test loads by path, such as

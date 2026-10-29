@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -27,9 +28,8 @@ use Throwable;
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     optionalKeys: array<string, true>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>,
+ *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
 class ModelMetadataAnalyzer
@@ -39,7 +39,8 @@ class ModelMetadataAnalyzer
     /**
      * Resolve every type the provider can emit, keeping inferred types only for keys the payload returned.
      *
-     * @param  class-string<ModelMetadataProvider>  $providerClass
+     * @param  class-string<ModelMetadataProvider>  $providerClass  the class of the instance whose payload was
+     *                                                              collected, which an inherited provide() runs as
      * @param  list<string>  $payloadKeys
      */
     public function analyze(string $providerClass, array $payloadKeys, string $namespacePath = ''): ModelMetadataAnalysis
@@ -47,7 +48,12 @@ class ModelMetadataAnalyzer
         $method = new ReflectionMethod($providerClass, 'provide');
         $declared = $this->parseDeclaredTypes($method);
         $casts = $this->parseTsCasts($method);
-        $analysis = $this->safeAnalyzeBody($method);
+        $analysis = $this->safeAnalyzeBody($providerClass);
+
+        if ($analysis !== null) {
+            SharedEnumKinds::spellApart($analysis);
+        }
+
         $inferred = $analysis === null ? [] : $this->inferTypes($analysis, $payloadKeys);
         $result = $this->mergeTypes($inferred, $declared, $casts);
 
@@ -63,16 +69,19 @@ class ModelMetadataAnalyzer
             $result->requiredKeys,
             $result->importPaths,
             $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
+            $result->docblockImports,
         );
     }
 
     /**
      * Analyze the body, or null when the engine fails — inference then contributes nothing.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function safeAnalyzeBody(ReflectionMethod $method): ?MethodAnalysis
+    protected function safeAnalyzeBody(string $providerClass): ?MethodAnalysis
     {
         try {
-            return $this->analyzeBody($method);
+            return $this->analyzeBody($providerClass);
         } catch (Throwable) {
             return null;
         }
@@ -183,42 +192,45 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Run the engine over the body that declares provide(), with its Model parameter bound to its declared type.
+     * Run the engine over provide() as the provider runs it, with its Model parameter bound to its declared type.
      *
-     * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
-     * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
+     * Located on the provider, an inherited or trait body reads `$this` and `static` as the provider and `self` as
+     * its declaring class. The provider is the known runtime class: the transformer passes its instance's class.
+     *
+     * @param  class-string<ModelMetadataProvider>  $providerClass
      */
-    protected function analyzeBody(ReflectionMethod $method): MethodAnalysis
+    protected function analyzeBody(string $providerClass): MethodAnalysis
     {
-        /** @var class-string $declaringClass */
-        $declaringClass = $method->getDeclaringClass()->getName();
-        $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
+        $context = resolve(MethodLocator::class)->locate($providerClass, 'provide');
 
         if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName());
+            return resolve(AstEngine::class)->analyzeMethod($providerClass, 'provide');
         }
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
 
-        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
+        return new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
     }
 
     /**
-     * Parse the optional `@return array{...}` shape; a trailing `?` marks an optional key.
+     * Parse the optional `@return array{...}` shape, with the custom imports of the overrides each key spells; a
+     * trailing `?` marks an optional key.
      *
      * @return DeclaredTypes
      */
     protected function parseDeclaredTypes(ReflectionMethod $method): array
     {
         $types = [];
+        $imports = [];
         $requiredKeys = [];
         $optionalKeys = [];
 
-        foreach (LaravelTsPublish::parseDocblockReturnArrayShape($method) as $property => $type) {
+        foreach (LaravelTsPublish::docblockReturnShapeInfos($method) as $property => $info) {
             $property = (string) $property;
             $optional = str_ends_with($property, '?');
             $property = $optional ? substr($property, 0, -1) : $property;
-            $types[$property] = $type;
+            $types[$property] = $info['type'];
+            $imports[$property] = $info['customImports'];
 
             if ($optional) {
                 $optionalKeys[$property] = true;
@@ -227,7 +239,12 @@ class ModelMetadataAnalyzer
             }
         }
 
-        return ['overrides' => $types, 'requiredKeys' => $requiredKeys, 'optionalKeys' => $optionalKeys];
+        return [
+            'overrides' => $types,
+            'imports' => $imports,
+            'requiredKeys' => $requiredKeys,
+            'optionalKeys' => $optionalKeys,
+        ];
     }
 
     /**
@@ -276,6 +293,15 @@ class ModelMetadataAnalyzer
             }
         }
 
-        return new ModelMetadataAnalysis($types, $sources, $requiredKeys, $casts['importPaths']);
+        // A key the docblock still types brings its overrides' custom imports; one a cast replaces brings none.
+        $docblockKeys = array_filter($sources, fn (string $source): bool => $source === 'docblock');
+
+        return new ModelMetadataAnalysis(
+            $types,
+            $sources,
+            $requiredKeys,
+            $casts['importPaths'],
+            docblockImports: array_intersect_key($declared['imports'], $docblockKeys),
+        );
     }
 }

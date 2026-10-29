@@ -20,15 +20,15 @@ class User extends Model
         'status',
     ];
 
+    public function images(): MorphMany
+    {
+        return $this->morphMany(Image::class, 'imageable');
+    }
+
     protected function casts(): array
     {
         return [
             'status' => Status::class,
         ];
-    }
-
-    public function images(): MorphMany
-    {
-        return $this->morphMany(Image::class, 'imageable');
     }
 }

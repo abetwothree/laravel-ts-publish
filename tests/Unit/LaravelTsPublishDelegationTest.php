@@ -55,6 +55,7 @@ test('LaravelTsPublish still answers every TsTypeString helper, byte-equal to Ts
     $namespacedTypes = ['crm.models' => ['User'], 'app.models' => ['Post']];
     $aliasResolution = ['CrmUser' => 'crm.models.User'];
     $constToTypeMap = ['StatusEnum' => 'enums.Status'];
+    $siblingAliasing = siblingAliasingArguments();
 
     // A facade cannot carry a constant, so this one alias is pinned on the concrete classes.
     expect(LaravelTsPublishService::TS_PRIMITIVES)->toBe(TsTypeStringService::TS_PRIMITIVES)
@@ -66,6 +67,8 @@ test('LaravelTsPublish still answers every TsTypeString helper, byte-equal to Ts
         ->toBe(TsTypeString::extractImportableTypes('User | string | Post[]'))
         ->and(LaravelTsPublish::aliasPropertyType('User | User', $itemFqcns, $nameMap, $aliases))
         ->toBe(TsTypeString::aliasPropertyType('User | User', $itemFqcns, $nameMap, $aliases))
+        ->and(LaravelTsPublish::aliasPropertyType('StatusKind | StatusType', ...$siblingAliasing))
+        ->toBe(TsTypeString::aliasPropertyType('StatusKind | StatusType', ...$siblingAliasing))
         ->and(LaravelTsPublish::qualifyGlobalType('CrmUser | Post', $namespacedTypes, 'crm.models', $aliasResolution))
         ->toBe(TsTypeString::qualifyGlobalType('CrmUser | Post', $namespacedTypes, 'crm.models', $aliasResolution))
         ->and(LaravelTsPublish::splitTopLevelUnion('{ a: string | null } | null'))
@@ -85,12 +88,18 @@ test('LaravelTsPublish still answers every TsTypeString helper, byte-equal to Ts
 });
 
 // Guards the assertions above, and pins the defaulted parameters a delegation could silently drop:
-// $importableNames on shapeValueHasUnimportableToken, $skipNamespace and $aliasResolution on qualifyGlobalType.
+// $importableNames on shapeValueHasUnimportableToken, $skipNamespace and $aliasResolution on qualifyGlobalType,
+// $siblings on aliasPropertyType.
 test('every TsTypeString delegation input is one the helper actually transforms', function () {
     $namespacedTypes = ['crm.models' => ['User'], 'app.models' => ['Post']];
     $aliasResolution = ['CrmUser' => 'crm.models.User'];
+    $siblingAliasing = siblingAliasingArguments();
 
     expect(TsTypeString::shapeValueHasUnimportableToken('{ owner: User }', ['User']))->toBeFalse()
+        ->and(TsTypeString::aliasPropertyType('StatusKind | StatusType', ...$siblingAliasing))
+        ->toBe('AppStatusKind | AppStatusType')
+        ->and(TsTypeString::aliasPropertyType('StatusKind | StatusType', ...array_slice($siblingAliasing, 0, 3)))
+        ->toBe('StatusKind | AppStatusType')
         ->and(TsTypeString::shapeValueHasUnimportableToken('{ owner: User }'))->toBeTrue()
         ->and(TsTypeString::extractImportableTypes('User | string | Post[]'))->toBe(['User', 'Post'])
         ->and(TsTypeString::aliasPropertyType(
@@ -172,3 +181,19 @@ test('each extracted helper is bound as one shared instance', function () {
         ->and(app(TsTypeStringService::class))->toBe(app(TsTypeStringService::class))
         ->and(app(TsNamingService::class))->toBe(app(TsNamingService::class));
 });
+
+/**
+ * The aliasPropertyType() arguments past the type for one enum aliased with its `…Kind`: queue, names, aliases and
+ * the sibling names.
+ *
+ * @return array{list<string>, array<string, string>, array<string, string>, array<string, array<string, string>>}
+ */
+function siblingAliasingArguments(): array
+{
+    return [
+        ['App\\Enums\\Status', 'App\\Enums\\Status'],
+        ['App\\Enums\\Status' => 'StatusType'],
+        ['App\\Enums\\Status' => 'AppStatusType'],
+        ['App\\Enums\\Status' => ['StatusKind' => 'AppStatusKind']],
+    ];
+}

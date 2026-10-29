@@ -3,16 +3,17 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
@@ -62,7 +63,7 @@ function staticCallHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
@@ -111,7 +112,7 @@ final class StaticCallHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('Unexpected expression passed to StaticCallHandlerArmStubEngine');
     }
 
-    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
@@ -639,16 +640,26 @@ it('wraps the one enum a resolved payload holds', function (string $php, array $
     'new, a whenNotNull() payload' => ['new \\'.EnumResource::class.'($this->whenNotNull($this->visibility))', ['type' => 'VisibilityType', 'optional' => true, 'enumFqcn' => Visibility::class]],
 ]);
 
-// The guard against a cyclic local is keyed by name, so it must not hide a parameter named like the local resolving,
-// as in `$status = $this->whenHas('status', fn ($status) => EnumResource::make($status))`.
+// The guard against a cyclic local holds while the local's value resolves, so it must not hide a parameter named like
+// the local, as in `$status = $this->whenHas('status', fn ($status) => EnumResource::make($status))`.
 it('follows a closure parameter while an outer local of its name resolves', function () {
-    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-    $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'status');
-    $scope->resolvingLocalVars['status'] = true;
+    $outer = new MethodCall(new Variable('this'), 'whenHas', [new Arg(new String_('status'))]);
     $expr = new StaticCall(new Name(EnumResource::class), 'make', [new Arg(new Variable('status'))]);
+    $readWhileResolving = function (bool $parameter) use ($outer, $expr): array {
+        $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+        $scope->localVarBindings['status'] = $outer;
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)->resolve($expr))
-        ->toBe(['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]);
+        if ($parameter) {
+            $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'status');
+        }
+
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+
+        return $scope->resolvingBinding('status', $outer, fn (): array => $analyzer->resolve($expr)) ?? [];
+    };
+
+    expect($readWhileResolving(true))->toBe(['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class])
+        ->and($readWhileResolving(false)['type'] ?? null)->toBe('unknown');
 });
 
 it('follows a whenHas() parameter named like the local its value is assigned to', function () {
@@ -670,14 +681,14 @@ it('wraps a resolved payload only when it holds one enum and nothing else', func
 ]);
 
 it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound', function () {
-    // A relation's closure never changes what `$this` is: Address declares no tableName(), so reading the closure's
-    // model would degrade to unknown instead of reflecting Post::tableName()'s `string`.
+    // A relation's closure never changes what `$this` is: Address declares no tableName(), so reading the closure
+    // parameter's model would degrade to unknown instead of reflecting Post::tableName()'s `string`.
     $expr = new StaticCall(
         new PropertyFetch(new Variable('this'), 'resource'),
         'tableName',
     );
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-    $scope->closureRelationModelClass = Address::class;
+    $scope->varModelBindings['address'] = Address::class;
 
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
@@ -938,7 +949,7 @@ it('resolves new PostResource(...) to the resource channel', function () {
     ]);
 });
 
-it('reads self and static as the subject in any case, and leaves parent out', function (string $php, string $type) {
+it('reads self and static as the subject in any case, and parent::make() as the runtime class it builds', function (string $php, string $type) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
     expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'])->toBe($type);
@@ -946,8 +957,18 @@ it('reads self and static as the subject in any case, and leaves parent out', fu
     'SELF::make()' => ['SELF::make($this->author)', 'PostResource'],
     'Static::make()' => ['Static::make($this->author)', 'PostResource'],
     'new SELF()' => ['new SELF($this->author)', 'PostResource'],
-    'parent::make()' => ['parent::make($this->author)', 'unknown'],
+    // JsonResource::make() builds `new static`, which `parent::` forwards as PostResource.
+    'parent::make()' => ['parent::make($this->author)', 'PostResource'],
 ]);
+
+// Each branch of the conditional `@return` both declare is a string.
+it('reads Str::upper() and Str::lower() of a string as the string Laravel sends', function () {
+    $post = new Post;
+    $post->forceFill(['title' => 'First', 'options' => []]);
+
+    expect(publishedResourceKeyTypes(DirectCallsResource::class, Post::class))->toMatchArray(['upper' => 'string', 'lower' => 'string'])
+        ->and(new DirectCallsResource($post)->resolve(Request::create('/')))->toMatchArray(['upper' => 'FIRST', 'lower' => 'first']);
+});
 
 // Inside a resource's toArray(), filter() serializes a nested resource whose payload is null as null.
 it('adds the null arm a nullable payload gives a nested resource, only inside a resource', function (string $subject, string $type) {
