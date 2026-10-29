@@ -525,22 +525,23 @@ is already being read is read again under `AnalysisMemo::reenterOnce()`, so its 
 Where reading the property as the type that joins, under `AnalysisMemo::seeding()`, would join an arm that type lacks,
 as a write nesting what the helper returns does, each such write reads the helper cut instead. Only the outermost
 property typed reads a helper again: one typed inside it reads its writes under `AnalysisMemo::cut()`, as before the
-re-entry, so the work stays linear. A write counts only where the class runs its body: a trait's method the class
-overrides is skipped, unless an alias, the class's or a used trait's, still runs it, typed then under that alias in the
-trait method's own scope. An ancestor's method a subclass overrides still counts, since `parent::` may run it. A write
-inside a nested class, a named function or a static closure is skipped, since `$this` there is never the object. One a
-closure or arrow function in the method holds joins even where the closure may never run, read in that closure's scope:
-its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure, only its
-imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that read leaves
-out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does. An append joins the elements of each list
-the type holds, and a literal string key joins a one-object shape as an optional key. Any other write declines: a value
-the engine cannot type, any other element write, `unset()`, a computed `$this->{$name}` write in application code, or an
-argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan
-shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. A
-value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only assumes its
-runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a receiver it
-cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from outside
-the class.
+re-entry. The work is the cut read's plus one read per call and property the outermost writes reach for the check and
+one for the fallback; a property typed inside adds none. A write counts only where the class runs its body: a trait's
+method the class overrides is skipped, unless an alias, the class's or a used trait's, still runs it, typed then under
+that alias in the trait method's own scope. An ancestor's method a subclass overrides still counts, since `parent::` may
+run it. A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
+object. One a closure or arrow function in the method holds joins even where the closure may never run, read in that
+closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure,
+only its imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that
+read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does. An append joins the elements
+of each list the type holds, and a literal string key joins a one-object shape as an optional key. Any other write
+declines: a value the engine cannot type, any other element write, `unset()`, a computed `$this->{$name}` write in
+application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
+which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
+`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines
+where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
+by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
+(`$this->holder()->views`), or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
