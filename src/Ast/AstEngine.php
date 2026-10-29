@@ -353,20 +353,7 @@ final class AstEngine
      */
     private function enterClosure(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
     {
-        if ($closure instanceof ArrowFunction) {
-            $scope->releaseUnclaimedParameters($closure);
-        } else {
-            $outer = $scope->nameBindings();
-            $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
-
-            // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
-            foreach ($closure->uses as $use) {
-                if (is_string($use->var->name)) {
-                    $scope->copyBindings($use->var, $use->var->name, $outer);
-                }
-            }
-        }
-
+        $scope->enterClosureBody($closure);
         resolve(ParameterBinder::class)->bindClosure($closure, $scope);
 
         if ($closure instanceof ClosureExpr) {

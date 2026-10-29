@@ -1105,6 +1105,29 @@ final class AnalysisScope
     }
 
     /**
+     * Set the scope to a closure's own as its body runs, before its parameters bind: a closure sees only what it
+     * imports, as the scope held it there, and an arrow function every enclosing name but its parameters'.
+     */
+    public function enterClosureBody(ArrowFunction|ClosureExpr $closure): void
+    {
+        if ($closure instanceof ArrowFunction) {
+            $this->releaseUnclaimedParameters($closure);
+
+            return;
+        }
+
+        $outer = $this->nameBindings();
+        $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+
+        // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
+        foreach ($closure->uses as $use) {
+            if (is_string($use->var->name)) {
+                $this->copyBindings($use->var, $use->var->name, $outer);
+            }
+        }
+    }
+
+    /**
      * Bind each parameter a call leaves without an argument, past the first $passedCount, to what it holds at runtime:
      * a variadic one an empty list, an optional one the value its default evaluates to. A required one binds nothing,
      * since the call throws, and neither does a default that cannot be typed.

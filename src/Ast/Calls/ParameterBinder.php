@@ -76,6 +76,32 @@ final class ParameterBinder
     }
 
     /**
+     * Bind a closure parameter by the one class its native type names, and say whether it bound a model, which stands
+     * for its value too: a concrete model neither a `?` nor an `= null` default lets be null in varModelBindings, and
+     * any other class, a Request included, in varDeclaredBindings.
+     */
+    public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope): bool
+    {
+        $declared = $param->variadic ? null : self::declaredClass($param);
+
+        if ($declared === null) {
+            return false;
+        }
+
+        [$class, $nullable] = $declared;
+
+        if (! $nullable && ! self::defaultsToNull($param) && ReceiverType::isConcreteModel($class)) {
+            $scope->varModelBindings[$name] = $class;
+
+            return true;
+        }
+
+        $scope->varDeclaredBindings[$name] = [$class];
+
+        return false;
+    }
+
+    /**
      * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -100,18 +126,9 @@ final class ParameterBinder
             }
 
             $name = $param->var->name;
-            $declared = $param->variadic ? null : self::declaredClass($param);
 
-            if ($declared !== null && ! $declared[1] && ! $this->defaultsToNull($param)
-                && ReceiverType::isConcreteModel($declared[0])
-            ) {
-                $scope->varModelBindings[$name] = $declared[0];
-
+            if (self::bindClosureClass($param, $name, $scope)) {
                 continue;
-            }
-
-            if ($declared !== null) {
-                $scope->varDeclaredBindings[$name] = [$declared[0]];
             }
 
             $native = $this->closureTypeInfo($param);
@@ -285,6 +302,14 @@ final class ParameterBinder
     }
 
     /**
+     * Whether a parameter's default is `null`, which makes its declared type nullable.
+     */
+    private static function defaultsToNull(Param $param): bool
+    {
+        return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
+    }
+
+    /**
      * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
      * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
      *
@@ -450,16 +475,8 @@ final class ParameterBinder
 
         $info = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
 
-        return $type instanceof NullableType || $this->defaultsToNull($param)
+        return $type instanceof NullableType || self::defaultsToNull($param)
             ? [...$info, 'type' => ValueResult::withNullArm($info['type'])]
             : $info;
-    }
-
-    /**
-     * Whether a parameter's default is `null`, which makes its declared type nullable.
-     */
-    private function defaultsToNull(Param $param): bool
-    {
-        return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
     }
 }

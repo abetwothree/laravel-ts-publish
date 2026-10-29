@@ -80,6 +80,7 @@ use WeakMap;
  * @phpstan-type ElementWrite array{key: string|null, value: Expr}
  * @phpstan-type KeyedValue array{string, ValueExpressionResult}
  * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
+ * @phpstan-type TargetsReader Closure(Node): list<Expr|Arg>
  *
  * @internal
  */
@@ -177,12 +178,18 @@ final class SubjectPropertyTypeResolver
         self::$writeSites ??= new WeakMap;
 
         if (! isset(self::$writeSites[$class])) {
-            $visitor = new class(self::writeTargets(...)) extends NodeVisitorAbstract
+            $visitor = new
+            /** @phpstan-import-type TargetsReader from SubjectPropertyTypeResolver */
+            class(self::writeTargets(...)) extends NodeVisitorAbstract
             {
                 /** @var list<array{Node, list<Expr|Arg>}> */
                 public array $sites = [];
 
-                /** @param  Closure(Node): list<Expr|Arg>  $targets */
+                /**
+                 * Keep the reader of the targets a node writes.
+                 *
+                 * @param  TargetsReader  $targets
+                 */
                 public function __construct(private readonly Closure $targets) {}
 
                 /** Record a node that writes, leaving unread a body whose `$this` is never the class's object. */

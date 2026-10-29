@@ -571,18 +571,7 @@ final class VariableHandler implements ExpressionHandler
         ExpressionEngine $engine,
     ): array {
         return $scope->within(function () use ($callback, $element, $key, $scope): void {
-            if ($callback instanceof ClosureExpr) {
-                $caller = $scope->nameBindings();
-                $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
-
-                foreach ($callback->uses as $use) {
-                    if (is_string($use->var->name)) {
-                        $scope->copyBindings($use->var, $use->var->name, $caller);
-                    }
-                }
-            } else {
-                $scope->releaseUnclaimedParameters($callback);
-            }
+            $scope->enterClosureBody($callback);
 
             foreach ([$element, $key] as $index => $type) {
                 $parameter = $callback->params[$index] ?? null;
