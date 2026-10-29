@@ -2,6 +2,74 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.9.0 - 2026-10-29
+
+### v2.9.0
+
+`#[TsType]` now types any class, and subclasses, traits and interfaces pass it on. Local variables, closure parameters, enum `->value` and `->name` reads, passed arrays and inherited method bodies now publish what PHP sends. Many types become more specific, so run `php artisan ts:publish` after updating and check your frontend against the [upgrade guide](https://tolki.abe.dev/ts/upgrade-guide.html#upgrading-from-2-8).
+
+#### New
+
+- **`#[TsType]` on any class.** It sets the published type of a value object, DTO or any other class wherever a value of it publishes: page props, shared data, API resources, model casts and accessors, broadcast events and `analyze()`. Subclasses inherit it, and so do classes that use a trait or implement an interface carrying one. A class that inherits two or more publishes one composed interface, `{Basename}Type`, from a module of its own. `#[TsType(..., inherit: false)]` keeps a class's own override alone. [Read more](https://tolki.abe.dev/ts/custom-types.html)
+- **Class types output.** A new `class_types` config section, a `--only-class-types` flag, a `classTypes` key in the JSON output, and composed interfaces in the globals file. `--source` accepts an interface, a trait or a composed class.
+- **Local variables and closure parameters carry their types.** A variable written more than once, or inside a block, publishes every value that can reach the read. Callback and helper parameters take the type of what the call passes. `instanceof` narrows variables, `$this->resource` and `$this->prop`.
+- **Enum reads.** `->value` and `->name` publish the enum's own `…Type` or `…Kind` alias with its import, or the literal union.
+- **Arrays and casts.** `array_values()`, `(object)` and `(array)` keep the array they hold. A helper that returns the array it is passed publishes the caller's keys with the helper's writes.
+- **Inherited and trait methods are read as PHP runs them.** `$this->` and `static::` name the subclass being published, and `self::` and `parent::` the class that declares the method.
+- **Relations declared only by `@return`.** A relation method with no native return type, such as an adjacency-list package's `ancestors()`, or a notifiable model's `readNotifications()`, is now published with its `_count` and `_exists` keys.
+- **New warning:** a value left out of a union is named in the `ts:publish` output, with the expression.
+
+#### Changed
+
+These types now match what Laravel sends, so code built on the old types can fail `tsc`. The upgrade guide describes each one.
+
+- **`#[TsType]`:** a class with no `#[TsType]` of its own now publishes the one its parent, a trait or an interface declares. A class with overrides at two levels publishes `{Basename}Type`. Nothing restores the inferred shape.
+- **Owned classes:** a model, API resource, broadcast event, form request, enum or routed controller takes its own override or its nearest parent class's, and never composes. One that implements an overridden interface or uses an overridden trait logs a warning.
+- **Enum values:** an enum `->value` or `->name` read publishes `…Type`/`…Kind` or a literal union, where it published `string` or `number`. A plain backed enum's case read in an untyped helper publishes its value literal instead of `unknown`. An `EnumResource` over an enum with a `custom_ts_mappings` entry publishes `AsEnum<typeof X>`.
+- **Arrays and objects:** `stdClass` publishes `Record<string, unknown>`, and a `: array` method documented `@return array<string, …>` publishes `Record<string, …>`. A value read whose keys are partly unreadable gains `[key: string]: unknown`. `X[] | never[]` folds to `X[]`.
+- **Properties:** an untyped property publishes its default joined with every value written to it. A value object's shape reads a public property's `@var` where its declaration is vague.
+- **Relations:** a relation class built on one of Laravel's to-many relations publishes a list without `| null`. A nullable enum column wrapped in `EnumResource::make()` inside a relation closure adds `| null`.
+- **Casts:** a nullable class-cast, `AsCollection` or `AsEnumCollection` column gains `| null` where its type held only a nested `null`.
+
+#### Fixed
+
+- A relation class built on `HasMany` that replaces `match()` or `getResults()` but still loads a list, such as an adjacency-list package's `descendants()`, `bloodline()` or `siblings()`, publishes a list instead of one model or `null`.
+- An enum with both a `custom_ts_mappings` entry and a `#[TsEnum(name:)]` is spelled by its rename.
+- A shared-data import of a name a `#[TsCasts]` entry brings from another path is dropped.
+- A reflected `self` or `parent` type resolves the same on PHP 8.4 and 8.5.
+
+#### Upgrading
+
+1. Run `php artisan ts:publish`. The generation cache rebuilds once.
+2. Type-check your frontend and fix what breaks using the [upgrade guide](https://tolki.abe.dev/ts/upgrade-guide.html#upgrading-from-2-8). `custom_ts_mappings`, `#[TsCasts]` and `#[TsType]` still override any type.
+3. If you published the `globals` view, republish it or add its class-types section. Otherwise its file declares no composed type, and a property typed `{Basename}Type` fails `tsc` (TS2694).
+4. If a composed interface fails `tsc` (TS2312, TS2320 or TS2411), an override it extends is not an object type. Add `inherit: false` to the class's `#[TsType]`.
+5. If you extend the package's classes or import its `Ast` classes, check the list below.
+
+#### For packages that extend laravel-ts-publish
+
+- `#[TsType]`'s constructor takes `bool $inherit = true`.
+- `CoreCollector` gains the public `admits()` and the protected `isScannableName()`, `ValidatesCollectorFiles` gains `validateClassType()`, and `CoreTransformer` gains the public `composedClassTypes()`. A subclass that defines a member of the same name must rename it.
+- `CoreCollector::passesClassFilter()` checks `#[TsExclude]` before `classFilter()`, so `classFilter()` no longer sees excluded classes. `ValidatesCollectorFiles::validateController()` reads the routes once per run.
+- `BaseRunner` gains the public `shouldPublishClassTypes`, `classTypeGenerators` and `classTypeModularBarrels`. `Runner` gains `retainedClassTypeGenerators` and seven protected methods. `TsPublishCommand::resolvePublishFlags()` returns nine flags.
+- `LaravelTsPublish`'s protected `arrayableShapeType()`, `publicPropertyShapeType()`, `stringableObjectType()`, `resolveArrayShapeString()` and `docblockReturnTupleType()` return the shape with its custom imports instead of `?string`. `InertiaSharedDataAnalyzer::parseDocblockFromMiddleware()` returns each key's type with its imports, and `ModelMetadataAnalyzer::parseDeclaredTypes()`'s result gains an `imports` key.
+- `InertiaSharedDataAnalyzer::mergeTypeImports()` is removed; import maps merge through `ImportMaps::merge()`. `ModelMetadataAnalysis` takes an optional `$docblockImports`, and `importedNames()` an optional `?string $key`.
+- `LaravelTsPublish::resolvePhpDocTypeToTs()` and `parseArrayShapeToTsTypes()` keep their signatures, but a class that inherits an override reads as `unknown` inside a shape there, and as its override token with no import at top level. Read `docblockReturnShapeInfos()` or `methodOrDocblockReturnTypes()` for the type with its imports.
+- `LaravelTsPublish::bindTraitTemplates()` is now `public`; a subclass that overrides it as `protected` must widen it. `resolveReflectionType()` takes an optional `?ReflectionClass $declaringClass`; an override must add it. `aliasPropertyType()` takes an optional `array $siblings`.
+- `ModelMetadataAnalyzer::analyzeBody()` and `safeAnalyzeBody()` take `string $providerClass` instead of `ReflectionMethod $method`.
+- `ResourceTransformer::keepSpelled()` takes an optional `?Closure $namesOf`. `BuildsImportMaps::collectModularTypeImports()` takes an optional `?array $spelledIn`, and the trait declares a new abstract `formatSiblingImportName(string $name, string $local): string`. `ResolvesImportConflicts::applyResolvedImportNames()` takes an optional `array $siblings`.
+- `InspectsAstNodes`: `subjectClassName(Name, ReflectionClass)` is now `scopeClassName(Name, AnalysisScope)`, and `resolveKeyName()`, `constantKeyValue()` and `mergedArrayLiteral()` take an `AnalysisScope` instead of a `ReflectionClass`.
+- `ModelAttributeResolver::typeHoldsNull()` applies the top-level null test to every class cast, except a direct cast whose `get()` declares a native non-null type. `sendsNullAsIs()` is deprecated in favour of `typeHoldsNull()`.
+
+### What's Changed
+
+* Type local variables and closure parameters, and narrow with instanceof (#93) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/133
+* Type enum value reads, reshaped arrays and passed arrays, and read inherited bodies as the runtime class (#135, #79) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/138
+* Type any class with `#[TsType]`, inherited and composed (#136) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/139
+* Release 2.9 by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/141
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.8.0...v2.9.0
+
 ## v2.8.0 - 2026-10-19
 
 ### v2.8.0
@@ -159,6 +227,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -174,6 +243,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -181,6 +251,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -216,6 +287,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -224,6 +296,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -241,6 +314,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -269,6 +343,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -314,6 +389,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
