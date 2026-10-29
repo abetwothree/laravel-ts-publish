@@ -18,11 +18,17 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
+use PhpParser\Node\UnionType;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -38,6 +44,7 @@ use ReflectionParameter;
  * parameters are bound.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type PassedBinding = array{
  *     model: class-string<Model>|null,
@@ -77,6 +84,49 @@ final class ParameterBinder
     {
         $this->bindDeclared($method, $scope);
         $this->bindPassed($passed, $scope);
+    }
+
+    /**
+     * Bind a closure's parameters for a read of its body by what each declares, as bindDeclared() binds a method's: no
+     * call is read, so an untyped parameter binds nothing.
+     */
+    public function bindClosure(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        $docComment = (string) $closure->getDocComment();
+
+        foreach ($closure->params as $param) {
+            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+
+            $name = $param->var->name;
+            $declared = $param->variadic ? null : self::declaredClass($param);
+
+            if ($declared !== null && ! $declared[1] && ! $this->defaultsToNull($param)
+                && ReceiverType::isConcreteModel($declared[0])
+            ) {
+                $scope->varModelBindings[$name] = $declared[0];
+
+                continue;
+            }
+
+            if ($declared !== null) {
+                $scope->varDeclaredBindings[$name] = [$declared[0]];
+            }
+
+            $native = $this->closureTypeInfo($param);
+            $value = $this->heldValue(
+                $native === null ? null : resolve(ReflectedTypeAcceptor::class)->accept($native),
+                $name,
+                $param->variadic,
+                $docComment,
+                $scope->declaringFileClass,
+            );
+
+            if ($value !== null) {
+                $scope->varValueBindings[$name] = $value;
+            }
+        }
     }
 
     /**
@@ -331,13 +381,32 @@ final class ParameterBinder
      */
     private function declaredValue(ReflectionParameter $parameter, string $docComment, ReflectionClass $context): ?array
     {
-        $value = resolve(ReflectedTypeAcceptor::class)->accept(
-            LaravelTsPublish::resolveReflectionType($parameter->getType(), $parameter->getDeclaringClass()),
+        return $this->heldValue(
+            resolve(ReflectedTypeAcceptor::class)->accept(
+                LaravelTsPublish::resolveReflectionType($parameter->getType(), $parameter->getDeclaringClass()),
+            ),
+            $parameter->getName(),
+            $parameter->isVariadic(),
+            $docComment,
+            $context,
         );
+    }
+
+    /**
+     * The value a parameter holds by its native type, else by its `@param` where that is too vague, a list of it for a
+     * variadic one; null when neither is precise enough to publish or it names a model with no published file.
+     *
+     * @param  ValueExpressionResult|null  $native
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports resolve the `@param`
+     * @return ValueExpressionResult|null
+     */
+    private function heldValue(?array $native, string $name, bool $variadic, string $docComment, ReflectionClass $context): ?array
+    {
+        $value = $native;
 
         if ($value === null || TsTypeString::isVagueTsType($value['type'])) {
             $reader = resolve(PropertyDocblockTypeReader::class);
-            $tag = $reader->extractParamTag($docComment, $parameter->getName(), $context);
+            $tag = $reader->extractParamTag($docComment, $name, $context);
             $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
         }
 
@@ -345,8 +414,52 @@ final class ParameterBinder
             return null;
         }
 
-        return $parameter->isVariadic()
+        return $variadic
             ? [...$value, 'type' => ValueResult::arrayWrapType($value['type']), 'optional' => false]
             : [...$value, 'optional' => false];
+    }
+
+    /**
+     * What a closure parameter's native type names, read as resolveReflectionType() reads a method parameter's, an
+     * `= null` default adding `null` as PHP does; null for no type, an intersection, or `self`, `static` or `parent`.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    private function closureTypeInfo(Param $param): ?array
+    {
+        $type = $param->type;
+        $arms = match (true) {
+            $type instanceof NullableType => [$type->type],
+            $type instanceof UnionType => $type->types,
+            $type instanceof Identifier, $type instanceof Name => [$type],
+            default => [],
+        };
+        $infos = [];
+
+        foreach ($arms as $arm) {
+            if (! $arm instanceof Identifier && (! $arm instanceof Name || $arm->isSpecialClassName())) {
+                return null;
+            }
+
+            $infos[] = LaravelTsPublish::toTsType($arm->toString());
+        }
+
+        if ($infos === []) {
+            return null;
+        }
+
+        $info = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
+
+        return $type instanceof NullableType || $this->defaultsToNull($param)
+            ? [...$info, 'type' => ValueResult::withNullArm($info['type'])]
+            : $info;
+    }
+
+    /**
+     * Whether a parameter's default is `null`, which makes its declared type nullable.
+     */
+    private function defaultsToNull(Param $param): bool
+    {
+        return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
     }
 }

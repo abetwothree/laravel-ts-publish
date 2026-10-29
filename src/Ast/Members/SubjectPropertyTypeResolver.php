@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -30,6 +31,7 @@ use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
@@ -37,6 +39,7 @@ use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Minus;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
@@ -44,7 +47,6 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -52,9 +54,13 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Foreach_;
+use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -157,7 +163,8 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The nodes of a class body that write something, each with the targets it writes, in the order a walk meets them.
+     * The nodes of a class body that write something, each with the targets it writes, in the order a walk meets them;
+     * none inside a nested class, a named function or a static closure, whose `$this` is never the class's object.
      *
      * Every property a class is asked about would otherwise walk the whole body again, and a framework base is asked
      * about once per subject.
@@ -169,19 +176,32 @@ final class SubjectPropertyTypeResolver
         self::$writeSites ??= new WeakMap;
 
         if (! isset(self::$writeSites[$class])) {
-            $sites = [];
+            $visitor = new class(self::writeTargets(...)) extends NodeVisitorAbstract
+            {
+                /** @var list<array{Node, list<Expr|Arg>}> */
+                public array $sites = [];
 
-            new NodeFinder()->find($class->stmts, function (Node $node) use (&$sites): bool {
-                $targets = self::writeTargets($node);
+                /** @param  Closure(Node): list<Expr|Arg>  $targets */
+                public function __construct(private readonly Closure $targets) {}
 
-                if ($targets !== []) {
-                    $sites[] = [$node, $targets];
+                /** Record a node that writes, leaving unread a body whose `$this` is never the class's object. */
+                public function enterNode(Node $node): ?int
+                {
+                    $targets = ($this->targets)($node);
+
+                    if ($targets !== []) {
+                        $this->sites[] = [$node, $targets];
+                    }
+
+                    return $node instanceof ClassLike || $node instanceof Function_
+                        || (($node instanceof ClosureExpr || $node instanceof ArrowFunction) && $node->static)
+                        ? NodeVisitor::DONT_TRAVERSE_CHILDREN
+                        : null;
                 }
+            };
 
-                return false;
-            });
-
-            self::$writeSites[$class] = $sites;
+            new NodeTraverser($visitor)->traverse($class->stmts);
+            self::$writeSites[$class] = $visitor->sites;
         }
 
         return self::$writeSites[$class];
@@ -414,8 +434,8 @@ final class SubjectPropertyTypeResolver
 
     /**
      * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it,
-     * under the name the class runs it by; null where no method holds it, a function inside it holds the write, or
-     * the value names `static` and the runtime class is only assumed.
+     * under the name the class runs it by, and of each closure inside it that holds the write; null where no method
+     * holds it, or the value names `static` and the runtime class is only assumed.
      *
      * @param  PropertyWrite  $write
      * @param  ReflectionClass<object>  $subject
@@ -428,12 +448,11 @@ final class SubjectPropertyTypeResolver
         $method = $this->enclosingMethod($class, $site);
         $running = $method === null ? null : $this->runningName($self, $class, $method);
 
-        if ($method === null || $running === null
-            || $this->functionHolds($method, $site)
-            || ($knownRuntime === null && $this->namesStatic($value))
-        ) {
+        if ($method === null || $running === null || ($knownRuntime === null && $this->namesStatic($value))) {
             return null;
         }
+
+        $closures = $this->enclosingClosures($method, $site);
 
         // PHP copies an aliased trait method under the alias, the name its parameters are reflected by.
         if ($running !== $method->name->toString()) {
@@ -446,6 +465,7 @@ final class SubjectPropertyTypeResolver
             $value,
             $knownRuntime ?? $subject,
             assumesRuntime: $knownRuntime === null,
+            within: $closures,
         );
     }
 
@@ -510,15 +530,18 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * Whether a closure, an arrow function or a nested class's method inside a method holds a node, binding names of
-     * its own over the method's.
+     * The closures and arrow functions inside a method that hold a node, outermost first.
+     *
+     * @return list<ArrowFunction|ClosureExpr>
      */
-    private function functionHolds(ClassMethod $method, Node $site): bool
+    private function enclosingClosures(ClassMethod $method, Node $site): array
     {
-        return new NodeFinder()->findFirst(
+        /** @var list<ArrowFunction|ClosureExpr> */
+        return new NodeFinder()->find(
             $method->stmts ?? [],
-            fn (Node $node): bool => $node instanceof FunctionLike && StatementBlocks::encloses($node, $site),
-        ) !== null;
+            fn (Node $node): bool => ($node instanceof ClosureExpr || $node instanceof ArrowFunction)
+                && StatementBlocks::encloses($node, $site),
+        );
     }
 
     /**

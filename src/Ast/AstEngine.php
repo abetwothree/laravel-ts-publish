@@ -135,10 +135,11 @@ final class AstEngine
 
     /**
      * The value one expression of a located method's body holds, read in a fresh scope over that method, as
-     * analyzeMethodValue() reads the method's returns.
+     * analyzeMethodValue() reads the method's returns, and inside each closure holding it in that closure's own.
      *
      * @param  ReflectionClass<object>|null  $runtime  what `static` names in the body, and whose model `$this` reads
      * @param  bool  $assumesRuntime  the body runs on an object only assumed to be that class
+     * @param  list<ArrowFunction|ClosureExpr>  $within  the closures holding the expression, outermost first
      * @return ValueExpressionResult
      *
      * @internal
@@ -148,10 +149,16 @@ final class AstEngine
         Expr $expr,
         ?ReflectionClass $runtime = null,
         bool $assumesRuntime = false,
+        array $within = [],
     ): array {
         $method = $context->method->name->toString();
+        [$reader, $scope] = $this->valueReader($context, $method, [], null, $runtime, $assumesRuntime);
 
-        return $this->valueReader($context, $method, [], null, $runtime, $assumesRuntime)[0]->resolve($expr);
+        foreach ($within as $closure) {
+            $this->enterClosure($closure, $scope);
+        }
+
+        return $reader->resolve($expr);
     }
 
     /**
@@ -338,6 +345,33 @@ final class AstEngine
     private static function genericReflection(string $className): ReflectionClass
     {
         return new ReflectionClass($className);
+    }
+
+    /**
+     * Enter a closure's own scope as its body runs: its declared parameters, its body's locals, and for a closure only
+     * what it imports, as the enclosing scope held it there; an arrow function reads every enclosing variable.
+     */
+    private function enterClosure(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        if ($closure instanceof ArrowFunction) {
+            $scope->releaseUnclaimedParameters($closure);
+        } else {
+            $outer = $scope->nameBindings();
+            $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
+
+            // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
+            foreach ($closure->uses as $use) {
+                if (is_string($use->var->name)) {
+                    $scope->copyBindings($use->var, $use->var->name, $outer);
+                }
+            }
+        }
+
+        resolve(ParameterBinder::class)->bindClosure($closure, $scope);
+
+        if ($closure instanceof ClosureExpr) {
+            $this->seedBody($closure->stmts, $scope, $closure);
+        }
     }
 
     /**

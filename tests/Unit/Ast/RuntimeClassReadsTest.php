@@ -36,11 +36,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
@@ -306,12 +308,21 @@ it('keeps the writes of an ancestor method the subclass overrides, which parent:
         ->and(json_encode(tap(new BumpingBase)->bump()->toArray()))->toBe('{"tier":5}');
 });
 
-// A callback's parameter shadows the method's, so the method's scope cannot type a write the callback holds.
-it('leaves an untyped property `unknown` where a callback inside the method writes it', function () {
-    expect(analyzedKeyTypes(EnclosedWriteChild::class))->toBe(['last' => 'unknown', 'arrowed' => 'unknown', 'local' => 'string | number'])
-        ->and(json_encode(new EnclosedWriteChild()->toArray()))->toBe('{"last":"none","arrowed":"none","local":"none"}')
+// A callback's parameter shadows its method's `string $x`, so `last` and `arrowed` read the callback's `int`.
+it('types a write a callback holds with the callback\'s own parameters and captures', function () {
+    expect(analyzedKeyTypes(EnclosedWriteChild::class))->toBe(['last' => 'string | number', 'arrowed' => 'string | number', 'local' => 'string | number'])
         ->and(json_encode(new EnclosedWriteChild()->track('s')->trackArrow('s')->viaLocal('abc')->toArray()))
-        ->toBe('{"last":2,"arrowed":4,"local":3}');
+        ->toBe('{"last":2,"arrowed":4,"local":3}')
+        ->and(analyzedKeyTypes(CapturedWriteChild::class))->toBe(['used' => 'string | number', 'anon' => 'string', 'loose' => 'unknown'])
+        ->and(json_encode(new CapturedWriteChild()->capture()->anonymous()->loosen()->toArray()))
+        ->toBe('{"used":7,"anon":"none","loose":1}');
+});
+
+// A by-reference capture reads the local as the closure runs, past a later write; a static closure has no `$this`.
+it('reads a nested callback in its outer callback\'s scope, and skips a write a static callback holds', function () {
+    expect(analyzedKeyTypes(NestedCaptureChild::class))->toBe(['used' => 'unknown', 'anon' => 'string', 'loose' => 'string | number'])
+        ->and(json_encode(new NestedCaptureChild()->captureByReference()->refuse()->nest()->toArray()))
+        ->toBe('{"used":"late","anon":"none","loose":3}');
 });
 
 // An element unset(), an append onto an object, an append beside a key write, and a computed key keep the known gap.

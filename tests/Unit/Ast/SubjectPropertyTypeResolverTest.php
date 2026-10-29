@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForeignWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OverriddenWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
@@ -203,6 +204,13 @@ describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
             ->and(analyzedKeyTypes(OverriddenWithResource::class))->toBe(['version' => 'string'])
             ->and(json_encode((new OverriddenWithResource(null))->resolve(request())))->toBe('{"version":"1.0"}')
             ->and(json_encode((new OverriddenWithResource(null))->retag()->resolve(request())))->toBe('{"version":"1.0"}');
+    });
+
+    test('a write on an anonymous object or in a static closure leaves the default held, since it is never the subject\'s', function () {
+        expect(resolve(SubjectPropertyTypeResolver::class)->holdsDefault(new ReflectionClass(ForeignWithResource::class), 'with'))
+            ->toBeTrue()
+            ->and(analyzedKeyTypes(ForeignWithResource::class))->toBe(['version' => 'string'])
+            ->and(json_encode((new ForeignWithResource(null))->relabel()->resolve(request())))->toBe('{"version":"1.0"}');
     });
 
     // The source is read once a run, so a later read must still record the file, or a cached publish misses an update.
