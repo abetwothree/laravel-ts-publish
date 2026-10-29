@@ -16,6 +16,10 @@ final class RenumberedTagsResource extends JsonResource
 
     protected $swapped = ['a' => 1];
 
+    protected $fived = [5 => 's'];
+
+    protected $rows = [1 => ['x' => 1], 2 => ['x' => 2]];
+
     /** Key a number in under the key passed. */
     public function renumber(string $key): static
     {
@@ -64,9 +68,31 @@ final class RenumberedTagsResource extends JsonResource
         return $this;
     }
 
+    /** Key a number in beside the numbered entry. */
+    public function keyFived(): static
+    {
+        $this->fived['k'] = 1;
+
+        return $this;
+    }
+
+    /** Key a number into the first row. */
+    public function extendRow(): static
+    {
+        $this->rows[1]['y'] = 2;
+
+        return $this;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        return ['renumbered' => $this->renumbered, 'numbered' => $this->numbered, 'swapped' => $this->swapped];
+        return [
+            'renumbered' => $this->renumbered,
+            'numbered' => $this->numbered,
+            'swapped' => $this->swapped,
+            'fived' => $this->fived,
+            'rows' => $this->rows,
+        ];
     }
 }

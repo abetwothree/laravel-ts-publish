@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -406,18 +407,18 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        $joined = $this->joinedWrites($known, $computed, $values);
+        $joined = $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
 
         if ($reentered === [] || $joined === null) {
             return ['type' => $joined, 'kept' => $reentered === []];
         }
 
-        $again = function () use ($known, $computed, $values, $reentered, $read): ?array {
+        $again = function () use ($known, $computed, $values, $reentered, $read, $subject, $knownRuntime): ?array {
             foreach ($reentered as $index) {
                 $values[$index] = $read($index);
             }
 
-            return $this->joinedWrites($known, $computed, $values);
+            return $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
         };
         $seed = $this->seedKey($guard, $subject, $knownRuntime);
 
@@ -476,7 +477,7 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        return $this->joinedWrites($known, $computed, $values);
+        return $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
     }
 
     /**
@@ -534,9 +535,10 @@ final class SubjectPropertyTypeResolver
      * @param  ValueExpressionResult  $known
      * @param  ComputedWrites  $computed
      * @param  WriteValues  $values  each write's value, by its index in $computed
+     * @param  ReflectionClass<object>  $runtime  the class the property is read through, whose serializer sends it
      * @return ValueExpressionResult|null
      */
-    private function joinedWrites(array $known, array $computed, array $values): ?array
+    private function joinedWrites(array $known, array $computed, array $values, ReflectionClass $runtime): ?array
     {
         $typed = [];
         $elements = [];
@@ -575,7 +577,7 @@ final class SubjectPropertyTypeResolver
             return $whole;
         }
 
-        $type = ArrayArm::written($whole['type'], $writes);
+        $type = ArrayArm::written($whole['type'], $writes, ResourceCollections::reindexesNumericKeys($runtime));
 
         return $type === null ? null : [...ValueResult::unionResults([$whole, ...$elements]), 'type' => $type];
     }

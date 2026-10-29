@@ -26,12 +26,14 @@ final readonly class ArrayArm
      * @param  array<string, Member>  $members  each named key, as printed, in order
      * @param  list<string>  $rest  the union arms an unnamed key holds, a list's elements
      * @param  'number'|'string'|null  $index  the keys left unnamed: a list's are its ints, in order; null for none
+     * @param  bool  $listable  whether the class's serializer may send this object arm as a list
      */
     private function __construct(
         private bool $list,
         private array $members,
         private array $rest,
         private ?string $index,
+        private bool $listable = false,
     ) {}
 
     /**
@@ -39,13 +41,25 @@ final readonly class ArrayArm
      * arm is no list or object, or a write's path names a member an arm does not always hold.
      *
      * @param  non-empty-list<ArrayWrite>  $writes
+     * @param  bool  $reindexes  the class sends the array through a filter that lists one keyed only by numbers
      */
-    public static function written(string $type, array $writes): ?string
+    public static function written(string $type, array $writes, bool $reindexes): ?string
+    {
+        return self::folded($type, $writes, $reindexes, true);
+    }
+
+    /**
+     * The type written() answers, with or without the list the class may send an object arm as; a member's own write
+     * folds without, since a list holds no member a later path could reach, and gains it once the writes settle.
+     *
+     * @param  non-empty-list<ArrayWrite>  $writes
+     */
+    private static function folded(string $type, array $writes, bool $reindexes, bool $lists): ?string
     {
         $arms = [];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $printed) {
-            $arm = self::parsed($printed);
+            $arm = self::parsed($printed, $reindexes);
 
             if ($arm === null) {
                 return null;
@@ -60,7 +74,7 @@ final readonly class ArrayArm
 
             foreach ($writes as $write) {
                 foreach (array_keys($arms) as $kind) {
-                    $written = $arms[$kind]->writtenBy($write);
+                    $written = $arms[$kind]->writtenBy($write, $reindexes);
 
                     if ($written === null) {
                         return null;
@@ -73,9 +87,27 @@ final readonly class ArrayArm
                 }
             }
 
-            if (array_map(fn (self $arm): string => $arm->printed(), $arms) === $before) {
-                return self::printedUnion($arms, array_any($writes, fn (array $write): bool => $write['value'] === null));
+            if (array_map(fn (self $arm): string => $arm->printed(), $arms) !== $before) {
+                continue;
             }
+
+            if (! $lists) {
+                return self::printedUnion($arms, null, $reindexes);
+            }
+
+            foreach ($arms as $kind => $arm) {
+                $listed = $arm->withListedMembers($writes, $reindexes);
+
+                if ($listed === null) {
+                    return null;
+                }
+
+                $arms[$kind] = $listed;
+            }
+
+            $removes = array_any($writes, fn (array $write): bool => $write['value'] === null);
+
+            return self::printedUnion($arms, $removes, $reindexes);
         }
 
         return null;
@@ -85,7 +117,7 @@ final readonly class ArrayArm
      * The arm one printed union arm is: a list, an object literal, a `Record` keyed by number or string, or an object
      * literal intersected with `Record<number, T>`; null for any other type.
      */
-    private static function parsed(string $printed): ?self
+    private static function parsed(string $printed, bool $reindexes): ?self
     {
         $printed = TsTypeShape::isWrapped($printed, '(', ')') ? trim(substr($printed, 1, -1)) : $printed;
         $parts = TsTypeShape::splitTopLevel($printed, ['&']);
@@ -101,7 +133,9 @@ final readonly class ArrayArm
             $arm = $arm?->withPart($part);
         }
 
-        return $arm;
+        return $arm === null
+            ? null
+            : new self(false, $arm->members, $arm->rest, $arm->index, $arm->canList($reindexes));
     }
 
     /**
@@ -139,14 +173,39 @@ final readonly class ArrayArm
     }
 
     /**
-     * Each arm printed, once, an intersection parenthesized beside another arm, and the list PHP sends the object arm
-     * as where it may hold only int keys, unless the list arm already holds each value they may hold.
+     * The int PHP stores a printed member name as, quoted or bare; null for a name it keeps a string.
+     */
+    private static function intKey(string $name): ?int
+    {
+        return PhpArrayKey::storedInt(trim($name, '"\''));
+    }
+
+    /**
+     * Whether an object's members already admit each list the class sends it as, keyed as they are: always outside a
+     * re-indexing resource, and there where they are named 0, 1, … and share one type, whatever order they came in.
+     *
+     * @param  array<string, Member>  $listed  the members a list may hold
+     */
+    private static function holdsLists(array $listed, bool $reindexes): bool
+    {
+        $ints = array_map(self::intKey(...), array_keys($listed));
+        sort($ints);
+
+        return ! $reindexes || ($ints === array_keys($ints) && count(array_unique(array_column($listed, 'type'))) <= 1);
+    }
+
+    /**
+     * Each arm printed, once, an intersection parenthesized beside another arm, and the list the class sends the object
+     * arm as where it may, unless the list arm already holds each value that list may hold.
      *
      * @param  array<string, self>  $arms  by kind
+     * @param  bool|null  $removes  whether a write removes a key; null leaves out the list
      */
-    private static function printedUnion(array $arms, bool $removes): string
+    private static function printedUnion(array $arms, ?bool $removes, bool $reindexes): string
     {
-        $listed = isset($arms['object']) ? $arms['object']->listedValues($removes) : null;
+        $listed = isset($arms['object']) && $removes !== null
+            ? $arms['object']->listedValues($removes, $reindexes)
+            : null;
         $printed = array_map(fn (self $arm): string => $arm->printed(), array_values($arms));
         $held = $listed === null || (isset($arms['list']) && array_diff($listed, $arms['list']->rest) === []);
         $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
@@ -166,11 +225,6 @@ final readonly class ArrayArm
         $record = TsTypeShape::recordArguments($part);
         $members = $record === null ? TsTypeShape::members($part) : [['[key: '.$record[0].']', $record[1]]];
         $arm = $this;
-
-        // A resource re-indexes an array keyed only by numbers into a list, which only a number index admits.
-        if ($members !== null && $members !== [] && array_all($members, fn (array $member): bool => TsTypeShape::isNumericKey($member[0]))) {
-            $members = array_map(fn (array $member): array => ['[key: number]', $member[1]], $members);
-        }
 
         foreach ($members ?? [] as [$key, $type]) {
             $index = preg_match('/^\[\s*\w+\s*:\s*(number|string)\s*\]$/', $key, $match) === 1 ? $match[1] : null;
@@ -198,27 +252,32 @@ final readonly class ArrayArm
      * @param  ArrayWrite  $write
      * @return list<self>|null
      */
-    private function writtenBy(array $write): ?array
+    private function writtenBy(array $write, bool $reindexes): ?array
     {
         if ($write['path'] !== []) {
             $name = JsEmitter::validJsObjectKey($write['path'][0]);
             $member = $this->members[$name] ?? null;
+            $inner = [...$write, 'path' => array_slice($write['path'], 1)];
             $type = $member === null || $member['optional']
                 ? null
-                : self::written($member['type'], [[...$write, 'path' => array_slice($write['path'], 1)]]);
+                : self::folded($member['type'], [$inner], $reindexes, false);
 
-            return $type === null
-                ? null
-                : [new self(false, [...$this->members, $name => ['optional' => false, 'type' => $type]], $this->rest, $this->index)];
+            if ($type === null) {
+                return null;
+            }
+
+            $members = [...$this->members, $name => ['optional' => false, 'type' => $type]];
+
+            return [new self(false, $members, $this->rest, $this->index, $this->listable)];
         }
 
         if (! $this->list) {
-            return [$this->setOrRemoved($write['key'], $write['value'])];
+            return [$this->setOrRemoved($write['key'], $write['value'], $reindexes)];
         }
 
         $key = $write['key'];
         $named = is_string($key) && PhpArrayKey::storedInt($key) === null;
-        $object = new self(false, [], $this->rest, 'number')->setOrRemoved($key, $write['value']);
+        $object = new self(false, [], $this->rest, 'number', true)->setOrRemoved($key, $write['value'], $reindexes);
         // An append or a rewrite keeps a list's keys in order, and so does an unset of a string key no list holds.
         $keyed = $key !== ElementKey::Next && $key !== ElementKey::Every && ($write['value'] !== null || ! $named);
 
@@ -226,12 +285,15 @@ final readonly class ArrayArm
     }
 
     /**
-     * This object arm once a write sets the key it names to a value, or removes it where the value is null.
+     * This object arm once a write sets the key it names to a value, or removes it where the value is null, which may
+     * leave it a list.
      */
-    private function setOrRemoved(string|ElementKey $key, ?string $value): self
+    private function setOrRemoved(string|ElementKey $key, ?string $value, bool $reindexes): self
     {
         // PHP stores a key spelling an int as one, which a number index already holds.
-        $key = is_string($key) && $this->index === 'number' && PhpArrayKey::storedInt($key) !== null ? ElementKey::Next : $key;
+        $key = is_string($key) && $this->index === 'number' && PhpArrayKey::storedInt($key) !== null
+            ? ElementKey::Next
+            : $key;
         $members = $this->members;
         $named = match (true) {
             is_string($key) => [JsEmitter::validJsObjectKey($key)],
@@ -258,8 +320,10 @@ final readonly class ArrayArm
             default => 'string',
         };
         $rest = $value === null || $index === null || is_string($key) ? $this->rest : self::merged($this->rest, $value);
+        $listable = $this->listable
+            || ($value === null && new self(false, $members, $rest, $index)->canList($reindexes));
 
-        return new self(false, $members, $rest, $index);
+        return new self(false, $members, $rest, $index, $listable);
     }
 
     /**
@@ -276,47 +340,137 @@ final readonly class ArrayArm
     }
 
     /**
-     * This arm joined with another of its kind: each key either holds, optional where one lacks it, the wider index
-     * and every unnamed arm.
+     * This arm joined with another of its kind: each key either holds, optional where one lacks it, the wider index,
+     * every unnamed arm, and a list where either may be one; an object keyed only by numbers joins as a number index.
      */
     private function joinedWith(self $other): self
     {
+        $mine = $this->indexed();
+        $theirs = $other->indexed();
         $members = [];
 
-        foreach (array_keys([...$this->members, ...$other->members]) as $name) {
-            $mine = $this->members[$name] ?? null;
-            $theirs = $other->members[$name] ?? null;
+        foreach (array_keys([...$mine->members, ...$theirs->members]) as $name) {
+            $member = $mine->members[$name] ?? null;
+            $joined = $theirs->members[$name] ?? null;
             $members[$name] = [
-                'optional' => $mine === null || $theirs === null || $mine['optional'] || $theirs['optional'],
-                'type' => self::union(array_column(array_filter([$mine, $theirs]), 'type')),
+                'optional' => $member === null || $joined === null || $member['optional'] || $joined['optional'],
+                'type' => self::union(array_column(array_filter([$member, $joined]), 'type')),
             ];
         }
 
-        $index = in_array('string', [$this->index, $other->index], true) ? 'string' : ($this->index ?? $other->index);
+        $index = in_array('string', [$mine->index, $theirs->index], true) ? 'string' : ($mine->index ?? $theirs->index);
+        $rest = self::merged($mine->rest, ...$theirs->rest);
 
-        return new self($this->list, $members, self::merged($this->rest, ...$other->rest), $index);
+        return new self($this->list, $members, $rest, $index, $mine->listable || $theirs->listable);
     }
 
     /**
-     * The values of the list PHP sends this object arm as where it may hold only int keys outside a number index, which
-     * already admits a list: each a string index or a member named by a number may hold, none where a removal may
-     * leave it no key; null where a member it always holds is named otherwise, or nothing can leave it a list.
+     * This arm with an object literal keyed only by numbers read as a number index, which a joined arm needs to admit
+     * the list a re-indexing resource sends it as; any other arm as it is.
+     */
+    private function indexed(): self
+    {
+        $numbers = $this->members !== [] && $this->index !== 'string'
+            && array_all(array_keys($this->members), TsTypeShape::isNumericKey(...));
+        $rest = self::merged($this->rest, ...array_column($this->members, 'type'));
+
+        return $numbers ? new self(false, [], $rest, 'number', $this->listable) : $this;
+    }
+
+    /**
+     * Whether the class's serializer can send an array holding only this arm's members it always holds as a list: a
+     * re-indexing resource where each is named by a number, any other class where each is a key a list may hold.
+     */
+    private function canList(bool $reindexes): bool
+    {
+        $kept = array_filter($this->members, fn (array $member): bool => ! $member['optional']);
+
+        // By key, since PHP stores a bare number's name as an int key.
+        return array_diff_key($kept, array_flip($this->listedNames($reindexes))) === [];
+    }
+
+    /**
+     * The members a list may hold: in a re-indexing resource each named by a number; elsewhere each named by an int,
+     * beside a string index that may fill any gap, or else only those keyed 0, 1, … without one.
+     *
+     * @return list<string>
+     */
+    private function listedNames(bool $reindexes): array
+    {
+        $numbered = array_values(array_filter(
+            array_keys($this->members),
+            fn (string $name): bool => $reindexes ? TsTypeShape::isNumericKey($name) : self::intKey($name) !== null,
+        ));
+
+        if ($reindexes || ($this->index === 'string' && $this->rest !== [])) {
+            return $numbered;
+        }
+
+        $ints = array_map(self::intKey(...), $numbered);
+
+        return array_values(array_filter(
+            $numbered,
+            fn (string $name): bool => array_diff(range(0, max(0, self::intKey($name) ?? 0)), $ints) === [],
+        ));
+    }
+
+    /**
+     * The values of the list the class may send this object arm as, outside a number index, which admits one already:
+     * each a string index or a member a list may hold holds, none where a removal may leave it no key; null where the
+     * class never sends it as a list.
      *
      * @return list<string>|null
      */
-    private function listedValues(bool $removes): ?array
+    private function listedValues(bool $removes, bool $reindexes): ?array
     {
         $index = $this->rest === [] ? null : $this->index;
-        $numbered = array_filter($this->members, fn (string $name): bool => TsTypeShape::isNumericKey($name), ARRAY_FILTER_USE_KEY);
-        $named = array_diff_key($this->members, $numbered);
 
-        if ($index === 'number' || array_any($named, fn (array $member): bool => ! $member['optional'])) {
+        if (! $this->listable || $index === 'number') {
             return null;
         }
 
-        $values = self::merged($index === 'string' ? $this->rest : [], ...array_column($numbered, 'type'));
+        $listed = array_intersect_key($this->members, array_flip($this->listedNames($reindexes)));
+        $values = $index === 'string' || ! self::holdsLists($listed, $reindexes)
+            ? self::merged($index === 'string' ? $this->rest : [], ...array_column($listed, 'type'))
+            : [];
+        $required = array_any($this->members, fn (array $member): bool => ! $member['optional']);
 
-        return $values === [] && ! $removes ? null : $values;
+        return $values === [] && (! $removes || $required) ? null : $values;
+    }
+
+    /**
+     * The object arm with each member a write's path reaches folded again with the lists its writes may leave.
+     *
+     * @param  non-empty-list<ArrayWrite>  $writes
+     */
+    private function withListedMembers(array $writes, bool $reindexes): ?self
+    {
+        $members = $this->members;
+
+        foreach ($members as $name => $member) {
+            $reaching = array_values(array_filter(
+                $writes,
+                fn (array $write): bool => $write['path'] !== []
+                    && JsEmitter::validJsObjectKey($write['path'][0]) === (string) $name,
+            ));
+
+            if ($reaching === []) {
+                continue;
+            }
+
+            $type = self::folded($member['type'], array_map(
+                fn (array $write): array => [...$write, 'path' => array_slice($write['path'], 1)],
+                $reaching,
+            ), $reindexes, true);
+
+            if ($type === null) {
+                return null;
+            }
+
+            $members[$name] = [...$member, 'type' => $type];
+        }
+
+        return new self($this->list, $members, $this->rest, $this->index, $this->listable);
     }
 
     /**
@@ -361,7 +515,9 @@ final readonly class ArrayArm
                 ? TsTypeString::orUndefined($covered)
                 : $covered;
 
-            return $members === [] ? 'Record<string, '.$covered.'>' : '{ '.implode('; ', [...$printed, '[key: string]: '.$covered]).' }';
+            return $members === []
+                ? 'Record<string, '.$covered.'>'
+                : '{ '.implode('; ', [...$printed, '[key: string]: '.$covered]).' }';
         }
 
         $object = $members === [] ? null : '{ '.implode('; ', $printed).' }';

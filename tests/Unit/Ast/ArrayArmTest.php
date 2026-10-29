@@ -19,8 +19,9 @@ function arrayArmWrite(string|ElementKey $key, ?string $value, array $path = [])
 }
 
 // A write may run in any order, any number of times or not at all, so each arm keeps what it held beside what it gains.
-it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written) {
-    expect(ArrayArm::written($type, $writes))->toBe($written);
+// A plain class sends a list where the keys are 0, 1, …; a re-indexing resource wherever only numeric keys remain.
+it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written, bool $reindexes = false) {
+    expect(ArrayArm::written($type, $writes, $reindexes))->toBe($written);
 })->with([
     'a string key set on a list' => ['string[]', [arrayArmWrite('k', 'number')], 'string[] | ({ k?: number } & Record<number, string>)'],
     'a list element unset' => ['string[]', [arrayArmWrite(ElementKey::Any, null)], 'string[] | Record<number, string>'],
@@ -65,20 +66,60 @@ it('applies each element write to every arm of an array type', function (string 
         [arrayArmWrite(ElementKey::Next, 'boolean')],
         '{ a: number } & Record<number, boolean | string>',
     ],
-    'a member named by a number left as the one key' => [
+    'a member named by 5 left as the one key, which a plain class sends as an object' => [
+        '{ a: number }',
+        [arrayArmWrite('5', 'string'), arrayArmWrite('a', null)],
+        '{ a?: number; "5"?: string } | never[]',
+    ],
+    'a member named by 0 left as the one key, which admits the list it is sent as' => [
+        '{ a: number }',
+        [arrayArmWrite('0', 'string'), arrayArmWrite('a', null)],
+        '{ a?: number; "0"?: string } | never[]',
+    ],
+    'a member named by 5 left as the one key in a re-indexing resource' => [
         '{ a: number }',
         [arrayArmWrite('5', 'string'), arrayArmWrite('a', null)],
         '{ a?: number; "5"?: string } | string[]',
+        true,
+    ],
+    'a lone object keyed only by numbers, which keeps its members' => [
+        '{ "1": string; "2": number }',
+        [arrayArmWrite('k', 'boolean')],
+        '{ "1": string; "2": number; k?: boolean }',
+    ],
+    'a lone object keyed only by numbers in a re-indexing resource' => [
+        '{ "5": string }',
+        [arrayArmWrite('k', 'number')],
+        '{ "5": string; k?: number } | string[]',
+        true,
+    ],
+    'two objects each always holding a named key, which no write leaves a list' => [
+        '{ a: number } | { b: string }',
+        [arrayArmWrite(ElementKey::Any, 'number')],
+        '{ a?: number; b?: string | number; [key: string]: number | string | undefined }',
+        true,
     ],
     'an object keyed only by numbers beside another' => [
-        '{ a: number } | { 5: string }',
+        '{ a: number } | { "5": string }',
         [arrayArmWrite('k', 'number')],
         '{ a?: number; k?: number } & Record<number, string>',
     ],
-    'any key set beside an object keyed only by numbers, which no unset need leave a list' => [
-        '{ a: number } | { 5: string }',
+    'any key set beside an object keyed from 5, which a plain class never sends as a list' => [
+        '{ a: number } | { "5": string }',
+        [arrayArmWrite(ElementKey::Any, 'number')],
+        '{ a?: number; [key: string]: number | string | undefined }',
+    ],
+    'any key set beside an object keyed only by numbers in a re-indexing resource' => [
+        '{ a: number } | { "5": string }',
         [arrayArmWrite(ElementKey::Any, 'number')],
         '{ a?: number; [key: string]: number | string | undefined } | (string | number)[]',
+        true,
+    ],
+    'a key set two levels into members named by numbers in a re-indexing resource' => [
+        '{ a: number; b: { "3": { x: number } } }',
+        [arrayArmWrite('y', 'number', ['b', '3'])],
+        '{ a: number; b: { "3": { x: number; y?: number } } | { x: number; y?: number }[] }',
+        true,
     ],
     'a key set on each of two objects' => [
         '{ a: number } | { b: string }',
@@ -92,13 +133,13 @@ it('publishes the list PHP sends an object an unset leaves keyed only by numbers
     $sent['0'] = 2;
     unset($sent['a']);
 
-    expect(ArrayArm::written('{ a: number }', [arrayArmWrite(ElementKey::Any, 'number'), arrayArmWrite('a', null)]))
+    expect(ArrayArm::written('{ a: number }', [arrayArmWrite(ElementKey::Any, 'number'), arrayArmWrite('a', null)], false))
         ->toBe('{ a?: number; [key: string]: number | undefined } | number[]')
         ->and(json_encode($sent))->toBe('[2]');
 });
 
 it('declines a write on an arm that is no array, or through a member an arm may not hold', function (string $type, array $writes) {
-    expect(ArrayArm::written($type, $writes))->toBeNull();
+    expect(ArrayArm::written($type, $writes, false))->toBeNull();
 })->with([
     'a nullable list' => ['string[] | null', [arrayArmWrite(ElementKey::Next, 'string')]],
     'a tuple' => ['[string, number]', [arrayArmWrite(ElementKey::Next, 'string')]],

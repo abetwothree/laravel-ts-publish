@@ -50,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MeasuredSizeChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
@@ -454,13 +455,40 @@ it('publishes the list an untyped array an unset or a whole write leaves keyed o
             'renumbered' => '{ a?: number; [key: string]: number | undefined } | number[]',
             'numbered' => '{ a?: number; "5"?: string } | string[]',
             'swapped' => '{ a?: number; k?: number } & Record<number, string>',
+            'fived' => '{ "5": string; k?: number } | string[]',
+            'rows' => '({ x: number; y?: number } | { x: number })[]',
         ])
-        ->and(json_encode($resource()->resolve(request())))->toBe('{"renumbered":{"a":1},"numbered":{"a":1},"swapped":{"a":1}}')
+        ->and(json_encode($resource()->resolve(request())))->toBe(
+            '{"renumbered":{"a":1},"numbered":{"a":1},"swapped":{"a":1},"fived":["s"],"rows":[{"x":1},{"x":2}]}',
+        )
         ->and(json_encode($resource()->renumber('5')->dropRenumbered()->number()->dropNumbered()->swap()->resolve(request())))
-        ->toBe('{"renumbered":[2],"numbered":["s"],"swapped":["s"]}')
-        ->and(json_encode($resource()->renumber('x')->number()->key()->resolve(request())))
-        ->toBe('{"renumbered":{"a":1,"x":2},"numbered":{"a":1,"5":"s"},"swapped":{"a":1,"k":1}}')
+        ->toBe('{"renumbered":[2],"numbered":["s"],"swapped":["s"],"fived":["s"],"rows":[{"x":1},{"x":2}]}')
+        ->and(json_encode($resource()->renumber('x')->number()->key()->keyFived()->extendRow()->resolve(request())))
+        ->toBe(
+            '{"renumbered":{"a":1,"x":2},"numbered":{"a":1,"5":"s"},"swapped":{"a":1,"k":1},"fived":{"5":"s","k":1},'
+            .'"rows":[{"x":1,"y":2},{"x":2}]}',
+        )
         ->and(json_encode($resource()->swap()->key()->resolve(request())['swapped']))->toBe('{"5":"s","k":1}');
+});
+
+// A plain class sends a list only where the keys run 0, 1, …, as keys from 5 on, or a named key always held, never do.
+it('keeps the numbered keys of an untyped array a plain class can never send as a list', function () {
+    $payload = fn (): NumberedTagsPayload => new NumberedTagsPayload;
+
+    expect(analyzedKeyTypes(NumberedTagsPayload::class))->toBe([
+        'fived' => '{ "5": string; k?: number }',
+        'numbered' => '{ "1": string; "2": number; "7"?: boolean }',
+        'rows' => '{ "1": { x: number; y?: number }; "2": { x: number } }',
+        'named' => '{ a?: number; b?: string | number; [key: string]: number | string | undefined }',
+        'swapped' => '{ a?: number; [key: string]: number | string | undefined }',
+    ])->and(json_encode($payload()->toArray()))->toBe(
+        '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1},"swapped":{"a":1}}',
+    )->and(json_encode($payload()->keyFived()->keySeven()->extendRow()->swapNamed()->keyNamed('0')->swap()->keySwapped('0')->toArray()))->toBe(
+        '{"fived":{"5":"s","k":1},"numbered":{"1":"a","2":5,"7":true},"rows":{"1":{"x":1,"y":2},"2":{"x":2}},'
+        .'"named":{"b":"x","0":1},"swapped":{"5":"s","0":1}}',
+    )->and(json_encode($payload()->keyNamed('0')->keySwapped('x')->toArray()))->toBe(
+        '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1,"0":1},"swapped":{"a":1,"x":1}}',
+    );
 });
 
 // R1: after a whole unset() PHP reads the property through `__get()`, and a read there warns, so only the fresh value.
