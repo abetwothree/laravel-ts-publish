@@ -162,23 +162,7 @@ final class VariableWrites
         $path = self::keyPath($target);
 
         if ($node instanceof Foreach_ && $node->byRef && $node->expr === $target) {
-            $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
-
-            if ($element === null || $path === null) {
-                return self::form(ByReferenceEffect::Replaces);
-            }
-
-            // After the loop the variable still points at the last element, so a later write lands in it, as one before
-            // the loop does when a loop around both runs it again; unset() breaks the reference.
-            $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
-                && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
-                && StatementBlocks::encloses($loop, $node));
-            $values = self::elementValues(array_values(array_filter(
-                $writes,
-                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
-                    && ($write[1]->getStartFilePos() > $node->getStartFilePos()
-                        || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
-            )));
+            $values = $path === null ? null : self::foreachElementValues($node, $writes, $stmts);
 
             return $values === null
                 ? self::form(ByReferenceEffect::Replaces)
@@ -200,6 +184,36 @@ final class VariableWrites
             ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves => self::walkedForm($node, $effect, $path, $scope),
             default => self::form($effect, [], $path),
         };
+    }
+
+    /**
+     * The values a by-reference `foreach` puts in the elements of the array it iterates, from each write to its value
+     * variable that can land in one; null where that variable is no plain name, or a write is one the scan cannot type.
+     *
+     * @param  NamedWrites  $writes  every write of the body
+     * @param  array<Node>  $stmts  the body, for the loops around the `foreach`
+     * @return list<Expr>|null
+     */
+    public static function foreachElementValues(Foreach_ $node, array $writes, array $stmts): ?array
+    {
+        $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
+
+        if ($element === null) {
+            return null;
+        }
+
+        // After the loop the variable still points at the last element, so a later write lands in it, as one before
+        // the loop does when a loop around both runs it again; unset() breaks the reference.
+        $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
+            && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
+            && StatementBlocks::encloses($loop, $node));
+
+        return self::elementValues(array_values(array_filter(
+            $writes,
+            fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
+                && ($write[1]->getStartFilePos() > $node->getStartFilePos()
+                    || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
+        )));
     }
 
     /**

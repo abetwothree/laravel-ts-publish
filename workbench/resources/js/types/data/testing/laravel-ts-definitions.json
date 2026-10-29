@@ -10988,6 +10988,26 @@
             "name": "BaseSharedResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\BaseTagBoardResource": {
+            "name": "BaseTagBoardResource",
+            "properties": [
+                {
+                    "name": "labels",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "both",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "dynamic",
+                    "type": "{ a: number }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BlockScopedBindingsResource": {
             "name": "BlockScopedBindingsResource",
             "properties": [
@@ -20566,6 +20586,26 @@
                 {
                     "name": "id",
                     "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TagBoardResource": {
+            "name": "TagBoardResource",
+            "properties": [
+                {
+                    "name": "labels",
+                    "type": "{ a: string } & Record<number, string>",
+                    "optional": false
+                },
+                {
+                    "name": "both",
+                    "type": "string[] | ({ k?: number } & Record<number, string>)",
+                    "optional": false
+                },
+                {
+                    "name": "dynamic",
+                    "type": "{ a: number; [key: string]: number }",
                     "optional": false
                 }
             ]

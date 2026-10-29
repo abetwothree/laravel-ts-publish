@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildSiblingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResource;
@@ -35,6 +36,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AppendedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
@@ -70,6 +72,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
+use Workbench\App\Http\Resources\TagBoardResource;
 use Workbench\App\Http\Resources\TieredNoticeResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PanelPayload;
@@ -397,7 +400,7 @@ it('leaves `unknown` a write a callback holds that reads an untypable value thro
         ->toBe('{"used":true,"anon":"none","loose":true}');
 });
 
-// An element unset(), an append onto an object, an append beside a key write, and a computed key keep the known gap.
+// O2: a write may run in any order, any number of times, or not at all; Laravel re-indexes `pruned`'s numeric keys.
 it('types an untyped array a subclass appends to or keys into as its default with each element written', function () {
     $resource = fn (): AppendedTagsResource => new AppendedTagsResource(null);
 
@@ -407,20 +410,53 @@ it('types an untyped array a subclass appends to or keys into as its default wit
         'keyed' => '{ a: number; b?: number }',
         'counts' => '{ a: number | string }',
         'mixed' => '(string | number)[]',
-        'pruned' => 'unknown',
-        'labels' => 'unknown',
-        'both' => 'unknown',
-        'dynamic' => 'unknown',
+        'pruned' => 'string[]',
+        'labels' => '{ a: string } & Record<number, string>',
+        'both' => 'string[] | ({ k?: number } & Record<number, string>)',
+        'dynamic' => '{ a: number; [key: string]: number }',
+        'keyedList' => '(string | number)[] | Record<string, string | number>',
+        'nested' => '{ a: { b: number; c?: string } }',
+        'refs' => '(string | number)[]',
+        'dropped' => '{ a?: number; b: number }',
     ])->and(json_encode($resource()->resolve(request())))->toBe(
         '{"tags":["base"],"empty":[],"keyed":{"a":1},"counts":{"a":1},"mixed":["m"],"pruned":["p"],"labels":{"a":"x"},'
-        .'"both":["a"],"dynamic":{"a":1}}',
+        .'"both":["a"],"dynamic":{"a":1},"keyedList":["l"],"nested":{"a":{"b":1}},"refs":["r"],"dropped":{"a":1,"b":2}}',
     )->and(json_encode($resource()->tag('x')->resolve(request())))->toBe(
         '{"tags":["base","x"],"empty":["x"],"keyed":{"a":1,"b":2},"counts":{"a":"many"},"mixed":["m","x"],"pruned":["p"],'
-        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1}}',
+        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1},'
+        .'"keyedList":{"0":"l","x":2},"nested":{"a":{"b":1,"c":"x"}},"refs":[1],"dropped":{"b":2}}',
     )->and(json_encode($resource()->renumber()->tag('x')->prune()->resolve(request())))->toBe(
         '{"tags":["base","x"],"empty":["x"],"keyed":{"a":1,"b":2},"counts":{"a":"many"},"mixed":[1,2,"x"],"pruned":["q"],'
-        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1}}',
+        .'"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1},'
+        .'"keyedList":{"0":"l","x":2},"nested":{"a":{"b":1,"c":"x"}},"refs":[1],"dropped":{"b":2}}',
     );
+});
+
+it('keeps the keys an element unset() leaves in an untyped array a plain class sends as it holds it', function () {
+    expect(analyzedKeyTypes(AppendedTagsPayload::class)['pruned'])->toBe('string[] | Record<number, string>')
+        ->and(json_encode(new AppendedTagsPayload()->prune()->toArray()['pruned']))->toBe('{"1":"q"}');
+});
+
+it('keeps the keys an element unset() leaves in an untyped array a resource that preserves keys sends', function () {
+    expect(publishedResourceKeyTypes(KeptTagsResource::class, Post::class)['pruned'])->toBe('string[] | Record<number, string>')
+        ->and(json_encode((new KeptTagsResource(null))->prune()->resolve(request())['pruned']))->toBe('{"1":"q"}');
+});
+
+// R1: after a whole unset() PHP reads the property through `__get()`, and a read there warns, so only the fresh value.
+it('leaves `unknown` an untyped array the class unsets whole', function () {
+    expect(analyzedKeyTypes(AppendedTagsPayload::class)['gone'])->toBe('unknown')
+        ->and(json_encode(new AppendedTagsPayload()->toArray()['gone']))->toBe('["g"]');
+});
+
+it('publishes a workbench resource whose subclass appends to an object, beside a key write and under a computed key', function () {
+    expect(analyzedKeyTypes(TagBoardResource::class))->toBe([
+        'labels' => '{ a: string } & Record<number, string>',
+        'both' => 'string[] | ({ k?: number } & Record<number, string>)',
+        'dynamic' => '{ a: number; [key: string]: number }',
+    ])->and(json_encode((new TagBoardResource(null))->resolve(request())))
+        ->toBe('{"labels":{"a":"x"},"both":["a"],"dynamic":{"a":1}}')
+        ->and(json_encode((new TagBoardResource(null))->tag('x')->resolve(request())))
+        ->toBe('{"labels":{"a":"x","0":"x"},"both":{"0":"a","1":"x","k":1},"dynamic":{"a":1,"x":1}}');
 });
 
 // Siblings read in one process: a `static::` write typed once per class would leak one sibling's type to the next.

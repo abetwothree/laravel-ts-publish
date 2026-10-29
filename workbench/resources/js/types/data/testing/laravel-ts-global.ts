@@ -2674,6 +2674,15 @@ declare global {
         export interface BaseSharedResource extends SharedInterface {
         }
         /**
+         * Fixture: a model-less resource whose `toArray()` reads untyped array defaults that TagBoardResource writes by
+         * element.
+         */
+        export interface BaseTagBoardResource {
+            labels: { a: string };
+            both: string[];
+            dynamic: { a: number };
+        }
+        /**
          * Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there; an early-exit
          * `instanceof` guard nested in a block, for the rest of that block; and a positive `instanceof` test, in its block.
          *
@@ -5533,6 +5542,15 @@ declare global {
          */
         export interface SupplierSummaryResource {
             id: number;
+        }
+        /**
+         * Fixture: a runtime class of BaseTagBoardResource's `toArray()` that appends to an object, appends beside a key
+         * write, and keys an object by the tag passed.
+         */
+        export interface TagBoardResource {
+            labels: { a: string } & Record<number, string>;
+            both: string[] | ({ k?: number } & Record<number, string>);
+            dynamic: { a: number; [key: string]: number };
         }
         /** Exercises: a whole return that adds a local's defaults with `+`, whose keys the left side keeps. */
         export interface TagDefaultsResource {

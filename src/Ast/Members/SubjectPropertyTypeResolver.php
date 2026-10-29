@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -18,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
@@ -74,11 +74,12 @@ use WeakMap;
  * declares it at all, and whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ArrayWrite from ArrayArm
  *
  * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, ClassLike, string}
  * @phpstan-type PropertyWrites list<PropertyWrite>
- * @phpstan-type ElementWrite array{key: string|null, value: Expr}
- * @phpstan-type KeyedValue array{string, ValueExpressionResult}
+ * @phpstan-type ElementWrite array{path: list<string|null>, value: Expr|null, unsets: bool}
+ * @phpstan-type ComputedWrites list<array{PropertyWrite, ElementWrite}>
  * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
  * @phpstan-type TargetsReader Closure(Node): list<Expr|Arg>
  * @phpstan-type WriteValues array<int, ValueExpressionResult|null>
@@ -282,14 +283,18 @@ final class SubjectPropertyTypeResolver
 
         foreach ($writes as $write) {
             $assigned = $this->assignedConstant($write[0], $property->getName(), $knownRuntime, $write[1]);
+            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $knownRuntime ?? $subject) : [];
+
+            if ($elements === null) {
+                return null;
+            }
 
             if ($assigned !== null) {
                 $written[] = $assigned;
-            } elseif ($this->writtenValue($write[0], $property->getName()) !== null
-                || $this->elementWrite($write[0], $property->getName()) !== null) {
-                $computed[] = $write;
-            } else {
-                return null;
+            }
+
+            foreach ($elements as $element) {
+                $computed[] = [$write, $element];
             }
         }
 
@@ -309,16 +314,16 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The known type joined with the value each computed write assigns, each appended element folded into its list and
-     * each key written into its object; the known type alone while the property is already being typed, and null where
-     * a write's value is one the engine cannot type, or its elements fit no single shape.
+     * The known type joined with the value each computed write assigns, and each element write applied to its arms; the
+     * known type alone while the property is already being typed, and null where a write's value is one the engine
+     * cannot type, or an element write reaches no array the type names.
      *
      * A write calling a helper already being read reads it again, or cut where the type that joins is no fixpoint; only
      * the outermost property typed reads one again, so its check and fallback each add one read per call and property
      * its writes reach to the cut read's work, and a property typed inside it adds none.
      *
      * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
-     * @param  PropertyWrites  $computed  the whole, compound and element writes no constant evaluation types
+     * @param  ComputedWrites  $computed  the whole, compound and element writes no constant evaluation types
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
@@ -338,12 +343,10 @@ final class SubjectPropertyTypeResolver
             return self::$seeds[$this->seedKey($guard, $subject, $knownRuntime)] ?? $known;
         }
 
-        $name = $property->getName();
-
         try {
             // A property typed inside another's re-entry reads its helpers cut, as before it, so no re-entry nests.
             if (! $memo->enter(self::REENTRY_GUARD)) {
-                return $memo->cut(fn (): ?array => $this->cutWrites($known, $computed, $name, $subject, $knownRuntime));
+                return $memo->cut(fn (): ?array => $this->cutWrites($known, $computed, $subject, $knownRuntime));
             }
 
             try {
@@ -355,7 +358,7 @@ final class SubjectPropertyTypeResolver
                 // A write that joins a new type each run, as one nesting what its helper returns does, reads it cut.
                 return $lifted['kept']
                     ? $lifted['type']
-                    : $this->cutWrites($known, $computed, $name, $subject, $knownRuntime);
+                    : $this->cutWrites($known, $computed, $subject, $knownRuntime);
             } finally {
                 $memo->leave(self::REENTRY_GUARD);
             }
@@ -369,7 +372,7 @@ final class SubjectPropertyTypeResolver
      * entered one again, it is a fixpoint, or a write that entered none declines it anyway.
      *
      * @param  ValueExpressionResult  $known
-     * @param  PropertyWrites  $computed
+     * @param  ComputedWrites  $computed
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>|null  $knownRuntime
      * @return LiftedWrites
@@ -383,15 +386,14 @@ final class SubjectPropertyTypeResolver
     ): array {
         $memo = resolve(AnalysisMemo::class);
         $guard = $this->propertyGuard($property);
-        $name = $property->getName();
         $read = fn (int $index): ?array => $memo->reenterOnce(
             $guard,
-            fn (): ?array => $this->writeValue($computed[$index], $name, $subject, $knownRuntime),
+            fn (): ?array => $this->writeValue($computed[$index], $subject, $knownRuntime),
         );
         $values = [];
         $reentered = [];
 
-        foreach (array_keys($computed) as $index) {
+        foreach ($this->valuedWrites($computed) as $index) {
             $reentries = $memo->reentries();
             $values[$index] = $read($index);
 
@@ -403,18 +405,18 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        $joined = $this->joinedWrites($known, $computed, $values, $name);
+        $joined = $this->joinedWrites($known, $computed, $values);
 
         if ($reentered === [] || $joined === null) {
             return ['type' => $joined, 'kept' => $reentered === []];
         }
 
-        $again = function () use ($known, $computed, $name, $values, $reentered, $read): ?array {
+        $again = function () use ($known, $computed, $values, $reentered, $read): ?array {
             foreach ($reentered as $index) {
                 $values[$index] = $read($index);
             }
 
-            return $this->joinedWrites($known, $computed, $values, $name);
+            return $this->joinedWrites($known, $computed, $values);
         };
         $seed = $this->seedKey($guard, $subject, $knownRuntime);
 
@@ -452,7 +454,7 @@ final class SubjectPropertyTypeResolver
      * null where a write's value is one the engine cannot type.
      *
      * @param  ValueExpressionResult  $known
-     * @param  PropertyWrites  $computed
+     * @param  ComputedWrites  $computed
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
@@ -460,21 +462,31 @@ final class SubjectPropertyTypeResolver
     private function cutWrites(
         array $known,
         array $computed,
-        string $name,
         ReflectionClass $subject,
         ?ReflectionClass $knownRuntime,
     ): ?array {
         $values = [];
 
-        foreach ($computed as $index => $write) {
-            $values[$index] = $this->writeValue($write, $name, $subject, $knownRuntime);
+        foreach ($this->valuedWrites($computed) as $index) {
+            $values[$index] = $this->writeValue($computed[$index], $subject, $knownRuntime);
 
             if ($values[$index] === null) {
                 return null;
             }
         }
 
-        return $this->joinedWrites($known, $computed, $values, $name);
+        return $this->joinedWrites($known, $computed, $values);
+    }
+
+    /**
+     * The index of each computed write that writes a value, which an element `unset()` does not.
+     *
+     * @param  ComputedWrites  $computed
+     * @return list<int>
+     */
+    private function valuedWrites(array $computed): array
+    {
+        return array_keys(array_filter($computed, fn (array $write): bool => $write[1]['value'] !== null));
     }
 
     /**
@@ -501,142 +513,70 @@ final class SubjectPropertyTypeResolver
      * The value a computed write gives the property whole, or the element it writes, typed in its method's scope; null
      * where the engine cannot type it.
      *
-     * @param  PropertyWrite  $write
+     * @param  array{PropertyWrite, ElementWrite}  $write
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
-    private function writeValue(
-        array $write,
-        string $name,
-        ReflectionClass $subject,
-        ?ReflectionClass $knownRuntime,
-    ): ?array {
-        $expr = $this->elementWrite($write[0], $name)['value'] ?? $this->writtenValue($write[0], $name);
-        $value = $expr === null ? null : $this->computedWrite($write, $expr, $subject, $knownRuntime);
+    private function writeValue(array $write, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    {
+        $expr = $write[1]['value'];
+        $value = $expr === null ? null : $this->computedWrite($write[0], $expr, $subject, $knownRuntime);
 
         return $value === null || $value['type'] === 'unknown' ? null : $value;
     }
 
     /**
-     * The known type joined with each computed write's value, each appended element folded into its list and each key
-     * written into its object; null where a value is missing, or the elements fit no single shape.
+     * The known type joined with each whole write's value, with each element write then applied to its arms; null where
+     * a value is missing, or an element write reaches no array the type names.
      *
      * @param  ValueExpressionResult  $known
-     * @param  PropertyWrites  $computed
+     * @param  ComputedWrites  $computed
      * @param  WriteValues  $values  each write's value, by its index in $computed
      * @return ValueExpressionResult|null
      */
-    private function joinedWrites(array $known, array $computed, array $values, string $name): ?array
+    private function joinedWrites(array $known, array $computed, array $values): ?array
     {
         $typed = [];
-        $appended = [];
-        $keyed = [];
+        $elements = [];
+        $writes = [];
 
-        foreach ($computed as $index => $write) {
+        foreach ($computed as $index => [$write, $element]) {
             $value = $values[$index] ?? null;
 
-            if ($value === null) {
+            // Only an unset() writes no value; a write whose value the engine cannot type may leave anything.
+            if ($value === null && ! $element['unsets']) {
                 return null;
             }
 
-            $element = $this->elementWrite($write[0], $name);
-
-            if ($element === null) {
+            if ($value !== null && $element['path'] === []) {
                 $typed[] = $value;
-            } elseif ($element['key'] === null) {
-                $appended[] = $value;
-            } else {
-                $keyed[] = [$element['key'], $value];
+
+                continue;
+            }
+
+            $written = $this->arrayWrite($write[0], $element, $value['type'] ?? null);
+
+            if ($written === null) {
+                return null;
+            }
+
+            $writes[] = $written;
+
+            if ($value !== null) {
+                $elements[] = $value;
             }
         }
 
         $whole = ValueResult::unionResults([$known, ...$typed]);
 
-        // Appends beside a key write leave a list keyed by name, an object no list or literal shape describes.
-        return match (true) {
-            $appended !== [] && $keyed !== [] => null,
-            $appended !== [] => $this->withAppended($whole, $appended),
-            $keyed !== [] => $this->withKeys($whole, $keyed),
-            default => $whole,
-        };
-    }
-
-    /**
-     * A list of each element type the property's lists hold and each appended value's type; null where an arm is no
-     * list, such as `null` or an object, whose appended value lands under a key the type cannot name.
-     *
-     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
-     * @param  non-empty-list<ValueExpressionResult>  $appended
-     * @return ValueExpressionResult|null
-     */
-    private function withAppended(array $whole, array $appended): ?array
-    {
-        $elements = [];
-
-        foreach (TsTypeShape::splitTopLevel($whole['type'], ['|']) as $arm) {
-            $element = TsTypeShape::elementType($arm);
-
-            if ($element === null) {
-                return null;
-            }
-
-            $elements[] = $element;
+        if ($writes === []) {
+            return $whole;
         }
 
-        $members = array_merge(...array_map(
-            fn (string $type): array => TsTypeShape::splitTopLevel($type, ['|']),
-            [...$elements, ...array_column($appended, 'type')],
-        ));
+        $type = ArrayArm::written($whole['type'], $writes);
 
-        return [
-            ...ValueResult::unionResults([$whole, ...$appended]),
-            'type' => TsTypeShape::listType(array_values(array_diff($members, ['never']))),
-        ];
-    }
-
-    /**
-     * The property's one object shape with each key written into it: a key it holds joined with each value written, and
-     * a new one optional, since its write may not run; null where the type is not one object literal.
-     *
-     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
-     * @param  non-empty-list<KeyedValue>  $keyed
-     * @return ValueExpressionResult|null
-     */
-    private function withKeys(array $whole, array $keyed): ?array
-    {
-        $members = TsTypeShape::members($whole['type']);
-
-        if ($members === null) {
-            return null;
-        }
-
-        $shape = [];
-
-        foreach ($members as [$key, $type]) {
-            $optional = str_ends_with($key, '?');
-            $shape[$optional ? substr($key, 0, -1) : $key] = [$optional, $type];
-        }
-
-        foreach ($keyed as [$key, $value]) {
-            $printed = JsEmitter::validJsObjectKey($key);
-            $held = $shape[$printed] ?? null;
-            $joined = $held === null
-                ? $value
-                : ValueResult::unionResults([[...ValueResult::unknown(), 'type' => $held[1]], $value]);
-            $shape[$printed] = [$held[0] ?? true, $joined['type']];
-        }
-
-        $printed = array_map(
-            fn (int|string $key, array $member): string => $key.($member[0] ? '?' : '').': '.$member[1],
-            array_keys($shape),
-            $shape,
-        );
-
-        return [
-            ...ValueResult::unionResults([$whole, ...array_column($keyed, 1)]),
-            'type' => '{ '.implode('; ', $printed).' }',
-        ];
+        return $type === null ? null : [...ValueResult::unionResults([$whole, ...$elements]), 'type' => $type];
     }
 
     /**
@@ -717,27 +657,135 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The key and value an element write `$this->{$name}[] = value` or `$this->{$name}['key'] = value` gives the
-     * property, the key null for an append; null for any other write, a computed or nested key included.
+     * The writes one site makes to `$this->{$name}`, each as the key path it reaches the property through, empty for
+     * the property whole: a whole or compound write, an element write, an element `unset()`, or a by-reference
+     * `foreach` with each value its body gives the element; null for any other write, a whole `unset()` included.
      *
-     * @return ElementWrite|null
+     * @param  PropertyWrite  $write
+     * @param  ReflectionClass<object>  $runtime  the class `$this` names, for a call in a `foreach` body
+     * @return list<ElementWrite>|null
      */
-    private function elementWrite(Node $site, string $name): ?array
+    private function elementWrites(array $write, string $name, ReflectionClass $runtime): ?array
     {
-        if (! $site instanceof Assign || ! $site->var instanceof ArrayDimFetch) {
+        $site = $write[0];
+
+        if ($site instanceof Unset_) {
+            $unsets = [];
+
+            foreach ($site->vars as $var) {
+                $path = $this->elementPath($var, $name);
+
+                // After a whole unset() a read goes through `__get()`, which may answer anything.
+                if ($path === [] || ($path === null && $this->targetsProperty($var, $name, true))) {
+                    return null;
+                }
+
+                if ($path !== null) {
+                    $unsets[] = ['path' => $path, 'value' => null, 'unsets' => true];
+                }
+            }
+
+            return $unsets;
+        }
+
+        if ($site instanceof Foreach_) {
+            $path = $site->byRef ? $this->elementPath($site->expr, $name) : null;
+            $loopWrites = array_any(
+                array_filter([$site->valueVar, $site->keyVar]),
+                fn (Expr $target): bool => $this->targetsProperty($target, $name, true),
+            );
+            $values = $path === null || $loopWrites ? null : $this->foreachValues($write, $site, $runtime);
+
+            return $path === null || $values === null ? null : array_map(
+                fn (Expr $value): array => ['path' => [...$path, null], 'value' => $value, 'unsets' => false],
+                $values,
+            );
+        }
+
+        $whole = $this->writtenValue($site, $name);
+
+        if ($whole !== null || ! $site instanceof Assign) {
+            return $whole === null ? null : [['path' => [], 'value' => $whole, 'unsets' => false]];
+        }
+
+        $path = $this->elementPath($site->var, $name);
+
+        return $path === null || $path === [] ? null : [['path' => $path, 'value' => $site->expr, 'unsets' => false]];
+    }
+
+    /**
+     * The keys a target reaches into `$this->{$name}` through, outermost first, each null where no literal spells it;
+     * empty for the property itself, and null where the target is neither.
+     *
+     * @return list<string|null>|null
+     */
+    private function elementPath(Expr $target, string $name): ?array
+    {
+        $path = [];
+
+        while ($target instanceof ArrayDimFetch) {
+            $key = $target->dim;
+            array_unshift($path, $key instanceof String_ || $key instanceof Int_ ? (string) $key->value : null);
+            $target = $target->var;
+        }
+
+        return $target instanceof PropertyFetch && $target->var instanceof Variable && $target->var->name === 'this'
+            && $target->name instanceof Identifier && $target->name->toString() === $name ? $path : null;
+    }
+
+    /**
+     * The values a by-reference `foreach` puts in the elements it iterates, read in the function that holds it; null
+     * where its value variable is no plain name, or a write to it is one the scan cannot type.
+     *
+     * @param  PropertyWrite  $write
+     * @param  ReflectionClass<object>  $runtime
+     * @return list<Expr>|null
+     */
+    private function foreachValues(array $write, Foreach_ $loop, ReflectionClass $runtime): ?array
+    {
+        [, $self, $class] = $write;
+        $method = $this->enclosingMethod($class, $loop);
+
+        if ($method === null) {
             return null;
         }
 
-        $element = $site->var;
-        $property = $element->var;
-        $key = $element->dim;
+        $closures = array_values(array_filter(
+            $this->enclosingClosures($method, $loop),
+            fn (ArrowFunction|ClosureExpr $function): bool => $function instanceof ClosureExpr,
+        ));
+        $stmts = $closures === [] ? $method->stmts ?? [] : $closures[count($closures) - 1]->stmts;
+        $scope = new AnalysisScope($self);
+        $scope->runtimeReflection = $runtime;
 
-        if (! $property instanceof PropertyFetch || ! $property->name instanceof Identifier
-            || $property->name->toString() !== $name || ($key !== null && ! $key instanceof String_)) {
+        return VariableWrites::foreachElementValues($loop, VariableWrites::of($stmts, $scope), $stmts);
+    }
+
+    /**
+     * The write an element write makes to the array its key path reaches, the key it leaves unnamed last read from the
+     * site: a by-reference `foreach` rewrites every element and `[]` appends; null where an earlier key is unnamed.
+     *
+     * @param  ElementWrite  $element
+     * @param  string|null  $value  the type of the value it writes; null for an unset()
+     * @return ArrayWrite|null
+     */
+    private function arrayWrite(Node $site, array $element, ?string $value): ?array
+    {
+        $path = $element['path'];
+        $key = array_pop($path);
+        $named = array_values(array_filter($path, is_string(...)));
+
+        if ($element['path'] === [] || count($named) !== count($path)) {
             return null;
         }
 
-        return ['key' => $key?->value, 'value' => $site->expr];
+        $key ??= match (true) {
+            $site instanceof Foreach_ => ElementKey::Every,
+            $site instanceof Assign && $site->var instanceof ArrayDimFetch && $site->var->dim === null => ElementKey::Next,
+            default => ElementKey::Any,
+        };
+
+        return ['path' => $named, 'key' => $key, 'value' => $element['unsets'] ? null : $value];
     }
 
     /**

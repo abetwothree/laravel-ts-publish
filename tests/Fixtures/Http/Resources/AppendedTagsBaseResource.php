@@ -28,6 +28,14 @@ class AppendedTagsBaseResource extends JsonResource
 
     protected $dynamic = ['a' => 1];
 
+    protected $keyedList = ['l'];
+
+    protected $nested = ['a' => ['b' => 1]];
+
+    protected $refs = ['r'];
+
+    protected $dropped = ['a' => 1, 'b' => 2];
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
@@ -41,6 +49,10 @@ class AppendedTagsBaseResource extends JsonResource
             'labels' => $this->labels,
             'both' => $this->both,
             'dynamic' => $this->dynamic,
+            'keyedList' => $this->keyedList,
+            'nested' => $this->nested,
+            'refs' => $this->refs,
+            'dropped' => $this->dropped,
         ];
     }
 }
