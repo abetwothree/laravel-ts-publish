@@ -17,6 +17,10 @@ final class NumberedTagsPayload
 
     protected $swapped = ['a' => 1];
 
+    protected $merged = ['a' => 1];
+
+    protected $pair = ['a' => 1];
+
     /** Key a number in beside the numbered entry. */
     public function keyFived(): static
     {
@@ -73,6 +77,38 @@ final class NumberedTagsPayload
         return $this;
     }
 
+    /** Replace the merged array with one keyed only by the number 5. */
+    public function swapMerged(): static
+    {
+        $this->merged = [5 => 's'];
+
+        return $this;
+    }
+
+    /** Key a number into the merged array. */
+    public function keyMerged(): static
+    {
+        $this->merged['k'] = 1;
+
+        return $this;
+    }
+
+    /** Replace the pair with an array keyed by the numbers 1 and 2. */
+    public function swapPair(): static
+    {
+        $this->pair = [1 => 'x', 2 => 5];
+
+        return $this;
+    }
+
+    /** Key a flag into the pair. */
+    public function keyPair(): static
+    {
+        $this->pair['k'] = true;
+
+        return $this;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(): array
     {
@@ -82,6 +118,8 @@ final class NumberedTagsPayload
             'rows' => $this->rows,
             'named' => $this->named,
             'swapped' => $this->swapped,
+            'merged' => $this->merged,
+            'pair' => $this->pair,
         ];
     }
 }

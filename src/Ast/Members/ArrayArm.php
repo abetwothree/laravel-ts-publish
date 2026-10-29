@@ -65,7 +65,7 @@ final readonly class ArrayArm
                 return null;
             }
 
-            $arms = $arm->joinedInto($arms);
+            $arms = $arm->joinedInto($arms, $reindexes);
         }
 
         // A write only widens an arm, so the pass that changes none is the last; the bound stops a run that never ends.
@@ -82,7 +82,9 @@ final readonly class ArrayArm
 
                     // An arm of the same kind admits the one it came from, which a write that never runs leaves.
                     foreach ($written as $arm) {
-                        $arms = $arm->kind() === $kind ? [...$arms, $kind => $arm] : $arm->joinedInto($arms);
+                        $arms = $arm->kind() === $kind
+                            ? [...$arms, $kind => $arm]
+                            : $arm->joinedInto($arms, $reindexes);
                     }
                 }
             }
@@ -182,16 +184,23 @@ final readonly class ArrayArm
 
     /**
      * Whether an object's members already admit each list the class sends it as, keyed as they are: always outside a
-     * re-indexing resource, and there where they are named 0, 1, … and share one type, whatever order they came in.
+     * re-indexing resource; there, where they are named 0, 1, …, those it always holds come first as 0, 1, …, so no
+     * removal shifts a later one down, and the others are one, or share a type, so either lands where the other would.
      *
-     * @param  array<string, Member>  $listed  the members a list may hold
+     * @param  array<string, Member>  $listed  the members a list may hold, in the order the array holds them
      */
     private static function holdsLists(array $listed, bool $reindexes): bool
     {
         $ints = array_map(self::intKey(...), array_keys($listed));
-        sort($ints);
+        $sorted = $ints;
+        sort($sorted);
+        $always = array_values(array_filter($listed, fn (array $member): bool => ! $member['optional']));
+        $others = array_filter($listed, fn (array $member): bool => $member['optional']);
+        $leading = array_slice(array_values($listed), 0, count($always)) === $always
+            && array_slice($ints, 0, count($always)) === array_keys($always);
 
-        return ! $reindexes || ($ints === array_keys($ints) && count(array_unique(array_column($listed, 'type'))) <= 1);
+        return ! $reindexes || ($sorted === array_keys($sorted) && $leading
+            && (count($others) <= 1 || count(array_unique(array_column($others, 'type'))) <= 1));
     }
 
     /**
@@ -332,21 +341,22 @@ final readonly class ArrayArm
      * @param  array<string, self>  $arms
      * @return array<string, self>
      */
-    private function joinedInto(array $arms): array
+    private function joinedInto(array $arms, bool $reindexes): array
     {
         $held = $arms[$this->kind()] ?? null;
 
-        return [...$arms, $this->kind() => $held === null ? $this : $held->joinedWith($this)];
+        return [...$arms, $this->kind() => $held === null ? $this : $held->joinedWith($this, $reindexes)];
     }
 
     /**
      * This arm joined with another of its kind: each key either holds, optional where one lacks it, the wider index,
-     * every unnamed arm, and a list where either may be one; an object keyed only by numbers joins as a number index.
+     * every unnamed arm, and a list where either may be one; in a re-indexing resource an object keyed only by numbers
+     * joins as a number index, and elsewhere keeps its named keys.
      */
-    private function joinedWith(self $other): self
+    private function joinedWith(self $other, bool $reindexes): self
     {
-        $mine = $this->indexed();
-        $theirs = $other->indexed();
+        $mine = $reindexes ? $this->indexed() : $this;
+        $theirs = $reindexes ? $other->indexed() : $other;
         $members = [];
 
         foreach (array_keys([...$mine->members, ...$theirs->members]) as $name) {

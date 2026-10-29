@@ -99,15 +99,39 @@ it('applies each element write to every arm of an array type', function (string 
         '{ a?: number; b?: string | number; [key: string]: number | string | undefined }',
         true,
     ],
-    'an object keyed only by numbers beside another' => [
+    'an object keyed only by numbers beside another, which a plain class keeps by name' => [
+        '{ a: number } | { "5": string }',
+        [arrayArmWrite('k', 'number')],
+        '{ a?: number; "5"?: string; k?: number }',
+    ],
+    'an object keyed only by numbers beside another in a re-indexing resource' => [
         '{ a: number } | { "5": string }',
         [arrayArmWrite('k', 'number')],
         '{ a?: number; k?: number } & Record<number, string>',
+        true,
+    ],
+    'unsets that may shift a later number down in a re-indexing resource' => [
+        '{ a: number; "0": string; "1": string }',
+        [arrayArmWrite('a', null), arrayArmWrite('0', null)],
+        '{ a?: number; "0"?: string; "1": string } | string[]',
+        true,
+    ],
+    'a number added after those always held in a re-indexing resource, which the members admit' => [
+        '{ a: number; "0": string }',
+        [arrayArmWrite('a', null), arrayArmWrite('1', 'number')],
+        '{ a?: number; "0": string; "1"?: number }',
+        true,
+    ],
+    'two optional numbers of different types in a re-indexing resource, either of which may land at 0' => [
+        '{ a: number }',
+        [arrayArmWrite('a', null), arrayArmWrite('0', 'string'), arrayArmWrite('1', 'number')],
+        '{ a?: number; "0"?: string; "1"?: number } | (string | number)[]',
+        true,
     ],
     'any key set beside an object keyed from 5, which a plain class never sends as a list' => [
         '{ a: number } | { "5": string }',
         [arrayArmWrite(ElementKey::Any, 'number')],
-        '{ a?: number; [key: string]: number | string | undefined }',
+        '{ a?: number; "5"?: string | number; [key: string]: number | string | undefined }',
     ],
     'any key set beside an object keyed only by numbers in a re-indexing resource' => [
         '{ a: number } | { "5": string }',

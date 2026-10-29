@@ -457,16 +457,26 @@ it('publishes the list an untyped array an unset or a whole write leaves keyed o
             'swapped' => '{ a?: number; k?: number } & Record<number, string>',
             'fived' => '{ "5": string; k?: number } | string[]',
             'rows' => '({ x: number; y?: number } | { x: number })[]',
+            'shifted' => '{ a?: number; "0"?: string; "1": string } | string[]',
+            'gapped' => '{ a?: number; "0": string; "1"?: string; "2": string } | string[]',
+            'extended' => '{ a?: number; "0": string; "1"?: number }',
         ])
         ->and(json_encode($resource()->resolve(request())))->toBe(
-            '{"renumbered":{"a":1},"numbered":{"a":1},"swapped":{"a":1},"fived":["s"],"rows":[{"x":1},{"x":2}]}',
+            '{"renumbered":{"a":1},"numbered":{"a":1},"swapped":{"a":1},"fived":["s"],"rows":[{"x":1},{"x":2}],'
+            .'"shifted":{"a":1,"0":"x","1":"y"},"gapped":{"a":1,"0":"x","1":"y","2":"z"},"extended":{"a":1,"0":"x"}}',
         )
-        ->and(json_encode($resource()->renumber('5')->dropRenumbered()->number()->dropNumbered()->swap()->resolve(request())))
-        ->toBe('{"renumbered":[2],"numbered":["s"],"swapped":["s"],"fived":["s"],"rows":[{"x":1},{"x":2}]}')
-        ->and(json_encode($resource()->renumber('x')->number()->key()->keyFived()->extendRow()->resolve(request())))
+        ->and(json_encode($resource()->renumber('5')->dropRenumbered()->number()->dropNumbered()->swap()->dropShifted()
+            ->dropGapped()->dropExtendedLetter()->resolve(request())))
+        ->toBe(
+            '{"renumbered":[2],"numbered":["s"],"swapped":["s"],"fived":["s"],"rows":[{"x":1},{"x":2}],"shifted":["y"],'
+            .'"gapped":["x","z"],"extended":["x"]}',
+        )
+        ->and(json_encode($resource()->renumber('x')->number()->key()->keyFived()->extendRow()->extend()->dropExtendedLetter()
+            ->resolve(request())))
         ->toBe(
             '{"renumbered":{"a":1,"x":2},"numbered":{"a":1,"5":"s"},"swapped":{"a":1,"k":1},"fived":{"5":"s","k":1},'
-            .'"rows":[{"x":1,"y":2},{"x":2}]}',
+            .'"rows":[{"x":1,"y":2},{"x":2}],"shifted":{"a":1,"0":"x","1":"y"},"gapped":{"a":1,"0":"x","1":"y","2":"z"},'
+            .'"extended":["x",5]}',
         )
         ->and(json_encode($resource()->swap()->key()->resolve(request())['swapped']))->toBe('{"5":"s","k":1}');
 });
@@ -480,15 +490,20 @@ it('keeps the numbered keys of an untyped array a plain class can never send as 
         'numbered' => '{ "1": string; "2": number; "7"?: boolean }',
         'rows' => '{ "1": { x: number; y?: number }; "2": { x: number } }',
         'named' => '{ a?: number; b?: string | number; [key: string]: number | string | undefined }',
-        'swapped' => '{ a?: number; [key: string]: number | string | undefined }',
+        'swapped' => '{ a?: number; "5"?: string | number; [key: string]: number | string | undefined }',
+        'merged' => '{ a?: number; "5"?: string; k?: number }',
+        'pair' => '{ a?: number; "1"?: string; "2"?: number; k?: boolean }',
     ])->and(json_encode($payload()->toArray()))->toBe(
-        '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1},"swapped":{"a":1}}',
-    )->and(json_encode($payload()->keyFived()->keySeven()->extendRow()->swapNamed()->keyNamed('0')->swap()->keySwapped('0')->toArray()))->toBe(
-        '{"fived":{"5":"s","k":1},"numbered":{"1":"a","2":5,"7":true},"rows":{"1":{"x":1,"y":2},"2":{"x":2}},'
-        .'"named":{"b":"x","0":1},"swapped":{"5":"s","0":1}}',
-    )->and(json_encode($payload()->keyNamed('0')->keySwapped('x')->toArray()))->toBe(
-        '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1,"0":1},"swapped":{"a":1,"x":1}}',
-    );
+        '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1},"swapped":{"a":1},'
+        .'"merged":{"a":1},"pair":{"a":1}}',
+    )->and(json_encode($payload()->keyFived()->keySeven()->extendRow()->swapNamed()->keyNamed('0')->swap()->keySwapped('0')
+        ->swapMerged()->keyMerged()->swapPair()->keyPair()->toArray()))->toBe(
+            '{"fived":{"5":"s","k":1},"numbered":{"1":"a","2":5,"7":true},"rows":{"1":{"x":1,"y":2},"2":{"x":2}},'
+            .'"named":{"b":"x","0":1},"swapped":{"5":"s","0":1},"merged":{"5":"s","k":1},"pair":{"1":"x","2":5,"k":true}}',
+        )->and(json_encode($payload()->keyNamed('0')->keySwapped('x')->keyMerged()->swapPair()->toArray()))->toBe(
+            '{"fived":{"5":"s"},"numbered":{"1":"a","2":5},"rows":{"1":{"x":1},"2":{"x":2}},"named":{"a":1,"0":1},'
+            .'"swapped":{"a":1,"x":1},"merged":{"a":1,"k":1},"pair":{"1":"x","2":5}}',
+        );
 });
 
 // R1: after a whole unset() PHP reads the property through `__get()`, and a read there warns, so only the fresh value.
