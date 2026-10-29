@@ -533,15 +533,19 @@ run it. A write inside a nested class, a named function or a static closure is s
 object. One a closure or arrow function in the method holds joins even where the closure may never run, read in that
 closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure,
 only its imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that
-read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does. An append joins the elements
-of each list the type holds, and a literal string key joins a one-object shape as an optional key. Any other write
-declines: a value the engine cannot type, any other element write, `unset()`, a computed `$this->{$name}` write in
-application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
-which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines
-where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
-by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
-(`$this->holder()->views`), or a write from outside the class.
+read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does. An element write, an element
+`unset()` and a by-reference `foreach`, which writes each value `VariableWrites::foreachElementValues()` reads for its
+element, apply one rule to every list or object arm of that join ([`ArrayArm`]): a write joins its value into each key
+it may reach, or makes each member it may remove optional, and a list it may key otherwise also becomes that object,
+kept beside the list. The writes run in any order until no arm changes, a nested path reaches only a member every arm
+holds, and an object an `unset()` may leave with no key also publishes the `never[]` PHP sends for it. Any other write
+declines: a value the engine cannot type, an element write on any other arm or path, a whole `unset()`, a computed
+`$this->{$name}` write in application code, or an argument to a by-reference parameter of a callee the scan can name
+([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
+`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
+method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
+receiver's declared class (`$this->holder()->views`), or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -797,6 +801,7 @@ These pages cover the engine's neighbors:
 [`AnalysisMemo`]: ../../src/Ast/Analysis/AnalysisMemo.php
 [`AnalysisResult`]: ../../src/Ast/AnalysisResult.php
 [`AnalysisScope`]: ../../src/Ast/Analysis/AnalysisScope.php
+[`ArrayArm`]: ../../src/Ast/Members/ArrayArm.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/Parsing/AstParser.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
