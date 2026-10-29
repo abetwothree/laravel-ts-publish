@@ -20,6 +20,8 @@ final class ReorderedTagsResource extends JsonResource
 
     protected $nested = ['a' => ['k' => 1, 0 => 'x', 1 => 5]];
 
+    protected $deep = ['a' => ['b' => ['k' => 1, 0 => 'x', 1 => 5]]];
+
     protected $slid = ['a' => 1, 0 => 'x', 1 => 'y'];
 
     /** Replace each array with one holding its numbers in another order. */
@@ -30,6 +32,7 @@ final class ReorderedTagsResource extends JsonResource
         $this->lengthened = ['a' => 1, 1 => 5, 0 => 'x', 2 => true];
         $this->alike = ['a' => 1, 1 => 'y', 0 => 'x'];
         $this->nested = ['a' => ['k' => 1, 1 => 5, 0 => 'x']];
+        $this->deep = ['a' => ['b' => ['k' => 1, 1 => 5, 0 => 'x']]];
 
         return $this;
     }
@@ -46,7 +49,7 @@ final class ReorderedTagsResource extends JsonResource
     public function dropLetters(): static
     {
         unset($this->reordered['a'], $this->prepended['a'], $this->lengthened['a'], $this->alike['a']);
-        unset($this->nested['a']['k'], $this->slid['a']);
+        unset($this->nested['a']['k'], $this->deep['a']['b']['k'], $this->slid['a']);
 
         return $this;
     }
@@ -60,6 +63,7 @@ final class ReorderedTagsResource extends JsonResource
             'lengthened' => $this->lengthened,
             'alike' => $this->alike,
             'nested' => $this->nested,
+            'deep' => $this->deep,
             'slid' => $this->slid,
         ];
     }

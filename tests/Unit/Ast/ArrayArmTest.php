@@ -163,6 +163,12 @@ it('applies each element write to every arm of an array type', function (string 
         '{ a: { k?: number; "0": string; "1": number } | (string | number)[] }',
         true,
     ],
+    'two members two levels down holding numbers in different orders, in a re-indexing resource' => [
+        '{ a: { b: { k: number; "0": string; "1": number } } } | { a: { b: { k: number; "1": number; "0": string } } }',
+        [arrayArmWrite('k', null, ['a', 'b'])],
+        '{ a: { b: { k?: number; "0": string; "1": number } | (string | number)[] } }',
+        true,
+    ],
     'two objects of one type each holding two numbers, which the members admit in a re-indexing resource' => [
         '{ a: number; "0": string; "1": string } | { a: number; "1": string; "2": string }',
         [arrayArmWrite('a', null)],

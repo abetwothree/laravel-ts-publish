@@ -15,7 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
  * joins its value into each key it may reach, or makes each member it may remove optional; a list a write may key
  * otherwise also becomes that object, kept beside the list.
  *
- * @phpstan-type Member array{optional: bool, type: string, ordered: bool}
+ * @phpstan-type Member array{optional: bool, type: string}
  * @phpstan-type ArrayWrite array{path: list<string>, key: string|ElementKey, value: string|null}
  *
  * @internal
@@ -23,11 +23,11 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 final readonly class ArrayArm
 {
     /**
-     * @param  array<string, Member>  $members  each named key, as printed, in order, and whether its type's own are
+     * @param  array<string, Member>  $members  each named key, as printed, in order
      * @param  list<string>  $rest  the union arms an unnamed key holds, a list's elements
      * @param  'number'|'string'|null  $index  the keys left unnamed: a list's are its ints, in order; null for none
      * @param  bool  $listable  whether the class's serializer may send this object arm as a list
-     * @param  bool  $ordered  whether the members come in the order the array holds them, which a join of two may not
+     * @param  bool  $ordered  whether the members come in the array's order, which a join or a member read back may not
      * @param  int  $least  the fewest members named by numbers the array holds before a write runs
      */
     private function __construct(
@@ -199,12 +199,10 @@ final readonly class ArrayArm
 
     /**
      * Whether an object's members admit each list the class sends it as: always outside a re-indexing resource; there,
-     * where named 0, 1, … and either of one type, so only a list too short for one always held fails, or in the
-     * array's order with those always held first as 0, 1, …, so no removal shifts a later one, and the others alike.
+     * where named 0, 1, … and either of one type, each always held below the fewest numbers held, or in an order known
+     * to be the array's with those always held first as 0, 1, …, so no removal shifts a later one, and the rest alike.
      *
      * @param  array<string, Member>  $listed  the members a list may hold, in the order the array holds them
-     * @param  bool  $ordered  whether that order is the array's, which a join of two orders is not
-     * @param  int  $fewest  the fewest of them the array may hold
      */
     private static function holdsLists(array $listed, bool $reindexes, bool $ordered, int $fewest): bool
     {
@@ -277,7 +275,6 @@ final readonly class ArrayArm
                 ? new self(false, [...$arm->members, ($optional ? substr($key, 0, -1) : $key) => [
                     'optional' => $optional,
                     'type' => $type,
-                    'ordered' => true,
                 ]], $arm->rest, $arm->index)
                 : new self(false, $arm->members, self::merged($arm->rest, $type), $index);
         }
@@ -300,20 +297,15 @@ final readonly class ArrayArm
             $inner = [...$write, 'path' => array_slice($write['path'], 1)];
             $arms = $member === null || $member['optional']
                 ? null
-                : self::settled($member['type'], [$inner], $reindexes, $member['ordered']);
+                : self::settled($member['type'], [$inner], $reindexes, false);
 
             if ($arms === null) {
                 return null;
             }
 
-            // The member's type prints joined, so it carries whether that join kept the array's order.
-            $members = [...$this->members, $name => [
-                'optional' => false,
-                'type' => self::printedUnion($arms, null, $reindexes),
-                'ordered' => ! isset($arms['object']) || $arms['object']->ordered,
-            ]];
+            $type = self::printedUnion($arms, null, $reindexes);
 
-            return [$this->withMembers($members)];
+            return [$this->withMembers([...$this->members, $name => ['optional' => false, 'type' => $type]])];
         }
 
         if (! $this->list) {
@@ -351,7 +343,7 @@ final readonly class ArrayArm
 
             if ($value !== null) {
                 $members[$name] = $held === null
-                    ? ['optional' => true, 'type' => $value, 'ordered' => true]
+                    ? ['optional' => true, 'type' => $value]
                     : [...$held, 'type' => self::union([$held['type'], $value])];
             } elseif ($held !== null) {
                 $members[$name] = [...$held, 'optional' => true];
@@ -401,7 +393,6 @@ final readonly class ArrayArm
             $members[$name] = [
                 'optional' => $member === null || $joined === null || $member['optional'] || $joined['optional'],
                 'type' => self::union(array_column(array_filter([$member, $joined]), 'type')),
-                'ordered' => array_all(array_filter([$member, $joined]), fn (array $held): bool => $held['ordered']),
             ];
         }
 
@@ -558,10 +549,11 @@ final readonly class ArrayArm
                 continue;
             }
 
+            // A member's type is read back from its printed join, which keeps no order, so it is read unordered.
             $type = self::folded($member['type'], array_map(
                 fn (array $write): array => [...$write, 'path' => array_slice($write['path'], 1)],
                 $reaching,
-            ), $reindexes, $member['ordered']);
+            ), $reindexes, false);
 
             if ($type === null) {
                 return null;

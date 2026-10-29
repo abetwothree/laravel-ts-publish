@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedBuildSiblingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptReorderedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
@@ -494,34 +495,42 @@ it('publishes the list a resource sends an untyped array a whole write may hold 
         'lengthened' => '{ a?: number; "0": string; "1": number; "2"?: boolean } | (string | number | boolean)[]',
         'alike' => '{ a?: number; "0": string; "1": string }',
         'nested' => '{ a: { k?: number; "0": string; "1": number } | (string | number)[] }',
+        'deep' => '{ a: { b: { k?: number; "0": string; "1": number } | (string | number)[] } }',
         'slid' => '{ a?: number; "0"?: string; "1": string; "2"?: string }',
     ])->and(json_encode($resource()->resolve(request())))->toBe(
         '{"reordered":{"a":1,"0":"x","1":5},"prepended":{"a":1,"0":"x"},"lengthened":{"a":1,"0":"x","1":5},'
-        .'"alike":{"a":1,"0":"x","1":"y"},"nested":{"a":{"k":1,"0":"x","1":5}},"slid":{"a":1,"0":"x","1":"y"}}',
+        .'"alike":{"a":1,"0":"x","1":"y"},"nested":{"a":{"k":1,"0":"x","1":5}},'
+        .'"deep":{"a":{"b":{"k":1,"0":"x","1":5}}},"slid":{"a":1,"0":"x","1":"y"}}',
     )->and(json_encode($resource()->dropLetters()->resolve(request())))->toBe(
         '{"reordered":["x",5],"prepended":["x"],"lengthened":["x",5],"alike":["x","y"],"nested":{"a":["x",5]},'
-        .'"slid":["x","y"]}',
+        .'"deep":{"a":{"b":["x",5]}},"slid":["x","y"]}',
     )->and(json_encode($resource()->reorder()->slide()->resolve(request())))->toBe(
         '{"reordered":{"a":1,"1":5,"0":"x"},"prepended":{"a":1,"1":5,"0":"x"},'
         .'"lengthened":{"a":1,"1":5,"0":"x","2":true},"alike":{"a":1,"1":"y","0":"x"},'
-        .'"nested":{"a":{"k":1,"1":5,"0":"x"}},"slid":{"a":1,"1":"y","2":"z"}}',
+        .'"nested":{"a":{"k":1,"1":5,"0":"x"}},"deep":{"a":{"b":{"k":1,"1":5,"0":"x"}}},'
+        .'"slid":{"a":1,"1":"y","2":"z"}}',
     )->and(json_encode($resource()->reorder()->slide()->dropLetters()->resolve(request())))->toBe(
         '{"reordered":[5,"x"],"prepended":[5,"x"],"lengthened":[5,"x",true],"alike":["y","x"],"nested":{"a":[5,"x"]},'
-        .'"slid":["y","z"]}',
+        .'"deep":{"a":{"b":[5,"x"]}},"slid":["y","z"]}',
     )->and(analyzedKeyTypes(ReorderedTagsPayload::class))->toBe([
         'reordered' => '{ a?: number; "0": string; "1": number }',
         'prepended' => '{ a?: number; "0": string; "1"?: number }',
         'lengthened' => '{ a?: number; "0": string; "1": number; "2"?: boolean }',
         'alike' => '{ a?: number; "0": string; "1": string }',
         'nested' => '{ a: { k?: number; "0": string; "1": number } }',
+        'deep' => '{ a: { b: { k?: number; "0": string; "1": number } } }',
         'slid' => '{ a?: number; "0"?: string; "1": string; "2"?: string }',
     ])->and(json_encode($payload()->dropLetters()->toArray()))->toBe(
         '{"reordered":["x",5],"prepended":["x"],"lengthened":["x",5],"alike":["x","y"],"nested":{"a":["x",5]},'
-        .'"slid":["x","y"]}',
+        .'"deep":{"a":{"b":["x",5]}},"slid":["x","y"]}',
     )->and(json_encode($payload()->reorder()->slide()->dropLetters()->toArray()))->toBe(
         '{"reordered":{"1":5,"0":"x"},"prepended":{"1":5,"0":"x"},"lengthened":{"1":5,"0":"x","2":true},'
-        .'"alike":{"1":"y","0":"x"},"nested":{"a":{"1":5,"0":"x"}},"slid":{"1":"y","2":"z"}}',
-    );
+        .'"alike":{"1":"y","0":"x"},"nested":{"a":{"1":5,"0":"x"}},"deep":{"a":{"b":{"1":5,"0":"x"}}},'
+        .'"slid":{"1":"y","2":"z"}}',
+    )->and(analyzedKeyTypes(KeptReorderedTagsResource::class))
+        ->toBe(['deep' => '{ a: { b: { k?: number; "0": string; "1": number } } }'])
+        ->and(json_encode((new KeptReorderedTagsResource(null))->reorder()->dropLetters()->resolve(request())))
+        ->toBe('{"deep":{"a":{"b":{"1":5,"0":"x"}}}}');
 });
 
 // A plain class sends a list only where the keys run 0, 1, …, as keys from 5 on, or a named key always held, never do.
