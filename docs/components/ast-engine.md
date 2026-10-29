@@ -543,14 +543,15 @@ numbers joins another arm as `Record<number, T>`. An object the class may send a
 may remain and in any other class where its keys may run 0, 1, …, also publishes that list unless its members admit it,
 `never[]` where it may hold none; a member gains its list once the writes settle, since a list holds no member a later
 path could reach. In a re-indexing resource the members admit it only where they share one type or come in the order the
-array holds them, which a join of two arms holding their numbers in other orders loses. Any other write declines: a
-value the engine cannot type, an element write on any other arm or path, a whole `unset()`, a computed `$this->{$name}`
-write in application code, or an argument to a by-reference parameter of a callee the scan can name
-([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
-`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
-method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
-receiver's declared class (`$this->holder()->views`), or a write from outside the class.
+array holds them, which a join of two arms holding their numbers in other orders loses, as does every member a path
+reaches, since its type is read back from its printed join. Any other write declines: a value the engine cannot type, an
+element write on any other arm or path, a whole `unset()`, a computed `$this->{$name}` write in application code, or an
+argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan
+shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. A
+value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only assumes its
+runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a receiver it
+cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from outside
+the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
