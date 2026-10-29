@@ -538,15 +538,17 @@ read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped param
 element, apply one rule to every list or object arm of that join ([`ArrayArm`]): a write joins its value into each key
 it may reach, or makes each member it may remove optional, and a list it may key otherwise also becomes that object,
 kept beside the list. The writes run in any order until no arm changes, and a nested path reaches only a member every
-arm holds. An object literal keyed only by numbers reads as `Record<number, T>`, and an object that may hold only int
-keys outside that index also publishes the list PHP or a resource sends it as, `never[]` where it may hold none. Any
-other write declines: a value the engine cannot type, an element write on any other arm or path, a whole `unset()`, a
-computed `$this->{$name}` write in application code, or an argument to a by-reference parameter of a callee the scan can
-name ([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the
-pointer functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against
-`AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class, on a receiver or in its
-method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a
-receiver's declared class (`$this->holder()->views`), or a write from outside the class.
+arm holds. An object literal keyed only by numbers joins another arm as `Record<number, T>`. An object the class may
+send as a list, a re-indexing resource (`ResourceCollections::reindexesNumericKeys()`) where only numeric keys may
+remain and any other class where its keys may run 0, 1, …, also publishes that list unless its members admit it,
+`never[]` where it may hold none; a member gains its list once the writes settle, since a list holds no member a later
+path could reach. Any other write declines: a value the engine cannot type, an element write on any other arm or path, a
+whole `unset()`, a computed `$this->{$name}` write in application code, or an argument to a by-reference parameter of a
+callee the scan can name ([`ByReferenceArguments`], which the local write scan shares), such as
+`array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. A value naming
+`static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only assumes its runtime class,
+on a receiver or in its method's body. The check cannot see a by-reference parameter on a receiver it cannot resolve, a
+write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
