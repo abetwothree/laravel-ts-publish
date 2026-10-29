@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AppendedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ChainedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
@@ -391,6 +392,13 @@ it('reads a nested callback in its outer callback\'s scope, and skips a write a 
     expect(analyzedKeyTypes(NestedCaptureChild::class))->toBe(['used' => 'unknown', 'anon' => 'string', 'loose' => 'string | number'])
         ->and(json_encode(new NestedCaptureChild()->captureByReference()->refuse()->nest()->toArray()))
         ->toBe('{"used":"late","anon":"none","loose":3}');
+});
+
+// The inner closure imports from the outer one's scope, so `$n`, which the method never holds, reads the parameter.
+it('reads a closure another closure holds through each one\'s imports in turn', function () {
+    expect(analyzedKeyTypes(ChainedCaptureChild::class))->toBe(['used' => 'string | boolean', 'anon' => 'string', 'loose' => 'string | number'])
+        ->and(json_encode(new ChainedCaptureChild()->chain()->toArray()))
+        ->toBe('{"used":true,"anon":"none","loose":5}');
 });
 
 // O3: a closure may run wherever it goes, so its write joins even where the body that builds it never calls it.
