@@ -930,9 +930,9 @@ An untyped property publishes its default's type joined with each value its clas
 subclass writes it, whole or by a compound operator, typed in the writing method's scope; an append joins the elements
 of its list, and a literal string key joins its object as an optional key. It publishes `unknown` for any other write:
 an `unset()` of the property or an element, a computed or nested key, an append onto an object or beside a key write, a
-by-reference `foreach`, a write a closure or arrow function in the method holds, or a value the engine cannot type, such
-as an untyped parameter or a `mixed` call. A helper that a write calls to read the property back publishes it `unknown`
-where that helper is read first. A by-reference parameter on a receiver the scan cannot resolve, such as
+by-reference `foreach`, or a value the engine cannot type, such as an untyped method or closure parameter, a variable a
+closure imports by reference, or a `mixed` call. A helper that a write calls to read the property back publishes it
+`unknown` where that helper is read first. A by-reference parameter on a receiver the scan cannot resolve, such as
 `$other->fill($this->tags)`, and a write from outside the class both change the value Laravel sends while the published
 type stays the default's. So does a write by a subclass of a receiver's declared class, such as the object behind
 `$this->holder()->views`. Declare the property's type, or give it a `@var` docblock.
