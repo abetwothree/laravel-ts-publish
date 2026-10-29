@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPrivateResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CopiedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSpreadListCollection;
@@ -531,6 +532,26 @@ it('publishes the list a resource sends an untyped array a whole write may hold 
         ->toBe(['deep' => '{ a: { b: { k?: number; "0": string; "1": number } } }'])
         ->and(json_encode((new KeptReorderedTagsResource(null))->reorder()->dropLetters()->resolve(request())))
         ->toBe('{"deep":{"a":{"b":{"1":5,"0":"x"}}}}');
+});
+
+// Each copy is typed from the source's joined type, which keeps no order, so after `flip()` PHP sends `[5,"x"]`.
+it('publishes the list a resource sends a copy of an untyped array a whole write may reorder', function () {
+    $resource = fn (): CopiedTagsResource => new CopiedTagsResource(null);
+
+    expect(analyzedKeyTypes(CopiedTagsResource::class))->toBe([
+        'source' => '{ "0": string; "1": number; n: number }',
+        'copied' => '{ "0": string; "1": number; n?: number } | (string | number)[]',
+        'blank' => 'never[] | { "0": string; "1": number; n?: number } | (string | number)[]',
+        'fetched' => '{ "0": string; "1": number; n?: number } | (string | number)[]',
+    ])->and(json_encode($resource()->resolve(request())))->toBe(
+        '{"source":{"0":"x","1":5,"n":1},"copied":{"0":"x","1":5,"n":1},"blank":[],"fetched":{"0":"x","1":5,"n":1}}',
+    )->and(json_encode($resource()->copy()->resolve(request())))->toBe(
+        '{"source":{"0":"x","1":5,"n":1},"copied":["x",5],"blank":["x",5],"fetched":["x",5]}',
+    )->and(json_encode($resource()->flip()->copy()->resolve(request())))->toBe(
+        '{"source":{"1":5,"0":"x","n":2},"copied":[5,"x"],"blank":[5,"x"],"fetched":[5,"x"]}',
+    )->and(json_encode($resource()->flip()->recount()->copy()->resolve(request())))->toBe(
+        '{"source":{"1":5,"0":"x","n":3},"copied":[5,"x"],"blank":[5,"x"],"fetched":[5,"x"]}',
+    );
 });
 
 // A plain class sends a list only where the keys run 0, 1, …, as keys from 5 on, or a named key always held, never do.

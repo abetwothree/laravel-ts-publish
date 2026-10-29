@@ -36,20 +36,21 @@ final readonly class ArrayArm
         private array $rest,
         private ?string $index,
         private bool $listable = false,
-        private bool $ordered = true,
+        private bool $ordered = false,
         private int $least = 0,
     ) {}
 
     /**
      * The type an array of this type holds once each write may run, in any order and any number of times; null where an
-     * arm is no list or object, or a write's path names a member an arm does not always hold.
+     * arm is no list or object, or a write's path names a member an arm does not always hold. Each object arm's members
+     * come in the order the array holds them where `$ordered`, as a type printed from PHP arrays keeps it.
      *
      * @param  non-empty-list<ArrayWrite>  $writes
      * @param  bool  $reindexes  the class sends the array through a filter that lists one keyed only by numbers
      */
-    public static function written(string $type, array $writes, bool $reindexes): ?string
+    public static function written(string $type, array $writes, bool $reindexes, bool $ordered): ?string
     {
-        return self::folded($type, $writes, $reindexes, true);
+        return self::folded($type, $writes, $reindexes, $ordered);
     }
 
     /**

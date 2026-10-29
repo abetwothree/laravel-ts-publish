@@ -20,8 +20,8 @@ function arrayArmWrite(string|ElementKey $key, ?string $value, array $path = [])
 
 // A write may run in any order, any number of times or not at all, so each arm keeps what it held beside what it gains.
 // A plain class sends a list where the keys are 0, 1, …; a re-indexing resource wherever only numeric keys remain.
-it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written, bool $reindexes = false) {
-    expect(ArrayArm::written($type, $writes, $reindexes))->toBe($written);
+it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written, bool $reindexes = false, bool $ordered = true) {
+    expect(ArrayArm::written($type, $writes, $reindexes, $ordered))->toBe($written);
 })->with([
     'a string key set on a list' => ['string[]', [arrayArmWrite('k', 'number')], 'string[] | ({ k?: number } & Record<number, string>)'],
     'a list element unset' => ['string[]', [arrayArmWrite(ElementKey::Any, null)], 'string[] | Record<number, string>'],
@@ -152,6 +152,14 @@ it('applies each element write to every arm of an array type', function (string 
         '{ a?: number; "0": string; "1": string; "2"?: string }',
         true,
     ],
+    // A type read back from a join, such as a copy of another array, may print its members in another order than PHP's.
+    'an object whose members may come in another order than the array holds them, in a re-indexing resource' => [
+        '{ a: number; "0": string; "1": number }',
+        [arrayArmWrite('a', null)],
+        '{ a?: number; "0": string; "1": number } | (string | number)[]',
+        true,
+        false,
+    ],
     'two objects holding numbers in different orders, which a plain class sends keyed as they are' => [
         '{ a: number; "0": string; "1": number } | { a: number; "1": number; "0": string }',
         [arrayArmWrite('a', null)],
@@ -216,13 +224,13 @@ it('publishes the list PHP sends an object an unset leaves keyed only by numbers
     $sent['0'] = 2;
     unset($sent['a']);
 
-    expect(ArrayArm::written('{ a: number }', [arrayArmWrite(ElementKey::Any, 'number'), arrayArmWrite('a', null)], false))
+    expect(ArrayArm::written('{ a: number }', [arrayArmWrite(ElementKey::Any, 'number'), arrayArmWrite('a', null)], false, true))
         ->toBe('{ a?: number; [key: string]: number | undefined } | number[]')
         ->and(json_encode($sent))->toBe('[2]');
 });
 
 it('declines a write on an arm that is no array, or through a member an arm may not hold', function (string $type, array $writes) {
-    expect(ArrayArm::written($type, $writes, false))->toBeNull();
+    expect(ArrayArm::written($type, $writes, false, true))->toBeNull();
 })->with([
     'a nullable list' => ['string[] | null', [arrayArmWrite(ElementKey::Next, 'string')]],
     'a tuple' => ['[string, number]', [arrayArmWrite(ElementKey::Next, 'string')]],

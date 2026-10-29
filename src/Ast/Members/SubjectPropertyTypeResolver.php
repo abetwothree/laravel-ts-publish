@@ -577,7 +577,13 @@ final class SubjectPropertyTypeResolver
             return $whole;
         }
 
-        $type = ArrayArm::written($whole['type'], $writes, ResourceCollections::reindexesNumericKeys($runtime));
+        // Order is known only where each arm is the default's or a constant write's; a computed value may print a join.
+        $type = ArrayArm::written(
+            $whole['type'],
+            $writes,
+            ResourceCollections::reindexesNumericKeys($runtime),
+            ordered: $typed === [],
+        );
 
         return $type === null ? null : [...ValueResult::unionResults([$whole, ...$elements]), 'type' => $type];
     }
