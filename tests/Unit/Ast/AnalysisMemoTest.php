@@ -144,6 +144,17 @@ test('a re-entry lifts only the guards entered before its key, and a cut read ho
         ->and([$memo->enter('method'), $memo->enter('property'), $memo->enter('outermost')])->toBe([false, false, false]);
 });
 
+test('a re-entry inside one that lifted a guard throws, and the outer one still holds its guards again', function () {
+    $memo = new AnalysisMemo;
+    $memo->enter('method');
+    $memo->enter('property');
+    $memo->enter('inner');
+
+    expect(fn (): bool => $memo->reenterOnce('property', fn (): bool => $memo->reenterOnce('inner', fn (): bool => true)))
+        ->toThrow(LogicException::class)
+        ->and([$memo->enter('method'), $memo->enter('property'), $memo->enter('inner')])->toBe([false, false, false]);
+});
+
 test('an answer read while a re-entry lifts a guard is not reused where the guard is held, nor the other way round', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;
@@ -312,6 +323,29 @@ test('computes an answer again when it was worked out without recording the depe
     DependencyRecorder::stop();
 
     expect([$unrecorded, $recorded, $memo->remember('k', $counting($runs))])->toBe([1, 2, 2]);
+});
+
+// A cut read holds its lifted guards again after the others, so one held set may come in either order.
+test('replaces an answer computed under the same held guards entered in another order', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $guarded = function () use ($memo, $counting, $runs): int {
+        $memo->enter('method');
+        $memo->enter('property');
+
+        return $counting($runs)();
+    };
+
+    $memo->enter('method');
+    $memo->enter('property');
+    $unrecorded = $memo->remember('k', $guarded);
+    $memo->leave('method');
+    $memo->enter('method');
+    DependencyRecorder::start();
+    $recorded = $memo->remember('k', $guarded);
+    DependencyRecorder::stop();
+
+    expect([$unrecorded, $recorded, $memo->remember('k', $guarded)])->toBe([1, 2, 2]);
 });
 
 test('reset drops every answer', function () use ($counting) {

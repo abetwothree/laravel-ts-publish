@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use Closure;
+use LogicException;
 use ReflectionClass;
 
 /**
@@ -122,7 +123,8 @@ final class AnalysisMemo
      * already under way once more. SubjectPropertyTypeResolver's `typing-property:` guard is that key, so a read of the
      * property inside ends the cycle at the type it held before.
      *
-     * It must not nest, since it replaces the lifted set: a property typed inside it reads through cut() instead.
+     * It throws inside a re-entry that lifted a guard, since it replaces the lifted set: a property typed inside one
+     * reads through cut() instead.
      *
      * @template T
      *
@@ -131,6 +133,10 @@ final class AnalysisMemo
      */
     public function reenterOnce(string $key, Closure $read): mixed
     {
+        if ($this->lifted !== []) {
+            throw new LogicException('A re-entry cannot nest inside one that lifted a guard.');
+        }
+
         $position = array_search($key, array_keys($this->active), true);
         $lifted = $position === false ? [] : array_slice($this->active, 0, $position, true);
         $marks = self::marks($lifted);
@@ -404,8 +410,8 @@ final class AnalysisMemo
     private function replaced(array $entries, array $entry): array
     {
         foreach ($entries as $index => $stored) {
-            // Loose `==`: two held sets are the same whatever order their guards were entered in.
-            if ($stored['held'] === $entry['held']) {
+            // By key: two held sets are the same whatever order their guards were entered in.
+            if (count($stored['held']) === count($entry['held']) && array_diff_key($stored['held'], $entry['held']) === []) {
                 $entries[$index] = $entry;
 
                 return $entries;
