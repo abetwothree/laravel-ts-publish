@@ -37,8 +37,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServicePr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
@@ -279,6 +281,23 @@ it('types a trait method the class overrides but runs under an alias in the trai
 it('types a trait method an outer trait overrides but runs under an alias that trait declares', function () {
     expect(analyzedKeyTypes(TraitAliasedTallyChild::class)['tier'])->toBe('string | number')
         ->and(new TraitAliasedTallyChild()->setTierNumber(5)->toArray()['tier'])->toBe(5);
+});
+
+it('types a trait method `insteadof` excludes but the class runs under an alias', function () {
+    expect(analyzedKeyTypes(ExcludedTallyChild::class)['tier'])->toBe('string | number')
+        ->and(json_encode([
+            new ExcludedTallyChild()->setTier('x')->toArray()['tier'],
+            new ExcludedTallyChild()->setTierNumber(5)->toArray()['tier'],
+        ]))->toBe('["x",5]');
+});
+
+// `baseLevel()` runs the ancestor's copy, where `self` names the ancestor, so the subclass's LEVEL is never written.
+it('skips the subclass\'s own copy of a trait method it overrides, though an ancestor\'s alias runs the body', function () {
+    expect(analyzedKeyTypes(LevelAliasChild::class)['tier'])->toBe('string | number')
+        ->and(json_encode([
+            tap(new LevelAliasChild)->baseLevel()->toArray()['tier'],
+            tap(new LevelAliasChild)->level()->toArray()['tier'],
+        ]))->toBe('[5,"silver"]');
 });
 
 it('keeps the writes of an ancestor method the subclass overrides, which parent:: may still run', function () {

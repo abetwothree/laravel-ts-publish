@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OverriddenWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedDefaultsSubject;
@@ -195,6 +196,14 @@ describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
         'the written name first' => [['additional', 'with']],
         'the read-only name first' => [['with', 'additional']],
     ]);
+
+    test('a write in a trait method the class overrides leaves the default held, since it never runs', function () {
+        expect(resolve(SubjectPropertyTypeResolver::class)->holdsDefault(new ReflectionClass(OverriddenWithResource::class), 'with'))
+            ->toBeTrue()
+            ->and(analyzedKeyTypes(OverriddenWithResource::class))->toBe(['version' => 'string'])
+            ->and(json_encode((new OverriddenWithResource(null))->resolve(request())))->toBe('{"version":"1.0"}')
+            ->and(json_encode((new OverriddenWithResource(null))->retag()->resolve(request())))->toBe('{"version":"1.0"}');
+    });
 
     // The source is read once a run, so a later read must still record the file, or a cached publish misses an update.
     test('a framework file whose source a read skips is recorded as a dependency on every read', function () {
