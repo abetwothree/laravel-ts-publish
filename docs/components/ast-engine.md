@@ -313,8 +313,10 @@ A method body read apart from its call, such as a spread helper, the body fallba
 `@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; any
 other parameter puts its classes, when it names only classes, in `varDeclaredBindings` and its value in
 `varValueBindings`. A `Request` goes in `requestVarNames`, except in an API resource, and a name already bound stays as
-it is. `bindClosure()` binds a closure's parameters the same way from the declaration the AST holds, its `@param` read
-from a docblock attached to the closure itself; an untyped one binds nothing, since no call is read.
+it is. `bindClosure()` binds a closure's parameters from the declaration the AST holds, and differs in three ways: its
+class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
+`Request` binds as its class in `varDeclaredBindings`; `self`, `static` and `parent` bind nothing; and its `@param` is
+read only from a docblock attached to the closure itself. An untyped one binds nothing, since no call is read.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.
 
