@@ -450,8 +450,7 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The name the class runs a method body under: its own, or for a trait's method the class overrides, an alias it
-     * keeps; null where the class never runs the body.
+     * The name the class runs a method body under, an alias for a trait method it overrides; null where it never does.
      *
      * @param  ReflectionClass<object>  $self  the class `self` names in the body
      */
@@ -460,7 +459,8 @@ final class SubjectPropertyTypeResolver
         $name = $method->name->toString();
         $trait = $class instanceof Trait_ ? $class->namespacedName?->toString() : null;
 
-        if ($trait === null) {
+        // A trait method reflection cannot reach is kept, since the class may still run it.
+        if ($trait === null || ! method_exists($trait, $name)) {
             return $name;
         }
 
