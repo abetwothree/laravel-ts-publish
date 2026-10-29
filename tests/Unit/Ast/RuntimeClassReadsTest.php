@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MeasuredSizeChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
@@ -258,11 +259,18 @@ it('types an untyped property\'s non-constant writes in the scope of the method 
         'tier' => 'string | number',
         'count' => 'number',
         'label' => 'string | number',
-        'labelled' => '{ label: unknown }',
+        'labelled' => '{ label: string | number }',
     ])->and(resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'tier', $child)['type'] ?? null)->toBe('string | number')
         ->and(json_encode(new WrittenTallyChild()->toArray()))->toBe('{"tier":"gold","count":0,"label":"draft","labelled":{"label":"draft"}}')
         ->and(json_encode($written->toArray()))->toBe('{"tier":5,"count":2,"label":"draft!","labelled":{"label":"draft!"}}')
         ->and(json_encode(new WrittenTallyChild()->setLabel(3)->copyLabel()->toArray()['labelled']))->toBe('{"label":3}');
+});
+
+it('reads a helper a write calls and the payload reads first with the property as it was before the write', function () {
+    expect(analyzedKeyTypes(MeasuredSizeChild::class))->toBe(['h' => 'string | number', 'size' => 'string | number'])
+        ->and(json_encode(new MeasuredSizeChild()->toArray()))->toBe('{"h":"none","size":"none"}')
+        ->and(json_encode(new MeasuredSizeChild()->resize()->toArray()))->toBe('{"h":4,"size":4}')
+        ->and(json_encode(new MeasuredSizeChild()->resize()->keep()->toArray()))->toBe('{"h":4,"size":4}');
 });
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.

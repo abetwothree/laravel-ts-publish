@@ -110,6 +110,66 @@ test('an answer that reused another is not reused while a guard the other entere
     expect([$first, $whileGuarded, $memo->remember('outer', $outer)])->toBe([1, 2, 1]);
 });
 
+test('a read re-entering once enters each guard on the stack once more, the guard it is bounded by held', function () {
+    $memo = new AnalysisMemo;
+    $read = function () use ($memo): array {
+        $entered = [$memo->enter('method'), $memo->enter('method'), $memo->enter('property')];
+        $memo->leave('method');
+
+        return $entered;
+    };
+
+    $memo->enter('method');
+    $memo->enter('property');
+    $inside = $memo->reenterOnce('property', $read);
+
+    expect($inside)->toBe([true, false, false])
+        ->and([$memo->enter('method'), $memo->enter('property')])->toBe([false, false]);
+});
+
+test('a nested re-entry lifts the stack again but keeps each guard an enclosing one is bounded by', function () {
+    $memo = new AnalysisMemo;
+    $inner = function () use ($memo): array {
+        $entered = [$memo->enter('method'), $memo->enter('first'), $memo->enter('second')];
+        $memo->leave('method');
+
+        return $entered;
+    };
+    $outer = function () use ($memo, $inner): array {
+        $memo->enter('method');
+        $memo->enter('second');
+        $entered = $memo->reenterOnce('second', $inner);
+        $memo->leave('second');
+        $memo->leave('method');
+
+        return [...$entered, $memo->enter('second')];
+    };
+
+    $memo->enter('method');
+    $memo->enter('first');
+
+    expect($memo->reenterOnce('first', $outer))->toBe([true, false, false, true]);
+});
+
+test('an answer read while a re-entry lifts a guard is not reused where the guard is held, nor the other way round', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $guarded = function () use ($memo, $counting, $runs): int {
+        if ($memo->enter('method')) {
+            $memo->leave('method');
+        }
+
+        return $counting($runs)();
+    };
+
+    $memo->enter('method');
+    $memo->enter('property');
+    $held = $memo->remember('k', $guarded);
+    $lifted = $memo->reenterOnce('property', fn (): array => [$memo->remember('k', $guarded), $memo->remember('k', $guarded)]);
+
+    expect([$held, ...$lifted, $memo->remember('k', $guarded)])->toBe([1, 2, 2, 1]);
+});
+
 test('replays the dependencies and dropped union arms of a reused answer', function () {
     $memo = new AnalysisMemo;
     $compute = function (): string {

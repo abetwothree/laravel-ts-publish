@@ -45,6 +45,9 @@ final class AnalysisMemo
     /** @var array<string, true> guard keys of the analyses on the stack */
     private array $active = [];
 
+    /** @var array<string, true> the guard keys each re-entry under way is bounded by, which a nested one never lifts */
+    private array $bounds = [];
+
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
 
@@ -91,6 +94,31 @@ final class AnalysisMemo
     public function leave(string $key): void
     {
         unset($this->active[$key]);
+    }
+
+    /**
+     * Run a read with each guard on the stack lifted, so it enters an analysis already under way once more, but `$key`,
+     * which the caller holds, and each guard an enclosing re-entry is bounded by. SubjectPropertyTypeResolver's
+     * `typing-property:` guard is that key, so a read of the property inside ends the cycle at the type it held before.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function reenterOnce(string $key, Closure $read): mixed
+    {
+        $bounds = $this->bounds;
+        $this->bounds[$key] = true;
+        $lifted = array_diff_key($this->active, $this->bounds);
+        $this->active = array_diff_key($this->active, $lifted);
+
+        try {
+            return $read();
+        } finally {
+            $this->active += $lifted;
+            $this->bounds = $bounds;
+        }
     }
 
     /**

@@ -334,7 +334,10 @@ final class SubjectPropertyTypeResolver
             foreach ($computed as $write) {
                 $element = $this->elementWrite($write[0], $property->getName());
                 $expr = $element['value'] ?? $this->writtenValue($write[0], $property->getName());
-                $value = $expr === null ? null : $this->computedWrite($write, $expr, $subject, $knownRuntime);
+                // So does one through a helper already being read, which is read again under the guard, not cut short.
+                $value = $expr === null
+                    ? null
+                    : $memo->reenterOnce($guard, fn (): ?array => $this->computedWrite($write, $expr, $subject, $knownRuntime));
 
                 if ($value === null || $value['type'] === 'unknown') {
                     return null;
