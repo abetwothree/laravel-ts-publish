@@ -522,11 +522,13 @@ operator, an ancestor's, a trait's or, through the runtime class, a subclass's i
 as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
 property itself takes the default and constant writes under an `AnalysisMemo` guard. A helper the value calls while it
 is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own read of the property takes them too.
-A write counts only where the class runs its body: a trait's method the class overrides is skipped, unless an alias, the
-class's or a used trait's, still runs it, typed then under that alias in the trait method's own scope. An ancestor's
-method a subclass overrides still counts, since `parent::` may run it. A write inside a nested class, a named function
-or a static closure is skipped, since `$this` there is never the object. One a closure or arrow function in the method
-holds joins even where the closure may never run, read in that closure's scope: its declared parameters through
+Where reading the property as the type that joins, under `AnalysisMemo::seeding()`, would join an arm that type lacks,
+as a write nesting what the helper returns does, each such write reads the helper cut instead. A write counts only where
+the class runs its body: a trait's method the class overrides is skipped, unless an alias, the class's or a used
+trait's, still runs it, typed then under that alias in the trait method's own scope. An ancestor's method a subclass
+overrides still counts, since `parent::` may run it. A write inside a nested class, a named function or a static closure
+is skipped, since `$this` there is never the object. One a closure or arrow function in the method holds joins even
+where the closure may never run, read in that closure's scope: its declared parameters through
 `ParameterBinder::bindClosure()`, its body's locals and, for a closure, only its imports, as the method held them there,
 which leaves a by-reference import `unknown`; it declines where that read leaves out a union arm it cannot type, as
 `$n ?? 'z'` over an untyped parameter does. An append joins the elements of each list the type holds, and a literal
@@ -604,7 +606,10 @@ shown them. A cycle can cut an answer short, so each answer is stored with the g
 No answer depends on which entry point read it first. `AnalysisMemo::reenterOnce()` lifts every guard on the stack but
 the one its caller holds and those of each enclosing re-entry, so a property write's value enters a method already under
 way once more and the `typing-property:` guards bound the cycle. A lifted guard counts as not held, so an answer
-computed under the lift is never reused where that guard is held.
+computed under the lift is never reused where that guard is held. `reentries()` counts each entry into a lifted guard,
+and each reuse of an answer that entered one, so a caller can tell a read that went through an analysis under way
+whatever was read first. `seeding()` marks a guard that answers a seed in place of its cut: no answer that met it is
+reused or stored there.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
 `ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard
@@ -693,9 +698,10 @@ only a value a join leaves out: past a write naming no class, a member read keep
 warns of nothing.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
-A class the generation cache serves prints none, since the cache stores no analysis warnings, until `--fresh` analyzes
-it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a cast on the key
-leaves the reading, and so the warning, as it is.
+`provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the
+audit entries too. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
+`--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
+cast on the key leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also

@@ -933,11 +933,12 @@ an `unset()` of the property or an element, a computed or nested key, an append 
 by-reference `foreach`, or a value the engine cannot type, such as an untyped method or closure parameter, a variable a
 closure imports by reference, or a `mixed` call. A `@param` on a closure passed inline, or on the statement above
 `$f = function ($n)`, is not read, so such a parameter counts as untyped. A write that nests the property's own value,
-directly or through a helper, as `$this->x = ['v' => $this->x]` does, publishes one level, though each call nests one
-more. A by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write
-from outside the class both change the value Laravel sends while the published type stays the default's. So does a
-write by a subclass of a receiver's declared class, such as the object behind `$this->holder()->views`. Declare the
-property's type, or give it a `@var` docblock.
+as `$this->x = ['v' => $this->x]` does, publishes one level, though each call nests one more. Where it nests what a
+helper returns, as `['v' => $this->measure()]` does, that helper's own key publishes the nested value `unknown`. A
+by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from
+outside the class both change the value Laravel sends while the published type stays the default's. So does a write by a
+subclass of a receiver's declared class, such as the object behind `$this->holder()->views`. Declare the property's
+type, or give it a `@var` docblock.
 
 ### A receiver's body reads `static` as its declared class
 
