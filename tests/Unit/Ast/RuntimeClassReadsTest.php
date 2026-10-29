@@ -50,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\TraitAliasedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UncalledCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrittenTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
@@ -324,6 +325,12 @@ it('reads a nested callback in its outer callback\'s scope, and skips a write a 
     expect(analyzedKeyTypes(NestedCaptureChild::class))->toBe(['used' => 'unknown', 'anon' => 'string', 'loose' => 'string | number'])
         ->and(json_encode(new NestedCaptureChild()->captureByReference()->refuse()->nest()->toArray()))
         ->toBe('{"used":"late","anon":"none","loose":3}');
+});
+
+// O3: a closure may run wherever it goes, so its write joins even where the body that builds it never calls it.
+it('joins a write a callback holds even where the callback is never called', function () {
+    expect(analyzedKeyTypes(UncalledCaptureChild::class)['used'])->toBe('string | number')
+        ->and(json_encode(new UncalledCaptureChild()->park()->toArray()['used']))->toBe('"none"');
 });
 
 // `??` leaves out an arm it cannot type, so a callback's read through it would publish only the fallback PHP may skip.

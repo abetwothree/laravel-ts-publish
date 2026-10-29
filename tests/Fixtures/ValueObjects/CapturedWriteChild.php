@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
 
-/**
- * A test-only runtime class of CapturedWriteBase's `toArray()` that writes one default from a closure's captured local
- * and one from a closure's untyped parameter, and sets an anonymous object's own `$anon`.
- */
+/** A test-only CapturedWriteBase runtime class writing from closures, beside an anonymous object setting its own. */
 final class CapturedWriteChild extends CapturedWriteBase
 {
     /** Keep a local the closure captures by value. */

@@ -6,10 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
 
 use Error;
 
-/**
- * A test-only runtime class of CapturedWriteBase's `toArray()` that writes one default from a by-reference capture, one
- * from a static closure PHP refuses `$this`, and one from an arrow function reading its enclosing closure's parameter.
- */
+/** A test-only CapturedWriteBase subclass writing from a by-reference capture, a static closure and a nested one. */
 final class NestedCaptureChild extends CapturedWriteBase
 {
     /** Keep a local a closure captures by reference, which a later write replaces before the closure runs. */

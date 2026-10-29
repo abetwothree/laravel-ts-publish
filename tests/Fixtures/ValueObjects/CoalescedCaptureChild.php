@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
 
-/**
- * A test-only runtime class of CapturedWriteBase's `toArray()` that writes two defaults through `??` from closures: one
- * over a by-reference capture, one over an untyped parameter.
- */
+/** A test-only CapturedWriteBase subclass writing through `??` from a by-reference capture and an untyped parameter. */
 final class CoalescedCaptureChild extends CapturedWriteBase
 {
     /** Keep a by-reference capture, or a fallback, after a later write replaces it before the closure runs. */
