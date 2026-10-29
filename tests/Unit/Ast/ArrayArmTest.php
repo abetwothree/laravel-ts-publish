@@ -8,15 +8,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\ElementKey;
 /**
  * One write ArrayArm applies: the value set at the key the path reaches, or null for an unset().
  *
+ * @phpstan-import-type ArrayWrite from ArrayArm
+ *
  * @param  list<string>  $path
- * @return array{path: list<string>, key: string|ElementKey, value: string|null}
+ * @return ArrayWrite
  */
 function arrayArmWrite(string|ElementKey $key, ?string $value, array $path = []): array
 {
     return ['path' => $path, 'key' => $key, 'value' => $value];
 }
 
-// Each type admits what PHP sends after the writes run in any order, `[]` included where they can empty an object.
+// A write may run in any order, any number of times or not at all, so each arm keeps what it held beside what it gains.
 it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written) {
     expect(ArrayArm::written($type, $writes))->toBe($written);
 })->with([
@@ -63,12 +65,37 @@ it('applies each element write to every arm of an array type', function (string 
         [arrayArmWrite(ElementKey::Next, 'boolean')],
         '{ a: number } & Record<number, boolean | string>',
     ],
+    'a member named by a number left as the one key' => [
+        '{ a: number }',
+        [arrayArmWrite('5', 'string'), arrayArmWrite('a', null)],
+        '{ a?: number; "5"?: string } | string[]',
+    ],
+    'an object keyed only by numbers beside another' => [
+        '{ a: number } | { 5: string }',
+        [arrayArmWrite('k', 'number')],
+        '{ a?: number; k?: number } & Record<number, string>',
+    ],
+    'any key set beside an object keyed only by numbers, which no unset need leave a list' => [
+        '{ a: number } | { 5: string }',
+        [arrayArmWrite(ElementKey::Any, 'number')],
+        '{ a?: number; [key: string]: number | string | undefined } | (string | number)[]',
+    ],
     'a key set on each of two objects' => [
         '{ a: number } | { b: string }',
         [arrayArmWrite('c', 'boolean')],
         '{ a?: number; b?: string; c?: boolean }',
     ],
 ]);
+
+it('publishes the list PHP sends an object an unset leaves keyed only by numbers 0, 1, …', function () {
+    $sent = ['a' => 1];
+    $sent['0'] = 2;
+    unset($sent['a']);
+
+    expect(ArrayArm::written('{ a: number }', [arrayArmWrite(ElementKey::Any, 'number'), arrayArmWrite('a', null)]))
+        ->toBe('{ a?: number; [key: string]: number | undefined } | number[]')
+        ->and(json_encode($sent))->toBe('[2]');
+});
 
 it('declines a write on an arm that is no array, or through a member an arm may not hold', function (string $type, array $writes) {
     expect(ArrayArm::written($type, $writes))->toBeNull();

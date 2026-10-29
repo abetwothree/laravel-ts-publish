@@ -79,7 +79,8 @@ use WeakMap;
  * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, ClassLike, string}
  * @phpstan-type PropertyWrites list<PropertyWrite>
  * @phpstan-type ElementWrite array{path: list<string|null>, value: Expr|null, unsets: bool}
- * @phpstan-type ComputedWrites list<array{PropertyWrite, ElementWrite}>
+ * @phpstan-type ComputedWrite array{PropertyWrite, ElementWrite}
+ * @phpstan-type ComputedWrites list<ComputedWrite>
  * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
  * @phpstan-type TargetsReader Closure(Node): list<Expr|Arg>
  * @phpstan-type WriteValues array<int, ValueExpressionResult|null>
@@ -513,7 +514,7 @@ final class SubjectPropertyTypeResolver
      * The value a computed write gives the property whole, or the element it writes, typed in its method's scope; null
      * where the engine cannot type it.
      *
-     * @param  array{PropertyWrite, ElementWrite}  $write
+     * @param  ComputedWrite  $write
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null

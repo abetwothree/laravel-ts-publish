@@ -13,7 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 /**
  * One list or object arm of an array's published type, as its named members and the keys it leaves unnamed. A write
  * joins its value into each key it may reach, or makes each member it may remove optional; a list a write may key
- * otherwise also becomes that object, kept beside the list unless the write always keys it so.
+ * otherwise also becomes that object, kept beside the list.
  *
  * @phpstan-type Member array{optional: bool, type: string}
  * @phpstan-type ArrayWrite array{path: list<string>, key: string|ElementKey, value: string|null}
@@ -139,19 +139,17 @@ final readonly class ArrayArm
     }
 
     /**
-     * Each arm printed, once, an intersection parenthesized beside another arm, and the empty list an object sends
-     * where a removal may leave it no key, as `[]`, which only a list or a number index admits.
+     * Each arm printed, once, an intersection parenthesized beside another arm, and the list PHP sends the object arm
+     * as where it may hold only int keys, unless the list arm already holds each value they may hold.
      *
      * @param  array<string, self>  $arms  by kind
      */
     private static function printedUnion(array $arms, bool $removes): string
     {
-        $object = $arms['object'] ?? null;
+        $listed = isset($arms['object']) ? $arms['object']->listedValues($removes) : null;
         $printed = array_map(fn (self $arm): string => $arm->printed(), array_values($arms));
-        $empties = $object !== null && ! isset($arms['list']) && $removes
-            && ! array_any($object->members, fn (array $member): bool => ! $member['optional'])
-            && ($object->index !== 'number' || $object->rest === []);
-        $printed = array_values(array_unique($empties ? [...$printed, 'never[]'] : $printed));
+        $held = $listed === null || (isset($arms['list']) && array_diff($listed, $arms['list']->rest) === []);
+        $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
 
         return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(
             fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : $arm,
@@ -161,7 +159,7 @@ final readonly class ArrayArm
 
     /**
      * This object arm with one more part of an intersection read into it: an object literal's members and index
-     * signature, or a `Record`'s index; null where the part is neither, or a second index.
+     * signature, or a `Record`'s index; null where the part is neither, or an index of another key type.
      */
     private function withPart(string $part): ?self
     {
@@ -169,11 +167,16 @@ final readonly class ArrayArm
         $members = $record === null ? TsTypeShape::members($part) : [['[key: '.$record[0].']', $record[1]]];
         $arm = $this;
 
+        // A resource re-indexes an array keyed only by numbers into a list, which only a number index admits.
+        if ($members !== null && $members !== [] && array_all($members, fn (array $member): bool => TsTypeShape::isNumericKey($member[0]))) {
+            $members = array_map(fn (array $member): array => ['[key: number]', $member[1]], $members);
+        }
+
         foreach ($members ?? [] as [$key, $type]) {
             $index = preg_match('/^\[\s*\w+\s*:\s*(number|string)\s*\]$/', $key, $match) === 1 ? $match[1] : null;
             $optional = str_ends_with($key, '?');
 
-            if (str_starts_with($key, '[') && ($index === null || $arm->index !== null)) {
+            if (str_starts_with($key, '[') && ($index === null || ($arm->index ?? $index) !== $index)) {
                 return null;
             }
 
@@ -292,6 +295,28 @@ final readonly class ArrayArm
         $index = in_array('string', [$this->index, $other->index], true) ? 'string' : ($this->index ?? $other->index);
 
         return new self($this->list, $members, self::merged($this->rest, ...$other->rest), $index);
+    }
+
+    /**
+     * The values of the list PHP sends this object arm as where it may hold only int keys outside a number index, which
+     * already admits a list: each a string index or a member named by a number may hold, none where a removal may
+     * leave it no key; null where a member it always holds is named otherwise, or nothing can leave it a list.
+     *
+     * @return list<string>|null
+     */
+    private function listedValues(bool $removes): ?array
+    {
+        $index = $this->rest === [] ? null : $this->index;
+        $numbered = array_filter($this->members, fn (string $name): bool => TsTypeShape::isNumericKey($name), ARRAY_FILTER_USE_KEY);
+        $named = array_diff_key($this->members, $numbered);
+
+        if ($index === 'number' || array_any($named, fn (array $member): bool => ! $member['optional'])) {
+            return null;
+        }
+
+        $values = self::merged($index === 'string' ? $this->rest : [], ...array_column($numbered, 'type'));
+
+        return $values === [] && ! $removes ? null : $values;
     }
 
     /**

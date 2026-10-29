@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RenumberedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHelperPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
@@ -440,6 +441,26 @@ it('keeps the keys an element unset() leaves in an untyped array a plain class s
 it('keeps the keys an element unset() leaves in an untyped array a resource that preserves keys sends', function () {
     expect(publishedResourceKeyTypes(KeptTagsResource::class, Post::class)['pruned'])->toBe('string[] | Record<number, string>')
         ->and(json_encode((new KeptTagsResource(null))->prune()->resolve(request())['pruned']))->toBe('{"1":"q"}');
+});
+
+// PHP sends an array keyed only by numbers 0, 1, … as a list, and a resource re-indexes any keyed only by numbers.
+it('publishes the list an untyped array an unset or a whole write leaves keyed only by numbers is sent as', function () {
+    $resource = fn (): RenumberedTagsResource => new RenumberedTagsResource(null);
+
+    expect(analyzedKeyTypes(AppendedTagsPayload::class)['renumbered'])
+        ->toBe('{ a?: number; [key: string]: number | undefined } | number[]')
+        ->and(json_encode(new AppendedTagsPayload()->renumber('0')->dropRenumbered()->toArray()['renumbered']))->toBe('[2]')
+        ->and(analyzedKeyTypes(RenumberedTagsResource::class))->toBe([
+            'renumbered' => '{ a?: number; [key: string]: number | undefined } | number[]',
+            'numbered' => '{ a?: number; "5"?: string } | string[]',
+            'swapped' => '{ a?: number; k?: number } & Record<number, string>',
+        ])
+        ->and(json_encode($resource()->resolve(request())))->toBe('{"renumbered":{"a":1},"numbered":{"a":1},"swapped":{"a":1}}')
+        ->and(json_encode($resource()->renumber('5')->dropRenumbered()->number()->dropNumbered()->swap()->resolve(request())))
+        ->toBe('{"renumbered":[2],"numbered":["s"],"swapped":["s"]}')
+        ->and(json_encode($resource()->renumber('x')->number()->key()->resolve(request())))
+        ->toBe('{"renumbered":{"a":1,"x":2},"numbered":{"a":1,"5":"s"},"swapped":{"a":1,"k":1}}')
+        ->and(json_encode($resource()->swap()->key()->resolve(request())['swapped']))->toBe('{"5":"s","k":1}');
 });
 
 // R1: after a whole unset() PHP reads the property through `__get()`, and a read there warns, so only the fresh value.
