@@ -170,6 +170,54 @@ test('an answer read while a re-entry lifts a guard is not reused where the guar
     expect([$held, ...$lifted, $memo->remember('k', $guarded)])->toBe([1, 2, 2, 1]);
 });
 
+test('counts each entry into a guard a re-entry lifted, and each reused answer that entered one', function () {
+    $memo = new AnalysisMemo;
+    $guarded = function () use ($memo): string {
+        if ($memo->enter('method')) {
+            $memo->leave('method');
+        }
+
+        return 'read';
+    };
+
+    $memo->enter('property');
+    $memo->remember('k', $guarded);
+    $fresh = $memo->reentries();
+    $memo->enter('method');
+    $counts = $memo->reenterOnce('property', function () use ($memo, $guarded): array {
+        $before = $memo->reentries();
+        $memo->remember('k', $guarded);
+        $reused = $memo->reentries();
+        $memo->remember('other', $guarded);
+
+        return [$reused - $before, $memo->reentries() - $reused];
+    });
+
+    expect([$fresh, ...$counts])->toBe([0, 1, 1]);
+});
+
+test('a seeded guard keeps each answer that met it from being reused or stored, and stores the others', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $meets = function () use ($memo, $counting, $runs): int {
+        $memo->enter('property');
+
+        return $counting($runs)();
+    };
+    $plain = new ArrayObject;
+
+    $memo->enter('property');
+    $before = $memo->remember('met', $meets);
+    $seeded = $memo->seeding('property', fn (): array => [
+        $memo->remember('met', $meets),
+        $memo->remember('met', $meets),
+        $memo->remember('plain', $counting($plain)),
+    ]);
+
+    expect([$before, ...$seeded, $memo->remember('met', $meets), $memo->remember('plain', $counting($plain))])
+        ->toBe([1, 2, 3, 1, 1, 1]);
+});
+
 test('replays the dependencies and dropped union arms of a reused answer', function () {
     $memo = new AnalysisMemo;
     $compute = function (): string {

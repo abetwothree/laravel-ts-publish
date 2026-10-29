@@ -53,6 +53,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\TraitAliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UncalledCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedTallyChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrappedSizeChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrittenTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NinthViewCountingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
@@ -271,6 +272,17 @@ it('reads a helper a write calls and the payload reads first with the property a
         ->and(json_encode(new MeasuredSizeChild()->toArray()))->toBe('{"h":"none","size":"none"}')
         ->and(json_encode(new MeasuredSizeChild()->resize()->toArray()))->toBe('{"h":4,"size":4}')
         ->and(json_encode(new MeasuredSizeChild()->resize()->keep()->toArray()))->toBe('{"h":4,"size":4}');
+});
+
+it('reads a helper a write calls with the property cut where reading it as the joined type would join a new one', function () {
+    $child = new ReflectionClass(WrappedSizeChild::class);
+    $helperFirst = analyzedKeyTypes(WrappedSizeChild::class)['h'];
+    resolve(AnalysisMemo::class)->reset();
+    resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'size', $child);
+
+    expect([$helperFirst, analyzedKeyTypes(WrappedSizeChild::class)['h']])->toBe(['string | { v: unknown }', 'string | { v: unknown }'])
+        ->and(json_encode(new WrappedSizeChild()->wrap()->toArray()['h']))->toBe('{"v":"none"}')
+        ->and(json_encode(new WrappedSizeChild()->wrap()->wrap()->toArray()['h']))->toBe('{"v":{"v":"none"}}');
 });
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.

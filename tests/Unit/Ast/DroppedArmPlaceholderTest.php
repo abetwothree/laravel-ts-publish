@@ -226,6 +226,23 @@ test('a replaceable read prints the warnings it holds only where they are kept',
         ->and(warningsKeptBy(false))->toBe([]);
 });
 
+test('a provisional read not kept leaves neither its warnings nor its dropped count, and a kept one leaves both', function () {
+    AnalysisWarnings::reset();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $read = fn (string $name): Closure => function () use ($name, $scope): array {
+        DroppedUnionArms::record(new Variable($name), $scope, 'test');
+
+        return DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable($name)], $scope);
+    };
+
+    $dropped = DroppedUnionArms::dropped();
+    DroppedUnionArms::provisional($read('discarded'), fn (): bool => false);
+    $afterDiscarded = [DroppedUnionArms::dropped() - $dropped, count(AnalysisWarnings::all())];
+    DroppedUnionArms::provisional($read('kept'), fn (): bool => true);
+
+    expect([...$afterDiscarded, DroppedUnionArms::dropped() - $dropped, count(AnalysisWarnings::all())])->toBe([0, 0, 1, 1]);
+});
+
 test('a replaceable read that throws leaves no hold behind', function () {
     AnalysisWarnings::reset();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));

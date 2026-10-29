@@ -81,6 +81,8 @@ use WeakMap;
  * @phpstan-type KeyedValue array{string, ValueExpressionResult}
  * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
  * @phpstan-type TargetsReader Closure(Node): list<Expr|Arg>
+ * @phpstan-type WriteValues array<int, ValueExpressionResult|null>
+ * @phpstan-type LiftedWrites array{values: WriteValues, reentered: list<int>, kept: bool}
  *
  * @internal
  */
@@ -98,6 +100,9 @@ final class SubjectPropertyTypeResolver
 
     /** @var WeakMap<ClassLike, list<array{Node, list<Expr|Arg>}>>|null each parsed class body's write sites */
     private static ?WeakMap $writeSites = null;
+
+    /** @var array<string, ValueExpressionResult> what a `typing-property:` guard answers while a fixpoint check runs */
+    private static array $seeds = [];
 
     /**
      * Resolve a declared property's TypeScript type and FQCN channels, or null when no source
@@ -305,6 +310,8 @@ final class SubjectPropertyTypeResolver
      * each key written into its object; the known type alone while the property is already being typed, and null where
      * a write's value is one the engine cannot type, or its elements fit no single shape.
      *
+     * A write calling a helper already being read reads it again, or cut where the type that joins is no fixpoint.
+     *
      * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
      * @param  PropertyWrites  $computed  the whole, compound and element writes no constant evaluation types
      * @param  ReflectionClass<object>  $subject
@@ -323,36 +330,153 @@ final class SubjectPropertyTypeResolver
 
         // A write reading the property it writes, as `$this->count + 1` does, reads what the property held before it.
         if (! $memo->enter($guard)) {
-            return $known;
+            return self::$seeds[$guard] ?? $known;
         }
 
+        $name = $property->getName();
+
         try {
-            $typed = [];
-            $appended = [];
-            $keyed = [];
+            $lifted = DroppedUnionArms::provisional(
+                fn (): array => $this->liftedWrites($known, $computed, $name, $guard, $subject, $knownRuntime),
+                fn (array $lifted): bool => $lifted['kept'],
+            );
+            $values = $lifted['values'];
 
-            foreach ($computed as $write) {
-                $element = $this->elementWrite($write[0], $property->getName());
-                $expr = $element['value'] ?? $this->writtenValue($write[0], $property->getName());
-                // So does one through a helper already being read, which is read again under the guard, not cut short.
-                $value = $expr === null
-                    ? null
-                    : $memo->reenterOnce($guard, fn (): ?array => $this->computedWrite($write, $expr, $subject, $knownRuntime));
-
-                if ($value === null || $value['type'] === 'unknown') {
-                    return null;
-                }
-
-                if ($element === null) {
-                    $typed[] = $value;
-                } elseif ($element['key'] === null) {
-                    $appended[] = $value;
-                } else {
-                    $keyed[] = [$element['key'], $value];
-                }
+            // A write that joins a new type each run, as one nesting what its helper returns does, reads it cut.
+            foreach ($lifted['kept'] ? [] : $lifted['reentered'] as $index) {
+                $values[$index] = $this->writeValue($computed[$index], $name, $subject, $knownRuntime);
             }
         } finally {
             $memo->leave($guard);
+        }
+
+        return $this->joinedWrites($known, $computed, $values, $name);
+    }
+
+    /**
+     * Each computed write's value read with the analyses under way lifted, the writes that entered one again, and
+     * whether the type they join stands: none did, it is a fixpoint, or a write that entered none declines it anyway.
+     *
+     * @param  ValueExpressionResult  $known
+     * @param  PropertyWrites  $computed
+     * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $knownRuntime
+     * @return LiftedWrites
+     */
+    private function liftedWrites(
+        array $known,
+        array $computed,
+        string $name,
+        string $guard,
+        ReflectionClass $subject,
+        ?ReflectionClass $knownRuntime,
+    ): array {
+        $memo = resolve(AnalysisMemo::class);
+        $values = [];
+        $reentered = [];
+
+        foreach ($computed as $index => $write) {
+            $reentries = $memo->reentries();
+            $values[$index] = $memo->reenterOnce($guard, fn (): ?array => $this->writeValue($write, $name, $subject, $knownRuntime));
+
+            if ($memo->reentries() !== $reentries) {
+                $reentered[] = $index;
+            } elseif ($values[$index] === null) {
+                // Rereading a helper cannot type a write that reads none, so the property declines however it ends.
+                return ['values' => $values, 'reentered' => [], 'kept' => true];
+            }
+        }
+
+        $joined = $this->joinedWrites($known, $computed, $values, $name);
+        $again = function () use ($memo, $guard, $known, $computed, $name, $subject, $knownRuntime, $values, $reentered): ?array {
+            foreach ($reentered as $index) {
+                $values[$index] = $memo->reenterOnce(
+                    $guard,
+                    fn (): ?array => $this->writeValue($computed[$index], $name, $subject, $knownRuntime),
+                );
+            }
+
+            return $this->joinedWrites($known, $computed, $values, $name);
+        };
+
+        return [
+            'values' => $values,
+            'reentered' => $reentered,
+            'kept' => $reentered === [] || ($joined !== null && $this->reachesFixpoint($guard, $joined, $again)),
+        ];
+    }
+
+    /**
+     * Whether a joined type is a fixpoint: the join read again with the property's guard answering that type holds no
+     * arm it lacks. The check's own reads leave no dropped arm, warning or stored answer behind.
+     *
+     * @param  ValueExpressionResult  $joined
+     * @param  Closure(): (ValueExpressionResult|null)  $again  the join with each write that entered one read again
+     */
+    private function reachesFixpoint(string $guard, array $joined, Closure $again): bool
+    {
+        $memo = resolve(AnalysisMemo::class);
+        $seeds = self::$seeds;
+        self::$seeds[$guard] = $joined;
+
+        try {
+            $rejoined = DroppedUnionArms::provisional(fn (): ?array => $memo->seeding($guard, $again), fn (): bool => false);
+        } finally {
+            self::$seeds = $seeds;
+        }
+
+        return $rejoined !== null
+            && array_diff(TsTypeShape::splitTopLevel($rejoined['type'], ['|']), TsTypeShape::splitTopLevel($joined['type'], ['|'])) === [];
+    }
+
+    /**
+     * The value a computed write gives the property whole, or the element it writes, typed in its method's scope; null
+     * where the engine cannot type it.
+     *
+     * @param  PropertyWrite  $write
+     * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $knownRuntime
+     * @return ValueExpressionResult|null
+     */
+    private function writeValue(array $write, string $name, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    {
+        $expr = $this->elementWrite($write[0], $name)['value'] ?? $this->writtenValue($write[0], $name);
+        $value = $expr === null ? null : $this->computedWrite($write, $expr, $subject, $knownRuntime);
+
+        return $value === null || $value['type'] === 'unknown' ? null : $value;
+    }
+
+    /**
+     * The known type joined with each computed write's value, each appended element folded into its list and each key
+     * written into its object; null where a value is missing, or the elements fit no single shape.
+     *
+     * @param  ValueExpressionResult  $known
+     * @param  PropertyWrites  $computed
+     * @param  WriteValues  $values  each write's value, by its index in $computed
+     * @return ValueExpressionResult|null
+     */
+    private function joinedWrites(array $known, array $computed, array $values, string $name): ?array
+    {
+        $typed = [];
+        $appended = [];
+        $keyed = [];
+
+        foreach ($computed as $index => $write) {
+            $value = $values[$index] ?? null;
+
+            if ($value === null) {
+                return null;
+            }
+
+            $element = $this->elementWrite($write[0], $name);
+
+            if ($element === null) {
+                $typed[] = $value;
+            } elseif ($element['key'] === null) {
+                $appended[] = $value;
+            } else {
+                $keyed[] = [$element['key'], $value];
+            }
         }
 
         $whole = ValueResult::unionResults([$known, ...$typed]);

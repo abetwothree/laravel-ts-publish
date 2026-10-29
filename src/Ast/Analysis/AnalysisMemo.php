@@ -48,6 +48,14 @@ final class AnalysisMemo
     /** @var array<string, true> the guard keys each re-entry under way is bounded by, which a nested one never lifts */
     private array $bounds = [];
 
+    /** @var array<string, true> the guard keys the re-entries under way lifted */
+    private array $lifted = [];
+
+    /** @var array<string, true> the guard keys answering a seed in place of their cut, while a fixpoint check reads */
+    private array $seeded = [];
+
+    private int $reentries = 0;
+
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
 
@@ -77,6 +85,10 @@ final class AnalysisMemo
 
         if ($innermost !== null) {
             $this->frames[$innermost]['footprint'][$key] = true;
+        }
+
+        if (isset($this->lifted[$key])) {
+            $this->reentries++;
         }
 
         if (isset($this->active[$key])) {
@@ -109,21 +121,55 @@ final class AnalysisMemo
     public function reenterOnce(string $key, Closure $read): mixed
     {
         $bounds = $this->bounds;
+        $liftedBefore = $this->lifted;
         $this->bounds[$key] = true;
         $lifted = array_diff_key($this->active, $this->bounds);
         $this->active = array_diff_key($this->active, $lifted);
+        $this->lifted += $lifted;
 
         try {
             return $read();
         } finally {
             $this->active += $lifted;
             $this->bounds = $bounds;
+            $this->lifted = $liftedBefore;
+        }
+    }
+
+    /**
+     * How often a read has entered a guard a re-entry under way lifted, or reused an answer that entered one; a caller
+     * compares two readings to tell whether a read went through an analysis already under way.
+     */
+    public function reentries(): int
+    {
+        return $this->reentries;
+    }
+
+    /**
+     * Run a read while the guard `$key`, which the caller holds, answers a seed in place of its cut, as
+     * SubjectPropertyTypeResolver's `typing-property:` guard answers a joined type to check it is a fixpoint. No answer
+     * that met `$key` is reused in it or stored from it, since each read the seed and not what the cut gives.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function seeding(string $key, Closure $read): mixed
+    {
+        $seeded = $this->seeded;
+        $this->seeded[$key] = true;
+
+        try {
+            return $read();
+        } finally {
+            $this->seeded = $seeded;
         }
     }
 
     /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
-     * found held, since only those can cut a fresh computation short somewhere else.
+     * found held, since only those can cut a fresh computation short somewhere else; not stored where it met a seed.
      *
      * @template T
      *
@@ -163,7 +209,9 @@ final class AnalysisMemo
             $frame = $this->closeFrame($depth);
         }
 
-        $this->store($key, $value, $frame);
+        if (array_intersect_key($frame['footprint'], $this->seeded) === []) {
+            $this->store($key, $value, $frame);
+        }
 
         return $value;
     }
@@ -178,7 +226,7 @@ final class AnalysisMemo
 
     /**
      * Whether computing an answer again now could only reproduce it: nothing it read has changed, the published enums
-     * at version $enums included, and each guard it entered is held now exactly where it was held then.
+     * at version $enums included, each guard it entered is held now exactly where it was held then, and none is seeded.
      *
      * @param  MemoEntry  $entry
      */
@@ -188,7 +236,8 @@ final class AnalysisMemo
         if ($entry['resources'] !== PublishedResourceRegistry::version()
             || $entry['models'] !== PublishedModelRegistry::version()
             || $entry['enums'] !== $enums
-            || (! $entry['recording'] && DependencyRecorder::isRecording())) {
+            || (! $entry['recording'] && DependencyRecorder::isRecording())
+            || array_intersect_key($entry['footprint'], $this->seeded) !== []) {
             return false;
         }
 
@@ -213,6 +262,7 @@ final class AnalysisMemo
         }
 
         DroppedUnionArms::replay($entry['dropped']);
+        $this->reentries += count(array_intersect_key($entry['footprint'], $this->lifted));
 
         $innermost = array_key_last($this->frames);
 

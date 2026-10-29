@@ -189,6 +189,33 @@ final class DroppedUnionArms
         return $value;
     }
 
+    /**
+     * Run a read its caller may throw away, as a fixpoint check is: where $kept says the value does not stand, neither
+     * its warnings, its count nor its audit entries outlive it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @param  Closure(TRead): bool  $kept  asked twice, so it must only inspect the value
+     * @return TRead
+     */
+    public static function provisional(Closure $read, Closure $kept): mixed
+    {
+        $dropped = self::$dropped;
+        $recorded = self::$arms === null ? null : count(self::$arms);
+        $value = self::replaceable($read, $kept);
+
+        if (! $kept($value)) {
+            self::$dropped = $dropped;
+
+            if ($recorded !== null && self::$arms !== null) {
+                self::$arms = array_slice(self::$arms, 0, $recorded);
+            }
+        }
+
+        return $value;
+    }
+
     /** How the warning words what a type made only of `null` and/or `never[]` publishes; null for any other type. */
     private static function placeholder(string $type): ?string
     {
