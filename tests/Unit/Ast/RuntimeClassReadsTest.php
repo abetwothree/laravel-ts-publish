@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RenumberedTagsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReorderedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHelperPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
@@ -54,6 +55,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReorderedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SwappedPairPayload;
@@ -479,6 +481,47 @@ it('publishes the list an untyped array an unset or a whole write leaves keyed o
             .'"extended":["x",5]}',
         )
         ->and(json_encode($resource()->swap()->key()->resolve(request())['swapped']))->toBe('{"5":"s","k":1}');
+});
+
+// A resource lists numbers in the order the array holds them, which a whole write may change; a plain class keys them.
+it('publishes the list a resource sends an untyped array a whole write may hold with its numbers moved', function () {
+    $resource = fn (): ReorderedTagsResource => new ReorderedTagsResource(null);
+    $payload = fn (): ReorderedTagsPayload => new ReorderedTagsPayload;
+
+    expect(analyzedKeyTypes(ReorderedTagsResource::class))->toBe([
+        'reordered' => '{ a?: number; "0": string; "1": number } | (string | number)[]',
+        'prepended' => '{ a?: number; "0": string; "1"?: number } | (string | number)[]',
+        'lengthened' => '{ a?: number; "0": string; "1": number; "2"?: boolean } | (string | number | boolean)[]',
+        'alike' => '{ a?: number; "0": string; "1": string }',
+        'nested' => '{ a: { k?: number; "0": string; "1": number } | (string | number)[] }',
+        'slid' => '{ a?: number; "0"?: string; "1": string; "2"?: string }',
+    ])->and(json_encode($resource()->resolve(request())))->toBe(
+        '{"reordered":{"a":1,"0":"x","1":5},"prepended":{"a":1,"0":"x"},"lengthened":{"a":1,"0":"x","1":5},'
+        .'"alike":{"a":1,"0":"x","1":"y"},"nested":{"a":{"k":1,"0":"x","1":5}},"slid":{"a":1,"0":"x","1":"y"}}',
+    )->and(json_encode($resource()->dropLetters()->resolve(request())))->toBe(
+        '{"reordered":["x",5],"prepended":["x"],"lengthened":["x",5],"alike":["x","y"],"nested":{"a":["x",5]},'
+        .'"slid":["x","y"]}',
+    )->and(json_encode($resource()->reorder()->slide()->resolve(request())))->toBe(
+        '{"reordered":{"a":1,"1":5,"0":"x"},"prepended":{"a":1,"1":5,"0":"x"},'
+        .'"lengthened":{"a":1,"1":5,"0":"x","2":true},"alike":{"a":1,"1":"y","0":"x"},'
+        .'"nested":{"a":{"k":1,"1":5,"0":"x"}},"slid":{"a":1,"1":"y","2":"z"}}',
+    )->and(json_encode($resource()->reorder()->slide()->dropLetters()->resolve(request())))->toBe(
+        '{"reordered":[5,"x"],"prepended":[5,"x"],"lengthened":[5,"x",true],"alike":["y","x"],"nested":{"a":[5,"x"]},'
+        .'"slid":["y","z"]}',
+    )->and(analyzedKeyTypes(ReorderedTagsPayload::class))->toBe([
+        'reordered' => '{ a?: number; "0": string; "1": number }',
+        'prepended' => '{ a?: number; "0": string; "1"?: number }',
+        'lengthened' => '{ a?: number; "0": string; "1": number; "2"?: boolean }',
+        'alike' => '{ a?: number; "0": string; "1": string }',
+        'nested' => '{ a: { k?: number; "0": string; "1": number } }',
+        'slid' => '{ a?: number; "0"?: string; "1": string; "2"?: string }',
+    ])->and(json_encode($payload()->dropLetters()->toArray()))->toBe(
+        '{"reordered":["x",5],"prepended":["x"],"lengthened":["x",5],"alike":["x","y"],"nested":{"a":["x",5]},'
+        .'"slid":["x","y"]}',
+    )->and(json_encode($payload()->reorder()->slide()->dropLetters()->toArray()))->toBe(
+        '{"reordered":{"1":5,"0":"x"},"prepended":{"1":5,"0":"x"},"lengthened":{"1":5,"0":"x","2":true},'
+        .'"alike":{"1":"y","0":"x"},"nested":{"a":{"1":5,"0":"x"}},"slid":{"1":"y","2":"z"}}',
+    );
 });
 
 // A plain class sends a list only where the keys run 0, 1, …, as keys from 5 on, or a named key always held, never do.
