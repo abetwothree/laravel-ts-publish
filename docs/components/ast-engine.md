@@ -525,7 +525,8 @@ counts, since `parent::` may run it. A write inside a nested class, a named func
 since `$this` there is never the object. One a closure or arrow function in the method holds joins even where the
 closure may never run, read in that closure's scope: its declared parameters through `ParameterBinder::bindClosure()`,
 its body's locals and, for a closure, only its imports, as the method held them there, which leaves a by-reference
-import `unknown`. An append joins the elements of each list the type holds, and a literal string key joins a one-object
+import `unknown`; it declines where that read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped
+parameter does. An append joins the elements of each list the type holds, and a literal string key joins a one-object
 shape as an optional key. Any other write declines: a value the engine cannot type, any other element write, `unset()`,
 a computed `$this->{$name}` write in application code, or an argument to a by-reference parameter of a callee the scan
 can name ([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the
