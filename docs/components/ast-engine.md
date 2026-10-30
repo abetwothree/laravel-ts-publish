@@ -615,10 +615,10 @@ proof that holds `$this->resource` to one model adds `@backing:<model>` to its `
 the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
 class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
 keys, so two siblings never share an inherited helper's `static`. A `macro:` key names the class the call reaches,
-which decides whether a macro runs, and adds the runtime class the same way. A read that only assumes its runtime
-class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class.
-`RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:` cycle guard stays per method, so
-a recursion that passes a new value each time stops at its first repeat.
+which decides whether `__call()` runs, and adds the runtime class, whose macros decide what runs, the same way. A read
+that only assumes its runtime class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never
+shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
+cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
 
 A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
 computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's

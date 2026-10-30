@@ -207,9 +207,10 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
   `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer. A macro registered under the name runs first, so
   `MacroCallResolver` types the call from the macro's callable: its native return, its `@return`, then a closure's body
   read with `$this` bound to the resource and its captured variables read where it is declared. The class the call
-  reaches decides whether a macro runs, so a `self::m()` the declaring class lacks reaches `__call()` and its macro
-  whatever the runtime class declares. `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()`
-  keeps the model, which it calls directly.
+  reaches decides whether `__call()` runs, and the runtime class's macros decide what runs, so a `self::m()` the
+  declaring class lacks runs the runtime class's macro whatever that class declares, from its own store where it
+  re-uses `Macroable`. `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()` keeps the model,
+  which it calls directly.
 - **A model's own body**: a model method or accessor body runs on the model, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the runtime class, that model, for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
