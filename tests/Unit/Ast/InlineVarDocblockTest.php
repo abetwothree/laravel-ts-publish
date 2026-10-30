@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
@@ -455,6 +456,39 @@ describe('an inline @var on a local assignment', function () {
         'a class constant' => ['self::NAME', ['self' => Team::class], null],
         'a conditional type\'s arm, declined as before' => ['($d is null ? self : static)', ['self' => Team::class, 'static' => Team::class], null],
     ]);
+
+    // `self` may name any subclass of the model, so the collection a spelled tag declares names no element to read.
+    test('names no element for a collection a self spelling declares, and reads its members by their declarations', function () {
+        $held = function (string $element): ?ReceiverType {
+            $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+            /** @var list<Stmt> $stmts */
+            $stmts = new AstParser()->parseSource('<?php /** @var \\'.EloquentCollection::class.'<int, '.$element.'> $x */ $x = json_decode(""); return $x;');
+            $host = new class
+            {
+                use CollectsLocalVarBindings;
+
+                /**
+                 * Seed the scope from the body, as the analyzer does.
+                 *
+                 * @param  list<Stmt>  $stmts
+                 */
+                public function run(array $stmts, AnalysisScope $scope): void
+                {
+                    $this->seedBody($stmts, $scope);
+                }
+            };
+            $host->run($stmts, $scope);
+            $returned = $stmts[1];
+            assert($returned instanceof Return_ && $returned->expr instanceof Expr);
+
+            return resolve(ReceiverClassResolver::class)->resolve($returned->expr, $scope);
+        };
+        $named = $held('\\'.Post::class);
+        $spelled = $held('self');
+
+        expect([$named?->classes, $named?->elementModel, $named?->declaredOnly])->toBe([[EloquentCollection::class], Post::class, false])
+            ->and([$spelled?->classes, $spelled?->elementModel, $spelled?->declaredOnly])->toBe([[EloquentCollection::class], null, true]);
+    });
 
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
     test('never reads a member of a declared local through the loaded relation\'s model', function () {
