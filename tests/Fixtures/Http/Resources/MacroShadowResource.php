@@ -9,6 +9,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
  */
 class MacroShadowResource extends MacroAncestorResource
 {
+    /** The subclass's own answer, which `static::` reaches and the ancestor's `self::` does not. */
     public function ancestorProbe(): int
     {
         return 1;
