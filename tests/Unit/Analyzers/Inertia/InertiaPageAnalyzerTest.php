@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
@@ -17,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPageProps
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -31,7 +35,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTier
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Routing\Router;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -836,4 +842,64 @@ it('types the route-bound reads #86 lists, as Inertia sends them', function () {
         ->and($sent = inertiaProps(new RouteBoundReadsController()->show($post)))
         ->and([$sent->status->name, $sent->authorPosts, $sent->comments, $sent->fresh->id])
         ->toBe([$post->status->name, 1, 1, $post->id]);
+});
+
+it('imports a class an import-less page cast spells', function () {
+    app(Router::class)->get('/importless-cast/{post}', [ImportlessCastController::class, 'show']);
+    $page = pageData(ImportlessCastController::class.'@show');
+    $post = (new Post)->forceFill(['title' => 'First']);
+
+    expect($page['pageType'])->toContain('post: Post | null')
+        ->and($page['classFqcns'])->toContain(Post::class)
+        ->and(new RouteTransformer(ImportlessCastController::class)->typeImports)
+        ->toBe(['../../../../../../workbench/app/models' => ['Post']])
+        ->and(inertiaProps(new ImportlessCastController()->show($post))->post->title)->toBe('First');
+});
+
+it('publishes a props helper\'s own casts inside its prop as the engine publishes them for an API resource', function () {
+    $page = pageData(ImportlessCastController::class.'@notes');
+    $prop = TsTypeShape::members(substr($page['pageType'], strlen('Inertia.SharedData & ')))[0] ?? null;
+    $resource = resolve(AstEngine::class)->analyze(NoteSignatureCastResource::class)->properties;
+
+    expect($prop[1] ?? null)->toBe('{ x_note: string; n: number; [key: `${string}_note`]: number | string | undefined }')
+        ->and(TsTypeShape::members($prop[1] ?? ''))
+        ->toBe(array_map(fn (array $property): array => [$property['name'], $property['type']], $resource))
+        ->and(inertiaProps(new ImportlessCastController()->notes())->notes)->toEqual((object) ['x_note' => 'y', 'n' => 1]);
+});
+
+it('imports a class one page cast displaced for another import-less cast that spells it', function () {
+    app(Router::class)->get('/importless-cast/{post}/carried', [ImportlessCastController::class, 'carried']);
+    $author = (new User)->forceFill(['name' => 'Ada']);
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn () => $author);
+    $sent = inertiaProps(new ImportlessCastController()->carried((new Post)->setRelation('author', $author)), $request);
+
+    expect(pageData(ImportlessCastController::class.'@carried')['classFqcns'])->toBe([User::class])
+        ->and(new RouteTransformer(ImportlessCastController::class)->typeImports)
+        ->toBe(['../../../../../../workbench/app/models' => ['User']])
+        ->and([$sent->meta->author->name, $sent->owner->name])->toBe(['Ada', 'Ada']);
+});
+
+it('aliases an import-less page cast\'s class as the key beside it, where another page imports its name', function () {
+    app(Router::class)->get('/importless-cast/{post}/module', [ImportlessCastController::class, 'castFromModule']);
+    app(Router::class)->get('/importless-cast/{post}/beside', [ImportlessCastController::class, 'castBesideModel']);
+    $author = (new User)->forceFill(['name' => 'Ada']);
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn () => $author);
+    $post = (new Post)->setRelation('author', $author);
+    $transformer = new RouteTransformer(ImportlessCastController::class);
+    $sent = inertiaProps(new ImportlessCastController()->castBesideModel($post), $request);
+
+    expect(array_column($transformer->actions, 'pageType', 'originalMethodName'))->toBe([
+        'castFromModule' => 'Inertia.SharedData & { author: User }',
+        'castBesideModel' => 'Inertia.SharedData & { owner: WorkbenchUser | null, author: WorkbenchUser }',
+    ])->and($transformer->typeImports)->toBe([
+        '@js/types/ui' => ['User'],
+        '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+    ])->and([$sent->owner->name, $sent->author->name])->toBe(['Ada', 'Ada'])
+        ->and(inertiaProps(new ImportlessCastController()->castFromModule($post))->author->name)->toBe('Ada');
 });

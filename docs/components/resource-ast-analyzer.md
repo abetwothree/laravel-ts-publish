@@ -726,8 +726,8 @@ beside a signature are all known:
   `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
   transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
   entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
-  channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
-  fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
+  channels, since the cast type is what publishes. After the reconcile, every one of them fits them to the cast's
+  text through `CastChannels::fit()`; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces

@@ -421,6 +421,16 @@ class MethodAnalysis
     }
 
     /**
+     * Every class a cast displaced and its text does not spell, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allCarriedFqcns(): array
+    {
+        return array_values(array_unique(array_merge([], ...array_values($this->carried))));
+    }
+
+    /**
      * Every enum any value wraps in an `EnumResource`, once each.
      *
      * @return list<class-string>

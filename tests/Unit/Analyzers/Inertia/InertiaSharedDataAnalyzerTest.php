@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Inherited
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCarriedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithFlaggedClassCastUnderShareCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportlessCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithKeyEdges;
@@ -47,6 +49,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadSha
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Inertia\Inertia;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Models\User;
 
@@ -350,6 +353,31 @@ test('imports the model an import-less cast spells over the key whose value embe
     expect($result['sharedPageProps'] ?? null)->toBe('{ auth: { user: User | null } }')
         ->and($result['typeImports'] ?? null)->toBe(['./workbench/app/models' => ['User']])
         ->and(sentAsJson(new MiddlewareWithEmbeddedCast()->share($request))->auth->user->name)->toBe('Ada');
+});
+
+it('imports a class an import-less shared-data cast spells', function () {
+    $request = Request::create('/');
+    $request->setUserResolver(fn () => (new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithImportlessCast()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithImportlessCast::class);
+
+    expect($shared['sharedPageProps'] ?? null)->toContain('owner: User | null')
+        ->and(array_merge(...array_values($shared['typeImports'] ?? [])))->toContain('User')
+        ->and(inertiaProps(Inertia::render('Shared', []), $request)->owner->name)->toBe('Ada');
+});
+
+it('imports a class one shared-data cast displaced for another import-less cast that spells it', function () {
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn () => (new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithCarriedCast()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithCarriedCast::class);
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect($shared['sharedPageProps'] ?? null)->toBe('{ meta: Record<string, unknown>, owner: User | null }')
+        ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/models' => ['User']])
+        ->and([$sent->meta->author->name, $sent->owner->name])->toBe(['Ada', 'Ada']);
 });
 
 // Inertia runs shared data through the props resolver, so a shared resource is sent as a page prop's is.

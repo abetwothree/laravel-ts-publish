@@ -66,14 +66,17 @@ name, to alias them, never to reshape the text. Every other displaced class is i
 published text still needs it.
 
 `CastChannels::fit()` applies the rule once, over the casts in force, so no `AsEnum` rewrite, `Partial<>` or alias
-queue meets the displaced value. `ResourceTransformer::runAstAnalysis()` and
-`BroadcastEventTransformer::transformProperties()` call it after the reconcile, `AnalysisComposer::compose()` first,
-for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can
-retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
-method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
-cast key's import channels with `forgetChannels()`. Shared data carries the custom imports its `@return` shape keeps
-only for a key no cast replaces, and drops an inferred import of a name a cast brings from another module, by the rule a
-resource's fit applies too (`CastChannels::withoutOtherPaths()`, which reads `X as Y` as `Y`). Unlike
+queue meets the displaced value. `ResourceTransformer::runAstAnalysis()`,
+`BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()` and
+`InertiaSharedDataAnalyzer::buildResult()` call it after the reconcile, `AnalysisComposer::compose()` first, for
+`AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can retype.
+A page's casts in force are a props helper's own method casts under the action's; shared data's are a helper's under
+the middleware class's and `share()`'s. A class-level event cast whose key names no payload property adds neither the
+key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a resource method cast does.
+
+A key only shared data's `@return` shape retypes still drops its import channels (`forgetChannels()`): the shape may
+spell a name its own custom import brings beside a same-named class the value carried, which a fit would bind the token
+to. Shared data carries the custom imports that shape keeps only for a key no cast replaces. Unlike
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
 key there that names a model or an enum publishes the name with no import, not `unknown`.
 
@@ -97,7 +100,9 @@ pins it.
 - Every other displaced class is carried in `MethodAnalysis::$carried`, which an inline array passes on as its own
   result key. Each publisher registers a carried class only where `CastChannels::spelledUnclaimed()` finds a text
   that spells its name with no class of its own behind it: another key's cast without import channels, an extends
-  clause, a type alias. So a carried class no such text keeps never forces an alias.
+  clause, a type alias. So a carried class no such text keeps never forces an alias. A route file and shared data
+  give such a text's token the one class of its name instead
+  ([`FileImportNames`](import-name-registry.md#fileimportnames)).
   `ResourceTransformer::keepSpelled()` applies the same test to the classes it holds, and `pruneUnspelledImports()`,
   after the `AsEnum` rewrite, drops any import whose local name no published type spells.
 - For a cast key, `resolveMultiEnumAccessorFqcns()` and `resolveMultiClassAccessorFqcns()` register through

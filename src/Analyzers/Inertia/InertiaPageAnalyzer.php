@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
@@ -50,6 +51,7 @@ use Throwable;
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
+ * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type TokenQueue from FileImportNames
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type TokenQueues from FileImportNames
@@ -391,9 +393,10 @@ class InertiaPageAnalyzer
             $targets = JsEmitter::castTargets(array_keys($overrides), $keys);
             JsEmitter::warnAmbiguousCasts($subject, array_keys($overrides), $keys);
             $casts = JsEmitter::retargetCasts($overrides, $targets);
+            $paths = JsEmitter::retargetCasts($importPaths, $targets);
 
             // A losing spelling's import goes with its type.
-            foreach (JsEmitter::retargetCasts($importPaths, $targets) as $key => $path) {
+            foreach ($paths as $key => $path) {
                 foreach (TsTypeString::extractImportableTypes($casts[$key] ?? '') as $type) {
                     if (! in_array($type, $externalImports[$path] ?? [], true)) {
                         $externalImports[$path][] = $type;
@@ -403,8 +406,7 @@ class InertiaPageAnalyzer
 
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
-
-            $this->forgetOverriddenChannels($analysis, $casts);
+            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $renumbered = $this->renumberTopLevel($props, $casts, $subject);
@@ -533,18 +535,6 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
-     *
-     * @param  array<array-key, string>  $overrides
-     */
-    protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
-    {
-        foreach (array_keys($overrides) as $name) {
-            $analysis->forgetChannels((string) $name);
-        }
-    }
-
-    /**
      * Every FQCN the rendered type actually spells, so no import outlives the type that needed it.
      *
      * @return list<class-string>
@@ -557,6 +547,7 @@ class InertiaPageAnalyzer
             ...array_values($analysis->directEnumFqcns),
             ...array_values($analysis->nestedResources),
             ...array_values($analysis->modelFqcns),
+            ...$analysis->allCarriedFqcns(),
         ];
 
         foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
@@ -642,5 +633,23 @@ class InertiaPageAnalyzer
             'importPaths' => $unpacked['importPaths'],
             'optionalOverrides' => $unpacked['optionalOverrides'],
         ];
+    }
+
+    /**
+     * The cast in force for each key: a props helper's own method cast, under the action's cast with its import path.
+     *
+     * @param  array<array-key, string>  $casts  the action's casts, by the key each retypes
+     * @param  array<array-key, string>  $paths  each of those casts' import path, by its key
+     * @return CastMap
+     */
+    private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths): array
+    {
+        $inForce = $analysis->casts;
+
+        foreach ($casts as $key => $type) {
+            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null];
+        }
+
+        return $inForce;
     }
 }

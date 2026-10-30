@@ -85,7 +85,9 @@ final class FileImportNames
             ];
         }
 
-        $classes = self::soleClasses('classes', $analysis->allTokenFqcns(), $brought);
+        // A class a cast displaced is carried off every channel, but another key's text may still spell it.
+        $held = array_values(array_unique([...$analysis->allTokenFqcns(), ...$analysis->allCarriedFqcns()]));
+        $classes = self::soleClasses('classes', $held, $brought);
         $consts = self::soleClasses('consts', $analysis->allWrappedEnumFqcns(), $brought);
 
         return ['classes' => self::queue($pieces, 'classes', $classes), 'consts' => self::queue($pieces, 'consts', $consts)];

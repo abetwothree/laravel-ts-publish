@@ -91,8 +91,9 @@ Callers fill their queues in one of three ways:
 - **One entry per token of a whole printed type**: `FileImportNames::objectQueues()` queues null for a token no class
   of its own key stands behind, such as a cast's `User`, a composed `ChartType` or a key. A per-name queue would hand
   that token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`.
-  A key's token whose name no custom import brings takes the one class of that name on any channel instead, as an
-  import-less cast over a value that embeds the class needs.
+  A key's token whose name no custom import brings takes the one class of that name on any channel or in
+  `MethodAnalysis::$carried` instead: an import-less cast that spells a class another key holds or another cast
+  displaced has none of its own, nor has a `@return` shape over a value that embeds it.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter
