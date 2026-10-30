@@ -75,6 +75,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadChained;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadDelegated;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNested;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNestedValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadTop;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PartlyReadSpreadPayload;
@@ -1033,4 +1039,21 @@ it('reads a parent:: spread a helper reads only partly as the release did, in a 
 it('ends a parent:: spread that reaches back into a method it is reading', function () {
     expect(analyzedKeyTypes(CyclingSpreadBase::class))->toBe(['b?' => 'number', 'g' => 'number'])
         ->and(json_encode(new CyclingSpreadBase()->toArray()))->toBe('{"g":1,"b":1}');
+});
+
+// A spread no arm reads may overwrite an earlier key, as `array_merge()` overwrites `a` here, so a `parent::` spread
+// holding one is not read at all, as in the release, rather than publish the earlier key's type.
+it('reads no key from a parent:: spread whose body holds a spread no arm reads', function () {
+    expect(analyzedKeyTypes(OverwrittenSpreadTop::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadTop()->toArray()))->toBe('{"a":"x"}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadNested::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadNested()->toArray()))->toBe('{"a":"x"}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadChained::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadChained()->toArray()))->toBe('{"a":"x"}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadDelegated::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadDelegated()->toArray()))->toBe('{"a":"x","e":1}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadValue::class))->toBe(['v' => '{ k: number }'])
+        ->and(json_encode(new OverwrittenSpreadValue()->toArray()))->toBe('{"v":{"k":1,"a":"x"}}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadNestedValue::class))->toBe(['v' => '{ k: number }'])
+        ->and(json_encode(new OverwrittenSpreadNestedValue()->toArray()))->toBe('{"v":{"k":1,"a":"x"}}');
 });

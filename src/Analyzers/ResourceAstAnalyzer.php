@@ -150,6 +150,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
     private bool $returnedWhole = true;
 
+    /** How many `parent::` spread reads enclose this one; inside one, a spread item no arm reads leaves it unread. */
+    private int $parentSpreadDepth = 0;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -1355,15 +1358,21 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $this->ownMethodSpread($method, $topLevel, $call, $on);
         }
 
-        // PHP never returns from a cycle into a method on the stack, which the arms below would re-enter unbounded.
+        // A re-entry adds no key: falling through, the arms below would re-read the cycle without end.
         if ($this->scope->readsSpreadMethod($on->getMethod($method))) {
             return new ResourceAnalysis;
         }
 
-        $spread = DroppedUnionArms::provisional(
-            fn (): ResourceAnalysis => $this->ownMethodSpread($method, $topLevel, $call, $on),
-            static fn (ResourceAnalysis $read): bool => $read->readsCompletely,
-        );
+        $this->parentSpreadDepth++;
+
+        try {
+            $spread = DroppedUnionArms::provisional(
+                fn (): ResourceAnalysis => $this->ownMethodSpread($method, $topLevel, $call, $on),
+                static fn (ResourceAnalysis $read): bool => $read->readsCompletely,
+            );
+        } finally {
+            $this->parentSpreadDepth--;
+        }
 
         return $spread->readsCompletely ? $spread : null;
     }
@@ -1396,6 +1405,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         return $on;
+    }
+
+    /**
+     * Leave a `parent::` spread's read incomplete at a spread item no arm reads, which may write any key, an earlier
+     * one included, so relativeMethodSpread() declines the read as the release read it.
+     */
+    private function skipUnreadSpread(ResourceAnalysis $analysis): void
+    {
+        if ($this->parentSpreadDepth > 0) {
+            $analysis->readsCompletely = false;
+        }
     }
 
     /**
@@ -1464,6 +1484,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 if ($parentAnalysis !== null) {
                     $analysis->merge($parentAnalysis);
+                } else {
+                    $this->skipUnreadSpread($analysis);
                 }
 
                 continue;
@@ -1477,6 +1499,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 if ($filterAnalysis !== null) {
                     $analysis->merge($filterAnalysis);
+                } else {
+                    $this->skipUnreadSpread($analysis);
                 }
 
                 continue;
@@ -1521,12 +1545,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 /** @var Node $funcCallName */
                 $funcCallName = $item->value->name;
 
-                if ($funcCallName instanceof Name) {
-                    $funcName = $funcCallName->getLast();
+                $funcName = $funcCallName instanceof Name ? $funcCallName->getLast() : null;
 
-                    if ($this->scope->declaringClass->hasMethod($funcName)) {
-                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
-                    }
+                if ($funcName !== null && $this->scope->declaringClass->hasMethod($funcName)) {
+                    $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
+                } else {
+                    $this->skipUnreadSpread($analysis);
                 }
 
                 continue;
@@ -1543,8 +1567,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
             }
 
-            // Handle $this->merge([...]) or $this->mergeWhen(condition, [...])
+            // Handle $this->merge([...]) or $this->mergeWhen(condition, [...]); no arm reads a spread reaching here.
             if ($item->key === null && $item->value instanceof MethodCall) {
+                if ($item->unpack) {
+                    $this->skipUnreadSpread($analysis);
+                }
+
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
                 // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
@@ -1555,6 +1583,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             if ($item->key === null) {
+                if ($item->unpack) {
+                    $this->skipUnreadSpread($analysis);
+                }
+
                 continue;
             }
 
@@ -1978,6 +2010,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
+        $analyzer->parentSpreadDepth = $this->parentSpreadDepth;
 
         return $analyzer;
     }
