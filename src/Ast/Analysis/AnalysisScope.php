@@ -495,7 +495,7 @@ final class AnalysisScope
         $ownPrivate = $declared !== null && $declared->isPrivate()
             && $declared->getDeclaringClass()->getName() === $declaring->getName();
 
-        // An object outside the declaring class's hierarchy, such as one OtherResource::make() builds, runs its own.
+        // An object that is no instance of the declaring class, such as one OtherResource::make() builds, runs its own.
         return $ownPrivate && is_a($runtime->getName(), $declaring->getName(), true) ? $declaring : $runtime;
     }
 
@@ -593,9 +593,9 @@ final class AnalysisScope
     }
 
     /**
-     * Read a built collection's items as the API resource it collects, which `collectResource()` maps them into unless
-     * they already are one; items of that class or a subclass, raw items it keeps raw, and unknown items keep this
-     * scope's element. The response stays this scope's, so `reindexesNumericKeys` does too.
+     * Read a built collection's items, the ones `$this->resource` holds here, as the API resource its own `collects()`
+     * picks, which `collectResource()` maps them into unless this scope's element already is one; one that picks no
+     * class, or an element the run cannot name, keeps this scope's. The response stays this scope's, and its keys too.
      *
      * @param  ReflectionClass<object>  $built
      */
@@ -604,7 +604,9 @@ final class AnalysisScope
         $collects = self::collectionFacts($built)[1];
         $held = $this->collectedElement['fqcn'] ?? null;
 
-        if ($collects !== null && ! $collects['model'] && $held !== null && ! is_a($held, $collects['fqcn'], true)) {
+        if ($collects !== null && $held !== null && ! is_a($held, $collects['fqcn'], true)
+            && self::picksItems($built)
+        ) {
             $this->collectedElement = $collects;
         }
     }
@@ -1297,6 +1299,20 @@ final class AnalysisScope
                 ResourceCollections::reindexesNumericKeys($class),
                 $class->isSubclassOf(ResourceCollection::class) ? ResourceCollections::collectedElement($class) : null,
             ],
+        );
+    }
+
+    /**
+     * Whether a collection's own `collects()` picks a class to map its items into, once a run: an element its ancestor
+     * picks says nothing of that.
+     *
+     * @param  ReflectionClass<object>  $collection
+     */
+    private static function picksItems(ReflectionClass $collection): bool
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'collection-picks:'.$collection->getName(),
+            static fn (): bool => ! ResourceCollections::keepsRawItems($collection),
         );
     }
 

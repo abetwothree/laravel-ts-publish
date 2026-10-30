@@ -8,12 +8,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsItemCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsItemResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsOtherCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsOtherItemCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsPostsOtherCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsRawOtherCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsSubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPrivateResource;
@@ -221,6 +227,28 @@ it('keeps the outer class\'s keys, re-indexing and passed-through items in a bui
         ->and(json_encode($sent(BuiltFactsSubCollection::class, [1])['summary']))->toBe('{"items":[{"s":"y"}]}')
         ->and(analyzedKeyTypes(BuiltSortsCollection::class))->toHaveKey('sorted', '{ letters: Record<number, string> }')
         ->and(json_encode($sent(BuiltSortsCollection::class, [1])['sorted']))->toBe('{"letters":{"1":"a","0":"b"}}');
+});
+
+// A built collection whose collects() picks no class keeps the items it is given, whatever its ancestor collects.
+it('keeps the outer element where the built collection picks no class of its own', function () {
+    $sent = fn (string $collection): string => json_encode((new $collection(collect([1])))->resolve(request())['summary']);
+    $published = ['summary' => '{ items: BuiltFactsOtherItemResource[] }'];
+
+    expect(analyzedKeyTypes(BuiltFactsPostsOtherCollection::class))->toBe($published)
+        ->and($sent(BuiltFactsPostsOtherCollection::class))->toBe('{"items":[{"b":"x"}]}')
+        ->and(analyzedKeyTypes(BuiltFactsRawOtherCollection::class))->toBe($published)
+        ->and($sent(BuiltFactsRawOtherCollection::class))->toBe('{"items":[{"b":"x"}]}');
+});
+
+// An outer element the run cannot name may hold a subclass of what the built collection collects, which passes through.
+it('keeps an outer element the run cannot name unknown in a built collection\'s method', function () {
+    PublishedResourceRegistry::register([
+        BuiltFactsItemResource::class, BuiltFactsItemCollection::class, BuiltFactsOtherItemCollection::class,
+    ]);
+
+    expect(analyzedKeyTypes(BuiltFactsOtherItemCollection::class))->toBe(['summary' => '{ items: unknown[] }'])
+        ->and(json_encode((new BuiltFactsOtherItemCollection(collect([1])))->resolve(request())['summary']))
+        ->toBe('{"items":[{"a":1}]}');
 });
 
 // From its own body PHP calls the declaring class's private chain() on a built subclass, over the public namesake.
