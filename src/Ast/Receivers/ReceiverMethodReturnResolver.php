@@ -114,11 +114,10 @@ final class ReceiverMethodReturnResolver
             }
 
             $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn(
-                $class,
+                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
                 $methodName,
                 $fromInside,
                 $site,
-                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
             );
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -154,7 +153,7 @@ final class ReceiverMethodReturnResolver
     {
         return $this->runsModelFilter($class, $methodName)
             || (is_a($class, Model::class, true)
-                && $this->resolveOn($class, $methodName, false, null, RuntimeClass::held($class)) === null);
+                && $this->resolveOn(RuntimeClass::held($class), $methodName, false, null) === null);
     }
 
     /**
@@ -488,22 +487,18 @@ final class ReceiverMethodReturnResolver
      * Type one class's method: a receiver-returning method keeps the receiver's own type, anything else reflects; a
      * method a relation or an Eloquent builder does not declare is typed on the class its query forwards it to.
      *
-     * @param  class-string  $class
-     * @param  RuntimeClass  $runtime  the class's runtime class, known only where the object is the runtime instance
-     *                                 of a scope that knows it, else assumed, since it may be a subclass
+     * @param  RuntimeClass  $runtime  the class, known only where the object is the runtime instance of a scope that
+     *                                 knows it, else assumed, since it may be a subclass
      * @return ValueExpressionResult|null
      */
-    private function resolveOn(
-        string $class,
-        string $methodName,
-        bool $fromInside,
-        ?CallSite $site,
-        RuntimeClass $runtime,
-    ): ?array {
+    private function resolveOn(RuntimeClass $runtime, string $methodName, bool $fromInside, ?CallSite $site): ?array
+    {
+        $class = $runtime->class->getName();
+
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
-            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site, RuntimeClass::held($forwarded));
+            return $forwarded === null ? null : $this->resolveOn(RuntimeClass::held($forwarded), $methodName, false, $site);
         }
 
         $method = new ReflectionMethod($class, $methodName);
