@@ -175,6 +175,36 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
+     * Whether a value reads an import that a closure holding the write, or one the import passes through on its way in,
+     * assigns anywhere in its body: that closure's scope reads the name as the value the body assigns wherever the read
+     * sits, which a read before the assignment never holds, so the write declines in either order.
+     *
+     * @param  list<ArrowFunction|ClosureExpr>  $closures  outermost first
+     */
+    private static function readsReassignedImport(Expr $value, array $closures): bool
+    {
+        if ($closures === []) {
+            return false;
+        }
+
+        $names = array_diff(self::variableNames(new NodeFinder()->findInstanceOf($value, Variable::class)), ['this']);
+
+        foreach (array_reverse($closures) as $closure) {
+            // A closure takes only the names it imports; an arrow function every name but its parameters.
+            $names = $closure instanceof ClosureExpr
+                ? array_intersect($names, self::variableNames(array_map(fn (ClosureUse $use): Expr => $use->var, $closure->uses)))
+                : array_diff($names, self::variableNames(array_map(fn (Param $param): Expr => $param->var, $closure->params)));
+            $body = $closure instanceof ClosureExpr ? $closure->stmts : [$closure->expr];
+
+            if (array_intersect($names, array_column(VariableWrites::of($body), 0)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The type of an untyped property's default, typed as a parameter default's value is, joined with the value each
      * write a method the class runs assigns; null when a write assigns a value the engine cannot type, or writes the
      * property in any other way, since a read may then hold anything.
@@ -516,7 +546,7 @@ final class SubjectPropertyTypeResolver
 
         $closures = $this->enclosingClosures($method, $site);
 
-        if ($this->readsReassignedImport($value, $closures)) {
+        if (self::readsReassignedImport($value, $closures)) {
             return null;
         }
 
@@ -674,32 +704,6 @@ final class SubjectPropertyTypeResolver
             fn (Node $node): bool => ($node instanceof ClosureExpr || $node instanceof ArrowFunction)
                 && StatementBlocks::encloses($node, $site),
         );
-    }
-
-    /**
-     * Whether a value reads an import that a closure holding the write, or one the import passes through on its way in,
-     * assigns anywhere in its body: its scope reads such a name as the body's own local, which a read before the
-     * assignment never holds.
-     *
-     * @param  list<ArrowFunction|ClosureExpr>  $closures  outermost first
-     */
-    private function readsReassignedImport(Expr $value, array $closures): bool
-    {
-        $names = array_diff(self::variableNames(new NodeFinder()->findInstanceOf($value, Variable::class)), ['this']);
-
-        foreach (array_reverse($closures) as $closure) {
-            // A closure takes only the names it imports; an arrow function every name but its parameters.
-            $names = $closure instanceof ClosureExpr
-                ? array_intersect($names, self::variableNames(array_map(fn (ClosureUse $use): Expr => $use->var, $closure->uses)))
-                : array_diff($names, self::variableNames(array_map(fn (Param $param): Expr => $param->var, $closure->params)));
-            $body = $closure instanceof ClosureExpr ? $closure->stmts : [$closure->expr];
-
-            if (array_intersect($names, array_column(VariableWrites::of($body), 0)) !== []) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
