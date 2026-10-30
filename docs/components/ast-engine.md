@@ -171,11 +171,13 @@ docblocks say what each binding table holds. These eight facts span other classe
   `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
   ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds.
   A `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the
-  declaring class when it declares that member private, else the runtime class; a method on a built instance takes the
-  same rule. A static-syntax call reads `staticCallClass()`, which applies no private rule, and every other `self`,
-  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class hands
-  it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the same two classes
-  (`VariableWrites::of()`). Whether the runtime class is known is [its own rule](#known-or-assumed-runtime-class).
+  declaring class when it declares that member private, else the runtime class. A method on a built instance takes the
+  same rule, its preserve check included, but an object whose class does not extend the declaring class runs its own,
+  as one `OtherResource::make()` builds does. A static-syntax call reads `staticCallClass()`, which applies no private
+  rule, and every other `self`, `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that
+  forwards the runtime class hands it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the
+  same two classes (`VariableWrites::of()`). Whether the runtime class is known is
+  [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -197,7 +199,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   `collectedElement`, follow, as `AstEngine::analyzeModelClosure()` does. The narrowing changes only the backing,
   through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
   runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
-  collection's items as the class Laravel builds does.
+  collection's items as the class Laravel builds does. A built collection's method changes only `collectedElement`,
+  through `seedBuiltElement()`, which `within()` puts back: the outer response's `filter()` still re-indexes its arrays.
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.

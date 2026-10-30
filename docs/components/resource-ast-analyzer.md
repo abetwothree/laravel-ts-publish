@@ -619,9 +619,11 @@ list once `withoutWrapping()` empties the shared key.
 
 `StaticCallHandler` types a method called on `new self($x)`, `self::make($x)` or a chain of them. A method that
 returns the same instance keeps the receiver's type, the wrapped value's `| null` included, plus `| null` for a nullable
-return. It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. Otherwise
-the method body is the payload. `spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()`
-flattens it. An empty analysis declines, since `{}` would claim the payload has no keys.
+return. It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. The method is
+the one PHP calls from the body: the declaring class's own private one on an instance of it or a subclass, over a
+public namesake, else the receiver's (`AnalysisScope::memberClassOf()`). Otherwise the method body is the payload.
+`spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()` flattens it. An empty analysis
+declines, since `{}` would claim the payload has no keys.
 
 Three answers are possible, and only the last is right. Do not change it to the receiver type:
 
@@ -633,10 +635,12 @@ Three answers are possible, and only the last is right. Do not change it to the 
 
 Only a class the body builds as itself is in scope: `spreadAnalysis()` reads the method on that class, with `$this` as
 it, the declaring class for `new self` and the runtime class for `new static`, `static::make()` and `self::make()`. A
-foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown` floor instead of the analyzer's own
-same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is exempt, since it is Laravel's
-serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as `SomeResource::make($x)->resolve()` does,
-never with the wrapped value's `| null`.
+built collection's items are the API resource it collects where Laravel's `collectResource()` maps them into it, not
+where they already are one, and the response's keys stay the analyzed class's, whose `filter()` re-indexes what the
+method returns (`AnalysisScope::seedBuiltElement()`). A foreign receiver such as `new CategoryResource($x)->summary()`
+keeps the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins
+that. `resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes
+`SomeResource`, as `SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
 
 ## Numeric keys
 
