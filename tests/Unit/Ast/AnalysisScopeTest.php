@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollectio
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
@@ -618,6 +619,15 @@ it('binds no class for a named or variable static call, leaving the fallback to 
     expect($scope->staticCallClass(runtimeClassCall('Foo::bar()')))->toBeNull()
         ->and($scope->staticCallClass(runtimeClassCall('$x::bar()')))->toBeNull()
         ->and($scope->staticCallClass(runtimeClassCall('self::bar()'))?->getName())->toBe(PostResource::class);
+});
+
+it('maps self, static and parent with the declaring class first, as memberClassOf() takes it', function () {
+    $declaring = new ReflectionClass(JsonResource::class);
+    $runtime = new ReflectionClass(PostResource::class);
+
+    expect(AnalysisScope::relativeClassOf(new Name('self'), $declaring, $runtime)?->getName())->toBe(JsonResource::class)
+        ->and(AnalysisScope::relativeClassOf(new Name('static'), $declaring, $runtime)?->getName())->toBe(PostResource::class)
+        ->and(AnalysisScope::relativeClassOf(new Name('parent'), $declaring, $runtime))->toBeNull();
 });
 
 // A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.

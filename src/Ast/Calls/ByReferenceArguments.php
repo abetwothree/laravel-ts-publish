@@ -265,7 +265,7 @@ final class ByReferenceArguments
         $class = match (true) {
             ! $name->isSpecialClassName() => $name->toString(),
             $runtime === null || $declaring === null => null,
-            default => AnalysisScope::relativeClassOf($name, $runtime, $declaring)?->getName(),
+            default => AnalysisScope::relativeClassOf($name, $declaring, $runtime)?->getName(),
         };
 
         if ($class === null || ! class_exists($class)) {

@@ -490,11 +490,11 @@ final class AnalysisScope
      * declaring class, the runtime class, or the declaring class's parent. Null for any other name, and for a `parent`
      * the declaring class lacks.
      *
-     * @param  ReflectionClass<object>  $runtime
      * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
      * @return ReflectionClass<object>|null
      */
-    public static function relativeClassOf(Name $name, ReflectionClass $runtime, ReflectionClass $declaring): ?ReflectionClass
+    public static function relativeClassOf(Name $name, ReflectionClass $declaring, ReflectionClass $runtime): ?ReflectionClass
     {
         return match ($name->toLowerString()) {
             'self' => $declaring,
@@ -615,7 +615,7 @@ final class AnalysisScope
      */
     public function relativeClass(Name $name): ?ReflectionClass
     {
-        return self::relativeClassOf($name, $this->runtime->class, $this->declaringClass);
+        return self::relativeClassOf($name, $this->declaringClass, $this->runtime->class);
     }
 
     /**
