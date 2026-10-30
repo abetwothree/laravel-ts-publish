@@ -411,9 +411,10 @@ An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBinding
 that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 Before it does, each `self`, `static` and `parent` in it is spelled as the class `relativeClass()` names. `self` and
 `parent` are the declaring class, the using class in a trait, and its parent; `static` is the runtime class the body is
-seeded for, which `AstEngine::bindingsFor()` takes from a value read. The receiver such a tag types reads a member a
-subclass can override by its declaration alone ([Receiver types § `self` and `parent`][receiver-self]): a declared type
-stands even where the runtime class narrows it, and an untyped member stays `unknown`.
+seeded for, which `AstEngine::bindingsFor()` takes from a value read. The receiver such a tag types, and every value a
+member call or property read on it returns, reads a member a subclass can override by its declaration alone
+([Receiver types § `self` and `parent`][receiver-self]): a declared type stands even where the runtime class narrows
+it, and an untyped member stays `unknown`.
 
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the

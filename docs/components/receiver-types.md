@@ -111,7 +111,9 @@ A receiver an inline `@var` or a closure parameter spells `self`, `static` or `p
 class it names (`ReceiverType::$declaredOnly`). A method or property a subclass can override, where neither the class
 nor the member is final and the member is not private, is read by its declaration alone:
 `MethodReturnTypeResolver::declaredType()` or `SubjectPropertyTypeResolver::declaredType()`, so an untyped one is
-`unknown`. Such an inline `@var` names no collection element, and an `instanceof` proof's classes drop the mark.
+`unknown`. The mark passes to what a member call or property read on the receiver returns, to a ternary or `??` that
+joins it, and to a parameter it is passed to (`relativeParameters`). Such an inline `@var` names no collection element,
+and an `instanceof` proof's classes drop the mark.
 
 ### Visibility
 
