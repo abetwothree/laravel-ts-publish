@@ -258,7 +258,7 @@ it('reads a chain on an instance an inherited body builds through the declaring 
     expect(publishedResourceKeyTypes(PrivateChainResource::class, Post::class))
         ->toHaveKey('nested?', 'PrivateChainResource')
         ->and($sent['nested'])->toBeInstanceOf(PrivateChainResource::class)
-        ->and($sent['nested']->resource)->toBeInstanceOf(Post::class);
+        ->and(json_encode($sent['nested']))->toBe('{"other":{"o":1}}');
 });
 
 // An object whose class does not extend the declaring class runs its own method, whatever the body declares private.
