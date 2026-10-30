@@ -1339,7 +1339,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function ownMethodSpread(string $methodName, bool $topLevel, Expr $call, ?ReflectionClass $on = null): ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName, $topLevel, $call, $on) ?? ResourceAnalysis::unreadAnalysis();
+        $spread = $this->analyzeThisMethodSpread($methodName, $topLevel, $call, $on) ?? ResourceAnalysis::unreadAnalysis();
+
+        // A nested array or a value read drops the partial mark, so a `parent::` spread around it learns of it here.
+        if (! $spread->readsCompletely) {
+            UnreadSpreads::record();
+        }
+
+        return $spread;
     }
 
     /**

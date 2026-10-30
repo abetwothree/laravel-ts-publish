@@ -76,6 +76,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamedPickHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OpaqueSpreadLiteral;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OpaqueSpreadValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadArgument;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadChained;
@@ -1108,6 +1110,15 @@ it('reads no key from a parent:: spread whose read meets a spread no arm reads a
         ->and(json_encode(new OverwrittenSpreadArgument()->toArray()))->toBe('{"v":{"k":"x"},"b":true}')
         ->and(analyzedKeyTypes(OverwrittenSpreadHelper::class))->toBe([])
         ->and(json_encode(new OverwrittenSpreadHelper()->toArray()))->toBe('{"w":{"a":"x"},"b":true}');
+});
+
+// A spread of the subject's own method read only partly loses that mark inside a nested array or a value, so it
+// counts as an unread spread there, or the `parent::` spread would publish `o: number` where PHP sends `"x"`.
+it('reads no key from a parent:: spread whose read meets an own-method spread read only partly at any depth', function () {
+    expect(analyzedKeyTypes(OpaqueSpreadLiteral::class))->toBe([])
+        ->and(json_encode(new OpaqueSpreadLiteral()->toArray()))->toBe('{"w":{"o":"x"}}')
+        ->and(analyzedKeyTypes(OpaqueSpreadValue::class))->toBe([])
+        ->and(json_encode(new OpaqueSpreadValue()->toArray()))->toBe('{"v":{"o":"x"}}');
 });
 
 it('adds no key from a declined parent:: spread that re-entered its cycle, rather than re-read it without end', function () {
