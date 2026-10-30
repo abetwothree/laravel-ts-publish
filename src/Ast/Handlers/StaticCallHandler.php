@@ -115,7 +115,7 @@ final class StaticCallHandler implements ExpressionHandler
         ) {
             $site = new CallSite($expr, $scope, $engine);
             // `$this::` always binds, to the runtime class.
-            $reached = $scope->staticCallClass($expr) ?? $scope->runtime->class;
+            $reached = $scope->runtime->class;
 
             return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site, $reached);
         }

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForeignWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OverriddenWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnFillableModel;
@@ -70,6 +71,13 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
         'a receiver the scan cannot resolve' => ['opaque', 'string[]'],
         'a self:: method the class does not declare' => ['missing', 'string[]'],
     ]);
+
+    // The base's body calls its own by-reference `stash()` and `fill()`, not the subclass's by-value namesakes.
+    test('a by-reference write in a base body counts through the base methods, not a subclass namesake', function (string $property) {
+        $child = new ReflectionClass(ByReferenceSelfChild::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve($child, $property, RuntimeClass::assumed($child)))->toBeNull();
+    })->with(['stashed', 'filled']);
 
     // A method called on the property is not passed the property by reference.
     test('a by-reference function writes the property, and a call on the property does not', function () {

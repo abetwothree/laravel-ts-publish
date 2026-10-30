@@ -65,16 +65,6 @@ final readonly class RuntimeClass
     }
 
     /**
-     * The class where it is known, null where it is only assumed.
-     *
-     * @return ReflectionClass<object>|null
-     */
-    public function knownClass(): ?ReflectionClass
-    {
-        return $this->known ? $this->class : null;
-    }
-
-    /**
      * Another class, known or assumed as this one is.
      *
      * @param  ReflectionClass<object>  $class

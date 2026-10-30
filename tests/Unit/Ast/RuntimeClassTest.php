@@ -9,8 +9,8 @@ use Workbench\App\Models\Post;
 it('says whether the runtime class is known, and keys the memo as the scope did', function () {
     $post = new ReflectionClass(Post::class);
 
-    expect(RuntimeClass::known($post)->knownClass())->toBe($post)
-        ->and(RuntimeClass::assumed($post)->knownClass())->toBeNull()
+    expect(RuntimeClass::known($post))->class->toBe($post)->known->toBeTrue()
+        ->and(RuntimeClass::assumed($post))->class->toBe($post)->known->toBeFalse()
         ->and(RuntimeClass::known($post)->memoKey(PostResource::class))->toBe('@runtime:'.Post::class)
         ->and(RuntimeClass::assumed($post)->memoKey(PostResource::class))->toBe('@runtime:'.Post::class.'@assumed');
 });
@@ -34,7 +34,7 @@ it('carries whether it is known onto another class', function () {
     $post = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);
 
-    expect(RuntimeClass::known($resource)->withClass($post)->knownClass())->toBe($post)
+    expect(RuntimeClass::known($resource)->withClass($post))->class->toBe($post)->known->toBeTrue()
         ->and(RuntimeClass::assumed($resource)->withClass($post))
         ->class->toBe($post)
         ->known->toBeFalse();

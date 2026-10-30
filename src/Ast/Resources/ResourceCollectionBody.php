@@ -175,7 +175,7 @@ final class ResourceCollectionBody
     private function holdsCollectedList(array $stmts, string $name, ReflectionClass $declaring): bool
     {
         $writes = array_values(array_filter(
-            VariableWrites::of($stmts, AnalysisScope::detached($declaring, RuntimeClass::known($declaring))),
+            VariableWrites::of($stmts, AnalysisScope::detached($declaring, RuntimeClass::assumed($declaring))),
             fn (array $write): bool => $write[0] === $name,
         ));
 
