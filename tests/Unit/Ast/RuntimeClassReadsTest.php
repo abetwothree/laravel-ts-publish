@@ -479,12 +479,15 @@ it('reads a closure another closure holds through each one\'s imports in turn', 
         ->toBe('{"used":true,"anon":"none","loose":5}');
 });
 
-// The scan reads an import a closure reassigns as that local wherever the read sits, so `rebound` would type `5`.
+// The scan reads an import a closure reassigns as that local wherever the read sits, so `rebound` would type `5`; only
+// the import the write reads counts, so `paired` keeps its type beside the `$w` its closure reassigns.
 it('leaves `unknown` a write a callback holds that reads an import the callback, or one around it, reassigns', function () {
-    expect(analyzedKeyTypes(ReboundImportPayload::class))
-        ->toBe(['rebound' => 'unknown', 'kept' => 'string | boolean', 'relayed' => 'unknown', 'arrowed' => 'unknown'])
-        ->and(json_encode(new ReboundImportPayload()->rebind()->keep()->relay()->arrow()->toArray()))
-        ->toBe('{"rebound":true,"kept":true,"relayed":true,"arrowed":true}');
+    expect(analyzedKeyTypes(ReboundImportPayload::class))->toBe([
+        'rebound' => 'unknown', 'kept' => 'string | boolean', 'relayed' => 'unknown', 'arrowed' => 'unknown',
+        'paired' => 'string | boolean',
+    ])->and(json_encode(new ReboundImportPayload()->rebind()->keep()->relay()->arrow()->pair()->toArray()))
+        ->toBe('{"rebound":true,"kept":true,"relayed":true,"arrowed":true,"paired":true}')
+        ->and(json_encode(new ReboundImportPayload()->toArray()['paired']))->toBe('"none"');
 });
 
 // O3: a closure may run wherever it goes, so its write joins even where the body that builds it never calls it.
