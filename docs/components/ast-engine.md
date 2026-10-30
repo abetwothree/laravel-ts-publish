@@ -165,7 +165,7 @@ the matrix does not run these profiles.
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
 docblocks say what each binding table holds. These eight facts span other classes:
 
-- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
+- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtime` holds the
   runtime class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring
   class, the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
   `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
@@ -213,21 +213,22 @@ docblocks say what each binding table holds. These eight facts span other classe
 
 ### Known or assumed runtime class
 
-`assumesRuntime` says whether a scope knows its runtime class or only assumes it, and `knownRuntime()` is null where it
-assumes it. Only a known runtime class types a property write that names `static`, as
-`SubjectPropertyTypeResolver::resolve()`'s `$knownRuntime` takes it. The runtime class is known:
+The runtime class travels as one [`RuntimeClass`]: the class, and whether the analysis knows it or only assumes it.
+`AstEngine`'s and `MethodReturnTypeResolver`'s entries take one, where null reads the class itself, known.
+Only a known runtime class types a property write that names `static`, so `SubjectPropertyTypeResolver::resolve()`
+reads a property for an assumed one as the subject's own. The runtime class is known:
 
 - in the published class's own scope;
 - in a helper that scope reaches through `$this->`, `$this::`, `self::`, `static::`, `parent::` or a non-static
   `Ancestor::m()` from an instance of it, and in a body run on what a `$this->` call declared `: static` returns: each
-  keeps the caller's flag (`assumesCallee()`);
+  is known where the caller's is (`AnalysisScope::calleeRuntime()`);
 - for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
-- for a `final` collaborator the container fills (`assumesInjected()`);
-- for an exact construction, `new X` or `X::make()` (`assumesBuilt()`).
+- for a `final` collaborator the container fills (`RuntimeClass::injected()`);
+- for an exact construction, `new X` or `X::make()` (`AnalysisScope::builtRuntime()`).
 
-Anywhere else it is assumed, since the object may be a subclass: a receiver's declared class, the model
-`$this->resource` forwards to and a method macro's object (`ASSUMES_HELD_OBJECT`), a collaborator that is not final,
-and, conservatively, a call through another class's name that forwards nothing.
+Anywhere else it is assumed (`RuntimeClass::assumed()`), since the object may be a subclass: a receiver's declared
+class, the model `$this->resource` forwards to and a method macro's object, a collaborator that is not final, and,
+conservatively, a call through another class's name that forwards nothing.
 
 ### Writing a scope binding
 
@@ -536,8 +537,8 @@ parameter does, or reads an import that a closure it passes through reassigns, w
 local. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
 application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
 which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines
-where the scope only assumes its runtime class, on a receiver or in its method's body. The check cannot see a
+`next()`, `prev()` and `reset()`. A value naming `static` is typed against the scope's runtime class where it is known,
+and declines where the scope only assumes it, on a receiver or in its method's body. The check cannot see a
 by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
 (`$this->holder()->views`), or a write from outside the class.
 
@@ -610,7 +611,7 @@ the proof and the one without never share an answer. A body read for a caller wh
 class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
 keys, so two siblings never share an inherited helper's `static`. A read that only assumes its runtime class adds
 `@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class.
-`AnalysisMemo::runtimeKey()` spells both suffixes for all three keys. The
+`RuntimeClass::memoKey()` spells both suffixes for all three keys. The
 `method-body:` cycle guard stays per method, so a recursion that passes a new value each time stops at its first
 repeat.
 
@@ -740,8 +741,8 @@ or to `null`. Read the published property before you call an entry a bug.
 - No untagged public signature names an internal type.
 
 `AstEngine`'s other public methods each carry their own `@internal` tag, because each names `MethodAnalysis`,
-`MethodContext` or `AnalysisScope`, and the signature rule skips a tagged method. [Known gaps][gap-non-goals] records
-why the engine offers no extension point.
+`MethodContext`, `AnalysisScope` or `RuntimeClass`, and the signature rule skips a tagged method.
+[Known gaps][gap-non-goals] records why the engine offers no extension point.
 
 `analyze()` re-indexes an API resource's `toArray()` as `ts:publish` does, then hands `analyzeMethod()`'s DTO to
 [`AnalysisComposer`], which aliases same-basename collisions, rewrites `EnumResource` wraps to `AsEnum<typeof X>`, and
@@ -827,6 +828,7 @@ These pages cover the engine's neighbors:
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
+[`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
