@@ -98,13 +98,14 @@ every profile, the order handlers run in decides which one answers; see
   `...parent::m()` spread the same way (`relativeMethodSpread()`), the last only for a user-land parent's method PHP can
   call there: a private or abstract one throws, and Laravel's is read only where `readParentCall()` or the spread-arm
   classifier reads it. A `parent::` spread falls through to the arms below, as the release read it, when it is read only
-  partly or its read meets a spread item no arm reads, which may overwrite an earlier key: anywhere, in its body, a
-  nested array, an argument, a helper read as a value or a nested analyzer's body, as the `UnreadSpreads` count shows. A
-  re-entry of a method on the stack adds no key, and so does a declined read that met one, rather than fall through into
-  the cycle. The runtime class stays the caller's, as PHP forwards it. It sets every name-keyed table aside through
-  `AnalysisScope::enterMethod()`, keeping only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and
-  empties the `resolvingLocalVars` and `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and
-  `declaringClass`, binds the method's parameters, and what the call passes them through `CallSite::passedTo()`, as
+  partly or its read meets a spread item no arm reads, or a spread of the subject's own method read only partly, which
+  may overwrite an earlier key: anywhere, in its body, a nested array, an argument, a helper read as a value or a nested
+  analyzer's body, as the `UnreadSpreads` count shows. A re-entry of a method on the stack adds no key, and so does a
+  declined read that met one, rather than fall through into the cycle. The runtime class stays the caller's, as PHP
+  forwards it. It sets every name-keyed table aside through `AnalysisScope::enterMethod()`, keeping only the guard
+  proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and `readingLocals`
+  guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's parameters, and
+  what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
