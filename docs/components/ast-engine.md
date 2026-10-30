@@ -165,20 +165,20 @@ the matrix does not run these profiles.
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
 docblocks say what each binding table holds. These eight facts span other classes:
 
-- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtime` holds the
-  runtime class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring
-  class, the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
+- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtime` holds the runtime
+  class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring class, the
+  one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
   `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
-  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds.
-  A `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the
-  declaring class when it declares that member private, else the runtime class. A method on a built instance takes the
-  same rule, its preserve check included, but an object whose class does not extend the declaring class runs its own,
-  as one `OtherResource::make()` builds does. A static-syntax call reads `staticCallClass()`, which applies no private
-  rule and names no class for a named one or a `$var::`, so each caller says what those reach. Every other `self`,
-  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class
-  hands it to its callee as `static` (`forwardsRuntimeClass()`). The write scans take the same two classes
-  (`VariableWrites::of()`), through `detached()` for a body no analysis holds. Whether the runtime class is known is
-  [its own rule](#known-or-assumed-runtime-class).
+  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds. A
+  `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the declaring
+  class when it declares that member private, else the runtime class. A method on a built instance takes the same rule,
+  its preserve check included, but an object whose class does not extend the declaring class runs its own, as one
+  `OtherResource::make()` builds does. A static-syntax call reads `staticCallClass()`, which applies no private rule and
+  names no class for a named one, a `$var::` or a `parent` the declaring class lacks, so each caller says what those
+  reach. Every other `self`, `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that
+  forwards the runtime class hands it to its callee as `static` (`forwardsRuntimeClass()`). The write scans take the
+  same two classes (`VariableWrites::of()`), through `detached()` for a body no analysis holds. Whether the runtime
+  class is known is [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,

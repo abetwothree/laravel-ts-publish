@@ -635,15 +635,15 @@ Three answers are possible, and only the last is right. Do not change it to the 
 
 Only a class the body builds as itself is in scope: `spreadAnalysis()` reads the method on that class, with `$this` as
 it, the declaring class for `new self` and the runtime class for `new static`, `static::make()` and `self::make()`,
-known as any exact build is (`AnalysisScope::builtRuntime()`). A built collection's items, read as the ones
-`$this->resource` holds in the analyzed body, are the API resource its own `collects()` picks, which Laravel's
-`collectResource()` maps them into, unless the analyzed class's element already is one; a built class that picks none,
-or an element the run cannot name, keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay the
-analyzed class's too, since its `filter()` re-indexes what the method returns. A foreign receiver such as
-`new CategoryResource($x)->summary()` keeps the `unknown` floor instead of the analyzer's own same-named method;
-`FluentSelfResource::foreign_summary` pins that. `resolve()` is exempt, since it is Laravel's serializer:
-`new SomeResource($x)->resolve()` publishes `SomeResource`, as `SomeResource::make($x)->resolve()` does, never with the
-wrapped value's `| null`.
+known since a build is exact, unless it is the class `static` stands for, which is known only where the scope's runtime
+class is (`AnalysisScope::builtRuntime()`). A built collection's items, read as the ones `$this->resource` holds in the
+analyzed body, are the API resource its own `collects()` picks, which Laravel's `collectResource()` maps them into,
+unless the analyzed class's element already is one; a built class that picks none, or an element the run cannot name,
+keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay the analyzed class's too, since its
+`filter()` re-indexes what the method returns. A foreign receiver such as `new CategoryResource($x)->summary()` keeps
+the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that.
+`resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
 
 ## Numeric keys
 
