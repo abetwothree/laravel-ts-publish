@@ -490,6 +490,25 @@ describe('an inline @var on a local assignment', function () {
             ->and([$spelled?->classes, $spelled?->elementModel, $spelled?->declaredOnly])->toBe([[EloquentCollection::class], null, true]);
     });
 
+    // A value read through such a receiver keeps its mark where a named tag fills in its collection's element.
+    test('keeps the mark on an assigned collection a named tag gives an element, and gives none from a spelled tag', function () {
+        $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $scope->varDeclaredBindings['m'] = [EloquentCollection::class];
+        $scope->relativeParameters['m'] = true;
+        $span = [
+            'type' => '\\'.EloquentCollection::class.'<int, \\'.Comment::class.'>',
+            'context' => $scope->declaringFileClass,
+            'after' => 0,
+            'before' => null,
+            'expr' => new Variable('m'),
+        ];
+        $named = resolve(ReceiverClassResolver::class)->resolveDeclared('c', $span, $scope);
+        $spelled = resolve(ReceiverClassResolver::class)->resolveDeclared('c', [...$span, 'relative' => true], $scope);
+
+        expect([$named?->elementModel, $named?->declaredOnly])->toBe([Comment::class, true])
+            ->and([$spelled?->elementModel, $spelled?->declaredOnly])->toBe([null, true]);
+    });
+
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
     test('never reads a member of a declared local through the loaded relation\'s model', function () {
         $closure = fn (string $declared, string $value): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
