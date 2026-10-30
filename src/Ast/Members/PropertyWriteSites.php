@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
@@ -90,57 +91,18 @@ final class PropertyWriteSites
      * application code writes a property whose name it computes, with the class `self` names there, its file and the
      * method holding it as the class runs it; null when a declaration cannot be read, since it may write anything.
      *
-     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
+     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column. Found
+     * once a run per class and property.
      *
      * @param  ReflectionClass<object>  $class
      * @return PropertyWrites|null
      */
     public function of(ReflectionClass $class, string $name): ?array
     {
-        $finder = new NodeFinder;
-        $writes = [];
-
-        foreach ($this->declarations($class) as [$declaration, $self]) {
-            $file = $declaration->getFileName();
-
-            // An internal class's code cannot name a property its user-land subclass declares.
-            if ($file === false) {
-                continue;
-            }
-
-            $computedNames = ! FrameworkClasses::is($declaration->getName());
-
-            // A framework body counts only a write that spells the name, so a source that never does is not walked.
-            if (! $computedNames && ! $this->spellsName($file, $name)) {
-                continue;
-            }
-
-            $node = $finder->findFirst(
-                resolve(AstParser::class)->parseFile($file),
-                fn (Node $node): bool => $node instanceof ClassLike
-                    && $node->namespacedName?->toString() === $declaration->getName(),
-            );
-
-            // A class whose declaration cannot be read may write anything.
-            if (! $node instanceof ClassLike) {
-                return null;
-            }
-
-            foreach (self::writeSites($node) as [$site, $targets]) {
-                if (! $this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
-                    continue;
-                }
-
-                $method = $this->enclosingMethod($node, $site);
-                $running = $method === null ? null : $this->runningMethod($self, $node, $method);
-
-                if ($method === null || $running !== null) {
-                    $writes[] = [$site, $self, $file, $running];
-                }
-            }
-        }
-
-        return $writes;
+        return resolve(AnalysisMemo::class)->remember(
+            'property-writes:'.$class->getName().'::'.$name,
+            fn (): ?array => $this->find($class, $name),
+        );
     }
 
     /**
@@ -212,6 +174,60 @@ final class PropertyWriteSites
         };
 
         return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
+    }
+
+    /**
+     * Find the writes of() answers, reading each declaration's body.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return PropertyWrites|null
+     */
+    private function find(ReflectionClass $class, string $name): ?array
+    {
+        $finder = new NodeFinder;
+        $writes = [];
+
+        foreach ($this->declarations($class) as [$declaration, $self]) {
+            $file = $declaration->getFileName();
+
+            // An internal class's code cannot name a property its user-land subclass declares.
+            if ($file === false) {
+                continue;
+            }
+
+            $computedNames = ! FrameworkClasses::is($declaration->getName());
+
+            // A framework body counts only a write that spells the name, so a source that never does is not walked.
+            if (! $computedNames && ! $this->spellsName($file, $name)) {
+                continue;
+            }
+
+            $node = $finder->findFirst(
+                resolve(AstParser::class)->parseFile($file),
+                fn (Node $node): bool => $node instanceof ClassLike
+                    && $node->namespacedName?->toString() === $declaration->getName(),
+            );
+
+            // A class whose declaration cannot be read may write anything.
+            if (! $node instanceof ClassLike) {
+                return null;
+            }
+
+            foreach (self::writeSites($node) as [$site, $targets]) {
+                if (! $this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
+                    continue;
+                }
+
+                $method = $this->enclosingMethod($node, $site);
+                $running = $method === null ? null : $this->runningMethod($self, $node, $method);
+
+                if ($method === null || $running !== null) {
+                    $writes[] = [$site, $self, $file, $running];
+                }
+            }
+        }
+
+        return $writes;
     }
 
     /**
