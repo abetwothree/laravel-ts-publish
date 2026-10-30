@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapOrNameRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineEnumKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSameNamedKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumNamePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CastDisplacedSameNamedEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumNameMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumNamesMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -179,16 +180,29 @@ it('aliases two same-named enums\' Kind names in a route file, on one page and a
         ]);
 });
 
-it('spells two same-named enums\' case names as literals in a metadata companion, which aliases no import', function () {
+it('aliases two same-named enums\' case-name kinds in a metadata companion', function () {
     config()->set('ts-publish.model_metadata.provider_class', SameNamedEnumNamesMetadataProvider::class);
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
     expect($data->properties)->toBe(['app_names' => ['Draft'], 'crm_name' => 'Lead', 'priority_name' => 'Low'])
         ->and($data->propertyTypes)->toBe([
-            'app_names' => "('Draft' | 'Published')[]",
-            'crm_name' => "'Lead' | 'Prospect' | 'Active' | 'Churned'",
+            'app_names' => 'WorkbenchStatusKind[]',
+            'crm_name' => 'CrmStatusKind',
             'priority_name' => 'PriorityKind',
         ])
-        ->and($data->typeImports)->toBe(['../enums' => ['PriorityKind']]);
+        ->and($data->typeImports)->toBe([
+            '../../crm/enums' => ['StatusKind as CrmStatusKind'],
+            '../enums' => ['PriorityKind', 'StatusKind as WorkbenchStatusKind'],
+        ]);
+});
+
+it('keeps a kind unaliased beside a same-named enum a cast replaces', function () {
+    config()->set('ts-publish.model_metadata.provider_class', CastDisplacedSameNamedEnumMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['a' => 'Draft', 'b' => 'Lead', 'c' => 'Lead'])
+        ->and($data->propertyTypes)->toBe(['a' => 'StatusKind', 'b' => 'CrmLabel', 'c' => 'string'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusKind'], '@/types/crm' => ['CrmLabel']]);
 });

@@ -7,15 +7,18 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use ReflectionMethod;
 use Throwable;
 
@@ -26,7 +29,9 @@ use Throwable;
  * @phpstan-import-type TsCastsResult from ParsesTsCasts
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type FileMember from FileImportNames
  *
+ * @phpstan-type InferredFile array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
  *     overrides: array<string, string>, imports: array<string, TypesImportMap>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
@@ -50,10 +55,6 @@ class ModelMetadataAnalyzer
         $casts = $this->parseTsCasts($method);
         $analysis = $this->safeAnalyzeBody($providerClass);
 
-        if ($analysis !== null) {
-            SharedEnumKinds::spellApart($analysis);
-        }
-
         $inferred = $analysis === null ? [] : $this->inferTypes($analysis, $payloadKeys);
         $result = $this->mergeTypes($inferred, $declared, $casts);
 
@@ -62,13 +63,14 @@ class ModelMetadataAnalyzer
         }
 
         $inferredKeys = array_keys(array_filter($result->sources, static fn (string $source): bool => $source === 'inferred'));
+        $file = $this->inferredTypeImports($analysis, $method, $inferredKeys, $result, $payloadKeys, $namespacePath);
 
         return new ModelMetadataAnalysis(
-            $result->types,
+            array_replace($result->types, $file['types']),
             $result->sources,
             $result->requiredKeys,
             $result->importPaths,
-            $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
+            $file['typeImports'],
             $result->docblockImports,
         );
     }
@@ -110,17 +112,19 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Imports the inferred types need: only enum channels, only for keys inference won, only names still spelled.
+     * Respell the inferred types so same-named classes alias apart, with the imports they spell: only enum channels,
+     * only for keys inference won, only names still spelled.
      *
      * @param  list<string>  $inferredKeys
-     * @param  array<string, string>  $types
-     * @return TypesImportMap
+     * @param  list<string>  $payloadKeys
+     * @return InferredFile
      */
     protected function inferredTypeImports(
         MethodAnalysis $analysis,
         ReflectionMethod $method,
         array $inferredKeys,
-        array $types,
+        ModelMetadataAnalysis $result,
+        array $payloadKeys,
         string $namespacePath,
     ): array {
         $this->forgetTsCastsCustomImports($analysis, $method);
@@ -144,24 +148,64 @@ class ModelMetadataAnalyzer
             );
         }
 
-        $spelled = array_values(array_intersect_key($types, array_fill_keys($inferredKeys, true)));
-        $imports = [];
+        $payload = array_flip($payloadKeys);
+        $casts = new TsCastsImportResolver()->resolve(
+            array_intersect_key($result->types, $payload),
+            array_intersect_key($result->importPaths, $payload),
+        )['typeImports'];
+        $declared = ImportMaps::merge($casts, ...array_values(array_intersect_key($result->docblockImports, $payload)));
+        $brought = ImportMaps::localNames($declared);
+        $members = [];
 
-        foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
-            $used = array_values(array_filter(
-                $names,
-                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$spelled),
-            ));
+        foreach ($inferredKeys as $key) {
+            $prefix = JsEmitter::validJsObjectKey($key, allowIndexSignature: true).': ';
+            $queues = FileImportNames::objectQueues($analysis, [$key => $result->types[$key]], brought: $brought);
+            $members[] = ['type' => $prefix.$result->types[$key], ...$queues];
+        }
 
-            if ($used !== []) {
-                sort($used);
-                $imports[$path] = $used;
+        $file = FileImportNames::compose($members, ImportMaps::merge($analysis->customImports, $declared), $namespacePath);
+        $types = [];
+
+        foreach ($inferredKeys as $index => $key) {
+            // The key's own text leads each member and no alias touches it, so what follows is the respelled type.
+            $types[$key] = substr($file['types'][$index], strlen(JsEmitter::validJsObjectKey($key, allowIndexSignature: true)) + 2);
+        }
+
+        return ['types' => $types, 'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath)];
+    }
+
+    /**
+     * Drop the names a cast or a docblock key imports, which the transformer merges itself, and put each composed
+     * class's names back under its marker, which the transformer reads its composed classes from.
+     *
+     * @param  TypesImportMap  $imports
+     * @param  TypesImportMap  $declared
+     * @return TypesImportMap
+     */
+    protected function inferredOnlyImports(array $imports, array $declared, MethodAnalysis $analysis, string $namespacePath): array
+    {
+        foreach ($imports as $path => $names) {
+            $own = array_diff($declared[$path] ?? [], $analysis->customImports[$path] ?? []);
+            $imports[$path] = array_values(array_diff($names, $own));
+        }
+
+        foreach ($analysis->customImports as $marker => $names) {
+            if (! ComposedClassTypes::isMarker((string) $marker)) {
+                continue;
+            }
+
+            $path = ComposedClassTypes::importPath((string) $marker, $namespacePath);
+            $spelled = array_values(array_intersect($names, $imports[$path] ?? []));
+            $imports[$path] = array_values(array_diff($imports[$path] ?? [], $spelled));
+
+            if ($spelled !== []) {
+                $imports[$marker] = $spelled;
             }
         }
 
         ksort($imports);
 
-        return $imports;
+        return array_filter($imports, static fn (array $names): bool => $names !== []);
     }
 
     /**

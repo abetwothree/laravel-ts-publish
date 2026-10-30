@@ -237,21 +237,6 @@ looks like a bug. Keep the fold's `(?![A-Za-z0-9_$\[])` lookahead when you fix i
 `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` from folding, and add the both-array case as a shape of
 its own.
 
-### Two same-named enums collide instead of aliasing in a metadata companion, which throws
-
-Resources, route files and shared data alias two enums that share a basename across namespaces, but model metadata
-does not. A metadata companion that would import both throws at publish time ("imports [StatusType] from both [...]
-and [...]"), because its inferred imports (`ModelMetadataAnalyzer::inferredTypeImports()`) skip the alias resolver its
-cast imports use. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. A `->name`
-read does not: it falls back to its literal case-name union rather than collide (`SharedEnumKinds`).
-
-Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. You can instead cast one key
-to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' => '@/types/app-status']` where
-that module has `export type { StatusType as AppStatusType }`. Reusing `StatusType` still collides, since
-`TsCastsImportResolver` aliases only between casts, and an inline `'Status as AppStatusType'` emits invalid TypeScript.
-A key typed by a docblock-displaced union has no such handle, because its enums are keyed by FQCN rather than by
-property name, so narrow it to one enum.
-
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 
 `$this->resource->value` in a resource wrapping a pure enum, such as `UnitEnumResource.value`, publishes
@@ -373,14 +358,6 @@ that file's import of `{Basename}Type` but not the module. When the class has ju
 or one whose ancestor gained a `#[TsType]`, neither the module nor its barrel export exists yet, and the file fails
 `tsc` with TS2305 or TS2307 until the next full publish. A route file importing a form request behaves the same way.
 Run a full `ts:publish` after adding a composed class.
-
-### A metadata companion that reads a composed type and a class named like it throws
-
-An API resource, model, broadcast event, Inertia page and shared data alias an enum or model that spells a composed
-class's `{Basename}Type`, such as an enum `Chart`, whose type is `ChartType`. A model metadata companion that reads
-both throws at publish time, as with
-[two same-named enums](#two-same-named-enums-collide-instead-of-aliasing-in-a-metadata-companion-which-throws). Give
-the enum a distinct `#[TsEnum]` name.
 
 ### Two composed classes with one basename, read in one file, publish one name
 

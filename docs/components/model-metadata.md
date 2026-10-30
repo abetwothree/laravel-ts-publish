@@ -84,16 +84,19 @@ Inside an `instanceof` arm `$model` holds the tested model, so its reads and rel
 
 ### Inferred imports
 
-`ModelMetadataAnalyzer::inferredTypeImports()` passes `AnalysisImports::build()` only the channels the inferred
-types need, in four steps:
+`ModelMetadataAnalyzer::inferredTypeImports()` hands `FileImportNames::compose()` only the channels the inferred
+types need, in five steps:
 
 1. It strips the `customImports` that `ResourceAstAnalyzer::applyTsCastsFromMethod()` added for `provide()`'s own
    `#[TsCasts]`, because `TsCastsImportResolver` owns and aliases those.
 2. It clears `modelFqcns` and `nestedResources`. A metadata value need not satisfy a model interface, so a model-typed
    value keeps failing the token check instead of importing a model.
 3. It prunes each enum channel whose key the docblock or a cast overrode, or the payload never returned.
-4. It keeps only the names the inferred types still spell. A companion emits `import type` lines only, so `AsEnum`
-   value imports are ignored.
+4. It composes one member per inferred key, with the names its casts and docblock keys import reserved, so two
+   same-named enums alias apart. It respells the types and keeps only the names they still spell. A companion emits
+   `import type` lines only, so `AsEnum` value imports are ignored.
+5. It takes the cast and docblock imports back out, which the transformer merges itself, and files a composed class's
+   names under its marker again.
 
 Step 3 spares an entry whose key equals its value. `DispatchesFqcnResults` keys an embedded enum by its own FQCN, so a
 two-enum union has no property name to prune by, and step 4 owns those entries. Don't swap that test for
@@ -171,8 +174,6 @@ is independent of `models.enabled`, and `--only-functional` publishes it while i
 The barrel rules are on [BarrelWriter](barrel-writer.md#phase-ownership-of-model-barrels), and `bindingsFor()`'s other
 consumers are on [AST engine](ast-engine.md). These [known gaps](../known-gaps.md) belong to this phase:
 
-- [Two same-named enums collide instead of aliasing in a metadata companion, which
-  throws](../known-gaps.md#two-same-named-enums-collide-instead-of-aliasing-in-a-metadata-companion-which-throws)
 - [An empty `[]` under an imported type alias still ships as
   `[]`](../known-gaps.md#an-empty--under-an-imported-type-alias-still-ships-as-)
 - [A body-inferred metadata enum that enum publishing excludes imports a file that

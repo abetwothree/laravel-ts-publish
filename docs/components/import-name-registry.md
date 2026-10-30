@@ -21,7 +21,7 @@ The registry and its consumers live in these files:
   [`BroadcastEventTransformer`](../../src/Transformers/BroadcastEventTransformer.php), and
   [`AnalysisComposer`](../../src/Ast/Composition/AnalysisComposer.php), which serves `AstEngine::analyze()`.
 - [`FileImportNames`](../../src/Ast/Composition/FileImportNames.php): `AnalysisComposer`'s registries run over every
-  type a file prints that no one analysis holds, a route file's page types or the shared data.
+  type a file prints that no one analysis holds: a route file's page types, the shared data or a metadata companion.
 
 ## How a name is chosen
 
@@ -135,10 +135,7 @@ imports bring (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, s
 
 A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
 [marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the
-same name is aliased and the composed type never is. A model metadata companion runs no registry over its inferred
-imports, so one that reads both throws
-([known gaps](../known-gaps.md#a-metadata-companion-that-reads-a-composed-type-and-a-class-named-like-it-throws)).
-Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
+same name is aliased and the composed type never is. Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
 composed classes with one basename
 ([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
@@ -173,6 +170,10 @@ over with its token queues: `InertiaPageData`'s `pageQueues` and `pageConstQueue
 that returns none, `RouteTransformer` builds them from `classFqcns` and `enumConstFqcns` with
 `FileImportNames::typeQueues()`, so each token still takes its class. A `@tolki/types` class is imported from that
 module unaliased, and its name is reserved as a custom import's is.
+
+A metadata companion is the same call with one member per inferred key, so same-named enums alias as in any file. The
+names its `#[TsCasts]` and docblock imports bring are reserved, and a cast's own aliases stay with
+`TsCastsImportResolver`. Only a composed class and a cast that import one name still collide, and the transformer throws.
 
 ### `BroadcastEventTransformer`
 

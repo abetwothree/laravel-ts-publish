@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenSha
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionListMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumTypesMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnimportableMetadataTypeProvider;
@@ -133,17 +134,25 @@ test('aliases two same-named cast imports beside the unaliased name inference cl
     ]);
 });
 
-test('names the fix a cast import colliding with an inferred one actually has', function () {
-    // TsCastsImportResolver aliases only between cast entries, so no alias can separate these two.
+test('aliases two same-named enums a companion reads as values', function () {
+    config()->set('ts-publish.model_metadata.provider_class', SameNamedEnumTypesMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['app' => 'WorkbenchStatusType', 'crm' => 'CrmStatusType'])
+        ->and($data->typeImports)->toBe([
+            '../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../enums' => ['StatusType as WorkbenchStatusType'],
+        ]);
+});
+
+test('aliases an inferred enum beside a cast import of its name', function () {
     config()->set('ts-publish.model_metadata.provider_class', CollidingCastAndInferredEnumMetadataProvider::class);
 
-    expect(fn () => (new ModelMetadataTransformer(User::class))->data())
-        ->toThrow(
-            InvalidArgumentException::class,
-            'Model metadata for model ['.User::class.'] imports [RoleType] from both [../enums] and '
-            .'[@/types/label]; declare one of them with an import-aware #[TsCasts] whose type is a distinct '
-            .'name that module exports.',
-        );
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['label' => 'RoleType', 'role' => 'WorkbenchRoleType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['RoleType as WorkbenchRoleType'], '@/types/label' => ['RoleType']]);
 });
 
 test('uses only body-inferred keys present in the concrete model payload', function () {
