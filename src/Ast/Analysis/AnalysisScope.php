@@ -50,6 +50,7 @@ use ReflectionMethod;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type CollectedElement from ResourceCollections
  *
+ * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
@@ -111,6 +112,7 @@ use ReflectionMethod;
  *      declaringFileClass: ReflectionClass<object>,
  *      declaringClass: ReflectionClass<object>,
  *      runtimeReflection: ReflectionClass<object>,
+ *      collectedElement: CollectedElement|null,
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
@@ -199,7 +201,7 @@ final class AnalysisScope
     /**
      * What each item the runtime class, a ResourceCollection, collects publishes as: the element `$this->collection`
      * lists and `$this->resource` holds; see ResourceCollections::collectedElement(). Set by seedCollectionFacts(), on
-     * rebase() and for any scope ResourceAstAnalyzer reads.
+     * rebase() and for any scope ResourceAstAnalyzer reads, and by seedBuiltElement() for a built collection's method.
      *
      * @var CollectedElement|null
      */
@@ -587,13 +589,24 @@ final class AnalysisScope
      */
     public function seedCollectionFacts(ReflectionClass $runtime): void
     {
-        [$this->reindexesNumericKeys, $this->collectedElement] = resolve(AnalysisMemo::class)->remember(
-            'collection-facts:'.$runtime->getName(),
-            static fn (): array => [
-                ResourceCollections::reindexesNumericKeys($runtime),
-                $runtime->isSubclassOf(ResourceCollection::class) ? ResourceCollections::collectedElement($runtime) : null,
-            ],
-        );
+        [$this->reindexesNumericKeys, $this->collectedElement] = self::collectionFacts($runtime);
+    }
+
+    /**
+     * Read a built collection's items as the API resource it collects, which `collectResource()` maps them into unless
+     * they already are one; items of that class or a subclass, raw items it keeps raw, and unknown items keep this
+     * scope's element. The response stays this scope's, so `reindexesNumericKeys` does too.
+     *
+     * @param  ReflectionClass<object>  $built
+     */
+    public function seedBuiltElement(ReflectionClass $built): void
+    {
+        $collects = self::collectionFacts($built)[1];
+        $held = $this->collectedElement['fqcn'] ?? null;
+
+        if ($collects !== null && ! $collects['model'] && $held !== null && ! is_a($held, $collects['fqcn'], true)) {
+            $this->collectedElement = $collects;
+        }
     }
 
     /**
@@ -1271,6 +1284,23 @@ final class AnalysisScope
     }
 
     /**
+     * A class's collection facts, `reindexesNumericKeys` and `collectedElement`, from ResourceCollections, once a run.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return CollectionFacts
+     */
+    private static function collectionFacts(ReflectionClass $class): array
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'collection-facts:'.$class->getName(),
+            static fn (): array => [
+                ResourceCollections::reindexesNumericKeys($class),
+                $class->isSubclassOf(ResourceCollection::class) ? ResourceCollections::collectedElement($class) : null,
+            ],
+        );
+    }
+
+    /**
      * The visitedSpreadMethods key of a method, by declaring class: a namesake on another class is another body.
      */
     private static function spreadMethodKey(ReflectionMethod $method): string
@@ -1476,6 +1506,7 @@ final class AnalysisScope
             'declaringFileClass' => $this->declaringFileClass,
             'declaringClass' => $this->declaringClass,
             'runtimeReflection' => $this->runtimeReflection,
+            'collectedElement' => $this->collectedElement,
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
@@ -1500,6 +1531,7 @@ final class AnalysisScope
         $this->declaringFileClass = $state['declaringFileClass'];
         $this->declaringClass = $state['declaringClass'];
         $this->runtimeReflection = $state['runtimeReflection'];
+        $this->collectedElement = $state['collectedElement'];
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];

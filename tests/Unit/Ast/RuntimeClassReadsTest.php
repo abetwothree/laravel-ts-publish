@@ -12,8 +12,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedTagsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsOtherCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsSubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPrivateResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltSortsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CopiedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredListCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredReadsResource;
@@ -195,6 +199,28 @@ it('reads the declaring class\'s private method on an instance an inherited body
     ])->and((new BuiltPrivateResource(new Post))->resolve(request()))->toBe([
         'late_built' => ['base_label' => 1], 'late_made' => ['base_label' => 1],
     ]);
+});
+
+// collectResource() maps the items a built collection is given into what it collects, unless they already are one.
+it('reads a built collection\'s items as the class it collects where it maps them', function () {
+    $sent = fn (string $collection, array $items): array => (new $collection(collect($items)))->resolve(request());
+
+    expect(analyzedKeyTypes(BuiltFactsOtherCollection::class))->toBe(['summary' => '{ items: BuiltFactsItemResource[] }'])
+        ->and(json_encode($sent(BuiltFactsOtherCollection::class, [1, 1])['summary']))->toBe('{"items":[{"a":1},{"a":1}]}')
+        ->and(analyzedKeyTypes(BuiltSortsCollection::class))->toHaveKey('raw', '{ items: Record<string, BuiltFactsItemResource> }')
+        ->and(json_encode($sent(BuiltSortsCollection::class, [1])['raw']))->toBe('{"items":{"k":{"a":1}}}');
+});
+
+// Items already what the built collection collects pass through, and the outer response's filter() re-indexes.
+it('keeps the outer class\'s keys, re-indexing and passed-through items in a built collection\'s method', function () {
+    $sent = fn (string $collection, array $items): array => (new $collection(collect($items)))->resolve(request());
+
+    expect(analyzedKeyTypes(BuiltFactsCollection::class))->toBe(['summary' => '{ items: BuiltFactsItemResource[] }'])
+        ->and(json_encode($sent(BuiltFactsCollection::class, [1, 1])['summary']))->toBe('{"items":[{"a":1},{"a":1}]}')
+        ->and(analyzedKeyTypes(BuiltFactsSubCollection::class))->toBe(['summary' => '{ items: BuiltFactsSubItemResource[] }'])
+        ->and(json_encode($sent(BuiltFactsSubCollection::class, [1])['summary']))->toBe('{"items":[{"s":"y"}]}')
+        ->and(analyzedKeyTypes(BuiltSortsCollection::class))->toHaveKey('sorted', '{ letters: Record<number, string> }')
+        ->and(json_encode($sent(BuiltSortsCollection::class, [1])['sorted']))->toBe('{"letters":{"1":"a","0":"b"}}');
 });
 
 // From its own body PHP calls the declaring class's private chain() on a built subclass, over the public namesake.
