@@ -174,9 +174,10 @@ docblocks say what each binding table holds. These eight facts span other classe
   declaring class when it declares that member private, else the runtime class. A method on a built instance takes the
   same rule, its preserve check included, but an object whose class does not extend the declaring class runs its own,
   as one `OtherResource::make()` builds does. A static-syntax call reads `staticCallClass()`, which applies no private
-  rule, and every other `self`, `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that
-  forwards the runtime class hands it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the
-  same two classes (`VariableWrites::of()`). Whether the runtime class is known is
+  rule and names no class for a named one or a `$var::`, so each caller says what those reach. Every other `self`,
+  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class
+  hands it to its callee as `static` (`forwardsRuntimeClass()`). The write scans take the same two classes
+  (`VariableWrites::of()`), through `detached()` for a body no analysis holds. Whether the runtime class is known is
   [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
@@ -525,23 +526,24 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A non-public
 property declared without a value publishes `null`; a public one left `null` declines, since code outside the class
 fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
-operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
-as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
-property itself takes the default and constant writes under an `AnalysisMemo` guard. A write counts only where the class
-runs its body: a trait's method the class overrides is skipped, unless an alias, the class's or a used trait's, still
-runs it, typed then under that alias in the trait method's own scope. An ancestor's method a subclass overrides still
-counts, since `parent::` may run it. A write inside a nested class, a named function or a static closure is skipped,
-since `$this` there is never the object. One a closure or arrow function in the method holds joins even where the
-closure may never run, read in that closure's scope: its declared parameters through `ParameterBinder::bindClosure()`,
-its body's locals and, for a closure, only its imports, as the method held them there, which leaves a by-reference
-import `unknown`; it declines where that read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped
-parameter does, or reads an import that a closure it passes through reassigns anywhere in its body, which the scope
-reads as that assignment's value wherever the read sits. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
-application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
-which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
-`next()`, `prev()` and `reset()`. A value naming `static` is typed against the scope's runtime class where it is known,
-and declines where the scope only assumes it, on a receiver or in its method's body. The check cannot see a
-by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
+operator, an ancestor's, a trait's or, through the runtime class, a subclass's included, each write found by
+[`PropertyWriteSites`] once a run per class and property: a constant expression evaluated as one, any other value read
+in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the property itself takes the
+default and constant writes under an `AnalysisMemo` guard. A write counts only where the class runs its body: a trait's
+method the class overrides is skipped, unless an alias, the class's or a used trait's, still runs it, typed then under
+that alias in the trait method's own scope. An ancestor's method a subclass overrides still counts, since `parent::` may
+run it. A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
+object. One a closure or arrow function in the method holds joins even where the closure may never run, read in that
+closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure,
+only its imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that
+read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does, or reads an import that a
+closure it passes through reassigns anywhere in its body, which the scope reads as that assignment's value wherever the
+read sits. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}`
+write in application code, or an argument to a by-reference parameter of a callee the scan can name
+([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against the scope's runtime class
+where it is known, and declines where the scope only assumes it, on a receiver or in its method's body. The check cannot
+see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
 (`$this->holder()->views`), or a write from outside the class.
 
 A helper the value calls while it is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own
@@ -826,6 +828,7 @@ These pages cover the engine's neighbors:
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
+[`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
