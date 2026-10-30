@@ -62,8 +62,7 @@ final class DeclaredClasses
     }
 
     /**
-     * Whether a method declares it returns `static` or `$this` and nothing else but null, once a run per class and
-     * method.
+     * Whether a method declares it returns `static` or `$this` and nothing else but null.
      */
     public static function returnsStatic(string $class, string $method): bool
     {
