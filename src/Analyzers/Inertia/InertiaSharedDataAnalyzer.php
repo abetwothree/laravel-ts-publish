@@ -200,8 +200,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Name the imports the props type spells, aliasing two same-named classes as an API resource does, and respell the
-     * type with those names. A cast's own import keeps each name it brings, so a class of that name is the one aliased.
+     * Respell the props type so two same-named classes alias apart, as a resource's do, beside the imports it spells.
      *
      * @param  array<array-key, string>  $printed  each key's printed type, in print order
      * @param  TypesImportMap  $castImports  the imports of the casts in force

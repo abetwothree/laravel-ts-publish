@@ -30,7 +30,8 @@ use ReflectionParameter;
 
 /**
  * @phpstan-import-type FileMember from FileImportNames
- * @phpstan-import-type TokenQueue from FileImportNames
+ * @phpstan-import-type PageQueues from FileImportNames
+ * @phpstan-import-type InertiaPageData from InertiaPageAnalyzer
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
  * @phpstan-import-type TypesImportMap from Datable
@@ -56,7 +57,7 @@ class RouteTransformer extends CoreTransformer
     /** @var TypesImportMap */
     public protected(set) array $typeImports = [];
 
-    /** @var array<string, array{classes: list<TokenQueue>, consts: list<TokenQueue>}> action method => per page type */
+    /** @var array<string, PageQueues> action method => its page types' token queues */
     protected array $actionPageQueues = [];
 
     /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
@@ -355,14 +356,7 @@ class RouteTransformer extends CoreTransformer
                     $action['shouldAnnotate'] = true;
                     $this->hasPageTypes = true;
 
-                    // An analyzer that queues no tokens lists each page's classes once, which imports them but may
-                    // leave one of two same-named classes unaliased.
-                    $pages = count((array) $inertiaData['pageType']);
-                    $this->actionPageQueues[$originalMethodName] = [
-                        'classes' => $inertiaData['pageQueues'] ?? array_fill(0, $pages, $inertiaData['classFqcns']),
-                        'consts' => $inertiaData['pageConstQueues']
-                            ?? array_fill(0, $pages, $inertiaData['enumConstFqcns'] ?? []),
-                    ];
+                    $this->actionPageQueues[$originalMethodName] = $this->pageQueuesOf($inertiaData);
                 }
 
                 $externalImports = $inertiaData['externalImports'] ?? [];
@@ -754,8 +748,7 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Name the imports of every page type across the file, so two same-named classes alias apart, and respell each
-     * action's page types with those names.
+     * Respell every action's page types so two same-named classes alias apart across the file, and import their names.
      *
      * @return TypesImportMap
      */
@@ -793,6 +786,28 @@ class RouteTransformer extends CoreTransformer
         $imports = ImportMaps::merge($file['typeImports'], $file['valueImports']);
 
         return TsNaming::sortImportPaths($imports);
+    }
+
+    /**
+     * Each page type's token queues: the analyzer's, else those of the classes and enums it lists once each.
+     *
+     * @param  InertiaPageData  $inertiaData
+     * @return PageQueues
+     */
+    private function pageQueuesOf(array $inertiaData): array
+    {
+        if (isset($inertiaData['pageQueues'], $inertiaData['pageConstQueues'])) {
+            return ['classes' => $inertiaData['pageQueues'], 'consts' => $inertiaData['pageConstQueues']];
+        }
+
+        $types = is_string($inertiaData['pageType']) ? [$inertiaData['pageType']] : $inertiaData['pageType'] ?? [];
+        $queues = array_map(static fn (string $type): array => FileImportNames::typeQueues(
+            $type,
+            $inertiaData['classFqcns'],
+            $inertiaData['enumConstFqcns'] ?? [],
+        ), $types);
+
+        return ['classes' => array_column($queues, 'classes'), 'consts' => array_column($queues, 'consts')];
     }
 
     /**

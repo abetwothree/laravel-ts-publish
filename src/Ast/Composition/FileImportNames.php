@@ -20,19 +20,13 @@ use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Closure;
 
 /**
- * Names the imports of a file that prints several types no one analysis holds, such as a route file's page types or the
- * shared data, so two classes of one name alias apart across all of them, as an API resource's imports do.
- *
- * Each type comes with the class behind each of its tokens that spells a class name, in token order. A whole printed
- * type also spells names no class of its own stands behind, a cast's or a composed type's, so such a token queues null.
- *
- * A key's token its own classes do not claim takes the one class of its name the analysis holds anywhere, unless a
- * custom import brings the name: an import-less cast that spells a class its key's value embedded means that class.
+ * Names one file's imports across every type it prints, a route file's pages or the shared data, as a resource's.
  *
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type TokenQueue = list<class-string|null>
  * @phpstan-type TokenQueues = array{classes: TokenQueue, consts: TokenQueue}
+ * @phpstan-type PageQueues = array{classes: list<TokenQueue>, consts: list<TokenQueue>}
  * @phpstan-type FileMember = array{type: string, classes: TokenQueue, consts: TokenQueue}
  * @phpstan-type ComposedFile = array{types: list<string>, typeImports: TypesImportMap, valueImports: TypesImportMap}
  * @phpstan-type Piece = array{text: string, typed: bool, classes: list<class-string>, consts: list<class-string>}
@@ -44,9 +38,6 @@ final class FileImportNames
 {
     use BuildsImportMaps;
     use ResolvesImportConflicts;
-
-    /** AnalysisComposer's, so a file names a same-named class as an API resource names it. */
-    private const SKIP_SEGMENTS = ['Models', 'Enums', 'Http', 'Resources', 'App'];
 
     /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
     protected array $enumConstMap = [];
@@ -73,8 +64,7 @@ final class FileImportNames
     }
 
     /**
-     * The token queues of an object type printed from one analysis's keys, each key's type laid beside the classes its
-     * import channels hold; the keys and the text before the object queue null for a class name they spell.
+     * The token queues of an object type printed from one analysis's keys, a key's own name queuing null.
      *
      * @param  array<array-key, string>  $printed  key => the type printed for it, in print order
      * @param  list<string>  $brought  the names the file's custom imports bring, which no class of the analysis spells
@@ -102,6 +92,20 @@ final class FileImportNames
     }
 
     /**
+     * The token queues of a printed type from the classes and enums it spells, each listed once.
+     *
+     * @param  list<class-string>  $classes
+     * @param  list<class-string>  $consts
+     * @return TokenQueues
+     */
+    public static function typeQueues(string $type, array $classes, array $consts): array
+    {
+        $piece = ['text' => $type, 'typed' => false, 'classes' => $classes, 'consts' => $consts];
+
+        return ['classes' => self::queue([$piece], 'classes', []), 'consts' => self::queue([$piece], 'consts', [])];
+    }
+
+    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -126,8 +130,7 @@ final class FileImportNames
     }
 
     /**
-     * Every name the classes' tokens on a channel are spelled with: each class's type name and a backed enum's `…Kind`,
-     * or each enum's const.
+     * Every name a channel's classes are spelled with: a type name and a backed enum's `…Kind`, or an enum's const.
      *
      * @param  'classes'|'consts'  $channel
      * @param  list<class-string>  $fqcns
@@ -180,9 +183,7 @@ final class FileImportNames
     }
 
     /**
-     * The class behind each token of the pieces that spells a name some piece's classes claim, or null where none does.
-     *
-     * The names come from the claimed tokens alone, as respell() reads them back from the queue's classes.
+     * The class behind each token of a name the pieces' classes claim, read with the names respell() reads, else null.
      *
      * @param  list<Piece>  $pieces
      * @param  'classes'|'consts'  $channel
@@ -211,8 +212,7 @@ final class FileImportNames
     }
 
     /**
-     * The class behind each token of the names in the text: the piece's own class of its name, else the fallback's,
-     * else null. No class the package publishes is generic, so a token a `<` follows is never the fallback's.
+     * The class behind each token of the names in the text: the piece's own class of its name, else the fallback's.
      *
      * @param  'classes'|'consts'  $channel
      * @param  list<class-string>  $fqcns
@@ -222,7 +222,7 @@ final class FileImportNames
      */
     private static function walk(string $text, string $channel, array $fqcns, array $names, array $fallback): array
     {
-        if ($names === [] || preg_match_all(self::patternOf($channel, $names), $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
+        if ($names === [] || preg_match_all(self::patternOf($channel, $names), $text, $matches) === 0) {
             return [];
         }
 
@@ -230,20 +230,14 @@ final class FileImportNames
             ? new ClassTokenQueue($fqcns, self::typeName(...), ValueResult::enumSiblingNames(...))
             : new ClassTokenQueue($fqcns, ValueResult::enumConstName(...));
 
-        return array_map(static function (array $match) use ($own, $fallback, $text): ?string {
-            [$token, $at] = $match;
-            $generic = substr($text, $at + strlen($token), 1) === '<';
-
-            return $own->take($token)[0] ?? ($generic ? null : $fallback[$token] ?? null);
-        }, $matches[0]);
+        return array_map(
+            static fn (string $token): ?string => $own->take($token)[0] ?? $fallback[$token] ?? null,
+            $matches[0],
+        );
     }
 
     /**
-     * The type with each token the queue names respelled by `$localName`, one entry per token in order; a null entry,
-     * or a class whose names lack the token, leaves the token as written.
-     *
-     * A per-name queue, as aliasPropertyType() reads, cannot skip a token no class stands behind: its occurrence would
-     * take the next class of its name.
+     * The type with its Nth token respelled for the Nth entry: aliasPropertyType()'s per-name queue cannot skip a null.
      *
      * @param  TokenQueue  $queue
      * @param  'classes'|'consts'  $channel
@@ -330,8 +324,8 @@ final class FileImportNames
      */
     private function resolveImportNames(array $enumTypeNames, array $typeNames, array $customImports): void
     {
-        $types = new ImportNameRegistry(self::SKIP_SEGMENTS);
-        $consts = new ImportNameRegistry(self::SKIP_SEGMENTS);
+        $types = new ImportNameRegistry(ImportNameRegistry::RESOURCE_SKIP_SEGMENTS);
+        $consts = new ImportNameRegistry(ImportNameRegistry::RESOURCE_SKIP_SEGMENTS);
 
         foreach ($enumTypeNames + $typeNames as $fqcn => $name) {
             $types->register($fqcn, $name);

@@ -220,7 +220,7 @@ final class AnalysisComposer
         $this->importAliases = [];
         $this->constImportAliases = [];
 
-        $skip = ['Models', 'Enums', 'Http', 'Resources', 'App'];
+        $skip = ImportNameRegistry::RESOURCE_SKIP_SEGMENTS;
 
         $registry = new ImportNameRegistry($skip);
         $constRegistry = new ImportNameRegistry($skip);

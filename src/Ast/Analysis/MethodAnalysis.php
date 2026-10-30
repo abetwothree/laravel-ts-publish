@@ -392,8 +392,7 @@ class MethodAnalysis
     }
 
     /**
-     * The classes a property's import channels hold behind its type's tokens: its enums, models and resources, each
-     * kind in the order its channels queue them.
+     * The enums, models and resources behind a property's type tokens, each kind in the order its channels queue them.
      *
      * @return list<class-string>
      */

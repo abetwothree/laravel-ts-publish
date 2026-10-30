@@ -169,8 +169,10 @@ transformed is never registered.
 ### `FileImportNames`
 
 The page and shared-data analyzers print each type from an analysis the file does not keep, so each hands its type
-over with its token queues: `InertiaPageData`'s `pageQueues` and `pageConstQueues`, one per page type. A
-`@tolki/types` class is imported from that module unaliased, and its name is reserved as a custom import's is.
+over with its token queues: `InertiaPageData`'s `pageQueues` and `pageConstQueues`, one per page type. For an analyzer
+that returns none, `RouteTransformer` builds them from `classFqcns` and `enumConstFqcns` with
+`FileImportNames::typeQueues()`, so each token still takes its class. A `@tolki/types` class is imported from that
+module unaliased, and its name is reserved as a custom import's is.
 
 ### `BroadcastEventTransformer`
 

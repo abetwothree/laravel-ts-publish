@@ -1028,3 +1028,28 @@ it('imports the model an import-less cast spells over the key whose value embeds
         ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
         ->and(inertiaProps(new EmbeddedCastController()->show($post))->meta->author->name)->toBe('Ada');
 });
+
+// A mocked analysis has no response to send, so this pins the namer alone.
+it('aliases every token of a page whose analyzer queues none, a class repeated out of order too', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(fn (array $action): ?array => str_contains($action['uses'], 'InertiaController@dashboard') ? [
+            'component' => 'Dashboard',
+            'pageType' => 'Inertia.SharedData & { a: TableResource<User>, b: TableResource<Post>, c: TableResource<User> }',
+            'classFqcns' => [User::class, Post::class],
+            'externalImports' => ['@inertiaui/table-vue' => ['TableResource'], '@js/types/ui' => ['User']],
+        ] : null);
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    expect(collect($transformer->actions)->firstWhere('originalMethodName', 'dashboard')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { a: TableResource<ModelsUser>, b: TableResource<Post>, c: TableResource<ModelsUser> }')
+        ->and($transformer->typeImports)->toBe([
+            '@inertiaui/table-vue' => ['TableResource'],
+            '../../models' => ['Post', 'User as ModelsUser'],
+        ]);
+});

@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -50,6 +51,7 @@ use Throwable;
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
  * @phpstan-import-type TokenQueue from FileImportNames
+ * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type TokenQueues from FileImportNames
  *
  * @phpstan-type InertiaPageData = array{
@@ -516,12 +518,11 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * The class behind each class token and the enum behind each `typeof` token of the page type, in token order, for
-     * the route file's import names.
+     * The class behind each class token and the enum behind each `typeof` token of the page type, in token order.
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $casts
-     * @param  array<string, list<string>>  $customImports  the imports of the page's casts and of its custom types
+     * @param  TypesImportMap  $customImports  the imports of the page's casts and of its custom types
      * @return TokenQueues
      */
     protected function pageTokenQueues(MethodAnalysis $analysis, array $props, array $casts, array $customImports): array
