@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
@@ -112,8 +113,13 @@ final class ReceiverMethodReturnResolver
                 continue;
             }
 
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
-                ?? $this->resolveOn($class, $methodName, $fromInside, $site, $scope->assumesCallee($receiver->runtimeInstance));
+            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn(
+                $class,
+                $methodName,
+                $fromInside,
+                $site,
+                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
+            );
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -147,7 +153,8 @@ final class ReceiverMethodReturnResolver
     public function typesAsModelFilter(string $class, string $methodName): bool
     {
         return $this->runsModelFilter($class, $methodName)
-            || (is_a($class, Model::class, true) && $this->resolveOn($class, $methodName, false) === null);
+            || (is_a($class, Model::class, true)
+                && $this->resolveOn($class, $methodName, false, null, self::held($class)) === null);
     }
 
     /**
@@ -224,6 +231,16 @@ final class ReceiverMethodReturnResolver
         DependencyRecorder::recordClass($class);
 
         return $this->modelRule($class, $methodName) !== null;
+    }
+
+    /**
+     * The runtime class of an object the code holds: only assumed, since the object may be a subclass of the class.
+     *
+     * @param  class-string  $class
+     */
+    private static function held(string $class): RuntimeClass
+    {
+        return RuntimeClass::assumed(new ReflectionClass($class));
     }
 
     /**
@@ -482,20 +499,21 @@ final class ReceiverMethodReturnResolver
      * method a relation or an Eloquent builder does not declare is typed on the class its query forwards it to.
      *
      * @param  class-string  $class
-     * @param  bool  $assumesRuntime  the object is only assumed to be the class, whose subclass it may be
+     * @param  RuntimeClass  $runtime  the class's runtime class, known only where the object is the runtime instance
+     *                                 of a scope that knows it, else assumed, since it may be a subclass
      * @return ValueExpressionResult|null
      */
     private function resolveOn(
         string $class,
         string $methodName,
         bool $fromInside,
-        ?CallSite $site = null,
-        bool $assumesRuntime = AnalysisScope::ASSUMES_HELD_OBJECT,
+        ?CallSite $site,
+        RuntimeClass $runtime,
     ): ?array {
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
-            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site);
+            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site, self::held($forwarded));
         }
 
         $method = new ReflectionMethod($class, $methodName);
@@ -512,7 +530,7 @@ final class ReceiverMethodReturnResolver
 
         $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, assumesRuntime: $assumesRuntime);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: $runtime);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.

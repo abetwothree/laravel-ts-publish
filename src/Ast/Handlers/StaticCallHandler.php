@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -258,8 +259,7 @@ final class StaticCallHandler implements ExpressionHandler
                 $className,
                 $methodName,
                 $site,
-                runtime: $forwards ? $scope->runtimeReflection : null,
-                assumesRuntime: $scope->assumesCallee($forwards),
+                runtime: $forwards ? $scope->runtime : RuntimeClass::assumed(new ReflectionClass($className)),
             ) ?? $result;
         }
 
@@ -288,7 +288,7 @@ final class StaticCallHandler implements ExpressionHandler
             && method_exists($className, $methodName)
             && new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName() === JsonResource::class
             && $scope->forwardsRuntimeClass($call, $className, $methodName)
-                ? $scope->runtimeReflection->getName()
+                ? $scope->runtime->class->getName()
                 : $className;
     }
 
@@ -332,7 +332,7 @@ final class StaticCallHandler implements ExpressionHandler
         if (! $this->methodPreservesReceiverType($method, $resourceFqcn)) {
             $built = match ($resourceFqcn) {
                 $scope->subjectReflection->getName() => $scope->subjectReflection,
-                $scope->runtimeReflection->getName() => $scope->runtimeReflection,
+                $scope->runtime->class->getName() => $scope->runtime->class,
                 $scope->declaringClass->getName() => $scope->declaringClass,
                 default => null,
             };

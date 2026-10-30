@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -159,11 +160,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
-     * @param  ReflectionClass<object>|null  $runtimeClass  the class `$this` is at run time when this reads an
-     *                                                      ancestor's body for it; null keeps the scope's own
+     * @param  RuntimeClass|null  $runtime  the class `$this` is at run time, known or only assumed, when this reads
+     *                                      an ancestor's body for it or a body a receiver reaches; null keeps the
+     *                                      scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
-     * @param  bool  $assumesRuntime  whether the runtime class is only assumed; false keeps the scope's own
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -174,9 +175,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
         private readonly array $passed = [],
-        ?ReflectionClass $runtimeClass = null,
+        ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
-        bool $assumesRuntime = false,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -187,12 +187,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->scope->carriesImports = $carriesImports;
         }
 
-        if ($runtimeClass !== null) {
-            $this->scope->runtimeReflection = $runtimeClass;
-        }
-
-        if ($assumesRuntime) {
-            $this->scope->assumesRuntime = true;
+        if ($runtime !== null) {
+            $this->scope->runtime = $runtime;
         }
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
@@ -342,7 +338,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         return $this->scope->within(
             function (AnalysisScope $scope) use ($built): void {
                 $scope->seedBuiltElement($built);
-                $scope->runtimeReflection = $built;
+                $scope->runtime = $scope->runtime->withClass($built);
             },
             fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $on),
         );
@@ -1201,7 +1197,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function runtimeClass(): ReflectionClass
     {
-        return $this->scope->runtimeReflection;
+        return $this->scope->runtime->class;
     }
 
     /**
@@ -1630,7 +1626,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         DependencyRecorder::recordClass($resourceFqcn);
 
         $analysis = resolve(AstEngine::class)
-            ->analyzeMethod($resourceFqcn, 'toArray', assumesRuntime: $this->scope->assumesBuilt($resourceFqcn));
+            ->analyzeMethod($resourceFqcn, 'toArray', runtime: $this->scope->builtRuntime($resourceFqcn));
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;
@@ -1926,8 +1922,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $method,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
-            runtimeClass: $this->runtimeClass(),
-            assumesRuntime: $this->scope->assumesRuntime,
+            runtime: $this->scope->runtime,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];

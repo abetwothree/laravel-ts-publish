@@ -87,7 +87,7 @@ final class VariableWrites
         /** @var NamedWrites $writes */
         $writes = [];
 
-        self::collectInto($stmts, [], $writes, $scope?->runtimeReflection, $scope?->declaringClass);
+        self::collectInto($stmts, [], $writes, $scope?->runtime->class, $scope?->declaringClass);
 
         return $writes;
     }

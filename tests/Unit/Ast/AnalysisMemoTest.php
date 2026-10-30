@@ -7,7 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
-use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 
@@ -356,17 +355,4 @@ test('reset drops every answer', function () use ($counting) {
     $memo->reset();
 
     expect($memo->remember('k', $counting($runs)))->toBe(2);
-});
-
-test('keys a runtime class apart from the class read only where it differs, and an assumed one apart from a known one', function () {
-    $post = new ReflectionClass(Post::class);
-    $resource = new ReflectionClass(PostResource::class);
-
-    expect([
-        AnalysisMemo::runtimeKey(PostResource::class, null, false),
-        AnalysisMemo::runtimeKey(PostResource::class, $resource, false),
-        AnalysisMemo::runtimeKey(PostResource::class, $resource, true),
-        AnalysisMemo::runtimeKey(Model::class, $post, false),
-        AnalysisMemo::runtimeKey(Model::class, $post, true),
-    ])->toBe(['', '', '@assumed', '@runtime:'.Post::class, '@runtime:'.Post::class.'@assumed']);
 });

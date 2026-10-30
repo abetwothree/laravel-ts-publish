@@ -400,7 +400,7 @@ final class ReceiverClassResolver
      */
     public function modelSubject(AnalysisScope $scope): ?ReceiverType
     {
-        $runtime = $scope->runtimeReflection;
+        $runtime = $scope->runtime->class;
 
         return $runtime->isSubclassOf(Model::class) ? ReceiverType::of($runtime->getName()) : null;
     }
@@ -590,7 +590,7 @@ final class ReceiverClassResolver
      */
     private function declaredClasses(array $span, AnalysisScope $scope): ?array
     {
-        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->runtimeReflection->getName(), $span['context']->getName());
+        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->runtime->class->getName(), $span['context']->getName());
     }
 
     /**
@@ -829,7 +829,7 @@ final class ReceiverClassResolver
 
         return FrameworkClasses::is($property->getDeclaringClass()->getName())
             ? null
-            : $this->typeOf($this->propertyClasses($property, $scope->runtimeReflection->getName()));
+            : $this->typeOf($this->propertyClasses($property, $scope->runtime->class->getName()));
     }
 
     /**
@@ -956,7 +956,7 @@ final class ReceiverClassResolver
 
         if ($owner->hasMethod($method)) {
             // PHP's `static` is the runtime class even in a private method of an ancestor, so a declared one names it.
-            $held = $this->memberMethod($owner->getName(), $method, true, staticClass: $scope->runtimeReflection->getName());
+            $held = $this->memberMethod($owner->getName(), $method, true, staticClass: $scope->runtime->class->getName());
 
             return $held !== null && DeclaredClasses::returnsStatic($owner->getName(), $method) ? $held->asRuntimeInstance() : $held;
         }
@@ -1380,7 +1380,7 @@ final class ReceiverClassResolver
      */
     private function forwardedReturn(StaticCall $call, string $class, string $method, AnalysisScope $scope): ?ReceiverType
     {
-        $static = $scope->forwardsRuntimeClass($call, $class, $method) ? $scope->runtimeReflection->getName() : null;
+        $static = $scope->forwardsRuntimeClass($call, $class, $method) ? $scope->runtime->class->getName() : null;
 
         return $this->returned($class, $method, $static);
     }

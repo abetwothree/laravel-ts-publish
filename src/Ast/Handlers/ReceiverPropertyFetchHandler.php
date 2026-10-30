@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
@@ -186,7 +187,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             return null;
         }
 
-        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($reflection, $name);
+        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($reflection, $name, RuntimeClass::assumed($reflection));
 
         return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }

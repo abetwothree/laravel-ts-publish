@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -45,7 +46,8 @@ it('constructs with the given subject reflection and model class', function () {
         ->and($scope->varDocBindings)->toBe([])
         ->and($scope->declaringFileClass)->toBe($reflection)
         ->and($scope->declaringClass)->toBe($reflection)
-        ->and($scope->runtimeReflection)->toBe($reflection)
+        ->and($scope->runtime->class)->toBe($reflection)
+        ->and($scope->runtime->known)->toBeTrue()
         ->and($scope->resolvingLocalVars)->toBe([])
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
@@ -81,7 +83,7 @@ it('rebases a model scope onto an API resource over the model, which forwards to
         ->and($scope->modelClass)->toBe(Post::class)
         ->and($scope->forwardsUndeclaredMembersTo)->toBe(Post::class)
         ->and($scope->declaringFileClass)->toBe($model)
-        ->and($scope->runtimeReflection)->toBe($resource)
+        ->and($scope->runtime->class)->toBe($resource)
         ->and($scope->declaringClass)->toBe($model);
 });
 
@@ -424,7 +426,7 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 function analysisScopeSetOnceFields(): array
 {
     return [
-        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'assumesRuntime',
+        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys',
     ];
 }
 
@@ -460,6 +462,7 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase, strin
         '?string' => "{$name}:{$phase}",
         'bool' => ($phase === 'before') === ($name === $odd),
         'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
+        RuntimeClass::class => RuntimeClass::known(new ReflectionClass($phase === 'before' ? User::class : Post::class)),
         default => throw new LogicException("No value for {$name}'s type."),
     };
 }
@@ -470,7 +473,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $setOnce = analysisScopeSetOnceFields();
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
-        'runtimeReflection', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
+        'runtime', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
         'narrowedReads', 'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
@@ -569,7 +572,7 @@ it('restores the declaring class with the rest of the state', function (string $
             $inside = [
                 $scope->declaringClass->getName(),
                 $scope->declaringFileClass->getName(),
-                $scope->runtimeReflection->getName(),
+                $scope->runtime->class->getName(),
             ];
 
             $scope->declaringClass = new ReflectionClass(User::class);
@@ -579,7 +582,7 @@ it('restores the declaring class with the rest of the state', function (string $
     expect($inside)->toBe([$declaring, $file, $subject])
         ->and($scope->declaringClass->getName())->toBe($subject)
         ->and($scope->declaringFileClass->getName())->toBe($subject)
-        ->and($scope->runtimeReflection->getName())->toBe($subject);
+        ->and($scope->runtime->class->getName())->toBe($subject);
 })->with([
     'an inherited method' => [PanelPayload::class, 'toArray', BasePanelPayload::class, BasePanelPayload::class],
     'a trait\'s method' => [BareFuncCallResource::class, 'includeMorphValue', BareFuncCallResource::class, IncludesMorphValue::class],
@@ -610,15 +613,19 @@ it('reaches an ancestor\'s private member on the runtime class, since the declar
 
 // A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
 it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
-    $scope = new AnalysisScope(new ReflectionClass(PanelPayload::class));
-    $scope->assumesRuntime = $assumed;
+    $panel = new ReflectionClass(PanelPayload::class);
+    $base = new ReflectionClass(BasePanelPayload::class);
+    $scope = new AnalysisScope($panel);
+    $scope->runtime = $assumed ? RuntimeClass::assumed($panel) : RuntimeClass::known($panel);
+    $assumes = fn (RuntimeClass ...$runtimes): array => array_map(fn (RuntimeClass $runtime): bool => ! $runtime->known, $runtimes);
 
-    expect([
-        $scope->assumesCallee(true), $scope->assumesCallee(false),
-        $scope->assumesBuilt(PanelPayload::class), $scope->assumesBuilt(BasePanelPayload::class),
-    ])->toBe([$assumed, true, $assumed, false])
-        ->and([AnalysisScope::assumesInjected(true), AnalysisScope::assumesInjected(false), AnalysisScope::ASSUMES_HELD_OBJECT])
-        ->toBe([false, true, true]);
+    expect($assumes(
+        $scope->calleeRuntime($panel, true), $scope->calleeRuntime($panel, false),
+        $scope->builtRuntime(PanelPayload::class), $scope->builtRuntime(BasePanelPayload::class),
+    ))->toBe([$assumed, true, $assumed, false])
+        ->and($assumes(RuntimeClass::injected($panel), RuntimeClass::injected($base), RuntimeClass::assumed($panel)))
+        ->toBe([false, true, true])
+        ->and($scope->builtRuntime(BasePanelPayload::class)->class->getName())->toBe(BasePanelPayload::class);
 })->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
 // A write replaces what the caller's test saw on that path and every path through it, and only those.

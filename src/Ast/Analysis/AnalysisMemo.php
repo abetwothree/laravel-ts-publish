@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use Closure;
 use LogicException;
-use ReflectionClass;
 
 /**
  * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
@@ -71,19 +70,6 @@ final class AnalysisMemo
 
     /** @var array<string, list<MemoEntry>> the answers a seed shaped, reused only until the check that seeds ends */
     private array $seededEntries = [];
-
-    /**
-     * The key suffix that tells a body's reads for one runtime class apart: none for the class read itself, since that
-     * read is the plain one, and `@assumed` where the runtime class is only assumed.
-     *
-     * @param  ReflectionClass<object>|null  $runtime
-     */
-    public static function runtimeKey(string $classRead, ?ReflectionClass $runtime, bool $assumed): string
-    {
-        $runtimeName = $runtime?->getName();
-
-        return ($runtimeName === null || $runtimeName === $classRead ? '' : '@runtime:'.$runtimeName).($assumed ? '@assumed' : '');
-    }
 
     /**
      * Enter a guarded analysis. Entering one already on the stack returns false instead, which cuts every answer being

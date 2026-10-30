@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -139,7 +140,7 @@ it('keeps a member the declaring class declares private', function () {
 
 it('types the receiver an inherited body\'s $this->m() returns as the runtime class runs it', function () {
     $scope = new AnalysisScope(new ReflectionClass(ReceiverBaseDto::class));
-    $scope->runtimeReflection = new ReflectionClass(ReceiverChildDto::class);
+    $scope->runtime = RuntimeClass::known(new ReflectionClass(ReceiverChildDto::class));
     $resolver = resolve(ReceiverClassResolver::class);
 
     expect($resolver->resolve(runtimeClassCall('$this->fresh()'), $scope)?->classes)->toBe([ReceiverChildDto::class])
@@ -290,7 +291,7 @@ it('reads a property only the runtime class declares, and `new static` or static
 
 it('types `new static` and a `$this->prop` receiver in an inherited body as the runtime class declares them', function () {
     $scope = new AnalysisScope(new ReflectionClass(ReceiverHolderBaseDto::class));
-    $scope->runtimeReflection = new ReflectionClass(ReceiverHolderChildDto::class);
+    $scope->runtime = RuntimeClass::known(new ReflectionClass(ReceiverHolderChildDto::class));
     $resolver = resolve(ReceiverClassResolver::class);
 
     expect($resolver->resolve(runtimeClassCall('new static'), $scope)?->classes)->toBe([ReceiverHolderChildDto::class])
@@ -354,7 +355,7 @@ it('types an untyped property\'s non-constant writes in the scope of the method 
         'count' => 'number',
         'label' => 'string | number',
         'labelled' => '{ label: string | number }',
-    ])->and(resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'tier', $child)['type'] ?? null)->toBe('string | number')
+    ])->and(resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'tier', RuntimeClass::known($child))['type'] ?? null)->toBe('string | number')
         ->and(json_encode(new WrittenTallyChild()->toArray()))->toBe('{"tier":"gold","count":0,"label":"draft","labelled":{"label":"draft"}}')
         ->and(json_encode($written->toArray()))->toBe('{"tier":5,"count":2,"label":"draft!","labelled":{"label":"draft!"}}')
         ->and(json_encode(new WrittenTallyChild()->setLabel(3)->copyLabel()->toArray()['labelled']))->toBe('{"label":3}');
@@ -371,7 +372,7 @@ it('reads a helper a write calls with the property cut where reading it as the j
     $child = new ReflectionClass(WrappedSizeChild::class);
     $helperFirst = analyzedKeyTypes(WrappedSizeChild::class)['h'];
     resolve(AnalysisMemo::class)->reset();
-    resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'size', $child);
+    resolve(SubjectPropertyTypeResolver::class)->resolve($child, 'size', RuntimeClass::known($child));
 
     expect([$helperFirst, analyzedKeyTypes(WrappedSizeChild::class)['h']])->toBe(['string | { v: unknown }', 'string | { v: unknown }'])
         ->and(json_encode(new WrappedSizeChild()->wrap()->toArray()['h']))->toBe('{"v":"none"}')
@@ -855,16 +856,18 @@ it('reads one body through a receiver and through `$this->` apart, whichever com
 
 // Read assumed first in one process, so a known read sharing its entry would answer as it does.
 it('keeps an assumed runtime class through an inherited body and the helpers it calls', function () {
+    $runtime = fn (bool $assumes): ?RuntimeClass => $assumes ? RuntimeClass::assumed(new ReflectionClass(SevenHelperLevelResource::class)) : null;
     $types = fn (bool $assumes): array => array_column(resolve(AstEngine::class)
-        ->analyzeMethod(SevenHelperLevelResource::class, 'toArray', Post::class, assumesRuntime: $assumes)->properties, 'type', 'name');
+        ->analyzeMethod(SevenHelperLevelResource::class, 'toArray', Post::class, runtime: $runtime($assumes))->properties, 'type', 'name');
 
     expect($types(true))->toMatchArray(['via_protected' => 'unknown', 'via_private' => 'unknown', 'const_self' => 'number'])
         ->and($types(false))->toMatchArray(['via_protected' => 'string | number', 'via_private' => 'string | number', 'const_self' => 'number']);
 });
 
 it('reads a spread response as assumed only where it is the class `static` names in an assumed scope', function () {
+    $runtime = fn (bool $assumes): ?RuntimeClass => $assumes ? RuntimeClass::assumed(new ReflectionClass(SevenHelperLevelResource::class)) : null;
     $type = fn (string $method, bool $assumes): string => array_column(resolve(AstEngine::class)
-        ->analyzeMethod(SevenHelperLevelResource::class, $method, Post::class, assumesRuntime: $assumes)->properties, 'type', 'name')['via_private'];
+        ->analyzeMethod(SevenHelperLevelResource::class, $method, Post::class, runtime: $runtime($assumes))->properties, 'type', 'name')['via_private'];
 
     expect([$type('spreadOwn', true), $type('spreadOwn', false), $type('spreadSibling', true)])
         ->toBe(['unknown', 'string | number', 'string | boolean'])

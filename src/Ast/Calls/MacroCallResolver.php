@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
@@ -108,19 +109,22 @@ final class MacroCallResolver
      */
     public function resolve(AnalysisScope $scope, string $method): ?array
     {
-        $runtime = $scope->runtimeReflection;
+        $runtime = $scope->runtime;
+        $class = $runtime->class->getName();
         $modelClass = $scope->modelClass;
-        $assumes = $scope->assumesRuntime;
 
         return resolve(AnalysisMemo::class)->remember(
-            'macro:'.$runtime->getName().'@'.$method.'@'.($modelClass ?? '').AnalysisMemo::runtimeKey($runtime->getName(), $runtime, $assumes),
-            function () use ($runtime, $method, $modelClass, $assumes): ?array {
-                $function = $this->reflect($this->macroFor($runtime, $method));
+            'macro:'.$class.'@'.$method.'@'.($modelClass ?? '').$runtime->memoKey($class),
+            function () use ($runtime, $method, $modelClass): ?array {
+                $function = $this->reflect($this->macroFor($runtime->class, $method));
                 $result = match (true) {
                     // A method macro runs on the object its callable holds, never the subject.
-                    $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)
-                        ->resolve($function->getDeclaringClass()->getName(), $function->getName(), assumesRuntime: AnalysisScope::ASSUMES_HELD_OBJECT),
-                    $function instanceof ReflectionFunction => $this->functionType($function, $runtime, $modelClass, $assumes),
+                    $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)->resolve(
+                        $function->getDeclaringClass()->getName(),
+                        $function->getName(),
+                        runtime: RuntimeClass::assumed($function->getDeclaringClass()),
+                    ),
+                    $function instanceof ReflectionFunction => $this->functionType($function, $runtime, $modelClass),
                     default => null,
                 };
 
@@ -133,15 +137,14 @@ final class MacroCallResolver
      * A closure's or function's return: its native type, `self` and `parent` read against the class Macroable binds
      * it to, else its `@return`, else a closure's body.
      *
-     * @param  ReflectionClass<object>  $subject  the class the macro runs on
+     * @param  RuntimeClass  $subject  the class the macro runs on, known or only assumed, as a receiver's body's is
      * @param  class-string<Model>|null  $modelClass
-     * @param  bool  $assumesRuntime  the caller only assumes the subject's class, as a receiver's body does
      * @return ValueExpressionResult|null
      */
-    private function functionType(ReflectionFunction $function, ReflectionClass $subject, ?string $modelClass, bool $assumesRuntime): ?array
+    private function functionType(ReflectionFunction $function, RuntimeClass $subject, ?string $modelClass): ?array
     {
         $acceptor = resolve(ReflectedTypeAcceptor::class);
-        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType(), $subject));
+        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType(), $subject->class));
 
         if ($declared !== null && ! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;
@@ -153,17 +156,16 @@ final class MacroCallResolver
             return $documented;
         }
 
-        return $this->bodyType($function, $subject->getName(), $modelClass, $assumesRuntime) ?? $declared ?? $documented;
+        return $this->bodyType($function, $subject, $modelClass) ?? $declared ?? $documented;
     }
 
     /**
      * A closure macro's body, read in a scope of its own; null when the read declines or is already under way.
      *
-     * @param  class-string  $subjectClass
      * @param  class-string<Model>|null  $modelClass
      * @return ValueExpressionResult|null
      */
-    private function bodyType(ReflectionFunction $function, string $subjectClass, ?string $modelClass, bool $assumesRuntime): ?array
+    private function bodyType(ReflectionFunction $function, RuntimeClass $subject, ?string $modelClass): ?array
     {
         $located = $this->locate($function);
         $key = 'macro-body:'.$function->getFileName().':'.$function->getStartLine();
@@ -174,7 +176,7 @@ final class MacroCallResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeBoundClosure($subjectClass, $modelClass, $located[0], $located[1], $assumesRuntime);
+            return resolve(AstEngine::class)->analyzeBoundClosure($subject, $modelClass, $located[0], $located[1]);
         } finally {
             $memo->leave($key);
         }

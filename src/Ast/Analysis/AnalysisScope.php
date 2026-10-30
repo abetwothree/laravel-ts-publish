@@ -111,7 +111,7 @@ use ReflectionMethod;
  *      forwardsUndeclaredMembersTo: class-string|null,
  *      declaringFileClass: ReflectionClass<object>,
  *      declaringClass: ReflectionClass<object>,
- *      runtimeReflection: ReflectionClass<object>,
+ *      runtime: RuntimeClass,
  *      collectedElement: CollectedElement|null,
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
@@ -128,12 +128,6 @@ final class AnalysisScope
 {
     /** The varGuardBindings key of the proofs on an API resource's `$this->resource`, a name no variable spells. */
     public const string PROXY_GUARDS = '$this->resource';
-
-    /**
-     * Whether a body run on an object the code holds, such as a receiver, the model `$this->resource` forwards to or a
-     * method macro's callable, only assumes its class: always, since the object may be a subclass of the class known.
-     */
-    public const bool ASSUMES_HELD_OBJECT = true;
 
     /** Every name-keyed binding table, empty: a function scope no caller's name reaches. */
     public const array NO_NAME_BINDINGS = [
@@ -442,19 +436,11 @@ final class AnalysisScope
     public ReflectionClass $declaringClass;
 
     /**
-     * The runtime class `$this` and `static` are: the subject, unless this reads an ancestor's body for a subclass, a
-     * helper for a caller's runtime class, or a method of a built instance. See docs/components/ast-engine.md
-     * § AnalysisScope.
-     *
-     * @var ReflectionClass<object>
+     * The runtime class `$this` and `static` are, and whether this scope knows it: the subject, known, unless this
+     * reads an ancestor's body for a subclass, a helper for a caller's runtime class or a method of a built instance;
+     * a body a receiver's call or an unrelated class's name reaches only assumes it. See docs/components/ast-engine.md.
      */
-    public ReflectionClass $runtimeReflection;
-
-    /**
-     * Whether the runtime class is only assumed: a body a receiver's call or an unrelated class's name reaches reads
-     * the class declared or named, whose subclass the object may be. Set once, by the builder; see knownRuntime().
-     */
-    public bool $assumesRuntime = false;
+    public RuntimeClass $runtime;
 
     /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
@@ -468,7 +454,7 @@ final class AnalysisScope
     ) {
         $this->declaringFileClass = $subjectReflection;
         $this->declaringClass = $subjectReflection;
-        $this->runtimeReflection = $subjectReflection;
+        $this->runtime = RuntimeClass::known($subjectReflection);
 
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
@@ -519,15 +505,6 @@ final class AnalysisScope
     }
 
     /**
-     * Whether a body run on an object the container fills only assumes its class: unless the class is final, the
-     * container may bind a subclass in its place.
-     */
-    public static function assumesInjected(bool $isFinal): bool
-    {
-        return ! $isFinal;
-    }
-
-    /**
      * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
      * proxy or names no one class. The one home of the proxy target, for every scope and every narrowing of it; a
      * ResourceCollection's items are proxyReceiver()'s.
@@ -565,7 +542,7 @@ final class AnalysisScope
     public function rebase(ReflectionClass $subject, ?string $modelClass): void
     {
         $this->subjectReflection = $subject;
-        $this->runtimeReflection = $subject;
+        $this->runtime = $this->runtime->withClass($subject);
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -628,7 +605,7 @@ final class AnalysisScope
      */
     public function thisMemberClass(string $member, bool $isMethod): ReflectionClass
     {
-        return self::memberClassOf($this->declaringClass, $this->runtimeReflection, $member, $isMethod);
+        return self::memberClassOf($this->declaringClass, $this->runtime->class, $member, $isMethod);
     }
 
     /**
@@ -638,7 +615,7 @@ final class AnalysisScope
      */
     public function relativeClass(Name $name): ?ReflectionClass
     {
-        return self::relativeClassOf($name, $this->runtimeReflection, $this->declaringClass);
+        return self::relativeClassOf($name, $this->runtime->class, $this->declaringClass);
     }
 
     /**
@@ -653,7 +630,7 @@ final class AnalysisScope
         $class = $call->class;
 
         return match (true) {
-            $class instanceof Variable => $class->name === 'this' ? $this->runtimeReflection : $this->subjectReflection,
+            $class instanceof Variable => $class->name === 'this' ? $this->runtime->class : $this->subjectReflection,
             $class instanceof Name => $this->relativeClass($class) ?? $this->subjectReflection,
             default => $this->subjectReflection,
         };
@@ -672,36 +649,31 @@ final class AnalysisScope
         return $call->class->isSpecialClassName()
             || (method_exists($className, $methodName)
                 && ! new ReflectionMethod($className, $methodName)->isStatic()
-                && is_a($this->runtimeReflection->getName(), $className, true));
+                && is_a($this->runtime->class->getName(), $className, true));
     }
 
     /**
-     * Whether the body a call reaches only assumes its runtime class: one the call runs on this scope's runtime
-     * instance keeps this scope's flag, and any other is assumed.
-     */
-    public function assumesCallee(bool $onRuntimeInstance): bool
-    {
-        return ! $onRuntimeInstance || $this->assumesRuntime;
-    }
-
-    /**
-     * Whether a body run on an instance of a class this scope builds only assumes it: a build is exact, unless the
-     * class is the one an assumed scope's `static` stands for.
-     */
-    public function assumesBuilt(string $class): bool
-    {
-        return $this->assumesRuntime && $class === $this->runtimeReflection->getName();
-    }
-
-    /**
-     * The runtime class where the scope knows it, null where it only assumes it; which is which:
-     * docs/components/ast-engine.md § Known or assumed runtime class.
+     * The runtime class of a body a call runs on an instance of a class: known where the call runs on this scope's
+     * runtime instance and this scope knows its runtime class, else only assumed.
      *
-     * @return ReflectionClass<object>|null
+     * @param  ReflectionClass<object>  $callee
      */
-    public function knownRuntime(): ?ReflectionClass
+    public function calleeRuntime(ReflectionClass $callee, bool $onRuntimeInstance): RuntimeClass
     {
-        return $this->assumesRuntime ? null : $this->runtimeReflection;
+        return $onRuntimeInstance ? $this->runtime->withClass($callee) : RuntimeClass::assumed($callee);
+    }
+
+    /**
+     * The runtime class of a body run on an instance this scope builds: known, since a build is exact, unless the class
+     * is the one this scope's `static` stands for, which is known only where this scope's runtime class is.
+     *
+     * @param  class-string  $class
+     */
+    public function builtRuntime(string $class): RuntimeClass
+    {
+        return $class === $this->runtime->class->getName()
+            ? $this->runtime
+            : RuntimeClass::known(new ReflectionClass($class));
     }
 
     /**
@@ -1521,7 +1493,7 @@ final class AnalysisScope
             'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
             'declaringFileClass' => $this->declaringFileClass,
             'declaringClass' => $this->declaringClass,
-            'runtimeReflection' => $this->runtimeReflection,
+            'runtime' => $this->runtime,
             'collectedElement' => $this->collectedElement,
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
@@ -1546,7 +1518,7 @@ final class AnalysisScope
         $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];
         $this->declaringFileClass = $state['declaringFileClass'];
         $this->declaringClass = $state['declaringClass'];
-        $this->runtimeReflection = $state['runtimeReflection'];
+        $this->runtime = $state['runtime'];
         $this->collectedElement = $state['collectedElement'];
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];

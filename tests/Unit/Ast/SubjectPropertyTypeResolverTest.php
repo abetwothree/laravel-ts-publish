@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -25,7 +26,9 @@ use Workbench\App\Models\Post;
 
 describe('SubjectPropertyTypeResolver::resolve()', function () {
     test('an untyped property default types itself as a parameter default does', function (string $property, ?string $type) {
-        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(UntypedDefaultsSubject::class), $property)['type'] ?? null)
+        $subject = new ReflectionClass(UntypedDefaultsSubject::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve($subject, $property, RuntimeClass::assumed($subject))['type'] ?? null)
             ->toBe($type);
     })->with([
         'a list' => ['extensions', 'string[]'],
@@ -41,14 +44,18 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
     ]);
 
     test('an enum case default carries the enum for its import', function () {
-        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(UntypedDefaultsSubject::class), 'stage'))
+        $subject = new ReflectionClass(UntypedDefaultsSubject::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve($subject, 'stage', RuntimeClass::assumed($subject)))
             ->toBe(['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
     });
 
     // end() only moves the pointer, and a method PHP routes to __call() or __callStatic() takes its arguments by value.
     // A receiver the scan cannot resolve is read as passing by value.
     test('an argument passed to a by-reference parameter counts as a write', function (string $property, ?string $type) {
-        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(ByReferenceDefaultsSubject::class), $property)['type'] ?? null)
+        $subject = new ReflectionClass(ByReferenceDefaultsSubject::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve($subject, $property, RuntimeClass::assumed($subject))['type'] ?? null)
             ->toBe($type);
     })->with([
         'array_push()' => ['queue', null],
@@ -69,8 +76,8 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
         $subject = new ReflectionClass(SortedDefaultsSubject::class);
         $resolver = resolve(SubjectPropertyTypeResolver::class);
 
-        expect($resolver->resolve($subject, 'tags'))->toBeNull()
-            ->and($resolver->resolve($subject, 'items')['type'] ?? null)->toBe('string[]');
+        expect($resolver->resolve($subject, 'tags', RuntimeClass::assumed($subject)))->toBeNull()
+            ->and($resolver->resolve($subject, 'items', RuntimeClass::assumed($subject))['type'] ?? null)->toBe('string[]');
     });
 
     // A write in any method the class runs, an ancestor's included, may change what a read holds. A computed name may
@@ -79,18 +86,19 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
         $resolver = resolve(SubjectPropertyTypeResolver::class);
         $parent = new ReflectionClass(ReassignedDefaultsSubject::class);
         $child = new ReflectionClass(InheritedDefaultsSubject::class);
+        $dynamic = new ReflectionClass(DynamicDefaultsSubject::class);
         $read = fn (object $subject, string $name): mixed => (fn () => $this->{$name})->call($subject);
         $viewed = new ReassignedDefaultsSubject('kept');
         $viewed->view();
         $viewed->tag();
 
-        expect($resolver->resolve($parent, 'note')['type'] ?? null)->toBe('string | null')
-            ->and($resolver->resolve($parent, 'tags')['type'] ?? null)->toBe('(string | number)[]')
-            ->and($resolver->resolve($parent, 'views')['type'] ?? null)->toBe('number')
-            ->and($resolver->resolve($parent, 'label')['type'] ?? null)->toBe('string')
-            ->and($resolver->resolve($child, 'note')['type'] ?? null)->toBe('string | null')
-            ->and($resolver->resolve($child, 'label')['type'] ?? null)->toBe('string | null')
-            ->and($resolver->resolve(new ReflectionClass(DynamicDefaultsSubject::class), 'status'))->toBeNull()
+        expect($resolver->resolve($parent, 'note', RuntimeClass::assumed($parent))['type'] ?? null)->toBe('string | null')
+            ->and($resolver->resolve($parent, 'tags', RuntimeClass::assumed($parent))['type'] ?? null)->toBe('(string | number)[]')
+            ->and($resolver->resolve($parent, 'views', RuntimeClass::assumed($parent))['type'] ?? null)->toBe('number')
+            ->and($resolver->resolve($parent, 'label', RuntimeClass::assumed($parent))['type'] ?? null)->toBe('string')
+            ->and($resolver->resolve($child, 'note', RuntimeClass::assumed($child))['type'] ?? null)->toBe('string | null')
+            ->and($resolver->resolve($child, 'label', RuntimeClass::assumed($child))['type'] ?? null)->toBe('string | null')
+            ->and($resolver->resolve($dynamic, 'status', RuntimeClass::assumed($dynamic)))->toBeNull()
             ->and([$read(new ReassignedDefaultsSubject, 'note'), $read($viewed, 'note'), $read($viewed, 'views')])
             ->toBe([null, 'kept', 1])
             ->and($read($viewed, 'tags'))->toBe(['news', 'guide', 5]);
@@ -100,16 +108,17 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
         $subject = new ReflectionClass(UnloadableDefaultsSubject::class);
         $resolver = resolve(SubjectPropertyTypeResolver::class);
 
-        expect($resolver->resolve($subject, 'mode'))->toBeNull()
-            ->and($resolver->resolve($subject, 'flag'))->toBeNull()
+        expect($resolver->resolve($subject, 'mode', RuntimeClass::assumed($subject)))->toBeNull()
+            ->and($resolver->resolve($subject, 'flag', RuntimeClass::assumed($subject)))->toBeNull()
             ->and(collect(resolve(AstEngine::class)->analyzePublicProperties(UnloadableDefaultsSubject::class)->properties)->pluck('type', 'name')->all())
             ->toBe(['mode' => 'unknown', 'flag' => 'unknown']);
     });
 
     test('a declared type still wins over the default literal', function () {
         $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $stats = new ReflectionClass(PostStatsResource::class);
 
-        expect($resolver->resolve(new ReflectionClass(PostStatsResource::class), 'untypedChannels')['type'] ?? null)
+        expect($resolver->resolve($stats, 'untypedChannels', RuntimeClass::assumed($stats))['type'] ?? null)
             ->toBe('string[]');
     });
 });

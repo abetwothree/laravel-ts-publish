@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
@@ -117,12 +118,11 @@ final class SubjectPropertyTypeResolver
      * yields a type whose tokens can be imported.
      *
      * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, where the runtime class
-     *                                                      is known; null where it is only assumed, which declines such
-     *                                                      a write
+     * @param  RuntimeClass  $runtime  the class the property is read for: a known one is the class a write's `static`
+     *                                 names, and an assumed one declines such a write
      * @return ValueExpressionResult|null
      */
-    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $knownRuntime = null): ?array
+    public function resolve(ReflectionClass $subject, string $name, RuntimeClass $runtime): ?array
     {
         if (! $subject->hasProperty($name)) {
             return null;
@@ -130,9 +130,12 @@ final class SubjectPropertyTypeResolver
 
         $property = $subject->getProperty($name);
 
+        // An assumed runtime class may be any subclass, so the property is read for the subject itself.
+        $readFor = $runtime->known ? $runtime : RuntimeClass::assumed($subject);
+
         return resolve(PropertyDocblockTypeReader::class)->read($property)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property, $knownRuntime);
+            ?? $this->defaultValueType($subject, $property, $readFor);
     }
 
     /**
@@ -273,10 +276,10 @@ final class SubjectPropertyTypeResolver
      * property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, if known
+     * @param  RuntimeClass  $runtime  the class the property is read for, known, or the subject, assumed
      * @return ValueExpressionResult|null
      */
-    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $knownRuntime): ?array
+    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, RuntimeClass $runtime): ?array
     {
         if ($property->getType() !== null || ! $property->hasDefaultValue()) {
             return null;
@@ -305,8 +308,8 @@ final class SubjectPropertyTypeResolver
         $computed = [];
 
         foreach ($writes as $write) {
-            $assigned = $this->assignedConstant($write[0], $property->getName(), $knownRuntime, $write[1]);
-            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $knownRuntime ?? $subject) : [];
+            $assigned = $this->assignedConstant($write[0], $property->getName(), $runtime, $write[1]);
+            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $runtime->class) : [];
 
             if ($elements === null) {
                 return null;
@@ -327,12 +330,11 @@ final class SubjectPropertyTypeResolver
             return $known;
         }
 
-        $key = 'property-type:'.$subject->getName().'::'.$property->getName()
-            .AnalysisMemo::runtimeKey($subject->getName(), $knownRuntime, $knownRuntime === null);
+        $key = 'property-type:'.$subject->getName().'::'.$property->getName().$runtime->memoKey($subject->getName());
 
         return resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): ?array => $this->withComputedWrites($known, $computed, $subject, $property, $knownRuntime),
+            fn (): ?array => $this->withComputedWrites($known, $computed, $property, $runtime),
         );
     }
 
@@ -347,41 +349,38 @@ final class SubjectPropertyTypeResolver
      *
      * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
      * @param  ComputedWrites  $computed  the whole, compound and element writes no constant evaluation types
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
     private function withComputedWrites(
         array $known,
         array $computed,
-        ReflectionClass $subject,
         ReflectionProperty $property,
-        ?ReflectionClass $knownRuntime,
+        RuntimeClass $runtime,
     ): ?array {
         $memo = resolve(AnalysisMemo::class);
         $guard = $this->propertyGuard($property);
 
         // A write reading the property it writes, as `$this->count + 1` does, reads what the property held before it.
         if (! $memo->enter($guard)) {
-            return self::$seeds[$this->seedKey($guard, $subject, $knownRuntime)] ?? $known;
+            return self::$seeds[$this->seedKey($guard, $runtime)] ?? $known;
         }
 
         try {
             // A property typed inside another's re-entry reads its helpers cut, as before it, so no re-entry nests.
             if (! $memo->enter(self::REENTRY_GUARD)) {
-                return $memo->cut(fn (): ?array => $this->cutWrites($known, $computed, $subject, $knownRuntime));
+                return $memo->cut(fn (): ?array => $this->cutWrites($known, $computed, $runtime));
             }
 
             try {
                 $lifted = DroppedUnionArms::provisional(
-                    fn (): array => $this->liftedWrites($known, $computed, $subject, $property, $knownRuntime),
+                    fn (): array => $this->liftedWrites($known, $computed, $property, $runtime),
                     fn (array $lifted): bool => $lifted['kept'],
                 );
 
                 // A write that joins a new type each run, as one nesting what its helper returns does, reads it cut.
                 return $lifted['kept']
                     ? $lifted['type']
-                    : $this->cutWrites($known, $computed, $subject, $knownRuntime);
+                    : $this->cutWrites($known, $computed, $runtime);
             } finally {
                 $memo->leave(self::REENTRY_GUARD);
             }
@@ -396,22 +395,19 @@ final class SubjectPropertyTypeResolver
      *
      * @param  ValueExpressionResult  $known
      * @param  ComputedWrites  $computed
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return LiftedWrites
      */
     private function liftedWrites(
         array $known,
         array $computed,
-        ReflectionClass $subject,
         ReflectionProperty $property,
-        ?ReflectionClass $knownRuntime,
+        RuntimeClass $runtime,
     ): array {
         $memo = resolve(AnalysisMemo::class);
         $guard = $this->propertyGuard($property);
         $read = fn (int $index): ?array => $memo->reenterOnce(
             $guard,
-            fn (): ?array => $this->writeValue($computed[$index], $subject, $knownRuntime),
+            fn (): ?array => $this->writeValue($computed[$index], $runtime),
         );
         $values = [];
         $reentered = [];
@@ -428,20 +424,20 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        $joined = $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
+        $joined = $this->joinedWrites($known, $computed, $values, $runtime->class);
 
         if ($reentered === [] || $joined === null) {
             return ['type' => $joined, 'kept' => $reentered === []];
         }
 
-        $again = function () use ($known, $computed, $values, $reentered, $read, $subject, $knownRuntime): ?array {
+        $again = function () use ($known, $computed, $values, $reentered, $read, $runtime): ?array {
             foreach ($reentered as $index) {
                 $values[$index] = $read($index);
             }
 
-            return $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
+            return $this->joinedWrites($known, $computed, $values, $runtime->class);
         };
-        $seed = $this->seedKey($guard, $subject, $knownRuntime);
+        $seed = $this->seedKey($guard, $runtime);
 
         return ['type' => $joined, 'kept' => $this->reachesFixpoint($guard, $seed, $joined, $again)];
     }
@@ -478,27 +474,21 @@ final class SubjectPropertyTypeResolver
      *
      * @param  ValueExpressionResult  $known
      * @param  ComputedWrites  $computed
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
-    private function cutWrites(
-        array $known,
-        array $computed,
-        ReflectionClass $subject,
-        ?ReflectionClass $knownRuntime,
-    ): ?array {
+    private function cutWrites(array $known, array $computed, RuntimeClass $runtime): ?array
+    {
         $values = [];
 
         foreach ($this->valuedWrites($computed) as $index) {
-            $values[$index] = $this->writeValue($computed[$index], $subject, $knownRuntime);
+            $values[$index] = $this->writeValue($computed[$index], $runtime);
 
             if ($values[$index] === null) {
                 return null;
             }
         }
 
-        return $this->joinedWrites($known, $computed, $values, $knownRuntime ?? $subject);
+        return $this->joinedWrites($known, $computed, $values, $runtime->class);
     }
 
     /**
@@ -523,13 +513,10 @@ final class SubjectPropertyTypeResolver
     /**
      * The key a property's seed is kept under: its guard and the class it is read for, so another class's read of the
      * same declaration takes its own known type.
-     *
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      */
-    private function seedKey(string $guard, ReflectionClass $subject, ?ReflectionClass $knownRuntime): string
+    private function seedKey(string $guard, RuntimeClass $runtime): string
     {
-        return $guard.'@'.($knownRuntime ?? $subject)->getName();
+        return $guard.'@'.$runtime->class->getName();
     }
 
     /**
@@ -537,14 +524,12 @@ final class SubjectPropertyTypeResolver
      * where the engine cannot type it.
      *
      * @param  ComputedWrite  $write
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
-    private function writeValue(array $write, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    private function writeValue(array $write, RuntimeClass $runtime): ?array
     {
         $expr = $write[1]['value'];
-        $value = $expr === null ? null : $this->computedWrite($write[0], $expr, $subject, $knownRuntime);
+        $value = $expr === null ? null : $this->computedWrite($write[0], $expr, $runtime);
 
         return $value === null || $value['type'] === 'unknown' ? null : $value;
     }
@@ -615,17 +600,15 @@ final class SubjectPropertyTypeResolver
      * holds it, the value names `static` and the runtime class is only assumed, or a closure's read drops a union arm.
      *
      * @param  PropertyWrite  $write
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
-    private function computedWrite(array $write, Expr $value, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    private function computedWrite(array $write, Expr $value, RuntimeClass $runtime): ?array
     {
         [$site, $self, $class, $file] = $write;
         $method = $this->enclosingMethod($class, $site);
         $running = $method === null ? null : $this->runningName($self, $class, $method);
 
-        if ($method === null || $running === null || ($knownRuntime === null && $this->namesStatic($value))) {
+        if ($method === null || $running === null || (! $runtime->known && $this->namesStatic($value))) {
             return null;
         }
 
@@ -645,8 +628,7 @@ final class SubjectPropertyTypeResolver
         $written = resolve(AstEngine::class)->analyzeExpressionValue(
             new MethodContext($self, $method, resolve(AstParser::class)->parseFile($file)),
             $value,
-            $knownRuntime ?? $subject,
-            assumesRuntime: $knownRuntime === null,
+            $runtime,
             within: $closures,
         );
 
@@ -790,7 +772,8 @@ final class SubjectPropertyTypeResolver
         ));
         $stmts = $closures === [] ? $method->stmts ?? [] : $closures[count($closures) - 1]->stmts;
         $scope = new AnalysisScope($self);
-        $scope->runtimeReflection = $runtime;
+        // The scan reads only the class `$this` names, never whether it is known.
+        $scope->runtime = RuntimeClass::known($runtime);
 
         return VariableWrites::foreachElementValues($loop, VariableWrites::of($stmts, $scope), $stmts);
     }
@@ -963,13 +946,12 @@ final class SubjectPropertyTypeResolver
      * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
      * name, an unset, an iteration, a reference or a call that may take it by reference.
      *
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class the object is, which `static` names; null
-     *                                                      declines a value naming `static`, since a subclass may give
-     *                                                      it another type
+     * @param  RuntimeClass  $runtime  the class the object is, which a known one's `static` names; an assumed one
+     *                                 declines a value naming `static`, since a subclass may give it another type
      * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the write
      * @return ValueExpressionResult|null
      */
-    private function assignedConstant(Node $site, string $name, ?ReflectionClass $knownRuntime, ReflectionClass $self): ?array
+    private function assignedConstant(Node $site, string $name, RuntimeClass $runtime, ReflectionClass $self): ?array
     {
         if (! $site instanceof Assign
             || ! $site->var instanceof PropertyFetch
@@ -979,12 +961,13 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
-        if ($knownRuntime === null && $this->namesStatic($site->expr)) {
+        if (! $runtime->known && $this->namesStatic($site->expr)) {
             return null;
         }
 
         $scope = new AnalysisScope($self);
-        $scope->runtimeReflection = $knownRuntime ?? $self;
+        // Constant evaluation reads only the class `static` names, and an assumed one declined such a value above.
+        $scope->runtime = RuntimeClass::known($runtime->knownClass() ?? $self);
         $values = resolve(ValueResolver::class);
 
         try {
