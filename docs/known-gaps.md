@@ -84,6 +84,19 @@ own `collects()` returns `PostResource::class`, or whose constructor assigns `$t
 interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare
 `public $collects = PostResource::class;` instead.
 
+### A method on a collection the body builds can keep the analyzed class's element where Laravel maps the items
+
+A method called on a collection the body builds, as in `new self($this->resource)->summary()`, publishes its items as
+the API resource the built class collects, or as the analyzed class's element where that already is one, since Laravel
+passes such items through
+([built payloads](./components/resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload)).
+Two builds keep the analyzed class's element, though Laravel maps the items into the built class's own pick:
+
+- raw items, as in `new self(collect([1]))`, where the analyzed class collects a subclass of that pick;
+- a built class whose pick is a naming-convention guess the run does not publish.
+
+Type the key with `#[TsCasts]`.
+
 ### A non-promoted property a constructor always assigns still renders optional
 
 A public property that has no default and is not promoted publishes `?:` even when every constructor assigns it, such
@@ -897,6 +910,12 @@ arm's own `id`. Every explicit key is subtracted from every spread arm, whatever
 that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
 or on the left of `+`.
 
+### A `parent::` spread that cycles back into itself types a parameter by the first call alone
+
+`[...parent::m(1)]`, where an untyped `m($v)` returns `['v' => $v, ...static::m2()]` and the class's own `m2()` spreads
+`parent::m('x')` once, under a guard, publishes `v: number`, though PHP's second call overwrites `v` with `"x"`. The
+package reads the cycle once, with the first call's bindings. Type the key with `#[TsCasts]`.
+
 ### An operand of `+` not typed as one object adds no keys beside a keyed literal
 
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
@@ -947,6 +966,8 @@ subclass writes it, whole, by a compound operator or by element, typed in the wr
 - A by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, a write from
   outside the class, and a write by a subclass of a receiver's declared class, such as the object behind
   `$this->holder()->views`, change the value Laravel sends while the published type stays the default's.
+- `foreach ($this->p as [&$a])`, which destructures by reference, is not seen as a write either, so the default's type
+  publishes though PHP changes the elements.
 - An array a plain class holds is typed as that class sends it, so where the holder's `$tags = [5 => 's']` may gain a
   `k` key, a resource reading `$this->holder()->tags` publishes `{ "5": string; k?: number }` though it re-indexes the
   array and may send `["s"]`.
