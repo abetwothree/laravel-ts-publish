@@ -154,7 +154,7 @@ final class ReceiverMethodReturnResolver
     {
         return $this->runsModelFilter($class, $methodName)
             || (is_a($class, Model::class, true)
-                && $this->resolveOn($class, $methodName, false, null, self::held($class)) === null);
+                && $this->resolveOn($class, $methodName, false, null, RuntimeClass::held($class)) === null);
     }
 
     /**
@@ -231,16 +231,6 @@ final class ReceiverMethodReturnResolver
         DependencyRecorder::recordClass($class);
 
         return $this->modelRule($class, $methodName) !== null;
-    }
-
-    /**
-     * The runtime class of an object the code holds: only assumed, since the object may be a subclass of the class.
-     *
-     * @param  class-string  $class
-     */
-    private static function held(string $class): RuntimeClass
-    {
-        return RuntimeClass::assumed(new ReflectionClass($class));
     }
 
     /**
@@ -513,7 +503,7 @@ final class ReceiverMethodReturnResolver
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
-            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site, self::held($forwarded));
+            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site, RuntimeClass::held($forwarded));
         }
 
         $method = new ReflectionMethod($class, $methodName);

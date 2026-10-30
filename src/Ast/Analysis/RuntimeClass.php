@@ -44,6 +44,16 @@ final readonly class RuntimeClass
     }
 
     /**
+     * The runtime class of an object the code holds as an instance of a class: assumed, since it may be a subclass.
+     *
+     * @param  class-string  $class
+     */
+    public static function held(string $class): self
+    {
+        return self::assumed(new ReflectionClass($class));
+    }
+
+    /**
      * The runtime class of an object the container fills: known only for a final class, since the container may bind
      * a subclass in place of any other.
      *

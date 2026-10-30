@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 
@@ -355,4 +358,18 @@ test('reset drops every answer', function () use ($counting) {
     $memo->reset();
 
     expect($memo->remember('k', $counting($runs)))->toBe(2);
+});
+
+// A call that forwards nothing binds `static` to the class it names, so its read is that class's own, under one key.
+test('keys a static call through a class\'s name that forwards nothing as a read of that class itself', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $memo->reset();
+    $published = publishedResourceKeyTypes(SevenHelperLevelResource::class, Post::class);
+    $computed = $memo->computations();
+    $own = resolve(MethodReturnTypeResolver::class)->resolve(BaseHelperLevelResource::class, 'staticConst');
+
+    expect($published['static_named'])->toBe('string')
+        ->and($own['type'] ?? null)->toBe('string')
+        ->and($memo->computations())->toBe($computed)
+        ->and(new SevenHelperLevelResource(new Post)->resolve(request())['static_named'])->toBe('base');
 });

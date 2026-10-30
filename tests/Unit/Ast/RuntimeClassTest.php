@@ -24,6 +24,12 @@ it('keys a runtime class apart from the class read only where it differs, and an
     ])->toBe(['', '@assumed']);
 });
 
+it('holds an object of a class as only assumed to be that class', function () {
+    expect(RuntimeClass::held(Post::class))
+        ->class->getName()->toBe(Post::class)
+        ->known->toBeFalse();
+});
+
 it('carries whether it is known onto another class', function () {
     $post = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);

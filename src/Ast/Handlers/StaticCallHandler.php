@@ -257,14 +257,13 @@ final class StaticCallHandler implements ExpressionHandler
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
             $site = new CallSite($call, $scope, $engine);
-            $forwards = $scope->forwardsRuntimeClass($call, $className, $methodName);
+            // A call that forwards nothing binds `static` to the class it names, as a read of that class does.
+            $runtime = $scope->forwardsRuntimeClass($call, $className, $methodName)
+                ? $scope->runtime
+                : RuntimeClass::known(new ReflectionClass($className));
 
-            return resolve(MethodReturnTypeResolver::class)->resolve(
-                $className,
-                $methodName,
-                $site,
-                runtime: $forwards ? $scope->runtime : RuntimeClass::assumed(new ReflectionClass($className)),
-            ) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName, $site, runtime: $runtime)
+                ?? $result;
         }
 
         return $result;

@@ -94,7 +94,7 @@ final class SubjectMethodTypeResolver
 
         return $receiverRules->typesModelMethod($class, $methodName)
             ? $receiverRules->resolve(ReceiverType::of($class), $methodName, $scope)
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: RuntimeClass::assumed(new ReflectionClass($class)));
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: RuntimeClass::held($class));
     }
 
     /**
