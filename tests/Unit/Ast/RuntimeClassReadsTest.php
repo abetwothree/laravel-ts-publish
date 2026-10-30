@@ -7,7 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedTagsResource;
@@ -91,23 +90,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverHolderChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ViewCountingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ViewCountingResource;
 use Illuminate\Http\Resources\Json\JsonResource;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Http\Resources\NoticeResource;
 use Workbench\App\Http\Resources\TagBoardResource;
 use Workbench\App\Http\Resources\TieredNoticeResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PanelPayload;
 use Workbench\App\ValueObjects\TraitPanelPayload;
-
-/** Parse one `$this->m()` call written as a statement. */
-function runtimeClassCall(string $php): Expr
-{
-    $statement = new AstParser()->parseSource('<?php '.$php.';')[0];
-    assert($statement instanceof Expression);
-
-    return $statement->expr;
-}
 
 /**
  * What StaticSyntaxResource sends over a fresh Post, its inherited `toArray()` run as PHP runs it.

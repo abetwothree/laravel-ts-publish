@@ -611,6 +611,15 @@ it('reaches an ancestor\'s private member on the runtime class, since the declar
         ->and($scope->thisMemberClass('secret', false))->toBe($child);
 });
 
+// A named class or `$var::` reaches a class only the caller can name; `self::` reaches the declaring class.
+it('binds no class for a named or variable static call, leaving the fallback to the caller', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    expect($scope->staticCallClass(runtimeClassCall('Foo::bar()')))->toBeNull()
+        ->and($scope->staticCallClass(runtimeClassCall('$x::bar()')))->toBeNull()
+        ->and($scope->staticCallClass(runtimeClassCall('self::bar()'))?->getName())->toBe(PostResource::class);
+});
+
 // A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
 it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
     $panel = new ReflectionClass(PanelPayload::class);

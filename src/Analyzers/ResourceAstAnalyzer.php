@@ -1458,9 +1458,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->class instanceof Name
                 && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
                 && $item->value->name instanceof Identifier
-                && $this->scope->staticCallClass($item->value)->hasMethod($item->value->name->toString())
+                && ($on = $this->scope->staticCallClass($item->value)) !== null
+                && $on->hasMethod($item->value->name->toString())
             ) {
-                $on = $this->scope->staticCallClass($item->value);
                 $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value, $on));
 
                 continue;

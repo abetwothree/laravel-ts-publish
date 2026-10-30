@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -15,6 +16,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Stmt\Expression;
 
 uses(TestCase::class)->in(__DIR__);
 
@@ -191,4 +193,13 @@ function partialReload(string $component, string $only): Request
     $request->headers->set('X-Inertia-Partial-Data', $only);
 
     return $request;
+}
+
+/** Parse one call, such as `$this->m()` or `self::m()`, written as a statement. */
+function runtimeClassCall(string $php): Expr
+{
+    $statement = new AstParser()->parseSource('<?php '.$php.';')[0];
+    assert($statement instanceof Expression);
+
+    return $statement->expr;
 }

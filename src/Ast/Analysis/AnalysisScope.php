@@ -619,20 +619,20 @@ final class AnalysisScope
     }
 
     /**
-     * The class a static-syntax call on the subject reaches from the body under analysis: `$this::` and `static::`
-     * the runtime class, since PHP looks such a call up there with no private rule; `self::` the declaring class,
-     * `parent::` its parent, or the subject where it has none; a name the subject.
+     * The class a static-syntax call reaches from the body under analysis: `$this::` and `static::` the runtime class,
+     * since PHP looks such a call up there with no private rule; `self::` the declaring class, `parent::` its parent.
+     * Null for a named class, a `$var::` and a `parent` the declaring class lacks, so each caller says what they reach.
      *
-     * @return ReflectionClass<object>
+     * @return ReflectionClass<object>|null
      */
-    public function staticCallClass(StaticCall $call): ReflectionClass
+    public function staticCallClass(StaticCall $call): ?ReflectionClass
     {
         $class = $call->class;
 
         return match (true) {
-            $class instanceof Variable => $class->name === 'this' ? $this->runtime->class : $this->subjectReflection,
-            $class instanceof Name => $this->relativeClass($class) ?? $this->subjectReflection,
-            default => $this->subjectReflection,
+            $class instanceof Variable && $class->name === 'this' => $this->runtime->class,
+            $class instanceof Name => $this->relativeClass($class),
+            default => null,
         };
     }
 

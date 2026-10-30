@@ -198,8 +198,9 @@ final class ReceiverClassResolver
 
         $method = $call->name->toString();
 
+        // A named class sendsToSubjectCall() admits is the subject's own name.
         if ($this->sendsToSubjectCall($call, $scope)) {
-            return $this->fromThisMethodCall($method, $scope, $scope->staticCallClass($call));
+            return $this->fromThisMethodCall($method, $scope, $scope->staticCallClass($call) ?? $scope->subjectReflection);
         }
 
         $receiver = $this->resolveStaticReceiver($call, $scope);
@@ -232,7 +233,6 @@ final class ReceiverClassResolver
         }
 
         $method = $call->name->toString();
-        $reached = $scope->staticCallClass($call);
         $class = $call->class;
         $onSubject = match (true) {
             $class instanceof Variable => $class->name === 'this',
@@ -241,8 +241,14 @@ final class ReceiverClassResolver
             default => $class->toString() === $scope->subjectReflection->getName(),
         };
 
-        return $onSubject
-            && ! $reached->hasMethod($method)
+        if (! $onSubject) {
+            return false;
+        }
+
+        // The one named class that reaches this far is the subject's own name.
+        $reached = $scope->staticCallClass($call) ?? $scope->subjectReflection;
+
+        return ! $reached->hasMethod($method)
             && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($reached, $method));
     }
 
