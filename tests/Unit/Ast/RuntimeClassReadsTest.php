@@ -49,11 +49,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHelperPostRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfHelperPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\ResourceMacroServiceProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AbstractSpreadBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AppendedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
@@ -74,8 +76,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PrivateSpreadBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReboundImportPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReorderedTagsPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SerializingSpreadChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SpreadingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SwappedPairPayload;
@@ -988,4 +993,23 @@ it('leaves a new of the framework parent unknown, while parent::make() builds th
         ->and($sent['resolved'])->toBe(['id' => 1, 'title' => 'x'])
         ->and($sent['made'])->toBeInstanceOf(NewParentResource::class)
         ->and($sent['listed']->collects)->toBe(NewParentResource::class);
+});
+
+it('spreads parent::m() as the declaring class\'s parent runs it, in a value object and in a resource', function () {
+    expect(analyzedKeyTypes(SpreadingChild::class))->toBe(['g' => 'number', 'b' => 'boolean', 'c' => 'string', 'sg' => 'number'])
+        ->and(json_encode(new SpreadingChild()->toArray()))->toBe('{"g":1,"b":true,"c":"x","sg":1}')
+        ->and(publishedResourceKeyTypes(SpreadingChildResource::class, Post::class))->toBe(['g' => 'number', 'ge' => 'number', 'b' => 'boolean'])
+        ->and(json_encode((new SpreadingChildResource(null))->resolve(request())))->toBe('{"g":1,"ge":1,"b":true}');
+});
+
+it('spreads no key from a parent method PHP cannot call through parent::', function () {
+    expect(analyzedKeyTypes(PrivateSpreadBase::class))->toBe(['k' => 'number'])
+        ->and(fn () => new PrivateSpreadBase()->toArray())->toThrow(Error::class);
+});
+
+it('reads no key from an abstract parent method or a Laravel trait\'s through parent::, in a helper read as a value', function () {
+    expect(analyzedKeyTypes(AbstractSpreadBase::class))->toBe(['v' => '{ k: number }'])
+        ->and(fn () => new AbstractSpreadBase()->toArray())->toThrow(Error::class)
+        ->and(analyzedKeyTypes(SerializingSpreadChild::class))->toBe(['v' => '{ k: number }'])
+        ->and(json_encode(new SerializingSpreadChild()->toArray()))->toBe('{"v":{"k":1}}');
 });

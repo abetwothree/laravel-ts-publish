@@ -34,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -847,7 +848,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The method a `parent::` call names when the analyzer reads it: the analyzed method itself, or, in an API
+     * The method a `parent::` call names when analyzeParentCall() reads it: the analyzed method itself, or, in an API
      * resource, one of FRAMEWORK_READS.
      */
     protected function readParentCall(Expr $expr): ?string
@@ -1337,6 +1338,33 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * The class a `self::`, `static::` or `parent::` spread of a method reaches, where it declares that method; through
+     * `parent::` only a body PHP runs there, not a private or abstract one, which throws, nor one Laravel declares.
+     *
+     * @return ReflectionClass<object>|null
+     */
+    private function relativeSpreadClass(StaticCall $call, string $method): ?ReflectionClass
+    {
+        $relative = $call->class instanceof Name ? $call->class->toLowerString() : null;
+        $on = in_array($relative, ['self', 'static', 'parent'], true) ? $this->scope->staticCallClass($call) : null;
+
+        if ($on === null || ! $on->hasMethod($method)) {
+            return null;
+        }
+
+        if ($relative !== 'parent') {
+            return $on;
+        }
+
+        $reached = $on->getMethod($method);
+
+        return $reached->isPrivate() || $reached->isAbstract()
+            || FrameworkClasses::is(LaravelTsPublish::methodDeclaringFileClass($reached)->getName())
+                ? null
+                : $on;
+    }
+
+    /**
      * What a spread method's returns build, read in its own bindings: each return a branch, else the first return.
      *
      * @param  array<Node\Stmt>  $stmts
@@ -1442,14 +1470,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            // ...self::helper() or ...static::helper() spreads the method the call reaches, as ...$this->helper() does.
+            // ...self::helper(), ...static::helper() or ...parent::helper() spreads the method the call reaches, as
+            // ...$this->helper() does.
             if ($item->key === null && $item->unpack
                 && $item->value instanceof StaticCall
-                && $item->value->class instanceof Name
-                && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
                 && $item->value->name instanceof Identifier
-                && ($on = $this->scope->staticCallClass($item->value)) !== null
-                && $on->hasMethod($item->value->name->toString())
+                && ($on = $this->relativeSpreadClass($item->value, $item->value->name->toString())) !== null
             ) {
                 $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value, $on));
 
