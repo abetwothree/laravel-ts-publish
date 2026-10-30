@@ -83,7 +83,7 @@ final class SubjectHelperReturnResolver
         $rewritten = $this->rewrittenThisPaths($stmts, $scope);
 
         $result = $scope->within(function () use ($scope, $method, $proofs, $rewritten, $passed, $stmts): void {
-            $scope->enterSubjectMethod($method, $proofs, $rewritten);
+            $scope->enterMethod($method, $proofs, $rewritten);
             resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
             $this->seedBody($stmts, $scope);
         }, fn (): array => ValueResult::analyzeClosureUnion($returns, $engine, $scope));

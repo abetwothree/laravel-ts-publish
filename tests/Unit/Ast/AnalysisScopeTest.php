@@ -285,7 +285,7 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
     $scope->copyBindings(new Variable('item', ['startFilePos' => 5]), 'param', $captured);
     $claimed = array_keys($scope->varGuardBindings);
     $inside = $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
         fn (): array => $scope->varGuardBindings,
     );
 
@@ -525,7 +525,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     'an enter that throws' => ['enter'],
 ])->with(analysisScopeRestoredBools());
 
-// within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
+// within() puts back each field enterMethod() set aside, the body's own writes included.
 it('restores every field a subject method read sets aside', function () {
     $scope = analysisScopeWithEveryTableBound();
     $scope->resolvingLocalVars = ['item' => true];
@@ -535,7 +535,7 @@ it('restores every field a subject method read sets aside', function () {
     $inside = [];
 
     $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(Post::class, 'publishable'), $proofs),
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(Post::class, 'publishable'), $proofs),
         function () use ($scope, &$inside): void {
             $inside = [
                 $scope->nameBindings(),
@@ -568,7 +568,7 @@ it('restores the declaring class with the rest of the state', function (string $
     $inside = [];
 
     $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod($subject, $method), []),
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod($subject, $method), []),
         function () use ($scope, &$inside): void {
             $inside = [
                 $scope->declaringClass->getName(),
@@ -655,7 +655,7 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     $before = $scope->narrowedReads;
 
     $inside = $scope->within(
-        fn (AnalysisScope $entered) => $entered->enterSubjectMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
         fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
     );
 

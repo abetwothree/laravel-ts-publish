@@ -186,7 +186,7 @@ docblocks say what each binding table holds. These eight facts span other classe
   its `method-return:` key gains `@backing:<model>`.
 - **`varGuardBindings` reserves `PROXY_GUARDS`**: the proofs on an API resource's `$this->resource` sit under the key
   `'$this->resource'`, which no variable spells, so no parameter claim or `copyBindings()` reaches them, and
-  `enterSubjectMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
+  `enterMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
   holds, is a stack, not a name table, so `nameBindings()` leaves it out. It and `provenProxy` reach a subject method's
   body, except a path the body writes whole or one that runs through such a path, and neither does once the body
   replaces `$this->resource` (`CollectsInstanceofGuards::rewrittenThisPaths()`).
@@ -242,7 +242,7 @@ believes it wrote, and a new ambient field joins `within()`'s list, which `Analy
 
 A closure a call passes values to, such as a conditional's value, a `map()` callback or a merge closure, is read through
 `readClaimedClosure()`, which claims its parameters inside `within()`. A subject method's body is read with
-`enterSubjectMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
+`enterMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
 restores one name's entry. State outside the scope saves and restores itself the same way: the analyzer's walk notes and
 `readsKeylessAttributeNames`, `DroppedUnionArms::$held` and `AnalysisMemo`'s frames.
 `ResolvesModelRelationTypes::bindForeachLoopVariables()` takes no snapshot, because a `foreach` binding holds for the
@@ -330,7 +330,7 @@ says, and a write holding fewer of a declared union's classes ends it as well. I
 before its own `$x = …;` and gives way to the written value past it. The binding reads only the
 declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds each
 parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`) to what
-its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterSubjectMethod()`
+its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterMethod()`
 sets the caller's tables aside. A value read keys its memo on what the call binds ([The run memo replays what it
 recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
 keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,

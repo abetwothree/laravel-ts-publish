@@ -907,7 +907,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
         $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $proofs, $rewritten, $stmts, $passed): void {
-            $scope->enterSubjectMethod($method, $proofs, $rewritten);
+            $scope->enterMethod($method, $proofs, $rewritten);
             // The helper's body is seeded with its own locals, whatever local read the caller is in.
             $scope->readingLocals = [];
             $this->seedVarBindings($method, $stmts, $passed);

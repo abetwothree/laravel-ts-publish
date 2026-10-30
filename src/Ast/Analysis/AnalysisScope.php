@@ -1005,14 +1005,13 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read $method, a method `$this` reaches, as within()'s $enter: no caller name
-     * reaches its body, which reads its own file's imports and its own declaring class, and only $proofs of `$this`
-     * reads hold.
+     * Set the caller's state aside to read any method's body, as within()'s $enter: no caller name reaches the body,
+     * which reads its own file's imports and its own declaring class, and only $proofs of `$this` reads hold.
      *
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
      */
-    public function enterSubjectMethod(ReflectionMethod $method, array $proofs, array $rewritten = []): void
+    public function enterMethod(ReflectionMethod $method, array $proofs, array $rewritten = []): void
     {
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);

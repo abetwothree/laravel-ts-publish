@@ -95,7 +95,7 @@ every profile, the order handlers run in decides which one answers; see
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
-  spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
+  spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterMethod()`, keeping only
   the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
   `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's
   parameters, and what the call passes them through `CallSite::passedTo()`, as
