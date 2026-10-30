@@ -535,8 +535,8 @@ since `$this` there is never the object. One a closure or arrow function in the 
 closure may never run, read in that closure's scope: its declared parameters through `ParameterBinder::bindClosure()`,
 its body's locals and, for a closure, only its imports, as the method held them there, which leaves a by-reference
 import `unknown`; it declines where that read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped
-parameter does, or reads an import that a closure it passes through reassigns, which the scope reads as that later
-local. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
+parameter does, or reads an import that a closure it passes through reassigns anywhere in its body, which the scope
+reads as that assignment's value wherever the read sits. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
 application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
 which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
 `next()`, `prev()` and `reset()`. A value naming `static` is typed against the scope's runtime class where it is known,
