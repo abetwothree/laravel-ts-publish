@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
@@ -823,4 +824,16 @@ it("imports a docblock-typed accessor's class and override on a page", function 
         ->and($sent->uploader)->toBeNull()
         ->and($sent->gauge_from_docblock)->toBeObject()->kind->toBe('node')
         ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+it('types the route-bound reads #86 lists, as Inertia sends them', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $author->id]);
+
+    expect(pageData(RouteBoundReadsController::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status>, authorPosts: number, comments: number, fresh: Post | null }')
+        ->and($sent = inertiaProps(new RouteBoundReadsController()->show($post)))
+        ->and([$sent->status->name, $sent->authorPosts, $sent->comments, $sent->fresh->id])
+        ->toBe([$post->status->name, 1, 1, $post->id]);
 });
