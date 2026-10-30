@@ -37,6 +37,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedFilterSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedWithSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OtherChainResource;
@@ -706,7 +708,7 @@ it('publishes the list a resource sends a copy of an untyped array a whole write
     );
 });
 
-// A plain class sends a list only where the keys run 0, 1, …, as keys from 5 on, or a named key always held, never do.
+// A plain class sends a list only where the keys run 0, 1, …; keys from 5 on, or a named key always held, never do.
 it('keeps the numbered keys of an untyped array a plain class can never send as a list', function () {
     $payload = fn (): NumberedTagsPayload => new NumberedTagsPayload;
 
@@ -1119,6 +1121,17 @@ it('reads no key from a parent:: spread whose read meets an own-method spread re
         ->and(json_encode(new OpaqueSpreadLiteral()->toArray()))->toBe('{"w":{"o":"x"}}')
         ->and(analyzedKeyTypes(OpaqueSpreadValue::class))->toBe([])
         ->and(json_encode(new OpaqueSpreadValue()->toArray()))->toBe('{"v":{"o":"x"}}');
+});
+
+// No `$with` default a method writes is read, nor an `only()` key list held in a variable, so both spreads are unread.
+it('reads no key from a parent:: spread whose nested array spreads a parent:: call or an only() no arm reads', function () {
+    $post = new Post(['title' => 'hi']);
+
+    expect(publishedResourceKeyTypes(NestedWithSpreadResource::class, Post::class))->toBe([])
+        ->and(json_encode((new NestedWithSpreadResource($post))->resolve(request())))->toBe('{"w":{"k":1}}')
+        ->and(json_encode((new NestedWithSpreadResource($post))->tag()->resolve(request())))->toBe('{"w":{"k":"x"}}')
+        ->and(publishedResourceKeyTypes(NestedFilterSpreadResource::class, Post::class))->toBe([])
+        ->and(json_encode((new NestedFilterSpreadResource($post))->resolve(request())))->toBe('{"w":{"title":"hi"}}');
 });
 
 it('adds no key from a declined parent:: spread that re-entered its cycle, rather than re-read it without end', function () {
