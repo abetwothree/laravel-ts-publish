@@ -62,6 +62,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ChainedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CyclingOverwriteTop;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CyclingOverwriteValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CyclingSpreadBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
@@ -75,8 +77,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadArgument;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadChained;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadDeeper;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadDelegated;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadHelper;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadLiteral;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNested;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNestedValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadTop;
@@ -121,6 +127,35 @@ use Workbench\App\ValueObjects\TraitPanelPayload;
 function staticSyntaxResponse(): array
 {
     return (new StaticSyntaxResource(new Post))->resolve(request());
+}
+
+/**
+ * The keys a class publishes, read under an alarm where pcntl has one, so a read that never ends fails the test after
+ * `$seconds` instead of hanging the suite.
+ *
+ * @param  class-string  $class
+ * @return array<string, string>
+ */
+function analyzedKeyTypesWithin(int $seconds, string $class): array
+{
+    if (! function_exists('pcntl_alarm')) {
+        return analyzedKeyTypes($class);
+    }
+
+    $async = pcntl_async_signals(true);
+    pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
+    pcntl_alarm($seconds);
+
+    try {
+        return analyzedKeyTypes($class);
+    } catch (Throwable $runaway) {
+        // Rethrown without its trace, which a runaway read leaves deep enough to stall the failure report.
+        throw new RuntimeException("Reading {$class} did not end: {$runaway->getMessage()}");
+    } finally {
+        pcntl_alarm(0);
+        pcntl_signal(SIGALRM, SIG_DFL);
+        pcntl_async_signals($async);
+    }
 }
 
 it('reads a method an inherited body calls on the runtime class', function () {
@@ -1037,7 +1072,7 @@ it('reads a parent:: spread a helper reads only partly as the release did, in a 
 });
 
 it('ends a parent:: spread that reaches back into a method it is reading', function () {
-    expect(analyzedKeyTypes(CyclingSpreadBase::class))->toBe(['b?' => 'number', 'g' => 'number'])
+    expect(analyzedKeyTypesWithin(10, CyclingSpreadBase::class))->toBe(['b?' => 'number', 'g' => 'number'])
         ->and(json_encode(new CyclingSpreadBase()->toArray()))->toBe('{"g":1,"b":1}');
 });
 
@@ -1056,4 +1091,24 @@ it('reads no key from a parent:: spread whose body holds a spread no arm reads',
         ->and(json_encode(new OverwrittenSpreadValue()->toArray()))->toBe('{"v":{"k":1,"a":"x"}}')
         ->and(analyzedKeyTypes(OverwrittenSpreadNestedValue::class))->toBe(['v' => '{ k: number }'])
         ->and(json_encode(new OverwrittenSpreadNestedValue()->toArray()))->toBe('{"v":{"k":1,"a":"x"}}');
+});
+
+// The decline holds wherever the overwrite sits: a nested array, an argument the body binds, or a helper it reads as a
+// value, each of which the spread's own analysis never sees.
+it('reads no key from a parent:: spread whose read meets a spread no arm reads at any depth', function () {
+    expect(analyzedKeyTypes(OverwrittenSpreadLiteral::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadLiteral()->toArray()))->toBe('{"v":{"k":"x"},"b":true}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadDeeper::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadDeeper()->toArray()))->toBe('{"v":{"w":{"k":"x"}},"b":true}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadArgument::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadArgument()->toArray()))->toBe('{"v":{"k":"x"},"b":true}')
+        ->and(analyzedKeyTypes(OverwrittenSpreadHelper::class))->toBe([])
+        ->and(json_encode(new OverwrittenSpreadHelper()->toArray()))->toBe('{"w":{"a":"x"},"b":true}');
+});
+
+it('adds no key from a declined parent:: spread that re-entered its cycle, rather than re-read it without end', function () {
+    expect(analyzedKeyTypesWithin(10, CyclingOverwriteTop::class))->toBe([])
+        ->and(json_encode(new CyclingOverwriteTop()->toArray()))->toBe('{"g":"x","b":1}')
+        ->and(analyzedKeyTypesWithin(10, CyclingOverwriteValue::class))->toBe(['v' => '{ k: number }'])
+        ->and(json_encode(new CyclingOverwriteValue()->toArray()))->toBe('{"v":{"k":1,"g":"x","b":1}}');
 });

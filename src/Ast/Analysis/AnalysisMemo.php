@@ -13,8 +13,8 @@ use LogicException;
 
 /**
  * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
- * computing it again could not differ, and a reuse replays the cache dependencies and dropped union arms it recorded,
- * so the generation cache and the accessor `null` rule see what a fresh run would have shown them.
+ * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms and unread
+ * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
@@ -22,6 +22,7 @@ use LogicException;
  *     pathMark: int,
  *     recording: bool,
  *     dropped: int,
+ *     unreadSpreads: int,
  *     reentries: int,
  *     resources: int,
  *     models: int,
@@ -34,6 +35,7 @@ use LogicException;
  *     paths: list<string>,
  *     recording: bool,
  *     dropped: int,
+ *     unreadSpreads: int,
  *     reentries: int|null,
  *     resources: int,
  *     models: int,
@@ -238,6 +240,7 @@ final class AnalysisMemo
             'pathMark' => DependencyRecorder::mark(),
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
+            'unreadSpreads' => UnreadSpreads::count(),
             'reentries' => $this->reentries,
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
@@ -327,6 +330,7 @@ final class AnalysisMemo
         }
 
         DroppedUnionArms::replay($entry['dropped']);
+        UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
 
         $innermost = array_key_last($this->frames);
@@ -373,6 +377,7 @@ final class AnalysisMemo
             'paths' => array_values(array_unique($paths)),
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
+            'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],
             'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
             'resources' => $frame['resources'],
             'models' => $frame['models'],

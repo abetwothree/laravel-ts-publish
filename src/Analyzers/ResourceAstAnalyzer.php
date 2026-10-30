@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -150,8 +151,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
     private bool $returnedWhole = true;
 
-    /** How many `parent::` spread reads enclose this one; inside one, a spread item no arm reads leaves it unread. */
-    private int $parentSpreadDepth = 0;
+    /** How often a `parent::` spread re-entered a method on the stack, so a read that met one can tell. */
+    private int $spreadReentries = 0;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -1343,8 +1344,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * What a `self::`, `static::` or `parent::` spread of a method adds, null where relativeSpreadClass() reaches none.
-     * A `parent::` spread read only partly is null too, so the arms below read it as the release did: its unread keys,
-     * or its first return's alone, would publish the array around it less specific, or narrower than PHP sends it.
+     * A `parent::` spread read only partly, or whose read met a spread item no arm reads at any depth, is null too, so
+     * the arms below read it as the release did; with a re-entry of the cycle in it, it adds no key instead.
      */
     private function relativeMethodSpread(StaticCall $call, string $method, bool $topLevel): ?ResourceAnalysis
     {
@@ -1360,21 +1361,35 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // A re-entry adds no key: falling through, the arms below would re-read the cycle without end.
         if ($this->scope->readsSpreadMethod($on->getMethod($method))) {
+            $this->spreadReentries++;
+
             return new ResourceAnalysis;
         }
 
-        $this->parentSpreadDepth++;
+        $unread = UnreadSpreads::count();
+        $reentries = $this->spreadReentries;
 
-        try {
-            $spread = DroppedUnionArms::provisional(
-                fn (): ResourceAnalysis => $this->ownMethodSpread($method, $topLevel, $call, $on),
-                static fn (ResourceAnalysis $read): bool => $read->readsCompletely,
-            );
-        } finally {
-            $this->parentSpreadDepth--;
+        [$spread, $readFully] = DroppedUnionArms::provisional(
+            function () use ($method, $topLevel, $call, $on, $unread): array {
+                $spread = $this->ownMethodSpread($method, $topLevel, $call, $on);
+
+                return [$spread, $spread->readsCompletely && UnreadSpreads::count() === $unread];
+            },
+            static fn (array $read): bool => $read[1],
+        );
+
+        if ($readFully) {
+            return $spread;
         }
 
-        return $spread->readsCompletely ? $spread : null;
+        if ($this->spreadReentries === $reentries) {
+            return null;
+        }
+
+        // PHP writes keys there that this adds none of, so a `parent::` spread around it declines too.
+        UnreadSpreads::record();
+
+        return new ResourceAnalysis;
     }
 
     /**
@@ -1405,17 +1420,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         return $on;
-    }
-
-    /**
-     * Leave a `parent::` spread's read incomplete at a spread item no arm reads, which may write any key, an earlier
-     * one included, so relativeMethodSpread() declines the read as the release read it.
-     */
-    private function skipUnreadSpread(ResourceAnalysis $analysis): void
-    {
-        if ($this->parentSpreadDepth > 0) {
-            $analysis->readsCompletely = false;
-        }
     }
 
     /**
@@ -1485,7 +1489,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 if ($parentAnalysis !== null) {
                     $analysis->merge($parentAnalysis);
                 } else {
-                    $this->skipUnreadSpread($analysis);
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1500,7 +1504,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 if ($filterAnalysis !== null) {
                     $analysis->merge($filterAnalysis);
                 } else {
-                    $this->skipUnreadSpread($analysis);
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1550,7 +1554,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 if ($funcName !== null && $this->scope->declaringClass->hasMethod($funcName)) {
                     $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
                 } else {
-                    $this->skipUnreadSpread($analysis);
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1570,7 +1574,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             // Handle $this->merge([...]) or $this->mergeWhen(condition, [...]); no arm reads a spread reaching here.
             if ($item->key === null && $item->value instanceof MethodCall) {
                 if ($item->unpack) {
-                    $this->skipUnreadSpread($analysis);
+                    UnreadSpreads::record();
                 }
 
                 $mergeResult = $this->analyzeMergeExpression($item->value);
@@ -1584,7 +1588,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
             if ($item->key === null) {
                 if ($item->unpack) {
-                    $this->skipUnreadSpread($analysis);
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -2010,7 +2014,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
-        $analyzer->parentSpreadDepth = $this->parentSpreadDepth;
 
         return $analyzer;
     }
