@@ -37,7 +37,7 @@ function byReferenceArgumentsOf(string $statement, ?ReflectionClass $runtime = n
 
     return array_map(
         fn ($argument): string => $printer->prettyPrintExpr($argument),
-        resolve(ByReferenceArguments::class)->of($call, $passed, $runtime, $declaring ?? $runtime),
+        resolve(ByReferenceArguments::class)->of($call, $passed, $declaring ?? $runtime, $runtime),
     );
 }
 

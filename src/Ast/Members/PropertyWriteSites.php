@@ -291,7 +291,7 @@ final class PropertyWriteSites
 
         // Only a call passing the property pays for reflecting its callee.
         /** @var list<Arg> $hits */
-        return resolve(ByReferenceArguments::class)->of($node, $hits, $class, $self) !== [];
+        return resolve(ByReferenceArguments::class)->of($node, $hits, $self, $class) !== [];
     }
 
     /**

@@ -352,7 +352,7 @@ final class VariableWrites
 
             return $passed === []
                 ? []
-                : resolve(ByReferenceArguments::class)->of($node, $passed, $runtime, $declaring);
+                : resolve(ByReferenceArguments::class)->of($node, $passed, $declaring, $runtime);
         }
 
         $targets = match (true) {
