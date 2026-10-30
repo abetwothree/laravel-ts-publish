@@ -83,6 +83,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadDe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadDelegated;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadHelper;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadLiteral;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadMemoized;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNested;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadNestedValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverwrittenSpreadTop;
@@ -138,13 +139,14 @@ function staticSyntaxResponse(): array
  */
 function analyzedKeyTypesWithin(int $seconds, string $class): array
 {
-    if (! function_exists('pcntl_alarm')) {
-        return analyzedKeyTypes($class);
-    }
+    $alarms = function_exists('pcntl_alarm');
+    $async = $alarms && pcntl_async_signals(true);
+    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : SIG_DFL;
 
-    $async = pcntl_async_signals(true);
-    pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
-    pcntl_alarm($seconds);
+    if ($alarms) {
+        pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
+        pcntl_alarm($seconds);
+    }
 
     try {
         return analyzedKeyTypes($class);
@@ -152,9 +154,11 @@ function analyzedKeyTypesWithin(int $seconds, string $class): array
         // Rethrown without its trace, which a runaway read leaves deep enough to stall the failure report.
         throw new RuntimeException("Reading {$class} did not end: {$runaway->getMessage()}");
     } finally {
-        pcntl_alarm(0);
-        pcntl_signal(SIGALRM, SIG_DFL);
-        pcntl_async_signals($async);
+        if ($alarms) {
+            pcntl_alarm(0);
+            pcntl_signal(SIGALRM, $handler);
+            pcntl_async_signals($async);
+        }
     }
 }
 
@@ -1111,4 +1115,11 @@ it('adds no key from a declined parent:: spread that re-entered its cycle, rathe
         ->and(json_encode(new CyclingOverwriteTop()->toArray()))->toBe('{"g":"x","b":1}')
         ->and(analyzedKeyTypesWithin(10, CyclingOverwriteValue::class))->toBe(['v' => '{ k: number }'])
         ->and(json_encode(new CyclingOverwriteValue()->toArray()))->toBe('{"v":{"k":1,"g":"x","b":1}}');
+});
+
+// `m()` is read as a value first, so the helper the spread reaches gets it from the run memo: the replayed count is
+// all that tells the spread its read met the overwrite.
+it('declines a parent:: spread whose helper reuses an answer that met an unread spread', function () {
+    expect(analyzedKeyTypes(OverwrittenSpreadMemoized::class))->toBe(['x' => '{ a: number }'])
+        ->and(json_encode(new OverwrittenSpreadMemoized()->toArray()))->toBe('{"x":{"a":"x"},"w":{"a":"x"},"b":true}');
 });
