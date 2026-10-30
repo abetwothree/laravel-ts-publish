@@ -2,6 +2,7 @@
     "preset": "laravel",
     "exclude": [
         "docs/superpowers",
+        "fixture-app",
         "vendor"
     ],
     "rules": {

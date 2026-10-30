@@ -11,6 +11,7 @@
 /patches            export-ignore
 /tests              export-ignore
 /workbench          export-ignore
+/fixture-app        export-ignore
 /.editorconfig      export-ignore
 /.php_cs.dist.php   export-ignore
 /psalm.xml          export-ignore
