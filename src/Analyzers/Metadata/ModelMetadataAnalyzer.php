@@ -112,8 +112,7 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Respell the inferred types so same-named classes alias apart, with the imports they spell: only enum channels,
-     * only for keys inference won, only names still spelled.
+     * Respells the inferred types so same-named enums alias apart, and returns them with the imports they still spell.
      *
      * @param  list<string>  $inferredKeys
      * @param  list<string>  $payloadKeys
@@ -156,22 +155,30 @@ class ModelMetadataAnalyzer
         $declared = ImportMaps::merge($casts, ...array_values(array_intersect_key($result->docblockImports, $payload)));
         $brought = ImportMaps::localNames($declared);
         $members = [];
+        $prefixes = [];
 
         foreach ($inferredKeys as $key) {
-            $prefix = JsEmitter::validJsObjectKey($key, allowIndexSignature: true).': ';
+            $prefixes[$key] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true).': ';
             $queues = FileImportNames::objectQueues($analysis, [$key => $result->types[$key]], brought: $brought);
-            $members[] = ['type' => $prefix.$result->types[$key], ...$queues];
+            $members[] = ['type' => $prefixes[$key].$result->types[$key], ...$queues];
         }
 
-        $file = FileImportNames::compose($members, ImportMaps::merge($analysis->customImports, $declared), $namespacePath);
+        $file = FileImportNames::compose(
+            $members,
+            ImportMaps::merge($analysis->customImports, $declared),
+            $namespacePath,
+        );
         $types = [];
 
         foreach ($inferredKeys as $index => $key) {
             // The key's own text leads each member and no alias touches it, so what follows is the respelled type.
-            $types[$key] = substr($file['types'][$index], strlen(JsEmitter::validJsObjectKey($key, allowIndexSignature: true)) + 2);
+            $types[$key] = substr($file['types'][$index], strlen($prefixes[$key]));
         }
 
-        return ['types' => $types, 'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath)];
+        return [
+            'types' => $types,
+            'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath),
+        ];
     }
 
     /**

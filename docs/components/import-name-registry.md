@@ -135,8 +135,8 @@ imports bring (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, s
 
 A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
 [marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the
-same name is aliased and the composed type never is. Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
-composed classes with one basename
+same name is aliased and the composed type never is. Nor is one composed name aliased against another:
+`Runner::warnOfSharedComposedNames()` warns of a file reading two composed classes with one basename
 ([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same

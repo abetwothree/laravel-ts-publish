@@ -92,11 +92,9 @@ types need, in five steps:
 2. It clears `modelFqcns` and `nestedResources`. A metadata value need not satisfy a model interface, so a model-typed
    value keeps failing the token check instead of importing a model.
 3. It prunes each enum channel whose key the docblock or a cast overrode, or the payload never returned.
-4. It composes one member per inferred key, with the names its casts and docblock keys import reserved, so two
-   same-named enums alias apart. It respells the types and keeps only the names they still spell. A companion emits
+4. It composes one member per inferred key through `FileImportNames`, so same-named enums alias apart. A companion emits
    `import type` lines only, so `AsEnum` value imports are ignored.
-5. It takes the cast and docblock imports back out, which the transformer merges itself, and files a composed class's
-   names under its marker again.
+5. It leaves the cast and docblock imports to the transformer and keeps a composed class's names under its marker.
 
 Step 3 spares an entry whose key equals its value. `DispatchesFqcnResults` keys an embedded enum by its own FQCN, so a
 two-enum union has no property name to prune by, and step 4 owns those entries. Don't swap that test for
