@@ -12,6 +12,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCha
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\SelfTypedTwin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MacroShadowedPost;
@@ -211,6 +214,17 @@ it('looks a macro up on the class the call reaches, and keeps that answer from a
     expect($macros->resolve($scope, 'ancestorProbe', $scope->declaringClass))->toMatchArray(['type' => 'string'])
         ->and($macros->resolve($scope, 'ancestorProbe'))->toBeNull();
 });
+
+it('reads the macro an ancestor\'s self::m() runs from the runtime class\'s own macro store', function (string $resource) {
+    JsonResource::macro('storeProbe', fn (): string => 'X');
+    MacroStoreResource::macro('storeProbe', fn (): int => 1);
+
+    expect(publishedResourceKeyTypes($resource, Post::class))->toBe(['m' => 'number'])
+        ->and(json_encode(new $resource(null)->resolve(request())))->toBe('{"m":1}');
+})->with([
+    'a runtime class that declares nothing' => [MacroStoreChildResource::class],
+    'a runtime class that declares m()' => [MacroStoreShadowResource::class],
+])->after(fn () => MacroStoreResource::flushMacros());
 
 // Macroable binds a macro to the class it is called on, so a closure's `self` names that class, not the mixin.
 it('reads a macro returning self as the macro\'s scope class', function () {

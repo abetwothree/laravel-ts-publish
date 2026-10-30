@@ -49,16 +49,7 @@ final class MacroCallResolver
      */
     public function macroFor(ReflectionClass $subject, string $method): mixed
     {
-        $class = $subject->getName();
-
-        if ($subject->hasMethod($method) || ! in_array(Macroable::class, class_uses_recursive($class), true)) {
-            return null;
-        }
-
-        /** @var array<string, mixed> $macros */
-        $macros = new ReflectionProperty($class, 'macros')->getValue();
-
-        return $macros[$method] ?? null;
+        return $subject->hasMethod($method) ? null : $this->storedMacro($subject, $method);
     }
 
     /**
@@ -105,8 +96,9 @@ final class MacroCallResolver
      * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class the call reaches,
      * runtime class known or assumed, name and model.
      *
-     * @param  ReflectionClass<object>|null  $on  the class the call reaches, which decides whether a macro runs; null
-     *                                            for `$this->`, which reaches AnalysisScope::thisMemberClass()
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches, which decides whether `__call()` runs; the
+     *                                            runtime class's macros decide what runs. Null for `$this->`, which
+     *                                            reaches AnalysisScope::thisMemberClass()
      * @return ValueExpressionResult|null
      */
     public function resolve(AnalysisScope $scope, string $method, ?ReflectionClass $on = null): ?array
@@ -119,7 +111,10 @@ final class MacroCallResolver
         return resolve(AnalysisMemo::class)->remember(
             'macro:'.$class.'@'.$method.'@'.($modelClass ?? '').$runtime->memoKey($class),
             function () use ($reached, $runtime, $method, $modelClass): ?array {
-                $function = $this->reflect($this->macroFor($reached, $method));
+                // The class reached decides only whether `__call()` runs; its `static::$macros` is the runtime class's,
+                // which keeps a store of its own where it re-uses Macroable.
+                $macro = $reached->hasMethod($method) ? null : $this->storedMacro($runtime->class, $method);
+                $function = $this->reflect($macro);
                 $result = match (true) {
                     // A method macro runs on the object its callable holds, never the subject.
                     $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)->resolve(
@@ -134,6 +129,25 @@ final class MacroCallResolver
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
         );
+    }
+
+    /**
+     * The callable a class's macro store holds under a name, or null where the class is not Macroable.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function storedMacro(ReflectionClass $class, string $method): mixed
+    {
+        $name = $class->getName();
+
+        if (! in_array(Macroable::class, class_uses_recursive($name), true)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $macros */
+        $macros = new ReflectionProperty($name, 'macros')->getValue();
+
+        return $macros[$method] ?? null;
     }
 
     /**
