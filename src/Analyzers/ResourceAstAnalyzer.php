@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
@@ -1338,6 +1339,36 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * What a `self::`, `static::` or `parent::` spread of a method adds, null where relativeSpreadClass() reaches none.
+     * A `parent::` spread read only partly is null too, so the arms below read it as the release did: its unread keys,
+     * or its first return's alone, would publish the array around it less specific, or narrower than PHP sends it.
+     */
+    private function relativeMethodSpread(StaticCall $call, string $method, bool $topLevel): ?ResourceAnalysis
+    {
+        $on = $this->relativeSpreadClass($call, $method);
+
+        if ($on === null) {
+            return null;
+        }
+
+        if (! $this->isParentCallTo($call)) {
+            return $this->ownMethodSpread($method, $topLevel, $call, $on);
+        }
+
+        // PHP never returns from a cycle into a method on the stack, which the arms below would re-enter unbounded.
+        if ($this->scope->readsSpreadMethod($on->getMethod($method))) {
+            return new ResourceAnalysis;
+        }
+
+        $spread = DroppedUnionArms::provisional(
+            fn (): ResourceAnalysis => $this->ownMethodSpread($method, $topLevel, $call, $on),
+            static fn (ResourceAnalysis $read): bool => $read->readsCompletely,
+        );
+
+        return $spread->readsCompletely ? $spread : null;
+    }
+
+    /**
      * The class a `self::`, `static::` or `parent::` spread of a method reaches, where it declares that method; through
      * `parent::` only a body PHP runs there, not a private or abstract one, which throws, nor one Laravel declares.
      *
@@ -1358,10 +1389,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $reached = $on->getMethod($method);
 
-        return $reached->isPrivate() || $reached->isAbstract()
+        if ($reached->isPrivate() || $reached->isAbstract()
             || FrameworkClasses::is(LaravelTsPublish::methodDeclaringFileClass($reached)->getName())
-                ? null
-                : $on;
+        ) {
+            return null;
+        }
+
+        return $on;
     }
 
     /**
@@ -1475,9 +1509,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             if ($item->key === null && $item->unpack
                 && $item->value instanceof StaticCall
                 && $item->value->name instanceof Identifier
-                && ($on = $this->relativeSpreadClass($item->value, $item->value->name->toString())) !== null
+                && ($spread = $this->relativeMethodSpread($item->value, $item->value->name->toString(), $topLevel)) !== null
             ) {
-                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value, $on));
+                $analysis->merge($spread);
 
                 continue;
             }

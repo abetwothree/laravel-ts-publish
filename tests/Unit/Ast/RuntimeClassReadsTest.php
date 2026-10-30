@@ -62,6 +62,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BumpingBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CapturedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ChainedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CoalescedCaptureChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CyclingSpreadBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnclosedWriteChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ExcludedTallyChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FannedHelperPayload;
@@ -76,6 +77,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OverriddenBumpChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PairedWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ParentBumpChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PartlyReadSpreadPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PrivateSpreadBase;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReboundImportPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReorderedTagsPayload;
@@ -1012,4 +1014,23 @@ it('reads no key from an abstract parent method or a Laravel trait\'s through pa
         ->and(fn () => new AbstractSpreadBase()->toArray())->toThrow(Error::class)
         ->and(analyzedKeyTypes(SerializingSpreadChild::class))->toBe(['v' => '{ k: number }'])
         ->and(json_encode(new SerializingSpreadChild()->toArray()))->toBe('{"v":{"k":1}}');
+});
+
+// The release read no such spread, so one read only partly falls back to that reading rather than publish its
+// unread keys, or the first return's keys alone, which PHP sends as `"x"` once `$on` is false.
+it('reads a parent:: spread a helper reads only partly as the release did, in a value', function () {
+    $off = new PartlyReadSpreadPayload;
+    $off->on = false;
+
+    expect(analyzedKeyTypes(PartlyReadSpreadPayload::class))->toBe([
+        'merged' => '{ k: number }', 'picked' => '{ k: number }', 'first' => '{ k: number }',
+    ])->and(json_encode(new PartlyReadSpreadPayload()->toArray()))
+        ->toBe('{"merged":{"k":1,"a":1,"b":2},"picked":{"k":1,"a":1},"first":{"k":1,"a":1}}')
+        ->and(json_encode($off->toArray()))
+        ->toBe('{"merged":{"k":1,"a":1,"b":2},"picked":{"k":1,"a":"x"},"first":{"k":1,"a":"x","c":true}}');
+});
+
+it('ends a parent:: spread that reaches back into a method it is reading', function () {
+    expect(analyzedKeyTypes(CyclingSpreadBase::class))->toBe(['b?' => 'number', 'g' => 'number'])
+        ->and(json_encode(new CyclingSpreadBase()->toArray()))->toBe('{"g":1,"b":1}');
 });
