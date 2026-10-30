@@ -27,7 +27,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NewParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OtherChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PrivateChainBaseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PrivateChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RenumberedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReorderedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHelperPostResource;
@@ -192,6 +195,27 @@ it('reads the declaring class\'s private method on an instance an inherited body
     ])->and((new BuiltPrivateResource(new Post))->resolve(request()))->toBe([
         'late_built' => ['base_label' => 1], 'late_made' => ['base_label' => 1],
     ]);
+});
+
+// From its own body PHP calls the declaring class's private chain() on a built subclass, over the public namesake.
+it('reads a chain on an instance an inherited body builds through the declaring class\'s private method', function () {
+    $sent = (new PrivateChainResource(null))->resolve(request());
+
+    expect(publishedResourceKeyTypes(PrivateChainResource::class, Post::class))
+        ->toHaveKey('nested?', 'PrivateChainResource')
+        ->and($sent['nested'])->toBeInstanceOf(PrivateChainResource::class)
+        ->and($sent['nested']->resource)->toBeInstanceOf(Post::class);
+});
+
+// An object whose class does not extend the declaring class runs its own method, whatever the body declares private.
+it('reads a chain on an unrelated built class through that class\'s own method', function () {
+    $base = new ReflectionClass(PrivateChainBaseResource::class);
+    $other = new ReflectionClass(OtherChainResource::class);
+
+    expect(publishedResourceKeyTypes(PrivateChainResource::class, Post::class))
+        ->toHaveKey('other', 'Record<string, number>')
+        ->and(AnalysisScope::memberClassOf($base, $other, 'chain', true))->toBe($other)
+        ->and((new PrivateChainResource(null))->resolve(request())['other'])->toBe(['o' => 1]);
 });
 
 it('reads a static:: key and a declared property of a model-backed inherited body on the runtime class', function () {

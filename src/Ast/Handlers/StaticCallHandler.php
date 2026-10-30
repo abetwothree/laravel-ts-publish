@@ -322,7 +322,9 @@ final class StaticCallHandler implements ExpressionHandler
             return null;
         }
 
-        $method = new ReflectionMethod($resourceFqcn, $methodName);
+        $receiver = new ReflectionClass($resourceFqcn);
+        $method = AnalysisScope::memberClassOf($scope->declaringClass, $receiver, $methodName, true)
+            ->getMethod($methodName);
 
         // Not self-returning: the expression is the method's payload, not the resource. Resolving it needs the
         // receiver's own analyzer, so only the subject, the runtime class or the declaring class is in scope — a

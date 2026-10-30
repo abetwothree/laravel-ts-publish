@@ -474,8 +474,9 @@ final class AnalysisScope
     }
 
     /**
-     * The class whose declaration `$this->$member` reaches from a body the declaring class holds: that class when it
-     * declares the member private, since PHP binds a private member to the calling scope, else the runtime class.
+     * The class whose declaration `->$member` on an instance of the runtime class reaches from a body the declaring
+     * class holds: that class when it declares the member private and the runtime class extends it, since PHP binds a
+     * private member to the calling scope, else the runtime class.
      *
      * @param  ReflectionClass<object>  $declaring
      * @param  ReflectionClass<object>  $runtime
@@ -492,7 +493,8 @@ final class AnalysisScope
         $ownPrivate = $declared !== null && $declared->isPrivate()
             && $declared->getDeclaringClass()->getName() === $declaring->getName();
 
-        return $ownPrivate ? $declaring : $runtime;
+        // An object outside the declaring class's hierarchy, such as one OtherResource::make() builds, runs its own.
+        return $ownPrivate && is_a($runtime->getName(), $declaring->getName(), true) ? $declaring : $runtime;
     }
 
     /**
