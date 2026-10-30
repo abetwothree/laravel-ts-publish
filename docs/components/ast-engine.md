@@ -200,7 +200,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
   runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
   collection's items as the class Laravel builds does. A built collection's method changes only `collectedElement`,
-  through `seedBuiltElement()`, which `within()` puts back: the outer response's `filter()` still re-indexes its arrays.
+  through `seedBuiltElement()`, which `within()` puts back, and only where the built class's own `collects()` picks a
+  class the scope's element is not: the outer response's `filter()` still re-indexes its arrays.
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
