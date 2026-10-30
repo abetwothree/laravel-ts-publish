@@ -1,5 +1,6 @@
 # Composer Related
 composer.lock
+!/fixture-app/composer.lock
 /vendor
 /workbench/vendor
 workbench/vendor
@@ -28,6 +29,7 @@ _ide_helper_models.php
 
 # Misc
 phpunit.xml
+!/fixture-app/phpunit.xml
 phpstan.neon
 /docs/superpowers
 /coverage
