@@ -80,7 +80,7 @@ use WeakMap;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ArrayWrite from ArrayArm
  *
- * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, ClassLike, string}
+ * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, string, ClassMethod|null}
  * @phpstan-type PropertyWrites list<PropertyWrite>
  * @phpstan-type ElementWrite array{path: list<string|null>, value: Expr|null, unsets: bool}
  * @phpstan-type ComputedWrite array{PropertyWrite, ElementWrite}
@@ -604,11 +604,9 @@ final class SubjectPropertyTypeResolver
      */
     private function computedWrite(array $write, Expr $value, RuntimeClass $runtime): ?array
     {
-        [$site, $self, $class, $file] = $write;
-        $method = $this->enclosingMethod($class, $site);
-        $running = $method === null ? null : $this->runningName($self, $class, $method);
+        [$site, $self, $file, $method] = $write;
 
-        if ($method === null || $running === null || (! $runtime->known && $this->namesStatic($value))) {
+        if ($method === null || (! $runtime->known && $this->namesStatic($value))) {
             return null;
         }
 
@@ -616,12 +614,6 @@ final class SubjectPropertyTypeResolver
 
         if ($this->readsReassignedImport($value, $closures)) {
             return null;
-        }
-
-        // PHP copies an aliased trait method under the alias, the name its parameters are reflected by.
-        if ($running !== $method->name->toString()) {
-            $method = clone $method;
-            $method->name = new Identifier($running);
         }
 
         $dropped = DroppedUnionArms::dropped();
@@ -634,6 +626,31 @@ final class SubjectPropertyTypeResolver
 
         // A closure's untypable name, such as a by-reference import, read through `??` would leave only the fallback.
         return $closures !== [] && DroppedUnionArms::dropped() !== $dropped ? null : $written;
+    }
+
+    /**
+     * A method body as the class runs it: under the alias it runs a trait method it overrides by, if any; null where it
+     * never runs it.
+     *
+     * @param  ReflectionClass<object>  $self  the class `self` names in the body
+     */
+    private function runningMethod(ReflectionClass $self, ClassLike $class, ClassMethod $method): ?ClassMethod
+    {
+        $running = $this->runningName($self, $class, $method);
+
+        if ($running === null) {
+            return null;
+        }
+
+        if ($running === $method->name->toString()) {
+            return $method;
+        }
+
+        // PHP copies an aliased trait method under the alias, the name its parameters are reflected by.
+        $alias = clone $method;
+        $alias->name = new Identifier($running);
+
+        return $alias;
     }
 
     /**
@@ -758,8 +775,7 @@ final class SubjectPropertyTypeResolver
      */
     private function foreachValues(array $write, Foreach_ $loop, RuntimeClass $runtime): ?array
     {
-        [, $self, $class] = $write;
-        $method = $this->enclosingMethod($class, $loop);
+        [, $self, , $method] = $write;
 
         if ($method === null) {
             return null;
@@ -883,8 +899,8 @@ final class SubjectPropertyTypeResolver
 
     /**
      * Each node where a method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or where
-     * application code writes a property whose name it computes, with the class `self` names there, the class body
-     * holding it and its file; null when a declaration cannot be read, since it may write anything.
+     * application code writes a property whose name it computes, with the class `self` names there, its file and the
+     * method holding it as the class runs it; null when a declaration cannot be read, since it may write anything.
      *
      * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
      *
@@ -928,9 +944,10 @@ final class SubjectPropertyTypeResolver
                 }
 
                 $method = $this->enclosingMethod($node, $site);
+                $running = $method === null ? null : $this->runningMethod($self, $node, $method);
 
-                if ($method === null || $this->runningName($self, $node, $method) !== null) {
-                    $writes[] = [$site, $self, $node, $file];
+                if ($method === null || $running !== null) {
+                    $writes[] = [$site, $self, $file, $running];
                 }
             }
         }
