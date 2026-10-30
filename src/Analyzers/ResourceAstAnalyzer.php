@@ -338,7 +338,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         return $this->scope->within(
             function (AnalysisScope $scope) use ($built): void {
                 $scope->seedBuiltElement($built);
-                $scope->runtime = $scope->runtime->withClass($built);
+                $scope->runtime = $scope->builtRuntime($built->getName());
             },
             fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $on),
         );

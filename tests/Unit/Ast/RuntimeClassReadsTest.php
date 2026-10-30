@@ -22,6 +22,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsPostsOt
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsRawOtherCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltFactsSubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltLabelBaseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltLabelHolderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPrivateResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltSortsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CopiedTagsResource;
@@ -194,6 +196,13 @@ it('reads the declaring class\'s private method on an instance an inherited body
     ])->and((new BuiltPrivateResource(new Post))->resolve(request()))->toBe([
         'late_built' => ['base_label' => 1], 'late_made' => ['base_label' => 1],
     ]);
+});
+
+// `new self` builds exactly the declaring class, so its method reads `static::LABEL` even in a receiver's assumed body.
+it('knows the class a receiver\'s body builds, as an exact build, though the receiver\'s own class is only assumed', function () {
+    expect(publishedResourceKeyTypes(BuiltLabelHolderResource::class, Post::class))->toBe(['fresh' => '{ label: string | number }'])
+        ->and(json_encode((new BuiltLabelHolderResource(null))->resolve(request())))->toBe('{"fresh":{"label":"none"}}')
+        ->and(json_encode(new BuiltLabelBaseResource(null)->relabel()->summary()))->toBe('{"label":5}');
 });
 
 // collectResource() maps the items a built collection is given into what it collects, unless they already are one.
