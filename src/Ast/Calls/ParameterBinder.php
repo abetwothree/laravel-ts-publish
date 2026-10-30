@@ -61,14 +61,14 @@ final class ParameterBinder
 {
     /**
      * The class a closure parameter's native type names, alone or behind a `?`, with whether the `?` is there; null for
-     * any other type, a special name such as `self`, or a name no class or interface has.
+     * any other type, or a name no class or interface has. A `self` or `parent` names the class the scope binds it to.
      *
      * @return array{class-string, bool}|null
      */
-    public static function declaredClass(Param $param): ?array
+    public static function declaredClass(Param $param, AnalysisScope $scope): ?array
     {
         $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
-        $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
+        $class = $type instanceof Name ? self::typeClassName($type, $scope) : null;
 
         return $class !== null && (class_exists($class) || interface_exists($class))
             ? [$class, $param->type instanceof NullableType]
@@ -82,7 +82,7 @@ final class ParameterBinder
      */
     public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope): bool
     {
-        $declared = $param->variadic ? null : self::declaredClass($param);
+        $declared = $param->variadic ? null : self::declaredClass($param, $scope);
 
         if ($declared === null) {
             return false;
@@ -131,7 +131,7 @@ final class ParameterBinder
                 continue;
             }
 
-            $native = $this->closureTypeInfo($param);
+            $native = $this->closureTypeInfo($param, $scope);
             $value = $this->heldValue(
                 $native === null ? null : resolve(ReflectedTypeAcceptor::class)->accept($native),
                 $name,
@@ -310,6 +310,15 @@ final class ParameterBinder
     }
 
     /**
+     * The class a closure parameter's type spells: for `self` and `parent` the class the scope binds it to, none for a
+     * `parent` the declaring class lacks, and any other name as written.
+     */
+    private static function typeClassName(Name $name, AnalysisScope $scope): ?string
+    {
+        return $name->isSpecialClassName() ? $scope->relativeClass($name)?->getName() : $name->toString();
+    }
+
+    /**
      * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
      * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
      *
@@ -446,11 +455,12 @@ final class ParameterBinder
 
     /**
      * What a closure parameter's native type names, read as resolveReflectionType() reads a method parameter's, an
-     * `= null` default adding `null` as PHP does; null for no type, an intersection, or `self`, `static` or `parent`.
+     * `= null` default adding `null` as PHP does, `self` and `parent` as the classes the scope binds them to; null for
+     * no type, an intersection, or a `parent` the declaring class lacks.
      *
      * @return TypeScriptTypeInfo|null
      */
-    private function closureTypeInfo(Param $param): ?array
+    private function closureTypeInfo(Param $param, AnalysisScope $scope): ?array
     {
         $type = $param->type;
         $arms = match (true) {
@@ -462,11 +472,17 @@ final class ParameterBinder
         $infos = [];
 
         foreach ($arms as $arm) {
-            if (! $arm instanceof Identifier && (! $arm instanceof Name || $arm->isSpecialClassName())) {
+            $name = match (true) {
+                $arm instanceof Identifier => $arm->toString(),
+                $arm instanceof Name => self::typeClassName($arm, $scope),
+                default => null,
+            };
+
+            if ($name === null) {
                 return null;
             }
 
-            $infos[] = LaravelTsPublish::toTsType($arm->toString());
+            $infos[] = LaravelTsPublish::toTsType($name);
         }
 
         if ($infos === []) {

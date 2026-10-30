@@ -194,18 +194,25 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject and backing model, its body's file, its parameters,
-     * bound as a helper's are, and its body's own bindings. A route-bound `Post $post` binds as its model, a
-     * `?Post $post` as that model or null, and an injected `Request $request` as a request.
+     * Build the starting scope for a located method: its subject, runtime class and backing model, its body's file,
+     * its parameters, bound as a helper's are, and its body's own bindings. A route-bound `Post $post` binds as its
+     * model, a `?Post $post` as that model or null, and an injected `Request $request` as a request.
      *
      * @param  class-string<Model>|null  $modelClass
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @param  RuntimeClass|null  $runtime  known or assumed: what `static` and `$this` name while the body is seeded;
+     *                                      null for the located method's class, known
      *
      * @internal
      */
-    public function bindingsFor(MethodContext $context, ?string $modelClass = null, array $passed = []): AnalysisScope
-    {
+    public function bindingsFor(
+        MethodContext $context,
+        ?string $modelClass = null,
+        array $passed = [],
+        ?RuntimeClass $runtime = null,
+    ): AnalysisScope {
         $scope = new AnalysisScope($context->reflection, $modelClass);
+        $scope->runtime = $runtime ?? $scope->runtime;
         $methodName = $context->method->name->toString();
         $stmts = $context->method->stmts ?? [];
 
@@ -377,7 +384,7 @@ final class AstEngine
             is_a($runs->getName(), JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($runs),
             default => null,
         };
-        $scope = $this->bindingsFor($context, $modelClass, $passed);
+        $scope = $this->bindingsFor($context, $modelClass, $passed, $runtime);
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
             $modelClass,

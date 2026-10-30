@@ -616,7 +616,7 @@ final class VariableHandler implements ExpressionHandler
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
-        $declared = $this->declaredMapModel($callback->params[0] ?? null);
+        $declared = $this->declaredMapModel($callback->params[0] ?? null, $scope);
 
         // A resource collection's items are the API resources it built, or what it was given if it collects none.
         if ($receiver === null

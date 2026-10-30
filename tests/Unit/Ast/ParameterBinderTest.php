@@ -284,7 +284,7 @@ test('binds each parameter into the table its declared type belongs in, and leav
         ->and($scope->requestVarNames)->toBe([]);
 });
 
-// No call is read for a closure, so an untyped parameter binds nothing; `self` is left to the closure's own readers.
+// No call is read for a closure, so an untyped parameter binds nothing; `self` names the scope's declaring class.
 test('binds a closure\'s parameters by the types they declare, natively or by @param', function () {
     $statement = new AstParser()->parseSource('<?php $f = /** @param int $doc */ function (
         \\Workbench\\App\\Models\\Post $post, ?\\Workbench\\App\\Models\\Post $maybe, int|bool $flag, ?string $label,
@@ -296,7 +296,11 @@ test('binds a closure\'s parameters by the types they declare, natively or by @p
     resolve(ParameterBinder::class)->bindClosure($statement->expr->expr, $scope);
 
     expect($scope->varModelBindings)->toBe(['post' => Post::class])
-        ->and($scope->varDeclaredBindings)->toBe(['maybe' => [Post::class], 'status' => [Status::class]])
+        ->and($scope->varDeclaredBindings)->toBe([
+            'maybe' => [Post::class],
+            'status' => [Status::class],
+            'me' => [HelperParameterKindsResource::class],
+        ])
         ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))->toBe([
             'maybe' => 'Post | null',
             'flag' => 'number | boolean',
@@ -321,6 +325,33 @@ test('reads a parameter typed self as its declaring class', function () {
         ->and($scope->varDeclaredBindings)->toBe(['spare' => [SelfTypedHelpers::class], 'base' => [Model::class]])
         ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))
         ->toBe(['spare' => 'SelfTypedHelpers | null']);
+});
+
+// A closure's `self` and `parent` name its declaring class and that class's parent, as the class names would.
+test('binds a closure parameter typed self or parent as the class its name would bind', function () {
+    $bound = function (string $parameters): AnalysisScope {
+        $statement = new AstParser()->parseSource('<?php $f = function ('.$parameters.') {};')[0];
+        assert($statement instanceof Expression && $statement->expr instanceof Assign && $statement->expr->expr instanceof Closure);
+        $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
+
+        resolve(ParameterBinder::class)->bindClosure($statement->expr->expr, $scope);
+
+        return $scope;
+    };
+    $tables = fn (AnalysisScope $scope): array => [
+        $scope->varModelBindings,
+        $scope->varDeclaredBindings,
+        array_map(fn (array $value): string => $value['type'], $scope->varValueBindings),
+    ];
+    $named = '\\'.SelfTypedHelpers::class;
+
+    expect($tables($bound('self $me, ?self $maybe, parent $up, self|null $either')))
+        ->toBe($tables($bound($named.' $me, ?'.$named.' $maybe, \\'.Model::class.' $up, '.$named.'|null $either')))
+        ->toBe([
+            ['me' => SelfTypedHelpers::class],
+            ['maybe' => [SelfTypedHelpers::class], 'up' => [Model::class]],
+            ['maybe' => 'SelfTypedHelpers | null', 'either' => 'SelfTypedHelpers | null'],
+        ]);
 });
 
 // An API resource's output was inferred without the request rules, so only another subject binds a request there.

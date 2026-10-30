@@ -17,6 +17,7 @@ use ReflectionProperty;
  *
  * @phpstan-type VarTag = array{string, string|null}
  * @phpstan-type CapturedTag = array{string, string, int}
+ * @phpstan-type RelativeClasses = array<string, class-string>
  *
  * @internal
  */
@@ -73,19 +74,29 @@ final class PropertyDocblockTypeReader
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
      * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
+     * Each `self`, `static` or `parent` in the type comes back as the class $relative maps it to, the one the body
+     * holding the tag binds it to; one the map lacks stays as written, which no reading accepts.
+     *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
+     * @param  RelativeClasses  $relative  the class each of `self`, `static` and `parent` names, keyed by that name
      * @return VarTag|null
      */
-    public function extractVarTag(string $docComment, ReflectionClass $context): ?array
+    public function extractVarTag(string $docComment, ReflectionClass $context, array $relative = []): ?array
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        // A tag no reading accepts, such as an interface's, still names the receiver its local holds.
-        if ($tag === null || ! $this->readsInFull($tag[0], $context, unreadAccepted: true)) {
+        if ($tag === null) {
             return null;
         }
 
-        return [$tag[0], preg_match('/^\s*\$([a-zA-Z_\x80-\xff][\w\x80-\xff]*)/', $tag[1], $match) === 1 ? $match[1] : null];
+        $type = $this->spellRelativeClasses($tag[0], $relative);
+
+        // A tag no reading accepts, such as an interface's, still names the receiver its local holds.
+        if (! $this->readsInFull($type, $context, unreadAccepted: true)) {
+            return null;
+        }
+
+        return [$type, preg_match('/^\s*\$([a-zA-Z_\x80-\xff][\w\x80-\xff]*)/', $tag[1], $match) === 1 ? $match[1] : null];
     }
 
     /**
@@ -179,6 +190,25 @@ final class PropertyDocblockTypeReader
         $type = trim($type);
 
         return [$type, substr($rest, $end), $next];
+    }
+
+    /**
+     * A type with each `self`, `static` and `parent` it names spelled as the fully qualified class $relative maps it
+     * to; a quoted string, a shape's key and a `self::` constant keep the word.
+     *
+     * @param  RelativeClasses  $relative
+     */
+    private function spellRelativeClasses(string $type, array $relative): string
+    {
+        if ($relative === []) {
+            return $type;
+        }
+
+        return preg_replace_callback(
+            '/\'[^\']*\'|"[^"]*"|(?<![\w\x80-\xff\\\\$-])(?:self|static|parent)(?![\w\x80-\xff\\\\-]|\s*\??\s*:)/i',
+            fn (array $word): string => isset($relative[strtolower($word[0])]) ? '\\'.$relative[strtolower($word[0])] : $word[0],
+            $type,
+        ) ?? $type;
     }
 
     /**

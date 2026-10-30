@@ -10,6 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingUser;
 use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -664,3 +666,17 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'another variable written' => ['$q = new \\Workbench\\App\\Models\\Post; $q->title = "x";', false],
     'a reassignment' => ['$p = null;', false],
 ]);
+
+// `self` names the declaring class, the using class in a trait, and `static` the runtime class (Ruling R5 for `self`).
+it('reads self and static in an inline @var, and self as a callback parameter type, as the body binds them', function () {
+    expect(analyzedKeyTypes(SelfSpellingChild::class))->toBe(['varSelf' => 'string | number', 'varStatic' => 'string', 'mapSelf' => '(string | number)[]'])
+        ->and(json_encode(new SelfSpellingChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"]}')
+        ->and(analyzedKeyTypes(SelfSpellingUser::class))->toBe(['varSelf' => 'string', 'mapSelf' => 'string[]'])
+        ->and(json_encode(new SelfSpellingUser()->toArray()))->toBe('{"varSelf":"x","mapSelf":["x"]}');
+});
+
+// A helper's body is seeded for the caller's runtime class, so its `@var static` names that class as its `$this` does.
+it('reads an inline @var static in a helper a self:: call reaches as the caller\'s runtime class', function () {
+    expect(analyzedKeyTypes(SelfSpellingChild::class, 'lateLabels'))->toBe(['viaStatic' => 'string', 'viaThis' => 'string'])
+        ->and(json_encode(new SelfSpellingChild()->lateLabels()))->toBe('{"viaStatic":"x","viaThis":"x"}');
+});

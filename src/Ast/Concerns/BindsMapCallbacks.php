@@ -55,7 +55,7 @@ trait BindsMapCallbacks
             return null;
         }
 
-        $declared = $this->declaredMapModel($first);
+        $declared = $this->declaredMapModel($first, $scope);
         $model = $elementModel !== null && ($declared === null || is_a($elementModel, $declared, true)) ? $elementModel : $declared;
         $name = AnalysisScope::firstParameterName($callback);
 
@@ -84,9 +84,9 @@ trait BindsMapCallbacks
      *
      * @return class-string<Model>|null
      */
-    protected function declaredMapModel(?Param $param): ?string
+    protected function declaredMapModel(?Param $param, AnalysisScope $scope): ?string
     {
-        $declared = $param === null ? null : ParameterBinder::declaredClass($param);
+        $declared = $param === null ? null : ParameterBinder::declaredClass($param, $scope);
 
         return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
     }

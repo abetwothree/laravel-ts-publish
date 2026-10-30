@@ -429,6 +429,31 @@ describe('an inline @var on a local assignment', function () {
             ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
     });
 
+    // A body binds `self` to its declaring class, `static` to its runtime class and `parent` to its declaring class's.
+    test('spells self, static and parent as the classes the body binds them to', function (string $type, array $relative, ?string $spelled) {
+        $tag = resolve(PropertyDocblockTypeReader::class)
+            ->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class), $relative);
+
+        expect($tag[0] ?? null)->toBe($spelled);
+    })->with([
+        'self' => ['self', ['self' => Team::class], '\\'.Team::class],
+        'static' => ['static', ['static' => SubscribedTeam::class], '\\'.SubscribedTeam::class],
+        'parent' => ['parent', ['parent' => Team::class], '\\'.Team::class],
+        'a nullable self' => ['?self', ['self' => Team::class], '?\\'.Team::class],
+        'self or null' => ['self|null', ['self' => Team::class], '\\'.Team::class.'|null'],
+        'any case' => ['Static', ['static' => SubscribedTeam::class], '\\'.SubscribedTeam::class],
+        'in a list and bare' => [
+            'list<self>|static',
+            ['self' => Team::class, 'static' => SubscribedTeam::class],
+            'list<\\'.Team::class.'>|\\'.SubscribedTeam::class,
+        ],
+        'a shape key, which stays a key' => ['array{self: int, static?: string}', ['self' => Team::class, 'static' => Team::class], 'array{self: int, static?: string}'],
+        'a quoted key' => ["array{'self': int}", ['self' => Team::class], "array{'self': int}"],
+        'a parent the declaring class lacks' => ['parent', ['self' => Team::class], null],
+        'a bracket list, declined as any class\'s is' => ['self[]', ['self' => Team::class], null],
+        'a class constant' => ['self::NAME', ['self' => Team::class], null],
+    ]);
+
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
     test('never reads a member of a declared local through the loaded relation\'s model', function () {
         $closure = fn (string $declared, string $value): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
