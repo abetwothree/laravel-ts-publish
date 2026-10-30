@@ -326,7 +326,8 @@ it is. `bindClosure()` binds a closure's parameters from the declaration the AST
 class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
 `Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
 closure itself. An untyped one binds nothing, since no call is read. A closure's `self` and `parent` name the classes
-`relativeClass()` names, there and in a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`).
+`relativeClass()` names, there and in a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the
+name in `relativeParameters`, so its receiver reads members as a spelled inline `@var`'s does.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.
 
@@ -408,9 +409,11 @@ a `use (&$x)`: an arrow function or a by-value `use` writes its own copy.
 An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBindings` span through
 `CollectsLocalVarBindings::bindDeclaredType()`. The span runs from after that statement to the next top-level statement
 that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
-Before it does, its `self` and `parent` are spelled as the declaring class, the using class in a trait, and its parent,
-even where the runtime class narrows a member, and its `static` as the runtime class the body is seeded for, which
-`AstEngine::bindingsFor()` takes from a value read (`relativeClass()`).
+Before it does, each `self`, `static` and `parent` in it is spelled as the class `relativeClass()` names. `self` and
+`parent` are the declaring class, the using class in a trait, and its parent; `static` is the runtime class the body is
+seeded for, which `AstEngine::bindingsFor()` takes from a value read. The receiver such a tag types reads a member a
+subclass can override by its declaration alone ([Receiver types § `self` and `parent`][receiver-self]): a declared type
+stands even where the runtime class narrows it, and an untyped member stays `unknown`.
 
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
@@ -854,6 +857,7 @@ These pages cover the engine's neighbors:
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
 [published-models]: model-attribute-resolver.md#models-a-run-publishes
+[receiver-self]: receiver-types.md#self-and-parent
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
 [spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
 [ternary]: receiver-types.md#a-ternarys-instanceof-condition

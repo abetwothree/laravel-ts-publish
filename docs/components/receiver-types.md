@@ -107,6 +107,12 @@ other `parent::` call into a method Laravel declares types only where the analyz
 returns the runtime class, so a body read on that value knows the class where the caller does
 (`ReceiverType::$runtimeInstance`).
 
+A receiver an inline `@var` or a closure parameter spells `self`, `static` or `parent` may hold any subclass of the
+class it names (`ReceiverType::$declaredOnly`). A method or property a subclass can override, where neither the class
+nor the member is final and the member is not private, is read by its declaration alone:
+`MethodReturnTypeResolver::declaredType()` or `SubjectPropertyTypeResolver::declaredType()`, so an untyped one is
+`unknown`. Such an inline `@var` names no collection element, and an `instanceof` proof's classes drop the mark.
+
 ### Visibility
 
 On `$this`, or through `self::`, `static::` or `parent::`, a member counts at any visibility. On any other receiver only
