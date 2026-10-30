@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 /**
- * A count of the spread items an analysis read no key from, though PHP writes every key they hold, an earlier one's
+ * A count of the spread items an analysis did not read whole, though PHP writes every key they hold, an earlier one's
  * included. A caller compares two readings to tell a body read fully from one that is not, and AnalysisMemo replays a
  * reused answer's own count, so that reading does not depend on what the run happened to read first.
  *
@@ -21,7 +21,7 @@ final class UnreadSpreads
         return self::$count;
     }
 
-    /** Count one spread item no arm read. */
+    /** Count one spread item no arm read whole. */
     public static function record(): void
     {
         self::$count++;

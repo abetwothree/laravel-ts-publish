@@ -156,11 +156,11 @@ A local rewritten through a by-reference parameter of a method on a receiver the
 proof made before it standing, so after `if ($y === null) { return []; } $cleaner->clear($y);` a read of `$y` drops
 the `null` the call can write.
 
-### A spread whose helper the engine cannot read whole leaves the keys before it as written
+### A spread whose helper the engine cannot read whole can mistype the keys it writes
 
-`['o' => 1, ...$this->opaque()]` publishes `o: number` even when `opaque()` can return `['o' => 'x']`, which
-overwrites the key. A `$this->`, `self::` or `static::` spread whose helper the engine reads only partly adds no key,
-so the keys written before it keep their own types.
+`['o' => 1, ...$this->opaque()]` publishes `o: number` even when `opaque()` can return `['o' => 'x']`. A `$this->`,
+`self::` or `static::` spread whose helper the engine cannot read adds no key, so the keys before it keep their own
+types; one read by its first return alone adds that return's keys over them, though a later return may send others.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
