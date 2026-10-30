@@ -9,6 +9,12 @@ class ChainedLabelBase
 {
     public $tag = 1;
 
+    /** A new instance of the class it is called on. */
+    public static function make(): static
+    {
+        return new static;
+    }
+
     /** A label no declaration types. */
     public function label()
     {
@@ -89,9 +95,52 @@ class ChainedLabelBase
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function joined(): array
+    {
+        /** @var self $me */
+        $me = $this;
+        /** @var self $local */
+        $local = $this;
+
+        if (! $this->flag()) {
+            $local = new UntypedLabelChild;
+        }
+
+        if ($this->flag()) {
+            $either = $me;
+        } else {
+            $either = new UntypedLabelChild;
+        }
+
+        return [
+            'staticOnVar' => $me::make()->label(),
+            'gapHelper' => $this->rewrittenLabel($me),
+            'gapClosure' => collect([$this])->map(function (self $s) {
+                if (! $this->flag()) {
+                    $s = new UntypedLabelChild;
+                }
+
+                return $s->label();
+            })->all(),
+            'gapLocal' => $local->label(),
+            'branchJoin' => $either->label(),
+        ];
+    }
+
     /** The label of whatever is passed, from a parameter no declaration types. */
     private function labelOf($held)
     {
+        return $held->label();
+    }
+
+    /** The label of what is passed, or of another object a branch may write over it. */
+    private function rewrittenLabel($held)
+    {
+        if (! $this->flag()) {
+            $held = new UntypedLabelChild;
+        }
+
         return $held->label();
     }
 }

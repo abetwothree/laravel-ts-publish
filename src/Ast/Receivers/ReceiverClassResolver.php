@@ -211,7 +211,7 @@ final class ReceiverClassResolver
 
         $fromInside = $call->class instanceof Name && $call->class->isSpecialClassName();
 
-        return $this->merge(
+        return $this->carried($receiver, $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
                     ? $this->modelFactory($class, $method, $call) ?? $this->forwardedReturn($call, $class, $method, $scope)
@@ -219,7 +219,7 @@ final class ReceiverClassResolver
                 $receiver->classes,
             ),
             $receiver->shortCircuits,
-        );
+        ));
     }
 
     /**
@@ -484,13 +484,13 @@ final class ReceiverClassResolver
         $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
-            $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class]
+            $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class] && ! isset($span['relative'])
                 ? $this->declaredElementModel($span, $assigned)
                 : null;
 
             return $element === null
                 ? $assigned
-                : new ReceiverType($assigned->classes, $assigned->shortCircuits, $element, keyed: $assigned->keyed);
+                : new ReceiverType($assigned->classes, $assigned->shortCircuits, $element, keyed: $assigned->keyed, declaredOnly: $assigned->declaredOnly);
         }
 
         $declared = $this->typeOf($this->declaredClasses($span, $scope));
@@ -748,10 +748,13 @@ final class ReceiverClassResolver
         /** @var non-empty-list<ReceiverType> $receivers */
         return count($receivers) === 1
             ? $receivers[0]
-            : new ReceiverType(array_values(array_unique(array_merge(...array_map(
-                fn (ReceiverType $receiver): array => $receiver->classes,
-                $receivers,
-            )))));
+            : new ReceiverType(
+                array_values(array_unique(array_merge(...array_map(
+                    fn (ReceiverType $receiver): array => $receiver->classes,
+                    $receivers,
+                )))),
+                declaredOnly: array_any($receivers, fn (ReceiverType $receiver): bool => $receiver->declaredOnly),
+            );
     }
 
     /**
