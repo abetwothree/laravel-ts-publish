@@ -309,7 +309,7 @@ final class SubjectPropertyTypeResolver
 
         foreach ($writes as $write) {
             $assigned = $this->assignedConstant($write[0], $property->getName(), $runtime, $write[1]);
-            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $runtime->class) : [];
+            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $runtime) : [];
 
             if ($elements === null) {
                 return null;
@@ -424,7 +424,7 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        $joined = $this->joinedWrites($known, $computed, $values, $runtime->class);
+        $joined = $this->joinedWrites($known, $computed, $values, $runtime);
 
         if ($reentered === [] || $joined === null) {
             return ['type' => $joined, 'kept' => $reentered === []];
@@ -435,7 +435,7 @@ final class SubjectPropertyTypeResolver
                 $values[$index] = $read($index);
             }
 
-            return $this->joinedWrites($known, $computed, $values, $runtime->class);
+            return $this->joinedWrites($known, $computed, $values, $runtime);
         };
         $seed = $this->seedKey($guard, $runtime);
 
@@ -488,7 +488,7 @@ final class SubjectPropertyTypeResolver
             }
         }
 
-        return $this->joinedWrites($known, $computed, $values, $runtime->class);
+        return $this->joinedWrites($known, $computed, $values, $runtime);
     }
 
     /**
@@ -541,10 +541,10 @@ final class SubjectPropertyTypeResolver
      * @param  ValueExpressionResult  $known
      * @param  ComputedWrites  $computed
      * @param  WriteValues  $values  each write's value, by its index in $computed
-     * @param  ReflectionClass<object>  $runtime  the class the property is read through, whose serializer sends it
+     * @param  RuntimeClass  $runtime  the class the property is read for, whose serializer sends it
      * @return ValueExpressionResult|null
      */
-    private function joinedWrites(array $known, array $computed, array $values, ReflectionClass $runtime): ?array
+    private function joinedWrites(array $known, array $computed, array $values, RuntimeClass $runtime): ?array
     {
         $typed = [];
         $elements = [];
@@ -587,7 +587,7 @@ final class SubjectPropertyTypeResolver
         $type = ArrayArm::written(
             $whole['type'],
             $writes,
-            ResourceCollections::reindexesNumericKeys($runtime),
+            ResourceCollections::reindexesNumericKeys($runtime->class),
             ordered: $typed === [],
         );
 
@@ -678,10 +678,10 @@ final class SubjectPropertyTypeResolver
      * `foreach` with each value its body gives the element; null for any other write, a whole `unset()` included.
      *
      * @param  PropertyWrite  $write
-     * @param  ReflectionClass<object>  $runtime  the class `$this` names, for a call in a `foreach` body
+     * @param  RuntimeClass  $runtime  the class `$this` names, for a call in a `foreach` body
      * @return list<ElementWrite>|null
      */
-    private function elementWrites(array $write, string $name, ReflectionClass $runtime): ?array
+    private function elementWrites(array $write, string $name, RuntimeClass $runtime): ?array
     {
         $site = $write[0];
 
@@ -754,10 +754,9 @@ final class SubjectPropertyTypeResolver
      * where its value variable is no plain name, or a write to it is one the scan cannot type.
      *
      * @param  PropertyWrite  $write
-     * @param  ReflectionClass<object>  $runtime
      * @return list<Expr>|null
      */
-    private function foreachValues(array $write, Foreach_ $loop, ReflectionClass $runtime): ?array
+    private function foreachValues(array $write, Foreach_ $loop, RuntimeClass $runtime): ?array
     {
         [, $self, $class] = $write;
         $method = $this->enclosingMethod($class, $loop);
@@ -771,11 +770,9 @@ final class SubjectPropertyTypeResolver
             fn (ArrowFunction|ClosureExpr $function): bool => $function instanceof ClosureExpr,
         ));
         $stmts = $closures === [] ? $method->stmts ?? [] : $closures[count($closures) - 1]->stmts;
-        $scope = new AnalysisScope($self);
-        // The scan reads only the class `$this` names, never whether it is known.
-        $scope->runtime = RuntimeClass::known($runtime);
+        $writes = VariableWrites::of($stmts, AnalysisScope::detached($self, $runtime));
 
-        return VariableWrites::foreachElementValues($loop, VariableWrites::of($stmts, $scope), $stmts);
+        return VariableWrites::foreachElementValues($loop, $writes, $stmts);
     }
 
     /**
@@ -965,9 +962,7 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
-        $scope = new AnalysisScope($self);
-        // Constant evaluation reads only the class `static` names, and an assumed one declined such a value above.
-        $scope->runtime = RuntimeClass::known($runtime->knownClass() ?? $self);
+        $scope = AnalysisScope::detached($self, $runtime);
         $values = resolve(ValueResolver::class);
 
         try {
@@ -1027,7 +1022,7 @@ final class SubjectPropertyTypeResolver
      * unsets, iterates into, takes a reference to or passes it to a by-reference parameter.
      *
      * @param  list<Expr|Arg>  $targets  what writeTargets() returned for the node
-     * @param  ReflectionClass<object>  $runtime  the class read through, which `$this` and `static` name
+     * @param  ReflectionClass<object>  $class  the class read through, which `$this` and `static` name
      * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the node
      */
     private function writesTo(
@@ -1035,7 +1030,7 @@ final class SubjectPropertyTypeResolver
         array $targets,
         string $name,
         bool $computedNames,
-        ReflectionClass $runtime,
+        ReflectionClass $class,
         ReflectionClass $self,
     ): bool {
         $hits = array_filter(
@@ -1049,7 +1044,7 @@ final class SubjectPropertyTypeResolver
 
         // Only a call passing the property pays for reflecting its callee.
         /** @var list<Arg> $hits */
-        return resolve(ByReferenceArguments::class)->of($node, $hits, $runtime, $self) !== [];
+        return resolve(ByReferenceArguments::class)->of($node, $hits, $class, $self) !== [];
     }
 
     /**

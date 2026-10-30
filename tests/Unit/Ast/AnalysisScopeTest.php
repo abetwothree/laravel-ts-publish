@@ -630,6 +630,17 @@ it('maps self, static and parent with the declaring class first, as memberClassO
         ->and(AnalysisScope::relativeClassOf(new Name('parent'), $declaring, $runtime))->toBeNull();
 });
 
+// A write scan or a constant evaluation reads a body apart from any analysis, so no caller's name reaches it.
+it('reads a detached body with no name bound, `self` the declaring class and `$this` the runtime class it is given', function () {
+    $runtime = RuntimeClass::assumed(new ReflectionClass(PanelPayload::class));
+    $scope = AnalysisScope::detached(new ReflectionClass(BasePanelPayload::class), $runtime);
+
+    expect($scope->declaringClass->getName())->toBe(BasePanelPayload::class)
+        ->and($scope->runtime)->toBe($runtime)
+        ->and($scope->nameBindings())->toBe(AnalysisScope::NO_NAME_BINDINGS)
+        ->and($scope->relativeClass(new Name('static'))?->getName())->toBe(PanelPayload::class);
+});
+
 // A call on the scope's own runtime instance keeps its flag; a held or injected object may be a subclass.
 it('assumes a callee\'s runtime class unless the call runs on this runtime instance of a known scope, a build or a final class', function (bool $assumed) {
     $panel = new ReflectionClass(PanelPayload::class);

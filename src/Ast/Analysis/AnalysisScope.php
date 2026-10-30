@@ -462,6 +462,20 @@ final class AnalysisScope
     }
 
     /**
+     * A scope for one read of a body no analysis holds, such as a write scan or a constant evaluation: no name bound,
+     * `self` the declaring class and `$this` the runtime class, known or assumed as the read takes it.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    public static function detached(ReflectionClass $declaring, RuntimeClass $runtime): self
+    {
+        $scope = new self($declaring);
+        $scope->runtime = $runtime;
+
+        return $scope;
+    }
+
+    /**
      * The class whose declaration `->$member` on an instance of the runtime class reaches from a body the declaring
      * class holds: that class when it declares the member private and the runtime class extends it, since PHP binds a
      * private member to the calling scope, else the runtime class.
