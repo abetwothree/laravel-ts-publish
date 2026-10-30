@@ -241,3 +241,5 @@ Files in `src/Analyzers` contain the entry point for running AST analysis for se
 Code in `src/Ast` should not depend on any specific analyzer; it should provide a generic interface and utilities for AST analysis that can be leveraged by multiple analyzers.
 
 Code in `src/Analyzers` must offload all AST analysis to the engine in `src/Ast` and should not attempt to analyze the AST directly.
+
+The `src/Ast/AstEngine.php` should be a public entry to point for any 3rd party to point a class and/or method for AST analysis and get back the `src/Ast/AnalysisResult.php` with the TypeScript representation of the analyzed structure. Everything else in `src/Ast` is internal and can be refactored freely without affecting external consumers.
