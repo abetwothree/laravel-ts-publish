@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEmbeddedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithFlaggedClassCastUnderShareCast;
@@ -44,8 +45,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
+use Workbench\App\Models\User;
 
 afterEach(function () {
     JsonResource::flushState();
@@ -325,15 +328,28 @@ test('an EnumResource shared prop is rewritten to AsEnum and imports the enum co
         ->and($result['typeImports'])->toBe([]);
 });
 
-// The shared-data file aliases no import, so two same-named enums' `…Kind` would import one name twice.
-test('spells two same-named enums\' case names as literals, and imports a third enum\'s Kind', function () {
+test('aliases two same-named enums\' Kind names, and imports a third enum\'s Kind', function () {
     $result = analyzeSharedDataFor(MiddlewareWithSameNamedEnumNames::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe(
-            "{ app_name: 'Draft' | 'Published', crm_name: 'Lead' | 'Prospect' | 'Active' | 'Churned', priority_name: PriorityKind }"
+            '{ app_name: WorkbenchStatusKind, crm_name: CrmStatusKind, priority_name: PriorityKind }'
         )
-        ->and(array_merge(...array_values($result['typeImports'])))->toBe(['PriorityKind']);
+        ->and(array_merge(...array_values($result['typeImports'])))->toEqualCanonicalizing([
+            'PriorityKind', 'StatusKind as CrmStatusKind', 'StatusKind as WorkbenchStatusKind',
+        ])
+        ->and(sentAsJson(new MiddlewareWithSameNamedEnumNames()->share(request())))
+        ->toEqual((object) ['app_name' => 'Draft', 'crm_name' => 'Lead', 'priority_name' => 'Low']);
+});
+
+test('imports the model an import-less cast spells over the key whose value embeds it', function () {
+    $request = Request::create('/');
+    $request->setUserResolver(fn () => (new User)->forceFill(['name' => 'Ada']));
+    $result = analyzeSharedDataFor(MiddlewareWithEmbeddedCast::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe('{ auth: { user: User | null } }')
+        ->and($result['typeImports'] ?? null)->toBe(['./workbench/app/models' => ['User']])
+        ->and(sentAsJson(new MiddlewareWithEmbeddedCast()->share($request))->auth->user->name)->toBe('Ada');
 });
 
 // Inertia runs shared data through the props resolver, so a shared resource is sent as a page prop's is.

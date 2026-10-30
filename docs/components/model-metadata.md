@@ -171,9 +171,8 @@ is independent of `models.enabled`, and `--only-functional` publishes it while i
 The barrel rules are on [BarrelWriter](barrel-writer.md#phase-ownership-of-model-barrels), and `bindingsFor()`'s other
 consumers are on [AST engine](ast-engine.md). These [known gaps](../known-gaps.md) belong to this phase:
 
-- [Two same-named enums collide instead of aliasing: a companion throws,
-  a](../known-gaps.md#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts)
-  route file ships invalid TS
+- [Two same-named enums collide instead of aliasing in a metadata companion, which
+  throws](../known-gaps.md#two-same-named-enums-collide-instead-of-aliasing-in-a-metadata-companion-which-throws)
 - [An empty `[]` under an imported type alias still ships as
   `[]`](../known-gaps.md#an-empty--under-an-imported-type-alias-still-ships-as-)
 - [A body-inferred metadata enum that enum publishing excludes imports a file that

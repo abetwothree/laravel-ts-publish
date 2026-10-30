@@ -23,6 +23,7 @@ export { default as InertiaPaginationsController } from './inertia-paginations-c
 export { default as InertiaPaginatorKindsController } from './inertia-paginator-kinds-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
+export { default as InertiaSameNamedEnumsController } from './inertia-same-named-enums-controller';
 export { default as InertiaShirtSizeController } from './inertia-shirt-size-controller';
 export { default as InertiaSingleResourceController } from './inertia-single-resource-controller';
 export { default as InertiaTsCastsController } from './inertia-ts-casts-controller';

@@ -69,6 +69,7 @@
     "app\/Http\/Controllers\/InertiaPaginatorKindsController.php",
     "app\/Http\/Controllers\/InertiaPreserveKeysController.php",
     "app\/Http\/Controllers\/InertiaResourceSharedTemplate.php",
+    "app\/Http\/Controllers\/InertiaSameNamedEnumsController.php",
     "app\/Http\/Controllers\/InertiaShirtSizeController.php",
     "app\/Http\/Controllers\/InertiaSingleResourceController.php",
     "app\/Http\/Controllers\/InertiaTsCastsController.php",

@@ -7,16 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
@@ -28,6 +26,7 @@ use ReflectionClass;
 /**
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ComposedFile from FileImportNames
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type TsCastsParseResult = array{
@@ -146,7 +145,6 @@ class InertiaSharedDataAnalyzer
         );
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
-        SharedEnumKinds::spellApart($analysis);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
@@ -156,17 +154,18 @@ class InertiaSharedDataAnalyzer
             TopLevelRenumbering::rekey($mergedOverrides, $renumbered),
         );
 
-        $inferredImports = $this->buildInferredImports($analysis, $propsType);
+        $printed = array_map(fn (array $entry): string => $entry['type'], array_replace($props, $mergedOverrides));
+        $file = $this->buildInferredImports($analysis, $propsType, $printed, $resolvedTsCasts['typeImports']);
         ComposedClassTypes::warnOfSharedNames($middlewareClass, ComposedClassTypes::classesIn($analysis->customImports));
 
         return [
-            'sharedPageProps' => $propsType,
+            'sharedPageProps' => $file['types'][0],
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
             'typeImports' => ImportMaps::merge(
-                CastChannels::withoutOtherPaths($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
+                CastChannels::withoutOtherPaths($file['typeImports'], $resolvedTsCasts['typeImports']),
                 $resolvedTsCasts['typeImports'],
             ),
-            'valueImports' => $inferredImports['valueImports'],
+            'valueImports' => $file['valueImports'],
         ];
     }
 
@@ -201,46 +200,19 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Resolve the imports the inferred props need, keeping only names the rendered type spells.
+     * Name the imports the props type spells, aliasing two same-named classes as an API resource does, and respell the
+     * type with those names. A cast's own import keeps each name it brings, so a class of that name is the one aliased.
      *
-     * An override replaces a whole prop, so the type it displaced must not keep an import alive.
-     *
-     * @return array{typeImports: TypesImportMap, valueImports: TypesImportMap}
+     * @param  array<array-key, string>  $printed  each key's printed type, in print order
+     * @param  TypesImportMap  $castImports  the imports of the casts in force
+     * @return ComposedFile
      */
-    protected function buildInferredImports(MethodAnalysis $analysis, string $propsType): array
+    protected function buildInferredImports(MethodAnalysis $analysis, string $propsType, array $printed, array $castImports): array
     {
-        $imports = new AnalysisImports()->build($analysis, '');
+        $customImports = ImportMaps::merge($analysis->customImports, $castImports);
+        $queues = FileImportNames::objectQueues($analysis, $printed, brought: ImportMaps::localNames($customImports));
 
-        return [
-            'typeImports' => $this->keepSpelledNames(ComposedClassTypes::resolveImports($imports['typeImports'], ''), $propsType),
-            'valueImports' => $this->keepSpelledNames($imports['valueImports'], $propsType),
-        ];
-    }
-
-    /**
-     * Drop every import name the rendered props type never spells, and any path left empty.
-     *
-     * @param  TypesImportMap  $imports
-     * @return TypesImportMap
-     */
-    protected function keepSpelledNames(array $imports, string $propsType): array
-    {
-        foreach ($imports as $path => $names) {
-            $used = array_values(array_filter(
-                $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $propsType),
-            ));
-
-            if ($used === []) {
-                unset($imports[$path]);
-
-                continue;
-            }
-
-            $imports[$path] = $used;
-        }
-
-        return $imports;
+        return FileImportNames::compose([['type' => $propsType, ...$queues]], $customImports, '');
     }
 
     /**

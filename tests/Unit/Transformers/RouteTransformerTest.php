@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Routing\Router;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\Accounting\Http\Requests\VerifyTwoFactorRequest;
 use Workbench\App\Http\Controllers\AttributeRouteKeyController;
@@ -34,6 +37,9 @@ use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\TypedParamController;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
+use Workbench\Crm\Models\Deal;
 
 beforeEach(function () {
     RouteTransformer::clearModelInstanceCache();
@@ -983,4 +989,42 @@ test('a page prop typed by an enum imports the #[TsEnum(name:)] type, not the ba
     // Exact, not toContain(): the page imports one type, so a wrong name shows up in the failure
     // message instead of being masked by a short-circuited ->and() chain.
     expect($imported)->toBe(['SizeType']);
+});
+
+// beforeEach() strips `Workbench\` from namespaces, so the registry prefixes an alias with `Enums` or `Models`.
+it('aliases two same-named enums a page reads, in its route file', function () {
+    app(Router::class)->get('/pair/{deal}', [SameNamedEnumPairController::class, 'pair']);
+    $transformer = new RouteTransformer(SameNamedEnumPairController::class);
+    $deal = (new Deal)->forceFill(['status' => 0, 'crm_status' => 'lead']);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { a: EnumsStatusType, b: CrmStatusType, c: EnumsStatusType, d: CrmStatusType }')
+        ->and(array_merge(...array_values($transformer->typeImports)))
+        ->toEqualCanonicalizing(['StatusType as CrmStatusType', 'StatusType as EnumsStatusType'])
+        ->and(inertiaProps(new SameNamedEnumPairController()->pair($deal)))
+        ->toEqual((object) ['a' => 0, 'b' => 'lead', 'c' => 0, 'd' => 'lead']);
+});
+
+it('aliases a model beside a page whose cast imports User from another module, and keeps the cast\'s User', function () {
+    app(Router::class)->get('/cast-beside-model/{post}', [SameNamedEnumPairController::class, 'castBesideModel']);
+    $transformer = new RouteTransformer(SameNamedEnumPairController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+    $sent = inertiaProps(new SameNamedEnumPairController()->castBesideModel($post));
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { owner: User, author: ModelsUser }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ])
+        ->and([$sent->owner->name, $sent->author->name])->toBe(['Ada', 'Ada']);
+});
+
+it('imports the model an import-less cast spells over the key whose value embeds it', function () {
+    app(Router::class)->get('/embedded-cast/{post}', [EmbeddedCastController::class, 'show']);
+    $transformer = new RouteTransformer(EmbeddedCastController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null } }')
+        ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
+        ->and(inertiaProps(new EmbeddedCastController()->show($post))->meta->author->name)->toBe('Ada');
 });

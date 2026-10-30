@@ -11,8 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
@@ -48,14 +49,15 @@ use Throwable;
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
- * @phpstan-import-type SpelledKinds from SharedEnumKinds
+ * @phpstan-import-type TokenQueue from FileImportNames
+ * @phpstan-import-type TokenQueues from FileImportNames
  *
- * @phpstan-type PageKinds = list<SpelledKinds>
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
- *     pageKinds?: PageKinds,
+ *     pageQueues?: list<TokenQueue>,
+ *     pageConstQueues?: list<TokenQueue>,
  *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
@@ -374,8 +376,10 @@ class InertiaPageAnalyzer
         $allFqcns = [];
         /** @var list<class-string> $constFqcns */
         $constFqcns = [];
-        /** @var PageKinds $pageKinds per page type, each `…Kind` it spells => its enum */
-        $pageKinds = [];
+        /** @var list<TokenQueue> $pageQueues */
+        $pageQueues = [];
+        /** @var list<TokenQueue> $pageConstQueues */
+        $pageConstQueues = [];
         /** @var array<string, list<string>> $externalImports */
         $externalImports = [];
 
@@ -399,7 +403,6 @@ class InertiaPageAnalyzer
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
 
             $this->forgetOverriddenChannels($analysis, $casts);
-            $pageKinds[] = SharedEnumKinds::spellApart($analysis);
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $renumbered = $this->renumberTopLevel($props, $casts, $subject);
@@ -412,6 +415,9 @@ class InertiaPageAnalyzer
                 );
 
             $pageTypes[] = $pageType;
+            $queues = $this->pageTokenQueues($analysis, $props, $casts, ImportMaps::merge($externalImports, $analysis->customImports));
+            $pageQueues[] = $queues['classes'];
+            $pageConstQueues[] = $queues['consts'];
 
             foreach ($this->usedFqcns($analysis, $pageType) as $fqcn) {
                 if (! in_array($fqcn, $allFqcns, true)) {
@@ -438,7 +444,8 @@ class InertiaPageAnalyzer
             'component' => count($components) === 1 ? $components[0] : $components,
             'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
-            'pageKinds' => $pageKinds,
+            'pageQueues' => $pageQueues,
+            'pageConstQueues' => $pageConstQueues,
             'enumConstFqcns' => $constFqcns,
             'externalImports' => $externalImports,
         ];
@@ -506,6 +513,22 @@ class InertiaPageAnalyzer
         }
 
         return '{ '.implode(', ', $parts).' }';
+    }
+
+    /**
+     * The class behind each class token and the enum behind each `typeof` token of the page type, in token order, for
+     * the route file's import names.
+     *
+     * @param  PagePropMap  $props
+     * @param  array<array-key, string>  $casts
+     * @param  array<string, list<string>>  $customImports  the imports of the page's casts and of its custom types
+     * @return TokenQueues
+     */
+    protected function pageTokenQueues(MethodAnalysis $analysis, array $props, array $casts, array $customImports): array
+    {
+        $printed = array_replace(array_map(static fn (array $prop): string => $prop['type'], $props), $casts);
+
+        return FileImportNames::objectQueues($analysis, $printed, 'Inertia.SharedData', ImportMaps::localNames($customImports));
     }
 
     /**

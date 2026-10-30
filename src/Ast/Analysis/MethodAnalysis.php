@@ -375,10 +375,7 @@ class MethodAnalysis
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
-        $wrapped = [
-            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
-            ...$this->inlineEnumResourceFqcns[$name] ?? [],
-        ];
+        $wrapped = $this->wrappedEnumFqcns($name);
         $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
         $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
 
@@ -392,6 +389,59 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($names));
+    }
+
+    /**
+     * The classes a property's import channels hold behind its type's tokens: its enums, models and resources, each
+     * kind in the order its channels queue them.
+     *
+     * @return list<class-string>
+     */
+    public function tokenFqcns(string $name): array
+    {
+        return [
+            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
+            ...$this->channelClasses($name, $this->directEnumFqcns, $this->multiEnumResourceFqcns),
+            ...$this->inlineEnumFqcns[$name] ?? [],
+            ...$this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
+            ...$this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+        ];
+    }
+
+    /**
+     * Every class on any import channel behind a type's tokens, a self-keyed embedded class's too, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allTokenFqcns(): array
+    {
+        return $this->allChannelFqcns(
+            [$this->enumResources, $this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
+            [$this->multiEnumResourceFqcns, $this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
+        );
+    }
+
+    /**
+     * Every enum any value wraps in an `EnumResource`, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allWrappedEnumFqcns(): array
+    {
+        return $this->allChannelFqcns([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+    }
+
+    /**
+     * The enums a property's value wraps in an `EnumResource`, whose consts an `AsEnum<typeof …>` spells.
+     *
+     * @return list<class-string>
+     */
+    public function wrappedEnumFqcns(string $name): array
+    {
+        return [
+            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
+            ...$this->inlineEnumResourceFqcns[$name] ?? [],
+        ];
     }
 
     /**
@@ -516,6 +566,24 @@ class MethodAnalysis
         }
 
         return $queues;
+    }
+
+    /**
+     * Every class the given single-entry and list channels hold, once each.
+     *
+     * @param  list<ClassMapType>  $single
+     * @param  list<FqcnQueueMap>  $listed
+     * @return list<class-string>
+     */
+    private function allChannelFqcns(array $single, array $listed): array
+    {
+        $fqcns = array_merge([], ...array_map(array_values(...), $single));
+
+        foreach ($listed as $map) {
+            $fqcns = [...$fqcns, ...array_merge([], ...array_values($map))];
+        }
+
+        return array_values(array_unique($fqcns));
     }
 
     /**
