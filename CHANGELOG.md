@@ -2,6 +2,34 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.9.1 - 2026-10-30
+
+### v2.9.1
+
+Inherited API resource and value object bodies now publish what PHP sends for the spellings v2.9.0 still missed. There are no new config keys or flags.
+
+#### Fixed
+
+- **Untyped properties a subclass writes.** A write in a trait method the class overrides no longer counts, and under an alias it is typed in the trait method's own scope. A write inside a closure or arrow function is typed with the closure's parameters and `use` imports, and one inside an anonymous class no longer counts. A write through a helper that reads the property back publishes its type instead of `unknown`.
+- **Element writes on an untyped property.** Unset then append, computed and nested keys, an append onto an object, a by-reference `foreach` and an element `unset()` join the property's default, and follow whether Laravel re-indexes the array.
+- **`...parent::m()` spreads** add the keys of the parent's `m()`, as PHP runs it. Where the package cannot read that body whole, the spread publishes what it did before.
+- **`self::macroName()`** in an ancestor's method reaches the macro, beside a subclass method of the same name, instead of publishing `unknown`.
+- **`self`, `static` and `parent` in an inline `@var`, and `self` as a closure parameter type,** name the class that spelling reaches. Through such a receiver, an untyped member a subclass can override publishes `unknown`, because a subclass may return anything there.
+- **A method on a collection the body builds,** such as `new self($this->resource)->summary()`, reads the built class's collected element. A chain through a private method follows the method PHP calls, the one the declaring class holds.
+
+#### Upgrading
+
+Run `php artisan ts:publish --fresh` and type-check your frontend. Some types get more specific, so code built on the old ones can fail `tsc`. `custom_ts_mappings`, `#[TsCasts]` and `#[TsType]` still override any type.
+
+No public or protected signature changed outside the package's `@internal` classes.
+
+### What's Changed
+
+* Read inherited bodies as PHP runs them on the subclass: subclass writes, parent:: spreads, self macros and receivers (#79, #137) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/142
+* Add a fixture app at the repo root for end-to-end publish and vue-tsc checks (#144) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/145
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.9.0...v2.9.1
+
 ## v2.9.0 - 2026-10-29
 
 ### v2.9.0
@@ -228,6 +256,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -244,6 +273,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -251,6 +281,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -288,6 +319,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -296,6 +328,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -314,6 +347,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -343,6 +377,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -389,6 +424,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
