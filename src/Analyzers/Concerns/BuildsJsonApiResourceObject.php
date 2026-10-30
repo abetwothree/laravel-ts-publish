@@ -69,8 +69,15 @@ trait BuildsJsonApiResourceObject
 
     /**
      * Resolve and analyze a $this->method() spread.
+     *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches; null for `$this->`
      */
-    abstract protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis;
+    abstract protected function analyzeThisMethodSpread(
+        string $methodName,
+        bool $topLevel = true,
+        ?Expr $call = null,
+        ?ReflectionClass $on = null,
+    ): ?ResourceAnalysis;
 
     /**
      * The model's own serialized array as an analysis; null with no model behind the subject.
@@ -91,13 +98,6 @@ trait BuildsJsonApiResourceObject
      * @return list<TsCasts>
      */
     abstract protected function tsCastsAttributes(ReflectionClass $reflection): array;
-
-    /**
-     * The runtime class: the class `$this` is when the body runs.
-     *
-     * @return ReflectionClass<object>
-     */
-    abstract private function runtimeClass(): ReflectionClass;
 
     /**
      * Locate the subject's own declaration of the analyzed method, a trait's included.
@@ -134,7 +134,7 @@ trait BuildsJsonApiResourceObject
         return $this->methodName === 'toArray'
             && $this->context === null
             && ! $this->readsCall
-            && $this->runtimeClass()->getName() === $this->scope->subjectReflection->getName()
+            && $this->scope->runtime->class->getName() === $this->scope->subjectReflection->getName()
             && JsonApiResources::is($this->scope->subjectReflection->getName());
     }
 
@@ -143,7 +143,7 @@ trait BuildsJsonApiResourceObject
      */
     protected function buildJsonApiResourceObject(): ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         // The body path sets it, and this returns before it; without it `$this->title` never reaches the model.
         $this->scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor($runtime, $this->scope->modelClass);
@@ -227,7 +227,7 @@ trait BuildsJsonApiResourceObject
      */
     protected function jsonApiFrameworkAttributesAnalysis(): ResourceAnalysis
     {
-        if ($this->runtimeClass()->hasProperty('attributes')) {
+        if ($this->scope->runtime->class->hasProperty('attributes')) {
             return $this->jsonApiAttributeNamesAnalysis();
         }
 
@@ -297,7 +297,7 @@ trait BuildsJsonApiResourceObject
             return new ResourceAnalysis;
         }
 
-        $declaring = $this->runtimeClass()->getMethod('toArray')->getDeclaringClass();
+        $declaring = $this->scope->runtime->class->getMethod('toArray')->getDeclaringClass();
         $analyzer = $this->nestedAnalyzer($declaring, 'toArray', $this->scope->modelClass);
 
         // A located body is read as it is; without one, analyze() would answer with the resource object itself.
@@ -316,7 +316,7 @@ trait BuildsJsonApiResourceObject
      */
     private function jsonApiAttributeNamesAnalysis(): ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
         $analysis = new ResourceAnalysis;
 
         // A method that writes `$attributes` sends what it writes, which no default names.
@@ -350,7 +350,7 @@ trait BuildsJsonApiResourceObject
      */
     private function jsonApiDefaultAnalysis(string $property): ?ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         // A method that writes the property sends what it writes, which no default names.
         if (! resolve(SubjectPropertyTypeResolver::class)->holdsDefault($runtime, $property)) {
@@ -387,7 +387,7 @@ trait BuildsJsonApiResourceObject
             }
         }
 
-        foreach ($this->tsCastsAttributes($this->runtimeClass()) as $casts) {
+        foreach ($this->tsCastsAttributes($this->scope->runtime->class) as $casts) {
             $this->layTsCasts($casts->types, $attributes);
         }
     }
@@ -407,6 +407,8 @@ trait BuildsJsonApiResourceObject
      */
     private function runsFrameworkJsonApiMethod(string $method): bool
     {
-        return JsonApiResources::declaredByFramework($this->runtimeClass()->getMethod($method)->getDeclaringClass()->getName());
+        $declaring = $this->scope->runtime->class->getMethod($method)->getDeclaringClass();
+
+        return JsonApiResources::declaredByFramework($declaring->getName());
     }
 }

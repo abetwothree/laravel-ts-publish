@@ -192,7 +192,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
-        $this->scope->seedCollectionFacts($this->runtimeClass());
+        $this->scope->seedCollectionFacts($this->scope->runtime->class);
 
         $this->ownsScope = $scope === null;
 
@@ -858,7 +858,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $expr->name->toString();
         $readsFramework = in_array($method, self::FRAMEWORK_READS, true)
-            && $this->runtimeClass()->isSubclassOf(JsonResource::class);
+            && $this->scope->runtime->class->isSubclassOf(JsonResource::class);
 
         return $method === $this->methodName || $readsFramework ? $method : null;
     }
@@ -968,7 +968,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
         /** @var class-string<ResourceCollection> $runtimeName */
-        $runtimeName = $this->runtimeClass()->getName();
+        $runtimeName = $this->scope->runtime->class->getName();
         $wrapKey = ResourceWrapping::key($runtimeName);
 
         if ($wrapKey === null) {
@@ -1190,17 +1190,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The runtime class: the class `$this` is when the body runs, whose collects(), `$wrap` and keys every ancestor
-     * body it runs reads. The subject, unless this analyzer reads an ancestor's body for a subclass.
-     *
-     * @return ReflectionClass<object>
-     */
-    private function runtimeClass(): ReflectionClass
-    {
-        return $this->scope->runtime->class;
-    }
-
-    /**
      * Resolve a value through the dispatcher, unknown where no handler types it.
      *
      * @return ValueExpressionResult
@@ -1268,7 +1257,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function sendsOwnToAttributes(): bool
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         return $this->methodName === 'toArray'
             && $this->context === null
@@ -1358,7 +1347,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         try {
             // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
-            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
+            $this->readsKeylessAttributeNames = $methodName === 'toAttributes'
+                && JsonApiResources::is($this->scope->runtime->class->getName());
             $branches = [];
 
             foreach ($this->collectReturnExpressions($stmts) as $returned) {
@@ -1801,7 +1791,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $expr->name->toString();
 
-        return $this->runsFrameworkBody($this->runtimeClass(), $method) ? $method : null;
+        return $this->runsFrameworkBody($this->scope->runtime->class, $method) ? $method : null;
     }
 
     /**
@@ -1834,7 +1824,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function frameworkMethodAnalysis(string $method, bool $whole = false): ?ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         if ($method === 'with') {
             return $this->withDefaultAnalysis();
@@ -1882,7 +1872,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function runtimeClassAnalysis(string $method, bool $whole): ?ResourceAnalysis
     {
-        return $this->reentersRuntimeMethod($method) ? null : $this->nestedAnalysis($this->runtimeClass(), $method, $whole);
+        return $this->reentersRuntimeMethod($method)
+            ? null
+            : $this->nestedAnalysis($this->scope->runtime->class, $method, $whole);
     }
 
     /**
@@ -1936,7 +1928,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function withDefaultAnalysis(): ?ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         if (! resolve(SubjectPropertyTypeResolver::class)->holdsDefault($runtime, 'with')) {
             return null;
@@ -2115,7 +2107,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function collectedListValue(): ?array
     {
         $element = $this->scope->collectedElement;
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         return $element === null && ! ResourceCollections::keepsRawItems($runtime)
             ? null
