@@ -655,18 +655,27 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
-     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys.
+     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys. A parameter a
+     * `self` or `parent` spelled, or one passed such a receiver, reads by its declarations (relativeParameters).
      */
     private function fromBindings(string $name, AnalysisScope $scope, ?Variable $read = null): ?ReceiverType
     {
-        $declared = match (true) {
-            isset($scope->varModelBindings[$name]) => ReceiverType::of($scope->varModelBindings[$name]),
-            isset($scope->varDeclaredBindings[$name]) => new ReceiverType($scope->varDeclaredBindings[$name]),
-            default => null,
-        };
+        $held = $this->boundReceiver($name, $scope, $read);
 
-        if ($declared !== null) {
-            return isset($scope->relativeParameters[$name]) ? $declared->asDeclaredOnly() : $declared;
+        return isset($scope->relativeParameters[$name]) ? $held?->asDeclaredOnly() : $held;
+    }
+
+    /**
+     * What a variable's bindings hold, before relativeParameters marks it; see fromBindings().
+     */
+    private function boundReceiver(string $name, AnalysisScope $scope, ?Variable $read): ?ReceiverType
+    {
+        if (isset($scope->varModelBindings[$name])) {
+            return ReceiverType::of($scope->varModelBindings[$name]);
+        }
+
+        if (isset($scope->varDeclaredBindings[$name])) {
+            return new ReceiverType($scope->varDeclaredBindings[$name]);
         }
 
         if (isset($scope->varCollectionBindings[$name])) {
@@ -813,10 +822,10 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return $this->merge(
+        return $this->carried($receiver, $this->merge(
             array_map(fn (string $class): ?ReceiverType => $this->memberProperty($class, $name), $receiver->classes),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
-        );
+        ));
     }
 
     /**
@@ -891,10 +900,14 @@ final class ReceiverClassResolver
     {
         $receiver = $this->resolve($call->var, $scope);
 
-        if ($receiver === null) {
-            return null;
-        }
+        return $receiver === null ? null : $this->carried($receiver, $this->receiverCallResult($call, $method, $receiver));
+    }
 
+    /**
+     * What `<receiver>->m()` or `<receiver>?->m()` returns on a resolved receiver.
+     */
+    private function receiverCallResult(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): ?ReceiverType
+    {
         $shortCircuits = $receiver->shortCircuits || $call instanceof NullsafeMethodCall;
 
         if ($method === 'getRelated' && $receiver->relatedModel !== null && $receiver->within([Relation::class])) {
@@ -1744,7 +1757,7 @@ final class ReceiverClassResolver
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
      * An element or related model, and a resource collection's items, survive only when every part agrees on them; a
-     * collection is keyed, and a model unsaved or attributeless, when any part is.
+     * collection is keyed, a model unsaved or attributeless, and a receiver read by declarations, when any part is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -1759,6 +1772,7 @@ final class ReceiverClassResolver
         $keyed = false;
         $attributeless = false;
         $filled = null;
+        $declaredOnly = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -1773,6 +1787,7 @@ final class ReceiverClassResolver
             $unsaved = $unsaved || $type->unsaved;
             $keyed = $keyed || $type->keyed;
             $attributeless = $attributeless || $type->attributeless;
+            $declaredOnly = $declaredOnly || $type->declaredOnly;
             if ($type->attributeless) {
                 // Each part with no attributes holds only the columns written into all of them.
                 $filled = $filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled));
@@ -1794,7 +1809,17 @@ final class ReceiverClassResolver
             keyed: $keyed,
             attributeless: $attributeless,
             filled: $filled ?? [],
+            declaredOnly: $declaredOnly,
         );
+    }
+
+    /**
+     * A member's value read through a receiver spelled `self`, `static` or `parent`, marked as that receiver is: the
+     * class it names may be a subclass's override's too.
+     */
+    private function carried(ReceiverType $receiver, ?ReceiverType $member): ?ReceiverType
+    {
+        return $receiver->declaredOnly ? $member?->asDeclaredOnly() : $member;
     }
 
     /**

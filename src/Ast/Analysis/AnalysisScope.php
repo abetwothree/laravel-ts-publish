@@ -303,8 +303,8 @@ final class AnalysisScope
     public array $varDeclaredBindings = [];
 
     /**
-     * The closure parameters whose varModelBindings or varDeclaredBindings entry a `self` or `parent` type spelled, so
-     * the object may be any subclass of the class and its receiver reads members by their declarations only.
+     * The parameters whose class binding a closure's `self` or `parent` type spelled, or an argument spelled `self`,
+     * `static` or `parent` passed: the object may be any subclass, so its receiver reads members by their declarations.
      *
      * @var array<string, true>
      */

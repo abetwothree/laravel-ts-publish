@@ -53,6 +53,7 @@ use ReflectionParameter;
  *     value: ValueExpressionResult|null,
  *     unsaved: bool,
  *     refines: bool,
+ *     declaredOnly: bool,
  * }
  *
  * @internal
@@ -170,11 +171,13 @@ final class ParameterBinder
      * place of a declared concrete model's binding, as a narrower argument replaces a declared abstract class's,
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
+     * An argument spelled `self`, `static` or `parent` marks the parameter in relativeParameters: it may be a subclass.
+     *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $passed, AnalysisScope $scope): void
     {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly]) {
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
             if ($refines && isset($scope->varDeclaredBindings[$name])) {
@@ -184,6 +187,12 @@ final class ParameterBinder
                 unset($scope->varModelBindings[$name]);
             } elseif ($scope->bindsName($name)) {
                 continue;
+            }
+
+            if ($declaredOnly) {
+                $scope->relativeParameters[$name] = true;
+            } else {
+                unset($scope->relativeParameters[$name]);
             }
 
             if ($model !== null) {
@@ -228,10 +237,11 @@ final class ParameterBinder
         $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
         // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
         $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
+        $declaredOnly = $classes !== null && $held->declaredOnly;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -240,7 +250,7 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
     }
 
     /**

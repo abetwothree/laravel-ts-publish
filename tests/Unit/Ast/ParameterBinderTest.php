@@ -371,7 +371,7 @@ test('binds a Request parameter as a request, unless the subject is an API resou
 // The parameter holds the value, so whether the caller's key may be absent, and whether `??` fills it, stays there.
 test('passes a value without the caller\'s optional or its absent-field marker', function () {
     expect(resolve(ParameterBinder::class)->passedBinding(['type' => 'string', 'optional' => true, 'absentReadsNull' => true], null))
-        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false]);
+        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false, 'declaredOnly' => false]);
 });
 
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {

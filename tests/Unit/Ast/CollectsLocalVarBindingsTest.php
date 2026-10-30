@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ChainedLabelChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooseLabelHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingUser;
@@ -693,4 +694,17 @@ it('reads an untyped member a self or static spelling reaches only where no subc
         ->and(json_encode(new UntypedLabelChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"],"tagSelf":"x","fixedSelf":1}')
         ->and(analyzedKeyTypes(LooseLabelHolder::class))->toBe(['viaStatic' => 'unknown'])
         ->and(json_encode(new LooseLabelHolder()->toArray()))->toBe('{"viaStatic":"x"}');
+});
+
+// What such a receiver's member returns may be a subclass's too, as may a value it is passed or merged into.
+it('reads a member of what a self spelling returns, is passed to or joins only by its declaration', function () {
+    expect(analyzedKeyTypes(ChainedLabelChild::class))->toBe([
+        'chainStatic' => 'unknown', 'chainSelf' => 'unknown', 'chainDoc' => 'unknown', 'chainThis' => 'unknown',
+        'chainTag' => 'unknown', 'mapChain' => 'unknown', 'thisChain' => 'string',
+    ])
+        ->and(json_encode(new ChainedLabelChild()->toArray()))
+        ->toBe('{"chainStatic":"x","chainSelf":"x","chainDoc":"x","chainThis":"x","chainTag":"x","mapChain":["x"],"thisChain":"x"}')
+        ->and(analyzedKeyTypes(ChainedLabelChild::class, 'relayed'))
+        ->toBe(['passed' => 'unknown', 'either' => 'unknown', 'typedChain' => 'string | number'])
+        ->and(json_encode(new ChainedLabelChild()->relayed()))->toBe('{"passed":"x","either":"x","typedChain":1}');
 });
