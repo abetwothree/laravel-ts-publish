@@ -51,7 +51,7 @@ reflection answers, a decline included.
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method |
-| `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
+| `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
 | `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the declaring class for `self`, or its parent for `parent`, but nothing for Laravel's own JsonResource or ResourceCollection; marked unsaved, and `attributeless` for a model built with no constructor argument |
@@ -206,9 +206,10 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
   `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper such as
   `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer. A macro registered under the name runs first, so
   `MacroCallResolver` types the call from the macro's callable: its native return, its `@return`, then a closure's body
-  read with `$this` bound to the resource and its captured variables read where it is declared.
-  `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()` keeps the model, which it calls
-  directly.
+  read with `$this` bound to the resource and its captured variables read where it is declared. The class the call
+  reaches decides whether a macro runs, so a `self::m()` the declaring class lacks reaches `__call()` and its macro
+  whatever the runtime class declares. `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()`
+  keeps the model, which it calls directly.
 - **A model's own body**: a model method or accessor body runs on the model, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the runtime class, that model, for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
