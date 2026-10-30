@@ -655,7 +655,9 @@ it('assumes a callee\'s runtime class unless the call runs on this runtime insta
     ))->toBe([$assumed, true, $assumed, false])
         ->and($assumes(RuntimeClass::injected($panel), RuntimeClass::injected($base), RuntimeClass::assumed($panel)))
         ->toBe([false, true, true])
-        ->and($scope->builtRuntime(BasePanelPayload::class)->class->getName())->toBe(BasePanelPayload::class);
+        ->and($scope->builtRuntime(BasePanelPayload::class)->class->getName())->toBe(BasePanelPayload::class)
+        ->and([$scope->calleeRuntime($base, true)->class, $scope->calleeRuntime($base, false)->class])->toBe([$base, $base])
+        ->and($assumes($scope->calleeRuntime($base, true)))->toBe([$assumed]);
 })->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
 // A write replaces what the caller's test saw on that path and every path through it, and only those.
