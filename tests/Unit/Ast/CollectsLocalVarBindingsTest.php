@@ -669,7 +669,8 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'a reassignment' => ['$p = null;', false],
 ]);
 
-// `self` names the declaring class, the using class in a trait, and `static` the runtime class (Ruling R5 for `self`).
+// `self` names the declaring class, the using class in a trait, so it reads the declaration's type, wider than the
+// runtime class's; `static` names the runtime class.
 it('reads self and static in an inline @var, and self as a callback parameter type, as the body binds them', function () {
     expect(analyzedKeyTypes(SelfSpellingChild::class))->toBe(['varSelf' => 'string | number', 'varStatic' => 'string', 'mapSelf' => '(string | number)[]'])
         ->and(json_encode(new SelfSpellingChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"]}')
