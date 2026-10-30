@@ -661,8 +661,7 @@ final class AnalysisScope
         }
 
         return $call->class->isSpecialClassName()
-            || (method_exists($className, $methodName)
-                && ! new ReflectionMethod($className, $methodName)->isStatic()
+            || (self::hasInstanceMethod($className, $methodName)
                 && is_a($this->runtime->class->getName(), $className, true));
     }
 
@@ -1298,6 +1297,18 @@ final class AnalysisScope
         return resolve(AnalysisMemo::class)->remember(
             'collection-picks:'.$collection->getName(),
             static fn (): bool => ! ResourceCollections::keepsRawItems($collection),
+        );
+    }
+
+    /**
+     * Whether a class has a method of the name that runs on an instance, not a static one, once a run per class and
+     * method.
+     */
+    private static function hasInstanceMethod(string $class, string $method): bool
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'instance-method:'.$class.'::'.$method,
+            static fn (): bool => method_exists($class, $method) && ! new ReflectionMethod($class, $method)->isStatic(),
         );
     }
 

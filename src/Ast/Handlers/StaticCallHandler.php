@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -158,6 +159,20 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
+     * The class that declares a method, the using class for a trait's, once a run per class and method; null where the
+     * class has no method of the name.
+     */
+    private static function declaringClass(string $class, string $method): ?string
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'method-declaring-class:'.$class.'::'.$method,
+            static fn (): ?string => method_exists($class, $method)
+                ? new ReflectionMethod($class, $method)->getDeclaringClass()->getName()
+                : null,
+        );
+    }
+
+    /**
      * Whether a call is `parent::toArray()` over a parent whose toArray() sends the collected list; a value read of any
      * other `parent::` call is not read as that list.
      */
@@ -275,10 +290,13 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function callsFrameworkParent(StaticCall $call, string $className, string $methodName): bool
     {
-        return $call->class instanceof Name
-            && $call->class->toLowerString() === 'parent'
-            && method_exists($className, $methodName)
-            && FrameworkClasses::is(new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName());
+        if (! $call->class instanceof Name || $call->class->toLowerString() !== 'parent') {
+            return false;
+        }
+
+        $declaring = self::declaringClass($className, $methodName);
+
+        return $declaring !== null && FrameworkClasses::is($declaring);
     }
 
     /**
@@ -288,8 +306,7 @@ final class StaticCallHandler implements ExpressionHandler
     private function builtClass(StaticCall $call, string $className, string $methodName, AnalysisScope $scope): string
     {
         return in_array($methodName, ['make', 'collection'], true)
-            && method_exists($className, $methodName)
-            && new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName() === JsonResource::class
+            && self::declaringClass($className, $methodName) === JsonResource::class
             && $scope->forwardsRuntimeClass($call, $className, $methodName)
                 ? $scope->runtime->class->getName()
                 : $className;
