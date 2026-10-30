@@ -531,29 +531,37 @@ every static property. The exclusion keeps `$this->resource` meaning the backing
 outside that set, because Laravel reads it with `property_exists()` rather than declaring it.
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
-`AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A non-public
-property declared without a value publishes `null`; a public one left `null` declines, since code outside the class
-fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
-operator, an ancestor's, a trait's or, through the runtime class, a subclass's included, each write found by
-[`PropertyWriteSites`] once a run per class and property: a constant expression evaluated as one, any other value read
-in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the property itself takes the
-default and constant writes under an `AnalysisMemo` guard. A write counts only where the class runs its body: a trait's
-method the class overrides is skipped, unless an alias, the class's or a used trait's, still runs it, typed then under
-that alias in the trait method's own scope. An ancestor's method a subclass overrides still counts, since `parent::` may
-run it. A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
-object. One a closure or arrow function in the method holds joins even where the closure may never run, read in that
-closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a closure,
-only its imports, as the method held them there, which leaves a by-reference import `unknown`; it declines where that
-read leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter does, or reads an import that a
-closure it passes through reassigns anywhere in its body, which the scope reads as that assignment's value wherever the
-read sits. Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}`
-write in application code, or an argument to a by-reference parameter of a callee the scan can name
-([`ByReferenceArguments`], which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. A value naming `static` is typed against the scope's runtime class
-where it is known, and declines where the scope only assumes it, on a receiver or in its method's body. The check cannot
-see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's declared class
-(`$this->holder()->views`), or a write from outside the class.
+`AstEngine::analyzePublicProperties()` and both handler arms:
+
+- It reads the `@var` docblock, then the native type, then an untyped property's default, typed by
+  `ValueResolver::resolveConstantValue()` as a parameter default is.
+- A non-public property declared without a value publishes `null`; a public one left `null` declines, since code
+  outside the class fills it.
+- The default joins the type of each value a method the class runs assigns the property whole or by a compound
+  operator, an ancestor's, a trait's or, through the runtime class, a subclass's included, each write found by
+  [`PropertyWriteSites`] once a run per class and property.
+- A write counts only where the class runs its body: a trait's method the class overrides is skipped, unless an alias,
+  the class's or a used trait's, still runs it, typed then under that alias in the trait method's own scope. An
+  ancestor's method a subclass overrides still counts, since `parent::` may run it.
+- A constant expression is evaluated as one; any other value is read in the writing method's scope
+  (`AstEngine::analyzeExpressionValue()`), where a read of the property itself takes the default and constant writes
+  under an `AnalysisMemo` guard.
+- A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
+  object.
+- A write a closure or arrow function in the method holds joins even where the closure may never run, read in that
+  closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a
+  closure, only its imports, as the method held them there, which leaves a by-reference import `unknown`.
+- That closure read declines where it leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter
+  does, or reads an import that a closure it passes through reassigns anywhere in its body, which the scope reads as
+  that assignment's value wherever the read sits.
+- Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
+  application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
+  which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
+  `next()`, `prev()` and `reset()`.
+- A value naming `static` is typed against the scope's runtime class where it is known, and declines where the scope
+  only assumes it, on a receiver or in its method's body.
+- The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's
+  declared class (`$this->holder()->views`), or a write from outside the class.
 
 A helper the value calls while it is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own
 read of the property takes the default and constant writes too. Where reading the property as the type that joins, under
