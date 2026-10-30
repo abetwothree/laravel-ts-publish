@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
@@ -290,7 +291,7 @@ describe('an inline @var on a local assignment', function () {
     test('declines a tag holding any form outside the ones the docblock resolution reads in full', function (string $type) {
         [$scope, $returned] = inlineVarReturned('/** @var '.$type.' $d */ $d = json_decode(""); return $d;');
 
-        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class)))
+        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class), []))
             ->toBeNull()
             ->and($scope->varDocBindings)->toBe([])
             ->and(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
@@ -342,7 +343,7 @@ describe('an inline @var on a local assignment', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(DeclaredPrecedenceResource::class);
 
-        expect($reader->extractVarTag('/** @var '.$type.' $d */', $context))->toBe([$type, 'd'])
+        expect($reader->extractVarTag('/** @var '.$type.' $d */', $context, []))->toBe([$type, 'd', false])
             ->and($reader->readDeclared($type, $context)['type'] ?? null)->toBe($read);
     })->with([
         'each scalar' => ['int|string|bool|float|null|true|false', 'number | string | boolean | null | true | false'],
@@ -423,10 +424,89 @@ describe('an inline @var on a local assignment', function () {
     test('binds a nullable shape inside a multi-line shape, read with its lines joined', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(DeclaredPrecedenceResource::class);
-        $tag = $reader->extractVarTag("/** @var array{\n *     a: int,\n *     b: ?array{c: int},\n * } \$d */", $context);
+        $tag = $reader->extractVarTag("/** @var array{\n *     a: int,\n *     b: ?array{c: int},\n * } \$d */", $context, []);
 
         expect($tag[1] ?? null)->toBe('d')
             ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
+    });
+
+    // A body binds `self` to its declaring class, `static` to its runtime class and `parent` to its declaring class's.
+    test('spells self, static and parent as the classes the body binds them to', function (string $type, array $relative, ?string $spelled) {
+        $tag = resolve(PropertyDocblockTypeReader::class)
+            ->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class), $relative);
+
+        expect($tag[0] ?? null)->toBe($spelled)
+            ->and($tag === null ? null : $tag[2])->toBe($spelled === null ? null : $spelled !== $type);
+    })->with([
+        'self' => ['self', ['self' => Team::class], '\\'.Team::class],
+        'static' => ['static', ['static' => SubscribedTeam::class], '\\'.SubscribedTeam::class],
+        'parent' => ['parent', ['parent' => Team::class], '\\'.Team::class],
+        'a nullable self' => ['?self', ['self' => Team::class], '?\\'.Team::class],
+        'self or null' => ['self|null', ['self' => Team::class], '\\'.Team::class.'|null'],
+        'any case' => ['Static', ['static' => SubscribedTeam::class], '\\'.SubscribedTeam::class],
+        'in a list and bare' => [
+            'list<self>|static',
+            ['self' => Team::class, 'static' => SubscribedTeam::class],
+            'list<\\'.Team::class.'>|\\'.SubscribedTeam::class,
+        ],
+        'a shape key, which stays a key' => ['array{self: int, static?: string}', ['self' => Team::class, 'static' => Team::class], 'array{self: int, static?: string}'],
+        'a quoted key' => ["array{'self': int}", ['self' => Team::class], "array{'self': int}"],
+        'a parent the declaring class lacks' => ['parent', ['self' => Team::class], null],
+        'a bracket list, declined as any class\'s is' => ['self[]', ['self' => Team::class], null],
+        'a class constant' => ['self::NAME', ['self' => Team::class], null],
+        'a conditional type\'s arm, declined as before' => ['($d is null ? self : static)', ['self' => Team::class, 'static' => Team::class], null],
+    ]);
+
+    // `self` may name any subclass of the model, so the collection a spelled tag declares names no element to read.
+    test('names no element for a collection a self spelling declares, and reads its members by their declarations', function () {
+        $held = function (string $element): ?ReceiverType {
+            $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+            /** @var list<Stmt> $stmts */
+            $stmts = new AstParser()->parseSource('<?php /** @var \\'.EloquentCollection::class.'<int, '.$element.'> $x */ $x = json_decode(""); return $x;');
+            $host = new class
+            {
+                use CollectsLocalVarBindings;
+
+                /**
+                 * Seed the scope from the body, as the analyzer does.
+                 *
+                 * @param  list<Stmt>  $stmts
+                 */
+                public function run(array $stmts, AnalysisScope $scope): void
+                {
+                    $this->seedBody($stmts, $scope);
+                }
+            };
+            $host->run($stmts, $scope);
+            $returned = $stmts[1];
+            assert($returned instanceof Return_ && $returned->expr instanceof Expr);
+
+            return resolve(ReceiverClassResolver::class)->resolve($returned->expr, $scope);
+        };
+        $named = $held('\\'.Post::class);
+        $spelled = $held('self');
+
+        expect([$named?->classes, $named?->elementModel, $named?->declaredOnly])->toBe([[EloquentCollection::class], Post::class, false])
+            ->and([$spelled?->classes, $spelled?->elementModel, $spelled?->declaredOnly])->toBe([[EloquentCollection::class], null, true]);
+    });
+
+    // A value read through such a receiver keeps its mark where a named tag fills in its collection's element.
+    test('keeps the mark on an assigned collection a named tag gives an element, and gives none from a spelled tag', function () {
+        $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $scope->varDeclaredBindings['m'] = [EloquentCollection::class];
+        $scope->relativeParameters['m'] = true;
+        $span = [
+            'type' => '\\'.EloquentCollection::class.'<int, \\'.Comment::class.'>',
+            'context' => $scope->declaringFileClass,
+            'after' => 0,
+            'before' => null,
+            'expr' => new Variable('m'),
+        ];
+        $named = resolve(ReceiverClassResolver::class)->resolveDeclared('c', $span, $scope);
+        $spelled = resolve(ReceiverClassResolver::class)->resolveDeclared('c', [...$span, 'relative' => true], $scope);
+
+        expect([$named?->elementModel, $named?->declaredOnly])->toBe([Comment::class, true])
+            ->and([$spelled?->elementModel, $spelled?->declaredOnly])->toBe([null, true]);
     });
 
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.

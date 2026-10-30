@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
@@ -342,7 +343,7 @@ class InertiaPageAnalyzer
         $analysis->merge(resolve(AstEngine::class)->analyzeMethod(
             $propertyClass,
             $propsArg->name->toString(),
-            assumesRuntime: AnalysisScope::assumesInjected(new ReflectionClass($propertyClass)->isFinal()),
+            runtime: RuntimeClass::injected(new ReflectionClass($propertyClass)),
         ));
 
         return $analysis;

@@ -78,15 +78,15 @@ final class ByReferenceArguments
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
      * @param  array<Arg>  $passed  the call's arguments the caller asks about, keyed by position
-     * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name, but for the declaring
-     *                                                 class's private `$this->m()`; null names neither
      * @param  ReflectionClass<object>|null  $declaring  the class `self` names, the using class in a trait's body; null
      *                                                   names neither it nor `parent`
+     * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name, but for the declaring
+     *                                                 class's private `$this->m()`; null names neither
      * @return list<Expr>
      */
-    public function of(CallLike $call, array $passed, ?ReflectionClass $runtime, ?ReflectionClass $declaring): array
+    public function of(CallLike $call, array $passed, ?ReflectionClass $declaring, ?ReflectionClass $runtime): array
     {
-        $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $runtime, $declaring);
+        $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $declaring, $runtime);
 
         if ($callee === null
             || ($callee instanceof ReflectionFunction && in_array($callee->getName(), self::POINTER_FUNCTIONS, true))
@@ -156,13 +156,13 @@ final class ByReferenceArguments
      *
      * A method PHP cannot find goes to `__call()` or `__callStatic()`, which take their arguments by value.
      *
-     * @param  ReflectionClass<object>|null  $runtime
      * @param  ReflectionClass<object>|null  $declaring
+     * @param  ReflectionClass<object>|null  $runtime
      */
     private function callee(
         CallLike $call,
-        ?ReflectionClass $runtime,
         ?ReflectionClass $declaring,
+        ?ReflectionClass $runtime,
     ): ?ReflectionFunctionAbstract {
         try {
             if ($call instanceof FuncCall && $call->name instanceof Name) {
@@ -170,7 +170,7 @@ final class ByReferenceArguments
             }
 
             if ($call instanceof New_ && $call->class instanceof Name) {
-                return $this->namedClass($call->class, $runtime, $declaring)?->getConstructor();
+                return $this->namedClass($call->class, $declaring, $runtime)?->getConstructor();
             }
 
             if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
@@ -186,7 +186,7 @@ final class ByReferenceArguments
             }
 
             if ($call instanceof StaticCall && $call->class instanceof Name && $call->name instanceof Identifier) {
-                return $this->namedClass($call->class, $runtime, $declaring)?->getMethod($call->name->toString());
+                return $this->namedClass($call->class, $declaring, $runtime)?->getMethod($call->name->toString());
             }
         } catch (ReflectionException) {
             return null;
@@ -256,16 +256,16 @@ final class ByReferenceArguments
     /**
      * The class a static call or `new` names, or null when it cannot be loaded.
      *
-     * @param  ReflectionClass<object>|null  $runtime
      * @param  ReflectionClass<object>|null  $declaring
+     * @param  ReflectionClass<object>|null  $runtime
      * @return ReflectionClass<object>|null
      */
-    private function namedClass(Name $name, ?ReflectionClass $runtime, ?ReflectionClass $declaring): ?ReflectionClass
+    private function namedClass(Name $name, ?ReflectionClass $declaring, ?ReflectionClass $runtime): ?ReflectionClass
     {
         $class = match (true) {
             ! $name->isSpecialClassName() => $name->toString(),
             $runtime === null || $declaring === null => null,
-            default => AnalysisScope::relativeClassOf($name, $runtime, $declaring)?->getName(),
+            default => AnalysisScope::relativeClassOf($name, $declaring, $runtime)?->getName(),
         };
 
         if ($class === null || ! class_exists($class)) {

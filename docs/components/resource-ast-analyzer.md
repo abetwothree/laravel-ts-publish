@@ -94,11 +94,18 @@ every profile, the order handlers run in decides which one answers; see
   binding; a value read of a local built by keys shares it through `walkedLocal()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
-  the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
-  spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
-  the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
-  `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's
-  parameters, and what the call passes them through `CallSite::passedTo()`, as
+  the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and
+  `...parent::m()` spread the same way (`relativeMethodSpread()`), the last only for a user-land parent's method PHP can
+  call there: a private or abstract one throws, and Laravel's is read only where `readParentCall()` or the spread-arm
+  classifier reads it. A `parent::` spread falls through to the arms below, as the release read it, when it is read only
+  partly or its read meets a spread item no arm reads, or a spread of the subject's own method read only partly, which
+  may overwrite an earlier key: anywhere, in its body, a nested array, an argument, a helper read as a value or a nested
+  analyzer's body, as the `UnreadSpreads` count shows. A re-entry of a method on the stack adds no key, and so does a
+  declined read that met one, rather than fall through into the cycle. The runtime class stays the caller's, as PHP
+  forwards it. It sets every name-keyed table aside through `AnalysisScope::enterMethod()`, keeping only the guard
+  proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and `readingLocals`
+  guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's parameters, and
+  what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
@@ -617,11 +624,13 @@ list once `withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 
-`StaticCallHandler` types a method called on `new self($x)`, `self::make($x)` or a chain of them. A method that
-returns the same instance keeps the receiver's type, the wrapped value's `| null` included, plus `| null` for a nullable
-return. It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. Otherwise
-the method body is the payload. `spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()`
-flattens it. An empty analysis declines, since `{}` would claim the payload has no keys.
+`StaticCallHandler` types a method called on `new self($x)`, `self::make($x)` or a chain of them. A method that returns
+the same instance keeps the receiver's type, the wrapped value's `| null` included, plus `| null` for a nullable return.
+It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. Otherwise the method
+body is the payload. `spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()` flattens it.
+An empty analysis declines, since `{}` would claim the payload has no keys. Either way the method is the one PHP calls
+from the body: the declaring class's own private one on an instance of it or a subclass, over a public namesake, else
+the receiver's (`AnalysisScope::memberClassOf()`).
 
 Three answers are possible, and only the last is right. Do not change it to the receiver type:
 
@@ -632,11 +641,16 @@ Three answers are possible, and only the last is right. Do not change it to the 
 | `{ id: number }`, the method body | Right. `FluentSelfResource::summary(): array` returns `['id' => $this->id]`. |
 
 Only a class the body builds as itself is in scope: `spreadAnalysis()` reads the method on that class, with `$this` as
-it, the declaring class for `new self` and the runtime class for `new static`, `static::make()` and `self::make()`. A
-foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown` floor instead of the analyzer's own
-same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is exempt, since it is Laravel's
-serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as `SomeResource::make($x)->resolve()` does,
-never with the wrapped value's `| null`.
+it, the declaring class for `new self` and the runtime class for `new static`, `static::make()` and `self::make()`,
+known since a build is exact, unless it is the class `static` stands for, which is known only where the scope's runtime
+class is (`AnalysisScope::builtRuntime()`). A built collection's items, read as the ones `$this->resource` holds in the
+analyzed body, are the API resource its own `collects()` picks, which Laravel's `collectResource()` maps them into,
+unless the analyzed class's element already is one; a built class that picks none, or an element the run cannot name,
+keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay the analyzed class's too, since its
+`filter()` re-indexes what the method returns. A foreign receiver such as `new CategoryResource($x)->summary()` keeps
+the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that.
+`resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
 
 ## Numeric keys
 

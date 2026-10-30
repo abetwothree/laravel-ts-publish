@@ -6,50 +6,48 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
-use PhpParser\Node\Arg;
-use PhpParser\Node\ArrayItem;
+use PhpParser\Node\ClosureUse;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
-use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Minus;
 use PhpParser\Node\Expr\BinaryOp\Plus;
-use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\List_;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Unset_;
@@ -57,7 +55,6 @@ use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionProperty;
 use Throwable;
-use WeakMap;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
@@ -65,12 +62,14 @@ use WeakMap;
  * declares it at all, and whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ArrayWrite from ArrayArm
+ * @phpstan-import-type PropertyWrite from PropertyWriteSites
  *
- * @phpstan-type PropertyWrite array{Node, ReflectionClass<object>, ClassLike, string}
- * @phpstan-type PropertyWrites list<PropertyWrite>
- * @phpstan-type ElementWrite array{key: string|null, value: Expr}
- * @phpstan-type KeyedValue array{string, ValueExpressionResult}
- * @phpstan-type Declaration array{ReflectionClass<object>, ReflectionClass<object>}
+ * @phpstan-type ElementWrite array{path: list<string|null>, value: Expr|null, unsets: bool}
+ * @phpstan-type ComputedWrite array{PropertyWrite, ElementWrite}
+ * @phpstan-type ComputedWrites list<ComputedWrite>
+ * @phpstan-type WriteValues array<int, ValueExpressionResult|null>
+ * @phpstan-type LiftedWrites array{type: ValueExpressionResult|null, kept: bool}
  *
  * @internal
  */
@@ -83,23 +82,22 @@ final class SubjectPropertyTypeResolver
      */
     private const array FRAMEWORK_BASES = [JsonResource::class, ResourceCollection::class, Model::class];
 
-    /** @var array<string, string> each framework file spellsName() read, by path; vendor code holds still in a run */
-    private static array $frameworkSources = [];
+    /** The guard the outermost property whose writes read a helper again holds, so one typed inside reads it cut. */
+    private const string REENTRY_GUARD = 'reading-property-writes';
 
-    /** @var WeakMap<ClassLike, list<array{Node, list<Expr|Arg>}>>|null each parsed class body's write sites */
-    private static ?WeakMap $writeSites = null;
+    /** @var array<string, ValueExpressionResult> what each property guard answers, by runtime class, in a check */
+    private static array $seeds = [];
 
     /**
      * Resolve a declared property's TypeScript type and FQCN channels, or null when no source
      * yields a type whose tokens can be imported.
      *
      * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, where the runtime class
-     *                                                      is known; null where it is only assumed, which declines such
-     *                                                      a write
+     * @param  RuntimeClass  $runtime  the class the property is read for: a known one is the class a write's `static`
+     *                                 names, and an assumed one declines such a write
      * @return ValueExpressionResult|null
      */
-    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $knownRuntime = null): ?array
+    public function resolve(ReflectionClass $subject, string $name, RuntimeClass $runtime): ?array
     {
         if (! $subject->hasProperty($name)) {
             return null;
@@ -107,9 +105,23 @@ final class SubjectPropertyTypeResolver
 
         $property = $subject->getProperty($name);
 
+        // An assumed runtime class may be any subclass, so the property is read for the subject itself.
+        $readFor = $runtime->known ? $runtime : RuntimeClass::assumed($subject);
+
+        return $this->declaredType($subject, $property) ?? $this->defaultValueType($subject, $property, $readFor);
+    }
+
+    /**
+     * A subject's property's declared type, its `@var` docblock else its native type, with no default or write read:
+     * what holds for a subclass that redeclares it too.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return ValueExpressionResult|null
+     */
+    public function declaredType(ReflectionClass $subject, ReflectionProperty $property): ?array
+    {
         return resolve(PropertyDocblockTypeReader::class)->read($property)
-            ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property, $knownRuntime);
+            ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $property->getName()));
     }
 
     /**
@@ -155,54 +167,52 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * The nodes of a class body that write something, each with the targets it writes, in the order a walk meets them.
+     * The plain names these nodes spell where each is a variable, leaving out a variable variable.
      *
-     * Every property a class is asked about would otherwise walk the whole body again, and a framework base is asked
-     * about once per subject.
-     *
-     * @return list<array{Node, list<Expr|Arg>}>
+     * @param  array<Node>  $nodes
+     * @return list<string>
      */
-    private static function writeSites(ClassLike $class): array
+    private static function variableNames(array $nodes): array
     {
-        self::$writeSites ??= new WeakMap;
+        $names = [];
 
-        if (! isset(self::$writeSites[$class])) {
-            $sites = [];
-
-            new NodeFinder()->find($class->stmts, function (Node $node) use (&$sites): bool {
-                $targets = self::writeTargets($node);
-
-                if ($targets !== []) {
-                    $sites[] = [$node, $targets];
-                }
-
-                return false;
-            });
-
-            self::$writeSites[$class] = $sites;
+        foreach ($nodes as $node) {
+            if ($node instanceof Variable && is_string($node->name)) {
+                $names[] = $node->name;
+            }
         }
 
-        return self::$writeSites[$class];
+        return $names;
     }
 
     /**
-     * The expressions a node writes, or for a call the arguments it might pass by reference; empty for any other node.
+     * Whether a value reads an import that a closure holding the write, or one the import passes through on its way in,
+     * assigns anywhere in its body: that closure's scope reads the name as the value the body assigns wherever the read
+     * sits, which a read before the assignment never holds, so the write declines in either order.
      *
-     * @return list<Expr|Arg>
+     * @param  list<ArrowFunction|ClosureExpr>  $closures  outermost first
      */
-    private static function writeTargets(Node $node): array
+    private static function readsReassignedImport(Expr $value, array $closures): bool
     {
-        $targets = match (true) {
-            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PreDec,
-            $node instanceof PostInc, $node instanceof PostDec => [$node->var],
-            $node instanceof AssignRef => [$node->var, $node->expr],
-            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar, $node->byRef ? $node->expr : null],
-            $node instanceof Unset_ => $node->vars,
-            $node instanceof CallLike => $node->isFirstClassCallable() ? [] : $node->getArgs(),
-            default => [],
-        };
+        if ($closures === []) {
+            return false;
+        }
 
-        return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
+        $names = array_diff(self::variableNames(new NodeFinder()->findInstanceOf($value, Variable::class)), ['this']);
+
+        foreach (array_reverse($closures) as $closure) {
+            // A closure takes only the names it imports; an arrow function every name but its parameters.
+            $names = $closure instanceof ClosureExpr
+                ? array_intersect($names, self::variableNames(array_map(fn (ClosureUse $use): Expr => $use->var, $closure->uses)))
+                : array_diff($names, self::variableNames(array_map(fn (Param $param): Expr => $param->var, $closure->params)));
+            $body = $closure instanceof ClosureExpr ? $closure->stmts : [$closure->expr];
+
+            if (array_intersect($names, array_column(VariableWrites::of($body), 0)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -211,10 +221,10 @@ final class SubjectPropertyTypeResolver
      * property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class a write's `static` names, if known
+     * @param  RuntimeClass  $runtime  the class the property is read for, known, or the subject, assumed
      * @return ValueExpressionResult|null
      */
-    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $knownRuntime): ?array
+    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, RuntimeClass $runtime): ?array
     {
         if ($property->getType() !== null || ! $property->hasDefaultValue()) {
             return null;
@@ -233,7 +243,7 @@ final class SubjectPropertyTypeResolver
         }
 
         $result = resolve(ValueResolver::class)->resolveConstantValue($value);
-        $writes = $result === null ? null : $this->propertyWrites($subject, $property->getName());
+        $writes = $result === null ? null : resolve(PropertyWriteSites::class)->of($subject, $property->getName());
 
         if ($result === null || $writes === null) {
             return null;
@@ -243,15 +253,19 @@ final class SubjectPropertyTypeResolver
         $computed = [];
 
         foreach ($writes as $write) {
-            $assigned = $this->assignedConstant($write[0], $property->getName(), $knownRuntime, $write[1]);
+            $assigned = $this->assignedConstant($write[0], $property->getName(), $runtime, $write[1]);
+            $elements = $assigned === null ? $this->elementWrites($write, $property->getName(), $runtime) : [];
+
+            if ($elements === null) {
+                return null;
+            }
 
             if ($assigned !== null) {
                 $written[] = $assigned;
-            } elseif ($this->writtenValue($write[0], $property->getName()) !== null
-                || $this->elementWrite($write[0], $property->getName()) !== null) {
-                $computed[] = $write;
-            } else {
-                return null;
+            }
+
+            foreach ($elements as $element) {
+                $computed[] = [$write, $element];
             }
         }
 
@@ -261,222 +275,446 @@ final class SubjectPropertyTypeResolver
             return $known;
         }
 
-        $key = 'property-type:'.$subject->getName().'::'.$property->getName()
-            .AnalysisMemo::runtimeKey($subject->getName(), $knownRuntime, $knownRuntime === null);
+        $key = 'property-type:'.$subject->getName().'::'.$property->getName().$runtime->memoKey($subject->getName());
 
         return resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): ?array => $this->withComputedWrites($known, $computed, $subject, $property, $knownRuntime),
+            fn (): ?array => $this->withComputedWrites($known, $computed, $property, $runtime),
         );
     }
 
     /**
-     * The known type joined with the value each computed write assigns, each appended element folded into its list and
-     * each key written into its object; the known type alone while the property is already being typed, and null where
-     * a write's value is one the engine cannot type, or its elements fit no single shape.
+     * The known type joined with the value each computed write assigns, and each element write applied to its arms; the
+     * known type alone while the property is already being typed, and null where a write's value is one the engine
+     * cannot type, or an element write reaches no array the type names.
+     *
+     * A write calling a helper already being read reads it again, or cut where the type that joins is no fixpoint; only
+     * the outermost property typed reads one again, so its check and fallback each add one read per call and property
+     * its writes reach to the cut read's work, and a property typed inside it adds none.
      *
      * @param  ValueExpressionResult  $known  the default's type joined with each constant write's
-     * @param  PropertyWrites  $computed  the whole, compound and element writes no constant evaluation types
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
+     * @param  ComputedWrites  $computed  the whole, compound and element writes no constant evaluation types
      * @return ValueExpressionResult|null
      */
     private function withComputedWrites(
         array $known,
         array $computed,
-        ReflectionClass $subject,
         ReflectionProperty $property,
-        ?ReflectionClass $knownRuntime,
+        RuntimeClass $runtime,
     ): ?array {
         $memo = resolve(AnalysisMemo::class);
-        $guard = 'typing-property:'.$property->getDeclaringClass()->getName().'::'.$property->getName();
+        $guard = $this->propertyGuard($property);
 
         // A write reading the property it writes, as `$this->count + 1` does, reads what the property held before it.
         if (! $memo->enter($guard)) {
-            return $known;
+            return self::$seeds[$this->seedKey($guard, $runtime)] ?? $known;
         }
 
         try {
-            $typed = [];
-            $appended = [];
-            $keyed = [];
+            // A property typed inside another's re-entry reads its helpers cut, as before it, so no re-entry nests.
+            if (! $memo->enter(self::REENTRY_GUARD)) {
+                return $memo->cut(fn (): ?array => $this->cutWrites($known, $computed, $runtime));
+            }
 
-            foreach ($computed as $write) {
-                $element = $this->elementWrite($write[0], $property->getName());
-                $expr = $element['value'] ?? $this->writtenValue($write[0], $property->getName());
-                $value = $expr === null ? null : $this->computedWrite($write, $expr, $subject, $knownRuntime);
+            try {
+                $lifted = DroppedUnionArms::provisional(
+                    fn (): array => $this->liftedWrites($known, $computed, $property, $runtime),
+                    fn (array $lifted): bool => $lifted['kept'],
+                );
 
-                if ($value === null || $value['type'] === 'unknown') {
-                    return null;
-                }
-
-                if ($element === null) {
-                    $typed[] = $value;
-                } elseif ($element['key'] === null) {
-                    $appended[] = $value;
-                } else {
-                    $keyed[] = [$element['key'], $value];
-                }
+                // A write that joins a new type each run, as one nesting what its helper returns does, reads it cut.
+                return $lifted['kept']
+                    ? $lifted['type']
+                    : $this->cutWrites($known, $computed, $runtime);
+            } finally {
+                $memo->leave(self::REENTRY_GUARD);
             }
         } finally {
             $memo->leave($guard);
         }
-
-        $whole = ValueResult::unionResults([$known, ...$typed]);
-
-        // Appends beside a key write leave a list keyed by name, an object no list or literal shape describes.
-        return match (true) {
-            $appended !== [] && $keyed !== [] => null,
-            $appended !== [] => $this->withAppended($whole, $appended),
-            $keyed !== [] => $this->withKeys($whole, $keyed),
-            default => $whole,
-        };
     }
 
     /**
-     * A list of each element type the property's lists hold and each appended value's type; null where an arm is no
-     * list, such as `null` or an object, whose appended value lands under a key the type cannot name.
+     * The type the computed writes join, each read with the analyses under way lifted, and whether it stands: no write
+     * entered one again, it is a fixpoint, or a write that entered none declines it anyway.
      *
-     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
-     * @param  non-empty-list<ValueExpressionResult>  $appended
+     * @param  ValueExpressionResult  $known
+     * @param  ComputedWrites  $computed
+     * @return LiftedWrites
+     */
+    private function liftedWrites(
+        array $known,
+        array $computed,
+        ReflectionProperty $property,
+        RuntimeClass $runtime,
+    ): array {
+        $memo = resolve(AnalysisMemo::class);
+        $guard = $this->propertyGuard($property);
+        $read = fn (int $index): ?array => $memo->reenterOnce(
+            $guard,
+            fn (): ?array => $this->writeValue($computed[$index], $runtime),
+        );
+        $values = [];
+        $reentered = [];
+
+        foreach ($this->valuedWrites($computed) as $index) {
+            $reentries = $memo->reentries();
+            $values[$index] = $read($index);
+
+            if ($memo->reentries() !== $reentries) {
+                $reentered[] = $index;
+            } elseif ($values[$index] === null) {
+                // Reading a helper again cannot type a write that reads none, so the property declines however it ends.
+                return ['type' => null, 'kept' => true];
+            }
+        }
+
+        $joined = $this->joinedWrites($known, $computed, $values, $runtime);
+
+        if ($reentered === [] || $joined === null) {
+            return ['type' => $joined, 'kept' => $reentered === []];
+        }
+
+        $again = function () use ($known, $computed, $values, $reentered, $read, $runtime): ?array {
+            foreach ($reentered as $index) {
+                $values[$index] = $read($index);
+            }
+
+            return $this->joinedWrites($known, $computed, $values, $runtime);
+        };
+        $seed = $this->seedKey($guard, $runtime);
+
+        return ['type' => $joined, 'kept' => $this->reachesFixpoint($guard, $seed, $joined, $again)];
+    }
+
+    /**
+     * Whether a joined type is a fixpoint: the join read again with the property's guard answering that type holds no
+     * arm it lacks. The check's own reads leave no dropped arm, warning or stored answer behind.
+     *
+     * @param  ValueExpressionResult  $joined
+     * @param  Closure(): (ValueExpressionResult|null)  $again  the join with each write that entered one read again
+     */
+    private function reachesFixpoint(string $guard, string $seed, array $joined, Closure $again): bool
+    {
+        $memo = resolve(AnalysisMemo::class);
+        self::$seeds[$seed] = $joined;
+
+        try {
+            $rejoined = DroppedUnionArms::provisional(
+                fn (): ?array => $memo->seeding($guard, $again),
+                fn (): bool => false,
+            );
+        } finally {
+            unset(self::$seeds[$seed]);
+        }
+
+        $arms = TsTypeShape::splitTopLevel($joined['type'], ['|']);
+
+        return $rejoined !== null && array_diff(TsTypeShape::splitTopLevel($rejoined['type'], ['|']), $arms) === [];
+    }
+
+    /**
+     * The known type joined with each computed write's value read with no helper read again, as before any re-entry;
+     * null where a write's value is one the engine cannot type.
+     *
+     * @param  ValueExpressionResult  $known
+     * @param  ComputedWrites  $computed
      * @return ValueExpressionResult|null
      */
-    private function withAppended(array $whole, array $appended): ?array
+    private function cutWrites(array $known, array $computed, RuntimeClass $runtime): ?array
     {
+        $values = [];
+
+        foreach ($this->valuedWrites($computed) as $index) {
+            $values[$index] = $this->writeValue($computed[$index], $runtime);
+
+            if ($values[$index] === null) {
+                return null;
+            }
+        }
+
+        return $this->joinedWrites($known, $computed, $values, $runtime);
+    }
+
+    /**
+     * The index of each computed write that writes a value, which an element `unset()` does not.
+     *
+     * @param  ComputedWrites  $computed
+     * @return list<int>
+     */
+    private function valuedWrites(array $computed): array
+    {
+        return array_keys(array_filter($computed, fn (array $write): bool => $write[1]['value'] !== null));
+    }
+
+    /**
+     * The guard held while a property is typed, one per declaring class and name.
+     */
+    private function propertyGuard(ReflectionProperty $property): string
+    {
+        return 'typing-property:'.$property->getDeclaringClass()->getName().'::'.$property->getName();
+    }
+
+    /**
+     * The key a property's seed is kept under: its guard and the class it is read for, so another class's read of the
+     * same declaration takes its own known type.
+     */
+    private function seedKey(string $guard, RuntimeClass $runtime): string
+    {
+        return $guard.'@'.$runtime->class->getName();
+    }
+
+    /**
+     * The value a computed write gives the property whole, or the element it writes, typed in its method's scope; null
+     * where the engine cannot type it.
+     *
+     * @param  ComputedWrite  $write
+     * @return ValueExpressionResult|null
+     */
+    private function writeValue(array $write, RuntimeClass $runtime): ?array
+    {
+        $expr = $write[1]['value'];
+        $value = $expr === null ? null : $this->computedWrite($write[0], $expr, $runtime);
+
+        return $value === null || $value['type'] === 'unknown' ? null : $value;
+    }
+
+    /**
+     * The known type joined with each whole write's value, with each element write then applied to its arms; null where
+     * a value is missing, or an element write reaches no array the type names.
+     *
+     * @param  ValueExpressionResult  $known
+     * @param  ComputedWrites  $computed
+     * @param  WriteValues  $values  each write's value, by its index in $computed
+     * @param  RuntimeClass  $runtime  the class the property is read for, whose serializer sends it
+     * @return ValueExpressionResult|null
+     */
+    private function joinedWrites(array $known, array $computed, array $values, RuntimeClass $runtime): ?array
+    {
+        $typed = [];
         $elements = [];
+        $writes = [];
 
-        foreach (TsTypeShape::splitTopLevel($whole['type'], ['|']) as $arm) {
-            $element = TsTypeShape::elementType($arm);
+        foreach ($computed as $index => [$write, $element]) {
+            $value = $values[$index] ?? null;
 
-            if ($element === null) {
+            // Only an unset() writes no value; a write whose value the engine cannot type may leave anything.
+            if ($value === null && ! $element['unsets']) {
                 return null;
             }
 
-            $elements[] = $element;
+            if ($value !== null && $element['path'] === []) {
+                $typed[] = $value;
+
+                continue;
+            }
+
+            $written = $this->arrayWrite($write[0], $element, $value['type'] ?? null);
+
+            if ($written === null) {
+                return null;
+            }
+
+            $writes[] = $written;
+
+            if ($value !== null) {
+                $elements[] = $value;
+            }
         }
 
-        $members = array_merge(...array_map(
-            fn (string $type): array => TsTypeShape::splitTopLevel($type, ['|']),
-            [...$elements, ...array_column($appended, 'type')],
-        ));
+        $whole = ValueResult::unionResults([$known, ...$typed]);
 
-        return [
-            ...ValueResult::unionResults([$whole, ...$appended]),
-            'type' => TsTypeShape::listType(array_values(array_diff($members, ['never']))),
-        ];
-    }
-
-    /**
-     * The property's one object shape with each key written into it: a key it holds joined with each value written, and
-     * a new one optional, since its write may not run; null where the type is not one object literal.
-     *
-     * @param  ValueExpressionResult  $whole  the default's type joined with each whole write's
-     * @param  non-empty-list<KeyedValue>  $keyed
-     * @return ValueExpressionResult|null
-     */
-    private function withKeys(array $whole, array $keyed): ?array
-    {
-        $members = TsTypeShape::members($whole['type']);
-
-        if ($members === null) {
-            return null;
+        if ($writes === []) {
+            return $whole;
         }
 
-        $shape = [];
-
-        foreach ($members as [$key, $type]) {
-            $optional = str_ends_with($key, '?');
-            $shape[$optional ? substr($key, 0, -1) : $key] = [$optional, $type];
-        }
-
-        foreach ($keyed as [$key, $value]) {
-            $printed = JsEmitter::validJsObjectKey($key);
-            $held = $shape[$printed] ?? null;
-            $joined = $held === null
-                ? $value
-                : ValueResult::unionResults([[...ValueResult::unknown(), 'type' => $held[1]], $value]);
-            $shape[$printed] = [$held[0] ?? true, $joined['type']];
-        }
-
-        $printed = array_map(
-            fn (int|string $key, array $member): string => $key.($member[0] ? '?' : '').': '.$member[1],
-            array_keys($shape),
-            $shape,
+        // Order is known only where each arm is the default's or a constant write's; a computed value may print a join.
+        $type = ArrayArm::written(
+            $whole['type'],
+            $writes,
+            ResourceCollections::reindexesNumericKeys($runtime->class),
+            ordered: $typed === [],
         );
 
-        return [
-            ...ValueResult::unionResults([$whole, ...array_column($keyed, 1)]),
-            'type' => '{ '.implode('; ', $printed).' }',
-        ];
+        return $type === null ? null : [...ValueResult::unionResults([$whole, ...$elements]), 'type' => $type];
     }
 
     /**
-     * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it;
-     * null where no method holds it, a function inside it holds the write, the class runs another body under that
-     * method's name, or the value names `static` and the runtime class is only assumed.
+     * The value a write gives `$this->{$name}` or an element of it, typed in the scope of the method that holds it,
+     * under the name the class runs it by, and of each closure inside it that holds the write; null where no method
+     * holds it, the value names `static` and the runtime class is only assumed, or a closure's read drops a union arm.
      *
      * @param  PropertyWrite  $write
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>|null  $knownRuntime
      * @return ValueExpressionResult|null
      */
-    private function computedWrite(array $write, Expr $value, ReflectionClass $subject, ?ReflectionClass $knownRuntime): ?array
+    private function computedWrite(array $write, Expr $value, RuntimeClass $runtime): ?array
     {
-        [$site, $self, $class, $file] = $write;
-        $method = array_find($class->getMethods(), fn (ClassMethod $method): bool => StatementBlocks::encloses($method, $site));
-        $methodName = $method?->name->toString() ?? '';
+        [$site, $self, $file, $method] = $write;
 
-        // A trait's method the class overrides never runs as written, and the override's parameters are not its own.
-        if ($method === null || ! $self->hasMethod($methodName)
-            || $this->functionHolds($method, $site)
-            || $self->getMethod($methodName)->getFileName() !== $file
-            || ($knownRuntime === null && $this->namesStatic($value))
-        ) {
+        if ($method === null || (! $runtime->known && $this->namesStatic($value))) {
             return null;
         }
 
-        return resolve(AstEngine::class)->analyzeExpressionValue(
+        $closures = $this->enclosingClosures($method, $site);
+
+        if (self::readsReassignedImport($value, $closures)) {
+            return null;
+        }
+
+        $dropped = DroppedUnionArms::dropped();
+        $written = resolve(AstEngine::class)->analyzeExpressionValue(
             new MethodContext($self, $method, resolve(AstParser::class)->parseFile($file)),
             $value,
-            $knownRuntime ?? $subject,
-            assumesRuntime: $knownRuntime === null,
+            $runtime,
+            within: $closures,
         );
+
+        // A closure's untypable name, such as a by-reference import, read through `??` would leave only the fallback.
+        return $closures !== [] && DroppedUnionArms::dropped() !== $dropped ? null : $written;
     }
 
     /**
-     * The key and value an element write `$this->{$name}[] = value` or `$this->{$name}['key'] = value` gives the
-     * property, the key null for an append; null for any other write, a computed or nested key included.
+     * The writes one site makes to `$this->{$name}`, each as the key path it reaches the property through, empty for
+     * the property whole: a whole or compound write, an element write, an element `unset()`, or a by-reference
+     * `foreach` with each value its body gives the element; null for any other write, a whole `unset()` included.
      *
-     * @return ElementWrite|null
+     * @param  PropertyWrite  $write
+     * @param  RuntimeClass  $runtime  the class `$this` names, for a call in a `foreach` body
+     * @return list<ElementWrite>|null
      */
-    private function elementWrite(Node $site, string $name): ?array
+    private function elementWrites(array $write, string $name, RuntimeClass $runtime): ?array
     {
-        if (! $site instanceof Assign || ! $site->var instanceof ArrayDimFetch) {
-            return null;
+        $site = $write[0];
+
+        if ($site instanceof Unset_) {
+            $unsets = [];
+
+            foreach ($site->vars as $var) {
+                $path = $this->elementPath($var, $name);
+
+                // After a whole unset() a read goes through `__get()`, which may answer anything.
+                if ($path === [] || ($path === null && PropertyWriteSites::targetsProperty($var, $name, true))) {
+                    return null;
+                }
+
+                if ($path !== null) {
+                    $unsets[] = ['path' => $path, 'value' => null, 'unsets' => true];
+                }
+            }
+
+            return $unsets;
         }
 
-        $element = $site->var;
-        $property = $element->var;
-        $key = $element->dim;
+        if ($site instanceof Foreach_) {
+            $path = $site->byRef ? $this->elementPath($site->expr, $name) : null;
+            $loopWrites = array_any(
+                array_filter([$site->valueVar, $site->keyVar]),
+                fn (Expr $target): bool => PropertyWriteSites::targetsProperty($target, $name, true),
+            );
+            $values = $path === null || $loopWrites ? null : $this->foreachValues($write, $site, $runtime);
 
-        if (! $property instanceof PropertyFetch || ! $property->name instanceof Identifier
-            || $property->name->toString() !== $name || ($key !== null && ! $key instanceof String_)) {
-            return null;
+            return $path === null || $values === null ? null : array_map(
+                fn (Expr $value): array => ['path' => [...$path, null], 'value' => $value, 'unsets' => false],
+                $values,
+            );
         }
 
-        return ['key' => $key?->value, 'value' => $site->expr];
+        $whole = $this->writtenValue($site, $name);
+
+        if ($whole !== null || ! $site instanceof Assign) {
+            return $whole === null ? null : [['path' => [], 'value' => $whole, 'unsets' => false]];
+        }
+
+        $path = $this->elementPath($site->var, $name);
+
+        return $path === null || $path === [] ? null : [['path' => $path, 'value' => $site->expr, 'unsets' => false]];
     }
 
     /**
-     * Whether a closure, an arrow function or a nested class's method inside a method holds a node, binding names of
-     * its own over the method's.
+     * The keys a target reaches into `$this->{$name}` through, outermost first, each null where no literal spells it;
+     * empty for the property itself, and null where the target is neither.
+     *
+     * @return list<string|null>|null
      */
-    private function functionHolds(ClassMethod $method, Node $site): bool
+    private function elementPath(Expr $target, string $name): ?array
     {
-        return new NodeFinder()->findFirst(
+        $path = [];
+
+        while ($target instanceof ArrayDimFetch) {
+            $key = $target->dim;
+            array_unshift($path, $key instanceof String_ || $key instanceof Int_ ? (string) $key->value : null);
+            $target = $target->var;
+        }
+
+        return $target instanceof PropertyFetch && $target->var instanceof Variable && $target->var->name === 'this'
+            && $target->name instanceof Identifier && $target->name->toString() === $name ? $path : null;
+    }
+
+    /**
+     * The values a by-reference `foreach` puts in the elements it iterates, read in the function that holds it; null
+     * where its value variable is no plain name, or a write to it is one the scan cannot type.
+     *
+     * @param  PropertyWrite  $write
+     * @return list<Expr>|null
+     */
+    private function foreachValues(array $write, Foreach_ $loop, RuntimeClass $runtime): ?array
+    {
+        [, $self, , $method] = $write;
+
+        if ($method === null) {
+            return null;
+        }
+
+        $closures = array_values(array_filter(
+            $this->enclosingClosures($method, $loop),
+            fn (ArrowFunction|ClosureExpr $function): bool => $function instanceof ClosureExpr,
+        ));
+        $stmts = $closures === [] ? $method->stmts ?? [] : $closures[count($closures) - 1]->stmts;
+        $writes = VariableWrites::of($stmts, AnalysisScope::detached($self, $runtime));
+
+        return VariableWrites::foreachElementValues($loop, $writes, $stmts);
+    }
+
+    /**
+     * The write an element write makes to the array its key path reaches, the key it leaves unnamed last read from the
+     * site: a by-reference `foreach` rewrites every element and `[]` appends; null where an earlier key is unnamed.
+     *
+     * @param  ElementWrite  $element
+     * @param  string|null  $value  the type of the value it writes; null for an unset()
+     * @return ArrayWrite|null
+     */
+    private function arrayWrite(Node $site, array $element, ?string $value): ?array
+    {
+        $path = $element['path'];
+        $key = array_pop($path);
+        $named = array_values(array_filter($path, is_string(...)));
+
+        if ($element['path'] === [] || count($named) !== count($path)) {
+            return null;
+        }
+
+        $key ??= match (true) {
+            $site instanceof Foreach_ => ElementKey::Every,
+            $site instanceof Assign && $site->var instanceof ArrayDimFetch && $site->var->dim === null => ElementKey::Next,
+            default => ElementKey::Any,
+        };
+
+        return ['path' => $named, 'key' => $key, 'value' => $element['unsets'] ? null : $value];
+    }
+
+    /**
+     * The closures and arrow functions inside a method that hold a node, outermost first.
+     *
+     * @return list<ArrowFunction|ClosureExpr>
+     */
+    private function enclosingClosures(ClassMethod $method, Node $site): array
+    {
+        /** @var list<ArrowFunction|ClosureExpr> */
+        return new NodeFinder()->find(
             $method->stmts ?? [],
-            fn (Node $node): bool => $node instanceof FunctionLike && StatementBlocks::encloses($node, $site),
-        ) !== null;
+            fn (Node $node): bool => ($node instanceof ClosureExpr || $node instanceof ArrowFunction)
+                && StatementBlocks::encloses($node, $site),
+        );
     }
 
     /**
@@ -514,58 +752,7 @@ final class SubjectPropertyTypeResolver
      */
     private function writesProperty(ReflectionClass $class, string $name): bool
     {
-        return $this->propertyWrites($class, $name) !== [];
-    }
-
-    /**
-     * Each node where a method the class runs, an ancestor's or a trait's included, writes `$this->{$name}`, or where
-     * application code writes a property whose name it computes, with the class `self` names there, the class body
-     * holding it and its file; null when a declaration cannot be read, since it may write anything.
-     *
-     * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @return PropertyWrites|null
-     */
-    private function propertyWrites(ReflectionClass $class, string $name): ?array
-    {
-        $finder = new NodeFinder;
-        $writes = [];
-
-        foreach ($this->declarations($class) as [$declaration, $self]) {
-            $file = $declaration->getFileName();
-
-            // An internal class's code cannot name a property its user-land subclass declares.
-            if ($file === false) {
-                continue;
-            }
-
-            $computedNames = ! FrameworkClasses::is($declaration->getName());
-
-            // A framework body counts only a write that spells the name, so a source that never does is not walked.
-            if (! $computedNames && ! $this->spellsName($file, $name)) {
-                continue;
-            }
-
-            $node = $finder->findFirst(
-                resolve(AstParser::class)->parseFile($file),
-                fn (Node $node): bool => $node instanceof ClassLike
-                    && $node->namespacedName?->toString() === $declaration->getName(),
-            );
-
-            // A class whose declaration cannot be read may write anything.
-            if (! $node instanceof ClassLike) {
-                return null;
-            }
-
-            foreach (self::writeSites($node) as [$site, $targets]) {
-                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $self)) {
-                    $writes[] = [$site, $self, $node, $file];
-                }
-            }
-        }
-
-        return $writes;
+        return resolve(PropertyWriteSites::class)->of($class, $name) !== [];
     }
 
     /**
@@ -573,13 +760,12 @@ final class SubjectPropertyTypeResolver
      * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
      * name, an unset, an iteration, a reference or a call that may take it by reference.
      *
-     * @param  ReflectionClass<object>|null  $knownRuntime  the class the object is, which `static` names; null
-     *                                                      declines a value naming `static`, since a subclass may give
-     *                                                      it another type
+     * @param  RuntimeClass  $runtime  the class the object is, which a known one's `static` names; an assumed one
+     *                                 declines a value naming `static`, since a subclass may give it another type
      * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the write
      * @return ValueExpressionResult|null
      */
-    private function assignedConstant(Node $site, string $name, ?ReflectionClass $knownRuntime, ReflectionClass $self): ?array
+    private function assignedConstant(Node $site, string $name, RuntimeClass $runtime, ReflectionClass $self): ?array
     {
         if (! $site instanceof Assign
             || ! $site->var instanceof PropertyFetch
@@ -589,12 +775,11 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
-        if ($knownRuntime === null && $this->namesStatic($site->expr)) {
+        if (! $runtime->known && $this->namesStatic($site->expr)) {
             return null;
         }
 
-        $scope = new AnalysisScope($self);
-        $scope->runtimeReflection = $knownRuntime ?? $self;
+        $scope = AnalysisScope::detached($self, $runtime);
         $values = resolve(ValueResolver::class);
 
         try {
@@ -613,92 +798,5 @@ final class SubjectPropertyTypeResolver
             $expr,
             fn (Node $node): bool => $node instanceof Name && $node->toLowerString() === 'static',
         ) !== null;
-    }
-
-    /**
-     * Whether a framework file's source spells a name; the file is recorded as a dependency on every read, as
-     * AstParser::parseFile() records one it serves from its cache.
-     */
-    private function spellsName(string $file, string $name): bool
-    {
-        DependencyRecorder::record($file);
-
-        return str_contains(self::$frameworkSources[$file] ??= (string) file_get_contents($file), $name);
-    }
-
-    /**
-     * The class, then each ancestor, each followed by every trait it uses, transitively, each with the class `self`
-     * names in its body: a class itself, a trait the class that uses it.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @return list<Declaration>
-     */
-    private function declarations(ReflectionClass $class): array
-    {
-        $declarations = [];
-        $pending = [[$class, $class]];
-
-        while ($pending !== []) {
-            [$declaration, $self] = array_shift($pending);
-            $declarations[] = [$declaration, $self];
-            $parent = $declaration->getParentClass();
-            $traits = array_map(fn (ReflectionClass $trait): array => [$trait, $self], array_values($declaration->getTraits()));
-            $pending = [...$traits, ...$pending, ...($parent === false ? [] : [[$parent, $parent]])];
-        }
-
-        return $declarations;
-    }
-
-    /**
-     * Whether one write site writes `$this->{$name}`, or with $computedNames any `$this->{$expr}`: assigns, mutates,
-     * unsets, iterates into, takes a reference to or passes it to a by-reference parameter.
-     *
-     * @param  list<Expr|Arg>  $targets  what writeTargets() returned for the node
-     * @param  ReflectionClass<object>  $runtime  the class read through, which `$this` and `static` name
-     * @param  ReflectionClass<object>  $self  the class `self` names in the body that holds the node
-     */
-    private function writesTo(
-        Node $node,
-        array $targets,
-        string $name,
-        bool $computedNames,
-        ReflectionClass $runtime,
-        ReflectionClass $self,
-    ): bool {
-        $hits = array_filter(
-            $targets,
-            fn (Expr|Arg $target): bool => $this->targetsProperty($target instanceof Arg ? $target->value : $target, $name, $computedNames),
-        );
-
-        if ($hits === [] || ! $node instanceof CallLike) {
-            return $hits !== [];
-        }
-
-        // Only a call passing the property pays for reflecting its callee.
-        /** @var list<Arg> $hits */
-        return resolve(ByReferenceArguments::class)->of($node, $hits, $runtime, $self) !== [];
-    }
-
-    /**
-     * Whether a write target is `$this->{$name}`, an element of it, or with $computedNames a `$this->{$expr}`, directly
-     * or inside a destructuring list.
-     */
-    private function targetsProperty(Expr $target, string $name, bool $computedNames): bool
-    {
-        while ($target instanceof ArrayDimFetch) {
-            $target = $target->var;
-        }
-
-        if ($target instanceof List_ || $target instanceof Array_) {
-            return array_any(
-                $target->items,
-                fn (?ArrayItem $item): bool => $item !== null && $this->targetsProperty($item->value, $name, $computedNames),
-            );
-        }
-
-        return $target instanceof PropertyFetch
-            && $target->var instanceof Variable
-            && $target->var->name === 'this'
-            && ($target->name instanceof Identifier ? $target->name->toString() === $name : $computedNames);
     }
 }

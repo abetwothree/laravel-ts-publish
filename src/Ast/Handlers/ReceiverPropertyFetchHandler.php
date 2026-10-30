@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -69,7 +71,8 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
                 ? $this->modelMember($class, $name, $scope->carriesImports, $attributeless)
-                : $this->enumMember($class, $name, $scope->carriesImports) ?? $this->reflectedProperty($class, $name);
+                : $this->enumMember($class, $name, $scope->carriesImports)
+                    ?? $this->reflectedProperty($class, $name, $receiver->declaredOnly);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -171,12 +174,13 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
     }
 
     /**
-     * One non-model class's public instance property, by the rules that type a method's return on the same receiver.
+     * One non-model class's public instance property, by the rules that type a method's return on the same receiver,
+     * a receiver spelled `self`, `static` or `parent` reading one a subclass can redeclare by its declaration alone.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function reflectedProperty(string $class, string $name): ?array
+    private function reflectedProperty(string $class, string $name, bool $declaredOnly): ?array
     {
         $reflection = new ReflectionClass($class);
         $property = $reflection->hasProperty($name) ? $reflection->getProperty($name) : null;
@@ -186,7 +190,10 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             return null;
         }
 
-        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($reflection, $name);
+        $properties = resolve(SubjectPropertyTypeResolver::class);
+        $result = $declaredOnly && ReceiverType::overridable($reflection, $property)
+            ? $properties->declaredType($reflection, $property)
+            : $properties->resolve($reflection, $name, RuntimeClass::assumed($reflection));
 
         return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }

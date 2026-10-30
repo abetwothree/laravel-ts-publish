@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -113,9 +114,10 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
         ) {
             $site = new CallSite($expr, $scope, $engine);
+            // `$this::` always binds, to the runtime class.
+            $reached = $scope->runtime->class;
 
-            return resolve(SubjectMethodTypeResolver::class)
-                ->resolve($scope, $expr->name->toString(), $site, $scope->staticCallClass($expr));
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site, $reached);
         }
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
@@ -192,10 +194,13 @@ final class StaticCallHandler implements ExpressionHandler
             return $result;
         }
 
-        // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
+        // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`; a named
+        // class it admits is the subject's own name.
         if (resolve(ReceiverClassResolver::class)->sendsToSubjectCall($call, $scope)) {
+            $reached = $scope->staticCallClass($call) ?? $scope->subjectReflection;
+
             return resolve(SubjectMethodTypeResolver::class)
-                ->resolve($scope, $methodName, new CallSite($call, $scope, $engine), $scope->staticCallClass($call));
+                ->resolve($scope, $methodName, new CallSite($call, $scope, $engine), $reached);
         }
 
         // EnumResource::make($this->prop)
@@ -252,15 +257,18 @@ final class StaticCallHandler implements ExpressionHandler
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
             $site = new CallSite($call, $scope, $engine);
-            $forwards = $scope->forwardsRuntimeClass($call, $className, $methodName);
+            // A static method called through a class's name binds `static` to that class; an instance method runs on
+            // `$this` wherever the object is one, which may be a further subclass.
+            $static = method_exists($className, $methodName)
+                && new ReflectionMethod($className, $methodName)->isStatic();
+            $runtime = match (true) {
+                $scope->forwardsRuntimeClass($call, $className, $methodName) => $scope->runtime,
+                $static => RuntimeClass::known(new ReflectionClass($className)),
+                default => RuntimeClass::held($className),
+            };
 
-            return resolve(MethodReturnTypeResolver::class)->resolve(
-                $className,
-                $methodName,
-                $site,
-                runtime: $forwards ? $scope->runtimeReflection : null,
-                assumesRuntime: $scope->assumesCallee($forwards),
-            ) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName, $site, runtime: $runtime)
+                ?? $result;
         }
 
         return $result;
@@ -288,7 +296,7 @@ final class StaticCallHandler implements ExpressionHandler
             && method_exists($className, $methodName)
             && new ReflectionMethod($className, $methodName)->getDeclaringClass()->getName() === JsonResource::class
             && $scope->forwardsRuntimeClass($call, $className, $methodName)
-                ? $scope->runtimeReflection->getName()
+                ? $scope->runtime->class->getName()
                 : $className;
     }
 
@@ -322,7 +330,9 @@ final class StaticCallHandler implements ExpressionHandler
             return null;
         }
 
-        $method = new ReflectionMethod($resourceFqcn, $methodName);
+        $receiver = new ReflectionClass($resourceFqcn);
+        $method = AnalysisScope::memberClassOf($scope->declaringClass, $receiver, $methodName, true)
+            ->getMethod($methodName);
 
         // Not self-returning: the expression is the method's payload, not the resource. Resolving it needs the
         // receiver's own analyzer, so only the subject, the runtime class or the declaring class is in scope — a
@@ -330,7 +340,7 @@ final class StaticCallHandler implements ExpressionHandler
         if (! $this->methodPreservesReceiverType($method, $resourceFqcn)) {
             $built = match ($resourceFqcn) {
                 $scope->subjectReflection->getName() => $scope->subjectReflection,
-                $scope->runtimeReflection->getName() => $scope->runtimeReflection,
+                $scope->runtime->class->getName() => $scope->runtime->class,
                 $scope->declaringClass->getName() => $scope->declaringClass,
                 default => null,
             };

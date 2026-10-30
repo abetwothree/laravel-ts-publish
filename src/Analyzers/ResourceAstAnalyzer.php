@@ -9,8 +9,11 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -33,6 +36,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -147,6 +151,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
     private bool $returnedWhole = true;
 
+    /** How often a `parent::` spread re-entered a method on the stack, so a read that met one can tell. */
+    private int $spreadReentries = 0;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -159,11 +166,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
-     * @param  ReflectionClass<object>|null  $runtimeClass  the class `$this` is at run time when this reads an
-     *                                                      ancestor's body for it; null keeps the scope's own
+     * @param  RuntimeClass|null  $runtime  the class `$this` is at run time, known or only assumed, when this reads
+     *                                      an ancestor's body for it or a body a receiver reaches; null keeps the
+     *                                      scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
-     * @param  bool  $assumesRuntime  whether the runtime class is only assumed; false keeps the scope's own
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -174,9 +181,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
         private readonly array $passed = [],
-        ?ReflectionClass $runtimeClass = null,
+        ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
-        bool $assumesRuntime = false,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -187,16 +193,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->scope->carriesImports = $carriesImports;
         }
 
-        if ($runtimeClass !== null) {
-            $this->scope->runtimeReflection = $runtimeClass;
-        }
-
-        if ($assumesRuntime) {
-            $this->scope->assumesRuntime = true;
+        if ($runtime !== null) {
+            $this->scope->runtime = $runtime;
         }
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
-        $this->scope->seedCollectionFacts($this->runtimeClass());
+        $this->scope->seedCollectionFacts($this->scope->runtime->class);
 
         $this->ownsScope = $scope === null;
 
@@ -341,7 +343,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         return $this->scope->within(
             function (AnalysisScope $scope) use ($built): void {
-                $scope->runtimeReflection = $built;
+                $scope->seedBuiltElement($built);
+                $scope->runtime = $scope->builtRuntime($built->getName());
             },
             fn (): ?ResourceAnalysis => $this->analyzeThisMethodSpread($methodName, topLevel: false, on: $on),
         );
@@ -850,7 +853,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The method a `parent::` call names when the analyzer reads it: the analyzed method itself, or, in an API
+     * The method a `parent::` call names when analyzeParentCall() reads it: the analyzed method itself, or, in an API
      * resource, one of FRAMEWORK_READS.
      */
     protected function readParentCall(Expr $expr): ?string
@@ -861,7 +864,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $expr->name->toString();
         $readsFramework = in_array($method, self::FRAMEWORK_READS, true)
-            && $this->runtimeClass()->isSubclassOf(JsonResource::class);
+            && $this->scope->runtime->class->isSubclassOf(JsonResource::class);
 
         return $method === $this->methodName || $readsFramework ? $method : null;
     }
@@ -910,7 +913,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
         $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $proofs, $rewritten, $stmts, $passed): void {
-            $scope->enterSubjectMethod($method, $proofs, $rewritten);
+            $scope->enterMethod($method, $proofs, $rewritten);
             // The helper's body is seeded with its own locals, whatever local read the caller is in.
             $scope->readingLocals = [];
             $this->seedVarBindings($method, $stmts, $passed);
@@ -971,7 +974,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
         /** @var class-string<ResourceCollection> $runtimeName */
-        $runtimeName = $this->runtimeClass()->getName();
+        $runtimeName = $this->scope->runtime->class->getName();
         $wrapKey = ResourceWrapping::key($runtimeName);
 
         if ($wrapKey === null) {
@@ -1193,17 +1196,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The runtime class: the class `$this` is when the body runs, whose collects(), `$wrap` and keys every ancestor
-     * body it runs reads. The subject, unless this analyzer reads an ancestor's body for a subclass.
-     *
-     * @return ReflectionClass<object>
-     */
-    private function runtimeClass(): ReflectionClass
-    {
-        return $this->scope->runtimeReflection;
-    }
-
-    /**
      * Resolve a value through the dispatcher, unknown where no handler types it.
      *
      * @return ValueExpressionResult
@@ -1271,7 +1263,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function sendsOwnToAttributes(): bool
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         return $this->methodName === 'toArray'
             && $this->context === null
@@ -1347,7 +1339,94 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function ownMethodSpread(string $methodName, bool $topLevel, Expr $call, ?ReflectionClass $on = null): ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName, $topLevel, $call, $on) ?? ResourceAnalysis::unreadAnalysis();
+        $spread = $this->analyzeThisMethodSpread($methodName, $topLevel, $call, $on) ?? ResourceAnalysis::unreadAnalysis();
+
+        // A nested array or a value read drops the partial mark, so a `parent::` spread around it learns of it here.
+        if (! $spread->readsCompletely) {
+            UnreadSpreads::record();
+        }
+
+        return $spread;
+    }
+
+    /**
+     * What a `self::`, `static::` or `parent::` spread of a method adds, null where relativeSpreadClass() reaches none.
+     * A `parent::` spread read only partly, or whose read met a spread item no arm reads at any depth, is null too, so
+     * the arms below read it as the release did; with a re-entry of the cycle in it, it adds no key instead.
+     */
+    private function relativeMethodSpread(StaticCall $call, string $method, bool $topLevel): ?ResourceAnalysis
+    {
+        $on = $this->relativeSpreadClass($call, $method);
+
+        if ($on === null) {
+            return null;
+        }
+
+        if (! $this->isParentCallTo($call)) {
+            return $this->ownMethodSpread($method, $topLevel, $call, $on);
+        }
+
+        // A re-entry adds no key: falling through, the arms below would re-read the cycle without end.
+        if ($this->scope->readsSpreadMethod($on->getMethod($method))) {
+            $this->spreadReentries++;
+
+            return new ResourceAnalysis;
+        }
+
+        $unread = UnreadSpreads::count();
+        $reentries = $this->spreadReentries;
+
+        [$spread, $readFully] = DroppedUnionArms::provisional(
+            function () use ($method, $topLevel, $call, $on, $unread): array {
+                $spread = $this->ownMethodSpread($method, $topLevel, $call, $on);
+
+                return [$spread, $spread->readsCompletely && UnreadSpreads::count() === $unread];
+            },
+            static fn (array $read): bool => $read[1],
+        );
+
+        if ($readFully) {
+            return $spread;
+        }
+
+        if ($this->spreadReentries === $reentries) {
+            return null;
+        }
+
+        // PHP writes keys there that this adds none of, so a `parent::` spread around it declines too.
+        UnreadSpreads::record();
+
+        return new ResourceAnalysis;
+    }
+
+    /**
+     * The class a `self::`, `static::` or `parent::` spread of a method reaches, where it declares that method; through
+     * `parent::` only a body PHP runs there, not a private or abstract one, which throws, nor one Laravel declares.
+     *
+     * @return ReflectionClass<object>|null
+     */
+    private function relativeSpreadClass(StaticCall $call, string $method): ?ReflectionClass
+    {
+        $relative = $call->class instanceof Name ? $call->class->toLowerString() : null;
+        $on = in_array($relative, ['self', 'static', 'parent'], true) ? $this->scope->staticCallClass($call) : null;
+
+        if ($on === null || ! $on->hasMethod($method)) {
+            return null;
+        }
+
+        if ($relative !== 'parent') {
+            return $on;
+        }
+
+        $reached = $on->getMethod($method);
+
+        if ($reached->isPrivate() || $reached->isAbstract()
+            || FrameworkClasses::is(LaravelTsPublish::methodDeclaringFileClass($reached)->getName())
+        ) {
+            return null;
+        }
+
+        return $on;
     }
 
     /**
@@ -1361,7 +1440,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         try {
             // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
-            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
+            $this->readsKeylessAttributeNames = $methodName === 'toAttributes'
+                && JsonApiResources::is($this->scope->runtime->class->getName());
             $branches = [];
 
             foreach ($this->collectReturnExpressions($stmts) as $returned) {
@@ -1415,6 +1495,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 if ($parentAnalysis !== null) {
                     $analysis->merge($parentAnalysis);
+                } else {
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1428,6 +1510,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 if ($filterAnalysis !== null) {
                     $analysis->merge($filterAnalysis);
+                } else {
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1455,16 +1539,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            // ...self::helper() or ...static::helper() spreads the method the call reaches, as ...$this->helper() does.
+            // ...self::helper(), ...static::helper() or ...parent::helper() spreads the method the call reaches, as
+            // ...$this->helper() does.
             if ($item->key === null && $item->unpack
                 && $item->value instanceof StaticCall
-                && $item->value->class instanceof Name
-                && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
                 && $item->value->name instanceof Identifier
-                && $this->scope->staticCallClass($item->value)->hasMethod($item->value->name->toString())
+                && ($spread = $this->relativeMethodSpread($item->value, $item->value->name->toString(), $topLevel)) !== null
             ) {
-                $on = $this->scope->staticCallClass($item->value);
-                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value, $on));
+                $analysis->merge($spread);
 
                 continue;
             }
@@ -1474,12 +1556,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 /** @var Node $funcCallName */
                 $funcCallName = $item->value->name;
 
-                if ($funcCallName instanceof Name) {
-                    $funcName = $funcCallName->getLast();
+                $funcName = $funcCallName instanceof Name ? $funcCallName->getLast() : null;
 
-                    if ($this->scope->declaringClass->hasMethod($funcName)) {
-                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
-                    }
+                if ($funcName !== null && $this->scope->declaringClass->hasMethod($funcName)) {
+                    $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
+                } else {
+                    UnreadSpreads::record();
                 }
 
                 continue;
@@ -1496,8 +1578,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
             }
 
-            // Handle $this->merge([...]) or $this->mergeWhen(condition, [...])
+            // Handle $this->merge([...]) or $this->mergeWhen(condition, [...]); no arm reads a spread reaching here.
             if ($item->key === null && $item->value instanceof MethodCall) {
+                if ($item->unpack) {
+                    UnreadSpreads::record();
+                }
+
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
                 // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
@@ -1508,6 +1594,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             if ($item->key === null) {
+                if ($item->unpack) {
+                    UnreadSpreads::record();
+                }
+
                 continue;
             }
 
@@ -1629,7 +1719,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         DependencyRecorder::recordClass($resourceFqcn);
 
         $analysis = resolve(AstEngine::class)
-            ->analyzeMethod($resourceFqcn, 'toArray', assumesRuntime: $this->scope->assumesBuilt($resourceFqcn));
+            ->analyzeMethod($resourceFqcn, 'toArray', runtime: $this->scope->builtRuntime($resourceFqcn));
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;
@@ -1804,7 +1894,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $method = $expr->name->toString();
 
-        return $this->runsFrameworkBody($this->runtimeClass(), $method) ? $method : null;
+        return $this->runsFrameworkBody($this->scope->runtime->class, $method) ? $method : null;
     }
 
     /**
@@ -1837,7 +1927,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function frameworkMethodAnalysis(string $method, bool $whole = false): ?ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         if ($method === 'with') {
             return $this->withDefaultAnalysis();
@@ -1885,7 +1975,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function runtimeClassAnalysis(string $method, bool $whole): ?ResourceAnalysis
     {
-        return $this->reentersRuntimeMethod($method) ? null : $this->nestedAnalysis($this->runtimeClass(), $method, $whole);
+        return $this->reentersRuntimeMethod($method)
+            ? null
+            : $this->nestedAnalysis($this->scope->runtime->class, $method, $whole);
     }
 
     /**
@@ -1925,8 +2017,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $method,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
-            runtimeClass: $this->runtimeClass(),
-            assumesRuntime: $this->scope->assumesRuntime,
+            runtime: $this->scope->runtime,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
@@ -1940,7 +2031,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function withDefaultAnalysis(): ?ResourceAnalysis
     {
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         if (! resolve(SubjectPropertyTypeResolver::class)->holdsDefault($runtime, 'with')) {
             return null;
@@ -2119,7 +2210,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function collectedListValue(): ?array
     {
         $element = $this->scope->collectedElement;
-        $runtime = $this->runtimeClass();
+        $runtime = $this->scope->runtime->class;
 
         return $element === null && ! ResourceCollections::keepsRawItems($runtime)
             ? null

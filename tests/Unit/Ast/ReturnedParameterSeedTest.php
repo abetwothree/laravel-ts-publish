@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InPlaceSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DecoratingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InPlaceRewrittenParameter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyKeepingRewrites;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeRewrittenParameter;
@@ -266,4 +267,9 @@ it('seeds a wrapped enum with Tolki off as the argument prints alone', function 
         ->toBe(['status' => 'StatusType', 'stamped' => 'boolean'])
         ->and(analyzedImportNames(SeededEnumMembers::class, 'seededWrapped'))
         ->toBe(analyzedImportNames(SeededEnumMembers::class, 'wrapped'));
+});
+
+it('reads a parent:: callee an inherited method passes its array to as the declaring class\'s parent', function () {
+    expect(analyzedKeyTypes(DecoratingChild::class))->toBe(['v' => '{ id: number; grand: number }'])
+        ->and(json_encode(new DecoratingChild()->toArray()))->toBe('{"v":{"id":1,"grand":1}}');
 });

@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroAncestorResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroScopeLeakResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\SelfTypedTwin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MacroShadowedPost;
@@ -19,6 +25,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\Post;
 
 /**
  * A post the macro fixtures serialize, so the runtime value each macro sends can be read.
@@ -188,6 +195,36 @@ describe('with no resource macro registered', function () {
         'an object that is not invokable' => [new stdClass],
     ]);
 });
+
+it('reads self::m() in an ancestor body as the macro __call() runs, though the runtime class declares m()', function () {
+    JsonResource::macro('ancestorProbe', fn (): string => 'X');
+
+    expect(publishedResourceKeyTypes(MacroShadowResource::class, Post::class))->toBe(['m' => 'string', 'n' => 'number'])
+        ->and(json_encode(new MacroShadowResource(null)->resolve(request())))->toBe('{"m":"X","n":1}');
+});
+
+it('looks a macro up on the class the call reaches, and keeps that answer from a call the runtime class declares', function () {
+    JsonResource::macro('ancestorProbe', fn (): string => 'X');
+    $scope = AnalysisScope::detached(
+        new ReflectionClass(MacroAncestorResource::class),
+        RuntimeClass::known(new ReflectionClass(MacroShadowResource::class)),
+    );
+    $macros = resolve(MacroCallResolver::class);
+
+    expect($macros->resolve($scope, 'ancestorProbe', $scope->declaringClass))->toMatchArray(['type' => 'string'])
+        ->and($macros->resolve($scope, 'ancestorProbe'))->toBeNull();
+});
+
+it('reads the macro an ancestor\'s self::m() runs from the runtime class\'s own macro store', function (string $resource) {
+    JsonResource::macro('storeProbe', fn (): string => 'X');
+    MacroStoreResource::macro('storeProbe', fn (): int => 1);
+
+    expect(publishedResourceKeyTypes($resource, Post::class))->toBe(['m' => 'number'])
+        ->and(json_encode(new $resource(null)->resolve(request())))->toBe('{"m":1}');
+})->with([
+    'a runtime class that declares nothing' => [MacroStoreChildResource::class],
+    'a runtime class that declares m()' => [MacroStoreShadowResource::class],
+])->after(fn () => MacroStoreResource::flushMacros());
 
 // Macroable binds a macro to the class it is called on, so a closure's `self` names that class, not the mixin.
 it('reads a macro returning self as the macro\'s scope class', function () {

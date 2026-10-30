@@ -165,17 +165,20 @@ the matrix does not run these profiles.
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
 docblocks say what each binding table holds. These eight facts span other classes:
 
-- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
-  runtime class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring
-  class, the one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
+- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtime` holds the runtime
+  class, the one `$this` and `static` are and whose model `$this` reads; `declaringClass` is the declaring class, the
+  one `self` names and whose parent `parent` names, which is the using class for a trait's method, where
   `declaringFileClass` names the trait. The runtime class differs from the subject when `ResourceAstAnalyzer` reads an
-  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds.
-  A `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the
-  declaring class when it declares that member private, else the runtime class; a method on a built instance takes the
-  same rule. A static-syntax call reads `staticCallClass()`, which applies no private rule, and every other `self`,
-  `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that forwards the runtime class hands
-  it to its callee as `static` (`forwardsRuntimeClass()`); the write scans take the same two classes
-  (`VariableWrites::of()`). Whether the runtime class is known is [its own rule](#known-or-assumed-runtime-class).
+  ancestor's body for a subclass, a helper for a caller's runtime class, or a method of an instance the body builds. A
+  `$this->m()` call or a `$this->prop` read reaches its member on `thisMemberClass()` (`memberClassOf()`): the declaring
+  class when it declares that member private, else the runtime class. A method on a built instance takes the same rule,
+  its preserve check included, but an object whose class does not extend the declaring class runs its own, as one
+  `OtherResource::make()` builds does. A static-syntax call reads `staticCallClass()`, which applies no private rule and
+  names no class for a named one, a `$var::` or a `parent` the declaring class lacks, so each caller says what those
+  reach. Every other `self`, `static` or `parent` reads `relativeClass()` (`relativeClassOf()`), while a call that
+  forwards the runtime class hands it to its callee as `static` (`forwardsRuntimeClass()`). The write scans take the
+  same two classes (`VariableWrites::of()`), through `detached()` for a body no analysis holds. Whether the runtime
+  class is known is [its own rule](#known-or-assumed-runtime-class).
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
@@ -184,7 +187,7 @@ docblocks say what each binding table holds. These eight facts span other classe
   its `method-return:` key gains `@backing:<model>`.
 - **`varGuardBindings` reserves `PROXY_GUARDS`**: the proofs on an API resource's `$this->resource` sit under the key
   `'$this->resource'`, which no variable spells, so no parameter claim or `copyBindings()` reaches them, and
-  `enterSubjectMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
+  `enterMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
   holds, is a stack, not a name table, so `nameBindings()` leaves it out. It and `provenProxy` reach a subject method's
   body, except a path the body writes whole or one that runs through such a path, and neither does once the body
   replaces `$this->resource` (`CollectsInstanceofGuards::rewrittenThisPaths()`).
@@ -197,7 +200,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   `collectedElement`, follow, as `AstEngine::analyzeModelClosure()` does. The narrowing changes only the backing,
   through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
   runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
-  collection's items as the class Laravel builds does.
+  collection's items as the class Laravel builds does. A built collection's method changes only `collectedElement`,
+  through `seedBuiltElement()`; see [A method called on a new resource types its payload][built-payload].
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
@@ -209,21 +213,26 @@ docblocks say what each binding table holds. These eight facts span other classe
 
 ### Known or assumed runtime class
 
-`assumesRuntime` says whether a scope knows its runtime class or only assumes it, and `knownRuntime()` is null where it
-assumes it. Only a known runtime class types a property write that names `static`, as
-`SubjectPropertyTypeResolver::resolve()`'s `$knownRuntime` takes it. The runtime class is known:
+The runtime class travels as one [`RuntimeClass`]: the class, and whether the analysis knows it or only assumes it.
+`AstEngine`'s and `MethodReturnTypeResolver`'s entries take one, where null reads the class itself, known.
+Only a known runtime class types a property write that names `static`, so `SubjectPropertyTypeResolver::resolve()`
+reads a property for an assumed one as the subject's own. The runtime class is known:
 
 - in the published class's own scope;
 - in a helper that scope reaches through `$this->`, `$this::`, `self::`, `static::`, `parent::` or a non-static
   `Ancestor::m()` from an instance of it, and in a body run on what a `$this->` call declared `: static` returns: each
-  keeps the caller's flag (`assumesCallee()`);
+  is known where the caller's is (the forwarding calls hand on `$scope->runtime`; `AnalysisScope::calleeRuntime()` does
+  so for the `: static` receiver);
 - for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
-- for a `final` collaborator the container fills (`assumesInjected()`);
-- for an exact construction, `new X` or `X::make()` (`assumesBuilt()`).
+- for a `final` collaborator the container fills (`RuntimeClass::injected()`);
+- for a static method called through a class's name, since PHP binds `static` to that class;
+- for an exact construction, `new X` or `X::make()`, and a method a chain calls on it
+  (`AnalysisScope::builtRuntime()`), except the class an assumed scope's `static` stands for, which stays assumed.
 
-Anywhere else it is assumed, since the object may be a subclass: a receiver's declared class, the model
-`$this->resource` forwards to and a method macro's object (`ASSUMES_HELD_OBJECT`), a collaborator that is not final,
-and, conservatively, a call through another class's name that forwards nothing.
+Anywhere else it is assumed (`RuntimeClass::assumed()`, or `held()` from a class name), since the object may be a
+subclass: a receiver's declared class, the model `$this->resource` forwards to and a method macro's object, a
+collaborator that is not final, and an instance method a class's name calls without forwarding, which runs on `$this`
+wherever the object is one.
 
 ### Writing a scope binding
 
@@ -237,7 +246,7 @@ believes it wrote, and a new ambient field joins `within()`'s list, which `Analy
 
 A closure a call passes values to, such as a conditional's value, a `map()` callback or a merge closure, is read through
 `readClaimedClosure()`, which claims its parameters inside `within()`. A subject method's body is read with
-`enterSubjectMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
+`enterMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
 restores one name's entry. State outside the scope saves and restores itself the same way: the analyzer's walk notes and
 `readsKeylessAttributeNames`, `DroppedUnionArms::$held` and `AnalysisMemo`'s frames.
 `ResolvesModelRelationTypes::bindForeachLoopVariables()` takes no snapshot, because a `foreach` binding holds for the
@@ -313,15 +322,21 @@ A method body read apart from its call, such as a spread helper, the body fallba
 `@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; any
 other parameter puts its classes, when it names only classes, in `varDeclaredBindings` and its value in
 `varValueBindings`. A `Request` goes in `requestVarNames`, except in an API resource, and a name already bound stays as
-it is. `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one
-`VariableWrites` scan, in every body reader, a closure's included.
+it is. `bindClosure()` binds a closure's parameters from the declaration the AST holds, and differs in two ways: its
+class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
+`Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
+closure itself. An untyped one binds nothing, since no call is read. A closure's `self` and `parent` name the classes
+`relativeClass()` names, there and in a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the
+name in `relativeParameters`, so its receiver reads members as a spelled inline `@var`'s does.
+`CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
+scan, in every body reader, a closure's included.
 
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
 says, and a write holding fewer of a declared union's classes ends it as well. Its value binding holds for a read
 before its own `$x = …;` and gives way to the written value past it. The binding reads only the
 declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds each
 parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`) to what
-its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterSubjectMethod()`
+its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterMethod()`
 sets the caller's tables aside. A value read keys its memo on what the call binds ([The run memo replays what it
 recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
 keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,
@@ -394,6 +409,12 @@ a `use (&$x)`: an arrow function or a by-value `use` writes its own copy.
 An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBindings` span through
 `CollectsLocalVarBindings::bindDeclaredType()`. The span runs from after that statement to the next top-level statement
 that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
+Before it does, each `self`, `static` and `parent` in it is spelled as the class `relativeClass()` names. `self` and
+`parent` are the declaring class, the using class in a trait, and its parent; `static` is the runtime class the body is
+seeded for, which `AstEngine::bindingsFor()` takes from a value read. The receiver such a tag types, and every value a
+member call or property read on it returns, reads a member a subclass can override by its declaration alone
+([Receiver types § `self` and `parent`][receiver-self]): a declared type stands even where the runtime class narrows
+it, and an untyped member stays `unknown`.
 
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
@@ -510,22 +531,51 @@ every static property. The exclusion keeps `$this->resource` meaning the backing
 outside that set, because Laravel reads it with `property_exists()` rather than declaring it.
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
-`AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A non-public
-property declared without a value publishes `null`; a public one left `null` declines, since code outside the class
-fills it. The default joins the type of each value a method the class runs assigns the property whole or by a compound
-operator, an ancestor's, a trait's or, through the runtime class, a subclass's included: a constant expression evaluated
-as one, any other value read in the writing method's scope (`AstEngine::analyzeExpressionValue()`), where a read of the
-property itself takes the default and constant writes under an `AnalysisMemo` guard. An append joins the elements of
-each list the type holds, and a literal string key joins a one-object shape as an optional key. Any other write
-declines: a value the engine cannot type, a write a closure or arrow function in the method holds, a write in a trait's
-method the class overrides, any other element write, `unset()`, a computed `$this->{$name}` write in application code,
-or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local
-write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and
-`reset()`. A value naming `static` is typed against `AnalysisScope::knownRuntime()`, and declines where the scope only
-assumes its runtime class, on a receiver or in its method's body. The check cannot see a by-reference parameter on a
-receiver it cannot resolve, a write by a subclass of a receiver's declared class (`$this->holder()->views`), or a write
-from outside the class.
+`AstEngine::analyzePublicProperties()` and both handler arms:
+
+- It reads the `@var` docblock, then the native type, then an untyped property's default, typed by
+  `ValueResolver::resolveConstantValue()` as a parameter default is.
+- A non-public property declared without a value publishes `null`; a public one left `null` declines, since code
+  outside the class fills it.
+- The default joins the type of each value a method the class runs assigns the property whole or by a compound
+  operator, an ancestor's, a trait's or, through the runtime class, a subclass's included, each write found by
+  [`PropertyWriteSites`] once a run per class and property.
+- A write counts only where the class runs its body: a trait's method the class overrides is skipped, unless an alias,
+  the class's or a used trait's, still runs it, typed then under that alias in the trait method's own scope. An
+  ancestor's method a subclass overrides still counts, since `parent::` may run it.
+- A constant expression is evaluated as one; any other value is read in the writing method's scope
+  (`AstEngine::analyzeExpressionValue()`), where a read of the property itself takes the default and constant writes
+  under an `AnalysisMemo` guard.
+- A write inside a nested class, a named function or a static closure is skipped, since `$this` there is never the
+  object.
+- A write a closure or arrow function in the method holds joins even where the closure may never run, read in that
+  closure's scope: its declared parameters through `ParameterBinder::bindClosure()`, its body's locals and, for a
+  closure, only its imports, as the method held them there, which leaves a by-reference import `unknown`.
+- That closure read declines where it leaves out a union arm it cannot type, as `$n ?? 'z'` over an untyped parameter
+  does, or reads an import that a closure it passes through reassigns anywhere in its body, which the scope reads as
+  that assignment's value wherever the read sits.
+- Any other write declines: a value the engine cannot type, a whole `unset()`, a computed `$this->{$name}` write in
+  application code, or an argument to a by-reference parameter of a callee the scan can name ([`ByReferenceArguments`],
+  which the local write scan shares), such as `array_push($this->tags, 5)`, except the pointer functions `end()`,
+  `next()`, `prev()` and `reset()`.
+- A value naming `static` is typed against the scope's runtime class where it is known, and declines where the scope
+  only assumes it, on a receiver or in its method's body.
+- The check cannot see a by-reference parameter on a receiver it cannot resolve, a write by a subclass of a receiver's
+  declared class (`$this->holder()->views`), or a write from outside the class.
+
+A helper the value calls while it is already being read is read again under `AnalysisMemo::reenterOnce()`, so its own
+read of the property takes the default and constant writes too. Where reading the property as the type that joins, under
+`AnalysisMemo::seeding()`, would join an arm that type lacks, as a write nesting what the helper returns does, each such
+write reads the helper cut instead. Only the outermost property typed reads a helper again: one typed inside it reads
+its writes under `AnalysisMemo::cut()`, as before the re-entry. The work is the cut read's plus one read per call and
+property the outermost writes reach for the check and one for the fallback; a property typed inside adds none.
+
+An element write, an element `unset()` and a by-reference `foreach`, whose values
+`VariableWrites::foreachElementValues()` reads, apply to each list or object arm of the joined type in any order until
+none changes, and decline on any other arm or on a path to a member an arm may lack ([`ArrayArm`]). An object the class
+may send as a list also publishes that list unless its members admit it, which in a re-indexing resource
+(`ResourceCollections::reindexesNumericKeys()`) needs one type or the array's order, and order is known only for the
+default and constant writes.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -580,17 +630,26 @@ scope before the callee's frame opens, so what they record is the caller's. A su
 proof that holds `$this->resource` to one model adds `@backing:<model>` to its `method-return:` key, so the read with
 the proof and the one without never share an answer. A body read for a caller whose runtime class is not the method's
 class, as a private `$this->m()` or a `self::m()` is, adds `@runtime:<class>` to its `method-return:` and `analysis:`
-keys, so two siblings never share an inherited helper's `static`. A read that only assumes its runtime class adds
-`@assumed` to them and to `macro:`, so a receiver's read of a body never shares one that knows the class.
-`AnalysisMemo::runtimeKey()` spells both suffixes for all three keys. The
-`method-body:` cycle guard stays per method, so a recursion that passes a new value each time stops at its first
-repeat.
+keys, so two siblings never share an inherited helper's `static`. A `macro:` key names the class the call reaches,
+which decides whether `__call()` runs, and adds the runtime class, whose macros decide what runs, the same way. A read
+that only assumes its runtime class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never
+shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
+cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
 
-A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
-records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have
-shown them. A cycle can cut an answer short, so each answer is stored with the guards it found held, and
-`AnalysisMemo::reproducible()` reuses it only where nothing it read has changed and exactly those guards are held again.
-No answer depends on which entry point read it first.
+A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
+computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's
+read therefore see what a fresh computation would have shown them. A cycle can cut an answer short, so each answer is
+stored with the guards it found held, and `AnalysisMemo::reproducible()` reuses it only where nothing it read has
+changed and exactly those guards are held again. No answer depends on which entry point read it first.
+`AnalysisMemo::reenterOnce()` lifts each guard entered before the one its caller holds, so a property write's value
+enters a method already under way once more, and the `typing-property:` guard bounds the cycle. It never nests, and
+throws if a call would: `cut()` holds the lifted guards again for a property typed inside, and records a marker for
+each, so an answer it shaped is reused only where the same guards are lifted. A lifted guard counts as not held, so an
+answer computed under the lift is never reused where that guard is held. `reentries()` counts each entry into a lifted
+guard, and each reuse of an answer that entered one, so a caller can tell a read that went through an analysis under way
+whatever was read first. `seeding()` marks a guard that answers a seed in place of its cut: no answer that met it
+outside the check is reused there, and one computed there is reused only until the check ends. `computations()` counts
+the answers a run computes, which a test bounds.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
 `ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard
@@ -679,9 +738,10 @@ only a value a join leaves out: past a write naming no class, a member read keep
 warns of nothing.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
-A class the generation cache serves prints none, since the cache stores no analysis warnings, until `--fresh` analyzes
-it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a cast on the key
-leaves the reading, and so the warning, as it is.
+`provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the
+audit entries too. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
+`--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
+cast on the key leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
@@ -703,8 +763,8 @@ or to `null`. Read the published property before you call an entry a bug.
 - No untagged public signature names an internal type.
 
 `AstEngine`'s other public methods each carry their own `@internal` tag, because each names `MethodAnalysis`,
-`MethodContext` or `AnalysisScope`, and the signature rule skips a tagged method. [Known gaps][gap-non-goals] records
-why the engine offers no extension point.
+`MethodContext`, `AnalysisScope` or `RuntimeClass`, and the signature rule skips a tagged method.
+[Known gaps][gap-non-goals] records why the engine offers no extension point.
 
 `analyze()` re-indexes an API resource's `toArray()` as `ts:publish` does, then hands `analyzeMethod()`'s DTO to
 [`AnalysisComposer`], which aliases same-basename collisions, rewrites `EnumResource` wraps to `AsEnum<typeof X>`, and
@@ -772,6 +832,7 @@ These pages cover the engine's neighbors:
 [`AnalysisMemo`]: ../../src/Ast/Analysis/AnalysisMemo.php
 [`AnalysisResult`]: ../../src/Ast/AnalysisResult.php
 [`AnalysisScope`]: ../../src/Ast/Analysis/AnalysisScope.php
+[`ArrayArm`]: ../../src/Ast/Members/ArrayArm.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/Parsing/AstParser.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
@@ -785,14 +846,17 @@ These pages cover the engine's neighbors:
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
+[`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
+[`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
 [body-fallback]: receiver-types.md#the-body-fallback-carries-no-fqcn-channel
+[built-payload]: resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload
 [collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
 [gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways
 [gap-non-goals]: ../known-gaps.md#deliberate-non-goals
@@ -802,6 +866,7 @@ These pages cover the engine's neighbors:
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
 [published-models]: model-attribute-resolver.md#models-a-run-publishes
+[receiver-self]: receiver-types.md#self-and-parent
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
 [spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
 [ternary]: receiver-types.md#a-ternarys-instanceof-condition

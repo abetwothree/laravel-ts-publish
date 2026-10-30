@@ -428,8 +428,11 @@ trait CollectsLocalVarBindings
             return;
         }
 
-        $tag = resolve(PropertyDocblockTypeReader::class)
-            ->extractVarTag($assignment->getDocComment()->getText(), $scope->declaringFileClass);
+        $tag = resolve(PropertyDocblockTypeReader::class)->extractVarTag(
+            $assignment->getDocComment()->getText(),
+            $scope->declaringFileClass,
+            $scope->relativeClassNames(),
+        );
 
         if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
             return;
@@ -442,6 +445,7 @@ trait CollectsLocalVarBindings
             'before' => $before,
             'expr' => $assign->expr,
         ];
+        $binding = $tag[2] ? [...$binding, 'relative' => true] : $binding;
         $scope->varDocBindings[$name][] = $nested ? [...$binding, 'nested' => true] : $binding;
     }
 

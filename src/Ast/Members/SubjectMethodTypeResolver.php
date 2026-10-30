@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -47,14 +48,14 @@ final class SubjectMethodTypeResolver
             // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
             $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;
 
-            return $this->resolveOn($class, $methodName, $site, $backing, $scope->runtimeReflection, $scope->assumesRuntime);
+            return $this->resolveOn($class, $methodName, $site, $backing, $scope->runtime);
         }
 
         // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
         $macros = resolve(MacroCallResolver::class);
 
         if ($macros->runsMacro($class, $methodName)) {
-            return $macros->resolve($scope, $methodName);
+            return $macros->resolve($scope, $methodName, $class);
         }
 
         return $this->resolveForwarded($scope, $methodName, $site);
@@ -93,7 +94,7 @@ final class SubjectMethodTypeResolver
 
         return $receiverRules->typesModelMethod($class, $methodName)
             ? $receiverRules->resolve(ReceiverType::of($class), $methodName, $scope)
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, assumesRuntime: AnalysisScope::ASSUMES_HELD_OBJECT);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: RuntimeClass::held($class));
     }
 
     /**
@@ -104,8 +105,8 @@ final class SubjectMethodTypeResolver
      * @param  ReflectionClass<object>  $reflection
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
-     * @param  ReflectionClass<object>|null  $runtime  the caller's runtime class, which `static` names in the body
-     * @param  bool  $assumesRuntime  the caller only assumes its runtime class, as a receiver's body does
+     * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or only assumed, as a receiver's body's
+     *                                      is, which `static` names in the body; null for the reflected class, known
      * @return ValueExpressionResult|null
      */
     public function resolveOn(
@@ -113,8 +114,7 @@ final class SubjectMethodTypeResolver
         string $methodName,
         ?CallSite $site = null,
         ?string $backing = null,
-        ?ReflectionClass $runtime = null,
-        bool $assumesRuntime = false,
+        ?RuntimeClass $runtime = null,
     ): ?array {
         if (! $reflection->hasMethod($methodName)) {
             return null;
@@ -123,6 +123,6 @@ final class SubjectMethodTypeResolver
         /** @var class-string $class */
         $class = $reflection->getName();
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing, $runtime, $assumesRuntime);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing, $runtime);
     }
 }

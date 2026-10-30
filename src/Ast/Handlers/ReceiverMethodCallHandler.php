@@ -60,15 +60,16 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         $onThis = $expr instanceof StaticCall
             ? $receivers->sendsToSubjectCall($expr, $scope)
             : $expr->var instanceof Variable && $expr->var->name === 'this';
+        // A named class sendsToSubjectCall() admits is the subject's own name.
         $reached = match (true) {
             ! $onThis => null,
-            $expr instanceof StaticCall => $scope->staticCallClass($expr),
+            $expr instanceof StaticCall => $scope->staticCallClass($expr) ?? $scope->subjectReflection,
             default => $scope->thisMemberClass($method, true),
         };
 
         // A macro runs before anything the subject forwards to; `$this` is never null, so `?->` adds no `| null`.
         if ($reached !== null && resolve(MacroCallResolver::class)->runsMacro($reached, $method)) {
-            return resolve(MacroCallResolver::class)->resolve($scope, $method);
+            return resolve(MacroCallResolver::class)->resolve($scope, $method, $reached);
         }
 
         $receiver = match (true) {

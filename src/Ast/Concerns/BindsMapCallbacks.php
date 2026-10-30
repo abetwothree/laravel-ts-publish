@@ -55,18 +55,24 @@ trait BindsMapCallbacks
             return null;
         }
 
-        $declared = $this->declaredMapModel($first);
+        $declared = $this->declaredMapModel($first, $scope);
         $model = $elementModel !== null && ($declared === null || is_a($elementModel, $declared, true)) ? $elementModel : $declared;
         $name = AnalysisScope::firstParameterName($callback);
+        // A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is.
+        $relative = $model !== null && $model !== $elementModel && $first !== null && ParameterBinder::spellsRelativeClass($first);
 
         return $scope->readClaimedClosure(
             $callback,
             null,
             $engine,
             fn (): array => $engine->resolve($callback),
-            function () use ($scope, $name, $model, $elementValue): void {
+            function () use ($scope, $name, $model, $elementValue, $relative): void {
                 if ($name !== null && $model !== null) {
                     $scope->varModelBindings[$name] = $model;
+
+                    if ($relative) {
+                        $scope->relativeParameters[$name] = true;
+                    }
                 } elseif ($name !== null && $elementValue !== null) {
                     $scope->varValueBindings[$name] = $elementValue;
                 }
@@ -84,9 +90,9 @@ trait BindsMapCallbacks
      *
      * @return class-string<Model>|null
      */
-    protected function declaredMapModel(?Param $param): ?string
+    protected function declaredMapModel(?Param $param, AnalysisScope $scope): ?string
     {
-        $declared = $param === null ? null : ParameterBinder::declaredClass($param);
+        $declared = $param === null ? null : ParameterBinder::declaredClass($param, $scope);
 
         return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
     }

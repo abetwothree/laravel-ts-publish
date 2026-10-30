@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -22,9 +23,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParamete
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Expression;
+use Workbench\App\Enums\Status;
 use Workbench\App\Events\PostHelperPayloadEvent;
 use Workbench\App\Http\Resources\CallableValueResource;
 use Workbench\App\Http\Resources\PostHelperParamsResource;
@@ -279,6 +284,34 @@ test('binds each parameter into the table its declared type belongs in, and leav
         ->and($scope->requestVarNames)->toBe([]);
 });
 
+// No call is read for a closure, so an untyped parameter binds nothing; `self` names the scope's declaring class.
+test('binds a closure\'s parameters by the types they declare, natively or by @param', function () {
+    $statement = new AstParser()->parseSource('<?php $f = /** @param int $doc */ function (
+        \\Workbench\\App\\Models\\Post $post, ?\\Workbench\\App\\Models\\Post $maybe, int|bool $flag, ?string $label,
+        int $n = null, \\Workbench\\App\\Enums\\Status $status, $loose, $doc, self $me, int ...$rest,
+    ) {};')[0];
+    assert($statement instanceof Expression && $statement->expr instanceof Assign && $statement->expr->expr instanceof Closure);
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+
+    resolve(ParameterBinder::class)->bindClosure($statement->expr->expr, $scope);
+
+    expect($scope->varModelBindings)->toBe(['post' => Post::class])
+        ->and($scope->varDeclaredBindings)->toBe([
+            'maybe' => [Post::class],
+            'status' => [Status::class],
+            'me' => [HelperParameterKindsResource::class],
+        ])
+        ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))->toBe([
+            'maybe' => 'Post | null',
+            'flag' => 'number | boolean',
+            'label' => 'string | null',
+            'n' => 'number | null',
+            'status' => 'StatusType',
+            'doc' => 'number',
+            'rest' => 'number[]',
+        ]);
+});
+
 // PHP 8.4 reflects `self` and `parent` as spelled, and 8.5 too in a trait's method.
 test('reads a parameter typed self as its declaring class', function () {
     $reflection = new ReflectionClass(SelfTypedHelpers::class);
@@ -292,6 +325,33 @@ test('reads a parameter typed self as its declaring class', function () {
         ->and($scope->varDeclaredBindings)->toBe(['spare' => [SelfTypedHelpers::class], 'base' => [Model::class]])
         ->and(array_map(fn (array $value): string => $value['type'], $scope->varValueBindings))
         ->toBe(['spare' => 'SelfTypedHelpers | null']);
+});
+
+// A closure's `self` and `parent` name its declaring class and that class's parent, as the class names would.
+test('binds a closure parameter typed self or parent as the class its name would bind', function () {
+    $bound = function (string $parameters): AnalysisScope {
+        $statement = new AstParser()->parseSource('<?php $f = function ('.$parameters.') {};')[0];
+        assert($statement instanceof Expression && $statement->expr instanceof Assign && $statement->expr->expr instanceof Closure);
+        $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
+
+        resolve(ParameterBinder::class)->bindClosure($statement->expr->expr, $scope);
+
+        return $scope;
+    };
+    $tables = fn (AnalysisScope $scope): array => [
+        $scope->varModelBindings,
+        $scope->varDeclaredBindings,
+        array_map(fn (array $value): string => $value['type'], $scope->varValueBindings),
+    ];
+    $named = '\\'.SelfTypedHelpers::class;
+
+    expect($tables($bound('self $me, ?self $maybe, parent $up, self|null $either')))
+        ->toBe($tables($bound($named.' $me, ?'.$named.' $maybe, \\'.Model::class.' $up, '.$named.'|null $either')))
+        ->toBe([
+            ['me' => SelfTypedHelpers::class],
+            ['maybe' => [SelfTypedHelpers::class], 'up' => [Model::class]],
+            ['maybe' => 'SelfTypedHelpers | null', 'either' => 'SelfTypedHelpers | null'],
+        ]);
 });
 
 // An API resource's output was inferred without the request rules, so only another subject binds a request there.
@@ -311,7 +371,7 @@ test('binds a Request parameter as a request, unless the subject is an API resou
 // The parameter holds the value, so whether the caller's key may be absent, and whether `??` fills it, stays there.
 test('passes a value without the caller\'s optional or its absent-field marker', function () {
     expect(resolve(ParameterBinder::class)->passedBinding(['type' => 'string', 'optional' => true, 'absentReadsNull' => true], null))
-        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false]);
+        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false, 'declaredOnly' => false]);
 });
 
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {

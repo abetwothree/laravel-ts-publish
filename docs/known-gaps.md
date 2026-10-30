@@ -84,6 +84,19 @@ own `collects()` returns `PostResource::class`, or whose constructor assigns `$t
 interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare
 `public $collects = PostResource::class;` instead.
 
+### A method on a collection the body builds can keep the analyzed class's element where Laravel maps the items
+
+A method called on a collection the body builds, as in `new self($this->resource)->summary()`, publishes its items as
+the API resource the built class collects, or as the analyzed class's element where that already is one, since Laravel
+passes such items through
+([built payloads](./components/resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload)).
+Two builds keep the analyzed class's element, though Laravel maps the items into the built class's own pick:
+
+- raw items, as in `new self(collect([1]))`, where the analyzed class collects a subclass of that pick;
+- a built class whose pick is a naming-convention guess the run does not publish.
+
+Type the key with `#[TsCasts]`.
+
 ### A non-promoted property a constructor always assigns still renders optional
 
 A public property that has no default and is not promoted publishes `?:` even when every constructor assigns it, such
@@ -142,6 +155,12 @@ A local rewritten through a by-reference parameter of a method on a receiver the
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
 proof made before it standing, so after `if ($y === null) { return []; } $cleaner->clear($y);` a read of `$y` drops
 the `null` the call can write.
+
+### A spread whose helper the engine cannot read whole can mistype the keys it writes
+
+`['o' => 1, ...$this->opaque()]` publishes `o: number` even when `opaque()` can return `['o' => 'x']`. A `$this->`,
+`self::` or `static::` spread whose helper the engine cannot read adds no key, so the keys before it keep their own
+types; one read by its first return alone adds that return's keys over them, though a later return may send others.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
@@ -897,6 +916,12 @@ arm's own `id`. Every explicit key is subtracted from every spread arm, whatever
 that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
 or on the left of `+`.
 
+### A `parent::` spread that cycles back into itself types a parameter by the first call alone
+
+`[...parent::m(1)]`, where an untyped `m($v)` returns `['v' => $v, ...static::m2()]` and the class's own `m2()` spreads
+`parent::m('x')` once, under a guard, publishes `v: number`, though PHP's second call overwrites `v` with `"x"`. The
+package reads the cycle once, with the first call's bindings. Type the key with `#[TsCasts]`.
+
 ### An operand of `+` not typed as one object adds no keys beside a keyed literal
 
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
@@ -927,16 +952,33 @@ a `Collection`, so the missing value encodes as `{}`. Keep conditional values ou
 ### An untyped property's default ignores writes the scan cannot see
 
 An untyped property publishes its default's type joined with each value its class, an ancestor, a trait or the published
-subclass writes it, whole or by a compound operator, typed in the writing method's scope; an append joins the elements
-of its list, and a literal string key joins its object as an optional key. It publishes `unknown` for any other write:
-an `unset()` of the property or an element, a computed or nested key, an append onto an object or beside a key write, a
-by-reference `foreach`, a write a closure or arrow function in the method holds, a write in a trait's method the class
-overrides, or a value the engine cannot type, such as an untyped parameter or a `mixed` call. A helper that a write
-calls to read the property back publishes it `unknown` where that helper is read first. A by-reference parameter on a
-receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class both change
-the value Laravel sends while the published type stays the default's. So does a write by a subclass of a receiver's
-declared class, such as the object behind `$this->holder()->views`. Declare the property's type, or give it a `@var`
-docblock.
+subclass writes it, whole, by a compound operator or by element, typed in the writing method's scope. Its limits:
+
+- After a whole `unset()` it publishes `unknown`, since PHP then reads it through `__get()`, which a resource forwards
+  to its model.
+- A value the engine cannot type publishes `unknown`: an untyped method or closure parameter, a variable a closure
+  imports by reference, an import a closure holding the write reassigns, or a `mixed` call. A `@param` on a closure
+  passed inline, or on the statement above `$f = function ($n)`, is not read, so such a parameter counts as untyped.
+- Any other write publishes `unknown` as well: a by-reference argument, as in `array_push($this->queue, 1)` or
+  `sort($this->tags)`, a `&` reference, a destructuring assignment, and `foreach (… as $this->p)`.
+- An element write publishes `unknown` where the array may be `null` or a scalar, where it compounds, as
+  `$this->tags['n']++` does, where a nested key follows a computed one or names a member the array may lack, and where
+  a by-reference `foreach` passes its element on by reference.
+- A write that nests the property's own value, as `$this->x = ['v' => $this->x]` does, publishes one level, though each
+  call nests one more. Where it nests what a helper returns, as `['v' => $this->measure()]` does, that helper's own key
+  publishes the nested value `unknown`.
+- A helper read first publishes `unknown` where the write reaches it through another untyped property's write, as
+  `$this->p = $this->mq()` beside `$this->q = $this->mp()` does.
+- A by-reference parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, a write from
+  outside the class, and a write by a subclass of a receiver's declared class, such as the object behind
+  `$this->holder()->views`, change the value Laravel sends while the published type stays the default's.
+- `foreach ($this->p as [&$a])`, which destructures by reference, is not seen as a write either, so the default's type
+  publishes though PHP changes the elements.
+- An array a plain class holds is typed as that class sends it, so where the holder's `$tags = [5 => 's']` may gain a
+  `k` key, a resource reading `$this->holder()->tags` publishes `{ "5": string; k?: number }` though it re-indexes the
+  array and may send `["s"]`.
+
+Declare the property's type, or give it a `@var` docblock.
 
 ### A receiver's body reads `static` as its declared class
 

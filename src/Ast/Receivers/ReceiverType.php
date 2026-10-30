@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionProperty;
 
 /**
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
@@ -31,6 +33,8 @@ final readonly class ReceiverType
      * @param  list<string>  $filled  the columns a write gave such a model, which read as written
      * @param  bool  $runtimeInstance  an instance of the scope's runtime class, as a `$this->m()` declared `static`
      *                                 returns, so a body read on it knows that class where the scope does
+     * @param  bool  $declaredOnly  spelled `self`, `static` or `parent`, so the object may be any subclass that
+     *                              overrides a member: one is read by its declaration alone where a subclass can
      */
     public function __construct(
         public array $classes,
@@ -44,6 +48,7 @@ final readonly class ReceiverType
         public bool $attributeless = false,
         public array $filled = [],
         public bool $runtimeInstance = false,
+        public bool $declaredOnly = false,
     ) {}
 
     /**
@@ -64,6 +69,17 @@ final readonly class ReceiverType
     public static function isConcreteModel(string $class): bool
     {
         return is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract();
+    }
+
+    /**
+     * Whether a subclass can override a class's member, which a receiver $declaredOnly marks then reads by its
+     * declaration alone: neither the class nor the member is final, and the member is not private.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    public static function overridable(ReflectionClass $class, ReflectionMethod|ReflectionProperty $member): bool
+    {
+        return ! $class->isFinal() && ! $member->isFinal() && ! $member->isPrivate();
     }
 
     /**
@@ -102,13 +118,21 @@ final readonly class ReceiverType
     }
 
     /**
-     * The same value holding other classes, as an `instanceof` test narrows it.
+     * The same receiver marked as spelled `self`, `static` or `parent`, which reads members by their declarations.
+     */
+    public function asDeclaredOnly(): self
+    {
+        return $this->copy(declaredOnly: true);
+    }
+
+    /**
+     * The same value holding other classes, as an `instanceof` test narrows it: the proof names them, not a spelling.
      *
      * @param  non-empty-list<class-string>  $classes
      */
     public function withClasses(array $classes): self
     {
-        return $this->copy(classes: $classes, runtimeInstance: false);
+        return $this->copy(classes: $classes, runtimeInstance: false, declaredOnly: false);
     }
 
     /**
@@ -150,6 +174,7 @@ final readonly class ReceiverType
         ?bool $attributeless = null,
         ?array $filled = null,
         ?bool $runtimeInstance = null,
+        ?bool $declaredOnly = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -163,6 +188,7 @@ final readonly class ReceiverType
             attributeless: $attributeless ?? $this->attributeless,
             filled: $filled ?? $this->filled,
             runtimeInstance: $runtimeInstance ?? $this->runtimeInstance,
+            declaredOnly: $declaredOnly ?? $this->declaredOnly,
         );
     }
 }

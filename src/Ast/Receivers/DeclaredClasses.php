@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -65,18 +66,10 @@ final class DeclaredClasses
      */
     public static function returnsStatic(string $class, string $method): bool
     {
-        $reflection = new ReflectionMethod($class, $method);
-        $type = $reflection->getReturnType();
-
-        if ($type !== null) {
-            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
-        }
-
-        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
-        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
-        $returned = array_diff($arms, ['null']);
-
-        return $returned !== [] && array_diff($returned, ['static', '$this']) === [];
+        return resolve(AnalysisMemo::class)->remember(
+            'returns-static:'.$class.'::'.$method,
+            static fn (): bool => self::declaresStaticReturn($class, $method),
+        );
     }
 
     /**
@@ -202,5 +195,24 @@ final class DeclaredClasses
     public static function isClassLike(string $name): bool
     {
         return class_exists($name) || interface_exists($name) || enum_exists($name);
+    }
+
+    /**
+     * Whether a method's declaration, native or `@return`, names `static` or `$this` and nothing else but null.
+     */
+    private static function declaresStaticReturn(string $class, string $method): bool
+    {
+        $reflection = new ReflectionMethod($class, $method);
+        $type = $reflection->getReturnType();
+
+        if ($type !== null) {
+            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
+        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
+        $returned = array_diff($arms, ['null']);
+
+        return $returned !== [] && array_diff($returned, ['static', '$this']) === [];
     }
 }

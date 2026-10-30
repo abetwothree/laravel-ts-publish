@@ -13,7 +13,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -22,7 +21,6 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -120,32 +118,19 @@ final class ClosureHandler implements ExpressionHandler
     }
 
     /**
-     * Bind each parameter whose native type names one class to that class, where no writer bound the name to a class:
-     * a non-null concrete model in varModelBindings, any other class, or a nullable one, in varDeclaredBindings, a
-     * Request included. PHP throws for any other argument, so the type holds for every call.
+     * Bind each parameter whose native type names one class to that class, as ParameterBinder::bindClosureClass() does,
+     * where no writer bound the name to a class. PHP throws for any other argument, so the type holds for every call.
      */
     private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
     {
         foreach ($closure->params as $param) {
             $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
-            $declared = $name === null || $param->variadic ? null : ParameterBinder::declaredClass($param);
 
-            if ($name === null
-                || $declared === null
-                || $scope->bindsClassName($name)
-                || $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
+            if ($name !== null
+                && ! $scope->bindsClassName($name)
+                && ! $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
             ) {
-                continue;
-            }
-
-            [$class, $nullable] = $declared;
-            $nullable = $nullable
-                || ($param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null');
-
-            if (! $nullable && ReceiverType::isConcreteModel($class)) {
-                $scope->varModelBindings[$name] = $class;
-            } else {
-                $scope->varDeclaredBindings[$name] = [$class];
+                ParameterBinder::bindClosureClass($param, $name, $scope);
             }
         }
     }

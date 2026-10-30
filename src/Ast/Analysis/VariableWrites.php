@@ -87,7 +87,7 @@ final class VariableWrites
         /** @var NamedWrites $writes */
         $writes = [];
 
-        self::collectInto($stmts, [], $writes, $scope?->runtimeReflection, $scope?->declaringClass);
+        self::collectInto($stmts, [], $writes, $scope?->declaringClass, $scope?->runtime->class);
 
         return $writes;
     }
@@ -162,23 +162,7 @@ final class VariableWrites
         $path = self::keyPath($target);
 
         if ($node instanceof Foreach_ && $node->byRef && $node->expr === $target) {
-            $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
-
-            if ($element === null || $path === null) {
-                return self::form(ByReferenceEffect::Replaces);
-            }
-
-            // After the loop the variable still points at the last element, so a later write lands in it, as one before
-            // the loop does when a loop around both runs it again; unset() breaks the reference.
-            $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
-                && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
-                && StatementBlocks::encloses($loop, $node));
-            $values = self::elementValues(array_values(array_filter(
-                $writes,
-                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
-                    && ($write[1]->getStartFilePos() > $node->getStartFilePos()
-                        || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
-            )));
+            $values = $path === null ? null : self::foreachElementValues($node, $writes, $stmts);
 
             return $values === null
                 ? self::form(ByReferenceEffect::Replaces)
@@ -200,6 +184,36 @@ final class VariableWrites
             ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves => self::walkedForm($node, $effect, $path, $scope),
             default => self::form($effect, [], $path),
         };
+    }
+
+    /**
+     * The values a by-reference `foreach` puts in the elements of the array it iterates, from each write to its value
+     * variable that can land in one; null where that variable is no plain name, or a write is one the scan cannot type.
+     *
+     * @param  NamedWrites  $writes  every write of the body
+     * @param  array<Node>  $stmts  the body, for the loops around the `foreach`
+     * @return list<Expr>|null
+     */
+    public static function foreachElementValues(Foreach_ $node, array $writes, array $stmts): ?array
+    {
+        $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
+
+        if ($element === null) {
+            return null;
+        }
+
+        // After the loop the variable still points at the last element, so a later write lands in it, as one before
+        // the loop does when a loop around both runs it again; unset() breaks the reference.
+        $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
+            && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
+            && StatementBlocks::encloses($loop, $node));
+
+        return self::elementValues(array_values(array_filter(
+            $writes,
+            fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
+                && ($write[1]->getStartFilePos() > $node->getStartFilePos()
+                    || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
+        )));
     }
 
     /**
@@ -243,19 +257,19 @@ final class VariableWrites
      * @param  array<mixed>|Node  $nodes
      * @param  list<ArrowFunction|ClosureExpr>  $enclosing  the nested functions between the body and the nodes
      * @param  NamedWrites  $writes
-     * @param  ReflectionClass<object>|null  $runtime
      * @param  ReflectionClass<object>|null  $declaring
+     * @param  ReflectionClass<object>|null  $runtime
      */
     private static function collectInto(
         array|Node $nodes,
         array $enclosing,
         array &$writes,
-        ?ReflectionClass $runtime,
         ?ReflectionClass $declaring,
+        ?ReflectionClass $runtime,
     ): void {
         foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
             if (is_array($node)) {
-                self::collectInto($node, $enclosing, $writes, $runtime, $declaring);
+                self::collectInto($node, $enclosing, $writes, $declaring, $runtime);
 
                 continue;
             }
@@ -272,7 +286,7 @@ final class VariableWrites
                 }
             }
 
-            foreach (self::rootedWriteTargets($node, $runtime, $declaring) as $target) {
+            foreach (self::rootedWriteTargets($node, $declaring, $runtime) as $target) {
                 $name = self::rootVariable($target);
 
                 if ($name !== null && self::reachesBody($name, $enclosing)) {
@@ -290,7 +304,7 @@ final class VariableWrites
                 if ($child instanceof Node || is_array($child)) {
                     // A closure's `use` clause and parameter defaults run in the enclosing scope.
                     $within = in_array($subNode, ['uses', 'params'], true) ? $enclosing : $inner;
-                    self::collectInto($child, $within, $writes, $runtime, $declaring);
+                    self::collectInto($child, $within, $writes, $declaring, $runtime);
                 }
             }
         }
@@ -323,11 +337,11 @@ final class VariableWrites
      * The expressions a `catch`, `unset()`, `static`, `global`, a by-reference `foreach` or a by-reference argument
      * writes to, each counted only for the variable rootVariable() finds.
      *
-     * @param  ReflectionClass<object>|null  $runtime
      * @param  ReflectionClass<object>|null  $declaring
+     * @param  ReflectionClass<object>|null  $runtime
      * @return list<Expr>
      */
-    private static function rootedWriteTargets(Node $node, ?ReflectionClass $runtime, ?ReflectionClass $declaring): array
+    private static function rootedWriteTargets(Node $node, ?ReflectionClass $declaring, ?ReflectionClass $runtime): array
     {
         if ($node instanceof CallLike) {
             // Only a call passing a variable or a key of one pays for reflecting its callee.
@@ -338,7 +352,7 @@ final class VariableWrites
 
             return $passed === []
                 ? []
-                : resolve(ByReferenceArguments::class)->of($node, $passed, $runtime, $declaring);
+                : resolve(ByReferenceArguments::class)->of($node, $passed, $declaring, $runtime);
         }
 
         $targets = match (true) {

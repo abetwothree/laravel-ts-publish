@@ -10,6 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ChainedLabelChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooseLabelHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedLabelChild;
 use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -664,3 +669,51 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'another variable written' => ['$q = new \\Workbench\\App\\Models\\Post; $q->title = "x";', false],
     'a reassignment' => ['$p = null;', false],
 ]);
+
+// `self` names the declaring class, the using class in a trait, so it reads the declaration's type, wider than the
+// runtime class's; `static` names the runtime class.
+it('reads self and static in an inline @var, and self as a callback parameter type, as the body binds them', function () {
+    expect(analyzedKeyTypes(SelfSpellingChild::class))->toBe(['varSelf' => 'string | number', 'varStatic' => 'string', 'mapSelf' => '(string | number)[]'])
+        ->and(json_encode(new SelfSpellingChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"]}')
+        ->and(analyzedKeyTypes(SelfSpellingUser::class))->toBe(['varSelf' => 'string', 'mapSelf' => 'string[]'])
+        ->and(json_encode(new SelfSpellingUser()->toArray()))->toBe('{"varSelf":"x","mapSelf":["x"]}');
+});
+
+// A helper's body is seeded for the caller's runtime class, so its `@var static` names that class as its `$this` does.
+it('reads an inline @var static in a helper a self:: call reaches as the caller\'s runtime class', function () {
+    expect(analyzedKeyTypes(SelfSpellingChild::class, 'lateLabels'))->toBe(['viaStatic' => 'string', 'viaThis' => 'string'])
+        ->and(json_encode(new SelfSpellingChild()->lateLabels()))->toBe('{"viaStatic":"x","viaThis":"x"}');
+});
+
+// Such a spelling may name any subclass, so a member one can override reads by its declaration alone: an untyped one
+// stays `unknown`, unless the class or the member is final.
+it('reads an untyped member a self or static spelling reaches only where no subclass can override it', function () {
+    expect(analyzedKeyTypes(UntypedLabelChild::class))->toBe([
+        'varSelf' => 'unknown', 'varStatic' => 'string', 'mapSelf' => 'unknown', 'tagSelf' => 'unknown', 'fixedSelf' => 'number',
+    ])
+        ->and(json_encode(new UntypedLabelChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"],"tagSelf":"x","fixedSelf":1}')
+        ->and(analyzedKeyTypes(LooseLabelHolder::class))->toBe(['viaStatic' => 'unknown'])
+        ->and(json_encode(new LooseLabelHolder()->toArray()))->toBe('{"viaStatic":"x"}');
+});
+
+// What such a receiver's member returns may be a subclass's too, as may a value it is passed or merged into.
+it('reads a member of what a self spelling returns, is passed to or joins only by its declaration', function () {
+    expect(analyzedKeyTypes(ChainedLabelChild::class))->toBe([
+        'chainStatic' => 'unknown', 'chainSelf' => 'unknown', 'chainDoc' => 'unknown', 'chainThis' => 'unknown',
+        'chainTag' => 'unknown', 'mapChain' => 'unknown', 'thisChain' => 'string',
+    ])
+        ->and(json_encode(new ChainedLabelChild()->toArray()))
+        ->toBe('{"chainStatic":"x","chainSelf":"x","chainDoc":"x","chainThis":"x","chainTag":"x","mapChain":["x"],"thisChain":"x"}')
+        ->and(analyzedKeyTypes(ChainedLabelChild::class, 'relayed'))
+        ->toBe(['passed' => 'unknown', 'either' => 'unknown', 'typedChain' => 'string | number'])
+        ->and(json_encode(new ChainedLabelChild()->relayed()))->toBe('{"passed":"x","either":"x","typedChain":1}');
+});
+
+// A static call through such a receiver, and a join of it with a block's write, keep the reading by declaration.
+it('reads a member of a self spelling\'s static call or block-joined value only by its declaration', function () {
+    expect(analyzedKeyTypes(ChainedLabelChild::class, 'joined'))->toBe([
+        'staticOnVar' => 'unknown', 'gapHelper' => 'unknown', 'gapClosure' => 'unknown', 'gapLocal' => 'unknown', 'branchJoin' => 'unknown',
+    ])
+        ->and(json_encode(new ChainedLabelChild()->joined()))
+        ->toBe('{"staticOnVar":"x","gapHelper":"x","gapClosure":["x"],"gapLocal":"x","branchJoin":"x"}');
+});

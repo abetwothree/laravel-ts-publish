@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
@@ -112,8 +113,13 @@ final class ReceiverMethodReturnResolver
                 continue;
             }
 
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
-                ?? $this->resolveOn($class, $methodName, $fromInside, $site, $scope->assumesCallee($receiver->runtimeInstance));
+            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn(
+                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
+                $methodName,
+                $fromInside,
+                $site,
+                $receiver->declaredOnly,
+            );
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -147,7 +153,8 @@ final class ReceiverMethodReturnResolver
     public function typesAsModelFilter(string $class, string $methodName): bool
     {
         return $this->runsModelFilter($class, $methodName)
-            || (is_a($class, Model::class, true) && $this->resolveOn($class, $methodName, false) === null);
+            || (is_a($class, Model::class, true)
+                && $this->resolveOn(RuntimeClass::held($class), $methodName, false, null) === null);
     }
 
     /**
@@ -481,21 +488,25 @@ final class ReceiverMethodReturnResolver
      * Type one class's method: a receiver-returning method keeps the receiver's own type, anything else reflects; a
      * method a relation or an Eloquent builder does not declare is typed on the class its query forwards it to.
      *
-     * @param  class-string  $class
-     * @param  bool  $assumesRuntime  the object is only assumed to be the class, whose subclass it may be
+     * @param  RuntimeClass  $runtime  the class, known only where the object is the runtime instance of a scope that
+     *                                 knows it, else assumed, since it may be a subclass
+     * @param  bool  $declaredOnly  the receiver is spelled `self`, `static` or `parent`, so a method a subclass can
+     *                              override is read by its declaration alone
      * @return ValueExpressionResult|null
      */
     private function resolveOn(
-        string $class,
+        RuntimeClass $runtime,
         string $methodName,
         bool $fromInside,
-        ?CallSite $site = null,
-        bool $assumesRuntime = AnalysisScope::ASSUMES_HELD_OBJECT,
+        ?CallSite $site,
+        bool $declaredOnly = false,
     ): ?array {
+        $class = $runtime->class->getName();
+
         if (! method_exists($class, $methodName)) {
             $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
-            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site);
+            return $forwarded === null ? null : $this->resolveOn(RuntimeClass::held($forwarded), $methodName, false, $site);
         }
 
         $method = new ReflectionMethod($class, $methodName);
@@ -510,9 +521,11 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
-            ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, assumesRuntime: $assumesRuntime);
+        $result = match (true) {
+            DeclaredClasses::returnClasses($class, $methodName) === [$class] => $this->selfType($class, $this->returnAllowsNull($method)),
+            $declaredOnly && ReceiverType::overridable($runtime->class, $method) => resolve(MethodReturnTypeResolver::class)->declaredType($class, $methodName),
+            default => resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: $runtime),
+        };
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.

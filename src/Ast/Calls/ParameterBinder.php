@@ -18,11 +18,17 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
+use PhpParser\Node\UnionType;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -38,6 +44,7 @@ use ReflectionParameter;
  * parameters are bound.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type PassedBinding = array{
  *     model: class-string<Model>|null,
@@ -46,6 +53,7 @@ use ReflectionParameter;
  *     value: ValueExpressionResult|null,
  *     unsaved: bool,
  *     refines: bool,
+ *     declaredOnly: bool,
  * }
  *
  * @internal
@@ -54,18 +62,60 @@ final class ParameterBinder
 {
     /**
      * The class a closure parameter's native type names, alone or behind a `?`, with whether the `?` is there; null for
-     * any other type, a special name such as `self`, or a name no class or interface has.
+     * any other type, or a name no class or interface has. A `self` or `parent` names the class the scope binds it to.
      *
      * @return array{class-string, bool}|null
      */
-    public static function declaredClass(Param $param): ?array
+    public static function declaredClass(Param $param, AnalysisScope $scope): ?array
     {
         $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
-        $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
+        $class = $type instanceof Name ? self::typeClassName($type, $scope) : null;
 
         return $class !== null && (class_exists($class) || interface_exists($class))
             ? [$class, $param->type instanceof NullableType]
             : null;
+    }
+
+    /**
+     * Whether a closure parameter's type is `self` or `parent`, alone or behind a `?`: the object may be any subclass.
+     */
+    public static function spellsRelativeClass(Param $param): bool
+    {
+        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+
+        return $type instanceof Name && $type->isSpecialClassName();
+    }
+
+    /**
+     * Bind a closure parameter by the one class its native type names, and say whether it bound a model, which stands
+     * for its value too: a concrete model neither a `?` nor an `= null` default lets be null in varModelBindings, and
+     * any other class, a Request included, in varDeclaredBindings. A `self` or `parent` marks it in relativeParameters.
+     */
+    public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope): bool
+    {
+        $declared = $param->variadic ? null : self::declaredClass($param, $scope);
+
+        if ($declared === null) {
+            return false;
+        }
+
+        [$class, $nullable] = $declared;
+
+        if (self::spellsRelativeClass($param)) {
+            $scope->relativeParameters[$name] = true;
+        } else {
+            unset($scope->relativeParameters[$name]);
+        }
+
+        if (! $nullable && ! self::defaultsToNull($param) && ReceiverType::isConcreteModel($class)) {
+            $scope->varModelBindings[$name] = $class;
+
+            return true;
+        }
+
+        $scope->varDeclaredBindings[$name] = [$class];
+
+        return false;
     }
 
     /**
@@ -80,6 +130,40 @@ final class ParameterBinder
     }
 
     /**
+     * Bind a closure's parameters for a read of its body by what each declares, as bindDeclared() binds a method's: no
+     * call is read, so an untyped parameter binds nothing.
+     */
+    public function bindClosure(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        $docComment = (string) $closure->getDocComment();
+
+        foreach ($closure->params as $param) {
+            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+
+            $name = $param->var->name;
+
+            if (self::bindClosureClass($param, $name, $scope)) {
+                continue;
+            }
+
+            $native = $this->closureTypeInfo($param, $scope);
+            $value = $this->heldValue(
+                $native === null ? null : resolve(ReflectedTypeAcceptor::class)->accept($native),
+                $name,
+                $param->variadic,
+                $docComment,
+                $scope->declaringFileClass,
+            );
+
+            if ($value !== null) {
+                $scope->varValueBindings[$name] = $value;
+            }
+        }
+    }
+
+    /**
      * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, an Eloquent
      * collection of one model in varCollectionBindings, other classes in varDeclaredBindings, and its value.
      *
@@ -87,11 +171,13 @@ final class ParameterBinder
      * place of a declared concrete model's binding, as a narrower argument replaces a declared abstract class's,
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
+     * An argument spelled `self`, `static` or `parent` marks the parameter in relativeParameters: it may be a subclass.
+     *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $passed, AnalysisScope $scope): void
     {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly]) {
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
             if ($refines && isset($scope->varDeclaredBindings[$name])) {
@@ -101,6 +187,12 @@ final class ParameterBinder
                 unset($scope->varModelBindings[$name]);
             } elseif ($scope->bindsName($name)) {
                 continue;
+            }
+
+            if ($declaredOnly) {
+                $scope->relativeParameters[$name] = true;
+            } else {
+                unset($scope->relativeParameters[$name]);
             }
 
             if ($model !== null) {
@@ -145,10 +237,11 @@ final class ParameterBinder
         $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
         // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
         $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
+        $declaredOnly = $classes !== null && $held->declaredOnly;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -157,7 +250,7 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
     }
 
     /**
@@ -232,6 +325,23 @@ final class ParameterBinder
                 (string) $method->getDocComment(),
                 LaravelTsPublish::methodDeclaringFileClass($method),
             ) === null;
+    }
+
+    /**
+     * Whether a parameter's default is `null`, which makes its declared type nullable.
+     */
+    private static function defaultsToNull(Param $param): bool
+    {
+        return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
+    }
+
+    /**
+     * The class a closure parameter's type spells: for `self` and `parent` the class the scope binds it to, none for a
+     * `parent` the declaring class lacks, and any other name as written.
+     */
+    private static function typeClassName(Name $name, AnalysisScope $scope): ?string
+    {
+        return $name->isSpecialClassName() ? $scope->relativeClass($name)?->getName() : $name->toString();
     }
 
     /**
@@ -331,13 +441,32 @@ final class ParameterBinder
      */
     private function declaredValue(ReflectionParameter $parameter, string $docComment, ReflectionClass $context): ?array
     {
-        $value = resolve(ReflectedTypeAcceptor::class)->accept(
-            LaravelTsPublish::resolveReflectionType($parameter->getType(), $parameter->getDeclaringClass()),
+        return $this->heldValue(
+            resolve(ReflectedTypeAcceptor::class)->accept(
+                LaravelTsPublish::resolveReflectionType($parameter->getType(), $parameter->getDeclaringClass()),
+            ),
+            $parameter->getName(),
+            $parameter->isVariadic(),
+            $docComment,
+            $context,
         );
+    }
+
+    /**
+     * The value a parameter holds by its native type, else by its `@param` where that is too vague, a list of it for a
+     * variadic one; null when neither is precise enough to publish or it names a model with no published file.
+     *
+     * @param  ValueExpressionResult|null  $native
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports resolve the `@param`
+     * @return ValueExpressionResult|null
+     */
+    private function heldValue(?array $native, string $name, bool $variadic, string $docComment, ReflectionClass $context): ?array
+    {
+        $value = $native;
 
         if ($value === null || TsTypeString::isVagueTsType($value['type'])) {
             $reader = resolve(PropertyDocblockTypeReader::class);
-            $tag = $reader->extractParamTag($docComment, $parameter->getName(), $context);
+            $tag = $reader->extractParamTag($docComment, $name, $context);
             $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
         }
 
@@ -345,8 +474,51 @@ final class ParameterBinder
             return null;
         }
 
-        return $parameter->isVariadic()
+        return $variadic
             ? [...$value, 'type' => ValueResult::arrayWrapType($value['type']), 'optional' => false]
             : [...$value, 'optional' => false];
+    }
+
+    /**
+     * What a closure parameter's native type names, read as resolveReflectionType() reads a method parameter's, an
+     * `= null` default adding `null` as PHP does, `self` and `parent` as the classes the scope binds them to; null for
+     * no type, an intersection, or a `parent` the declaring class lacks.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    private function closureTypeInfo(Param $param, AnalysisScope $scope): ?array
+    {
+        $type = $param->type;
+        $arms = match (true) {
+            $type instanceof NullableType => [$type->type],
+            $type instanceof UnionType => $type->types,
+            $type instanceof Identifier, $type instanceof Name => [$type],
+            default => [],
+        };
+        $infos = [];
+
+        foreach ($arms as $arm) {
+            $name = match (true) {
+                $arm instanceof Identifier => $arm->toString(),
+                $arm instanceof Name => self::typeClassName($arm, $scope),
+                default => null,
+            };
+
+            if ($name === null) {
+                return null;
+            }
+
+            $infos[] = LaravelTsPublish::toTsType($name);
+        }
+
+        if ($infos === []) {
+            return null;
+        }
+
+        $info = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
+
+        return $type instanceof NullableType || self::defaultsToNull($param)
+            ? [...$info, 'type' => ValueResult::withNullArm($info['type'])]
+            : $info;
     }
 }
