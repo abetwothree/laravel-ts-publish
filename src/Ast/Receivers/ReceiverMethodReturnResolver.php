@@ -118,6 +118,7 @@ final class ReceiverMethodReturnResolver
                 $methodName,
                 $fromInside,
                 $site,
+                $receiver->declaredOnly,
             );
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -489,10 +490,17 @@ final class ReceiverMethodReturnResolver
      *
      * @param  RuntimeClass  $runtime  the class, known only where the object is the runtime instance of a scope that
      *                                 knows it, else assumed, since it may be a subclass
+     * @param  bool  $declaredOnly  the receiver is spelled `self`, `static` or `parent`, so a method a subclass can
+     *                              override is read by its declaration alone
      * @return ValueExpressionResult|null
      */
-    private function resolveOn(RuntimeClass $runtime, string $methodName, bool $fromInside, ?CallSite $site): ?array
-    {
+    private function resolveOn(
+        RuntimeClass $runtime,
+        string $methodName,
+        bool $fromInside,
+        ?CallSite $site,
+        bool $declaredOnly = false,
+    ): ?array {
         $class = $runtime->class->getName();
 
         if (! method_exists($class, $methodName)) {
@@ -513,9 +521,11 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
-            ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: $runtime);
+        $result = match (true) {
+            DeclaredClasses::returnClasses($class, $methodName) === [$class] => $this->selfType($class, $this->returnAllowsNull($method)),
+            $declaredOnly && ReceiverType::overridable($runtime->class, $method) => resolve(MethodReturnTypeResolver::class)->declaredType($class, $methodName),
+            default => resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, runtime: $runtime),
+        };
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.

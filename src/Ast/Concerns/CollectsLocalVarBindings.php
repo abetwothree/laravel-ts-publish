@@ -38,7 +38,6 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Stmt\Block;
@@ -66,7 +65,6 @@ use PhpParser\NodeFinder;
  * @phpstan-import-type BindingGap from AnalysisScope
  * @phpstan-import-type NamedWrite from VariableWrites
  * @phpstan-import-type NamedWrites from VariableWrites
- * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
  *
  * @internal
  */
@@ -433,7 +431,7 @@ trait CollectsLocalVarBindings
         $tag = resolve(PropertyDocblockTypeReader::class)->extractVarTag(
             $assignment->getDocComment()->getText(),
             $scope->declaringFileClass,
-            $this->relativeClassNames($scope),
+            $scope->relativeClassNames(),
         );
 
         if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
@@ -447,28 +445,8 @@ trait CollectsLocalVarBindings
             'before' => $before,
             'expr' => $assign->expr,
         ];
+        $binding = $tag[2] ? [...$binding, 'relative' => true] : $binding;
         $scope->varDocBindings[$name][] = $nested ? [...$binding, 'nested' => true] : $binding;
-    }
-
-    /**
-     * The class each of `self`, `static` and `parent` names in the body under analysis, keyed by that name, for the
-     * inline `@var` tags it holds; a `parent` the declaring class lacks names none.
-     *
-     * @return RelativeClasses
-     */
-    private function relativeClassNames(AnalysisScope $scope): array
-    {
-        $names = [];
-
-        foreach (['self', 'static', 'parent'] as $relative) {
-            $class = $scope->relativeClass(new Name($relative));
-
-            if ($class !== null) {
-                $names[$relative] = $class->getName();
-            }
-        }
-
-        return $names;
     }
 
     /**

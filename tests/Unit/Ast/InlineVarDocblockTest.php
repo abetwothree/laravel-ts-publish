@@ -290,7 +290,7 @@ describe('an inline @var on a local assignment', function () {
     test('declines a tag holding any form outside the ones the docblock resolution reads in full', function (string $type) {
         [$scope, $returned] = inlineVarReturned('/** @var '.$type.' $d */ $d = json_decode(""); return $d;');
 
-        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class)))
+        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class), []))
             ->toBeNull()
             ->and($scope->varDocBindings)->toBe([])
             ->and(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
@@ -342,7 +342,7 @@ describe('an inline @var on a local assignment', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(DeclaredPrecedenceResource::class);
 
-        expect($reader->extractVarTag('/** @var '.$type.' $d */', $context))->toBe([$type, 'd'])
+        expect($reader->extractVarTag('/** @var '.$type.' $d */', $context, []))->toBe([$type, 'd', false])
             ->and($reader->readDeclared($type, $context)['type'] ?? null)->toBe($read);
     })->with([
         'each scalar' => ['int|string|bool|float|null|true|false', 'number | string | boolean | null | true | false'],
@@ -423,7 +423,7 @@ describe('an inline @var on a local assignment', function () {
     test('binds a nullable shape inside a multi-line shape, read with its lines joined', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(DeclaredPrecedenceResource::class);
-        $tag = $reader->extractVarTag("/** @var array{\n *     a: int,\n *     b: ?array{c: int},\n * } \$d */", $context);
+        $tag = $reader->extractVarTag("/** @var array{\n *     a: int,\n *     b: ?array{c: int},\n * } \$d */", $context, []);
 
         expect($tag[1] ?? null)->toBe('d')
             ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
@@ -434,7 +434,8 @@ describe('an inline @var on a local assignment', function () {
         $tag = resolve(PropertyDocblockTypeReader::class)
             ->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class), $relative);
 
-        expect($tag[0] ?? null)->toBe($spelled);
+        expect($tag[0] ?? null)->toBe($spelled)
+            ->and($tag === null ? null : $tag[2])->toBe($spelled === null ? null : $spelled !== $type);
     })->with([
         'self' => ['self', ['self' => Team::class], '\\'.Team::class],
         'static' => ['static', ['static' => SubscribedTeam::class], '\\'.SubscribedTeam::class],
@@ -452,6 +453,7 @@ describe('an inline @var on a local assignment', function () {
         'a parent the declaring class lacks' => ['parent', ['self' => Team::class], null],
         'a bracket list, declined as any class\'s is' => ['self[]', ['self' => Team::class], null],
         'a class constant' => ['self::NAME', ['self' => Team::class], null],
+        'a conditional type\'s arm, declined as before' => ['($d is null ? self : static)', ['self' => Team::class, 'static' => Team::class], null],
     ]);
 
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.

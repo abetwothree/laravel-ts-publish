@@ -122,6 +122,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
         $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
         $scope->passedValues[$name] = $expr;
+        $scope->relativeParameters[$name] = true;
     }
 
     return $scope;

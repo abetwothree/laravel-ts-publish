@@ -10,8 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooseLabelHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SelfSpellingUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UntypedLabelChild;
 use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -679,4 +681,15 @@ it('reads self and static in an inline @var, and self as a callback parameter ty
 it('reads an inline @var static in a helper a self:: call reaches as the caller\'s runtime class', function () {
     expect(analyzedKeyTypes(SelfSpellingChild::class, 'lateLabels'))->toBe(['viaStatic' => 'string', 'viaThis' => 'string'])
         ->and(json_encode(new SelfSpellingChild()->lateLabels()))->toBe('{"viaStatic":"x","viaThis":"x"}');
+});
+
+// Such a spelling may name any subclass, so a member one can override reads by its declaration alone: an untyped one
+// stays `unknown`, unless the class or the member is final.
+it('reads an untyped member a self or static spelling reaches only where no subclass can override it', function () {
+    expect(analyzedKeyTypes(UntypedLabelChild::class))->toBe([
+        'varSelf' => 'unknown', 'varStatic' => 'string', 'mapSelf' => 'unknown', 'tagSelf' => 'unknown', 'fixedSelf' => 'number',
+    ])
+        ->and(json_encode(new UntypedLabelChild()->toArray()))->toBe('{"varSelf":"x","varStatic":"x","mapSelf":["x"],"tagSelf":"x","fixedSelf":1}')
+        ->and(analyzedKeyTypes(LooseLabelHolder::class))->toBe(['viaStatic' => 'unknown'])
+        ->and(json_encode(new LooseLabelHolder()->toArray()))->toBe('{"viaStatic":"x"}');
 });

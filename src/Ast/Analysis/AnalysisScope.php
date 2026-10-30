@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
@@ -49,6 +50,7 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type CollectedElement from ResourceCollections
+ * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
  *
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
@@ -64,7 +66,8 @@ use ReflectionMethod;
  *      after: int,
  *      before: int|null,
  *      expr: Expr,
- *      nested?: true
+ *      nested?: true,
+ *      relative?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
@@ -102,7 +105,8 @@ use ReflectionMethod;
  *      bindingEnds: array<string, int>,
  *      bindingGaps: BindingGapsMap,
  *      keyBuiltLocals: KeyBuiltLocalsMap,
- *      passedValues: ClosureParamExprBindingsMap
+ *      passedValues: ClosureParamExprBindingsMap,
+ *      relativeParameters: array<string, true>
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -148,6 +152,7 @@ final class AnalysisScope
         'bindingGaps' => [],
         'keyBuiltLocals' => [],
         'passedValues' => [],
+        'relativeParameters' => [],
     ];
 
     /**
@@ -273,7 +278,8 @@ final class AnalysisScope
      * resolves its names, the value assigned, and the reads it holds for, past the assignment and before the top-level
      * statement that next writes the variable. Written by CollectsLocalVarBindings, and scoped like localVarBindings.
      *
-     * Each holds for the offsets past its `after` and short of its `before`.
+     * Each holds for the offsets past its `after` and short of its `before`; `relative` marks a type that spelled a
+     * `self`, `static` or `parent`, whose classes ReceiverType::$declaredOnly reads.
      *
      * @var VarDocBindingsMap
      */
@@ -295,6 +301,14 @@ final class AnalysisScope
      * @var VarClassBindingsMap
      */
     public array $varDeclaredBindings = [];
+
+    /**
+     * The closure parameters whose varModelBindings or varDeclaredBindings entry a `self` or `parent` type spelled, so
+     * the object may be any subclass of the class and its receiver reads members by their declarations only.
+     *
+     * @var array<string, true>
+     */
+    public array $relativeParameters = [];
 
     /**
      * Closure params bound to a whole relation collection rather than one element — a to-many
@@ -630,6 +644,27 @@ final class AnalysisScope
     public function relativeClass(Name $name): ?ReflectionClass
     {
         return self::relativeClassOf($name, $this->declaringClass, $this->runtime->class);
+    }
+
+    /**
+     * The class each of `self`, `static` and `parent` names in the body under analysis, keyed by that name; a `parent`
+     * the declaring class lacks names none.
+     *
+     * @return RelativeClasses
+     */
+    public function relativeClassNames(): array
+    {
+        $names = [];
+
+        foreach (['self', 'static', 'parent'] as $relative) {
+            $class = $this->relativeClass(new Name($relative));
+
+            if ($class !== null) {
+                $names[$relative] = $class->getName();
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -981,6 +1016,7 @@ final class AnalysisScope
             'bindingGaps' => $this->bindingGaps,
             'keyBuiltLocals' => $this->keyBuiltLocals,
             'passedValues' => $this->passedValues,
+            'relativeParameters' => $this->relativeParameters,
         ];
     }
 
@@ -1008,6 +1044,7 @@ final class AnalysisScope
         $this->bindingGaps = $snapshot['bindingGaps'];
         $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
         $this->passedValues = $snapshot['passedValues'];
+        $this->relativeParameters = $snapshot['relativeParameters'];
     }
 
     /**
@@ -1213,6 +1250,10 @@ final class AnalysisScope
 
             if (isset($snapshot['varDeclaredBindings'][$from])) {
                 $this->varDeclaredBindings[$to] = $snapshot['varDeclaredBindings'][$from];
+            }
+
+            if (isset($snapshot['relativeParameters'][$from])) {
+                $this->relativeParameters[$to] = true;
             }
 
             if (isset($snapshot['varCollectionBindings'][$from])) {
@@ -1436,7 +1477,7 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
-        return [...$this->classBindingTables(), $this->varValueBindings];
+        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters];
     }
 
     /**
@@ -1488,6 +1529,7 @@ final class AnalysisScope
                 $this->bindingGaps[$name],
                 $this->keyBuiltLocals[$name],
                 $this->passedValues[$name],
+                $this->relativeParameters[$name],
             );
         }
     }

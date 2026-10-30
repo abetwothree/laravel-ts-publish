@@ -15,7 +15,7 @@ use ReflectionProperty;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
- * @phpstan-type VarTag = array{string, string|null}
+ * @phpstan-type VarTag = array{string, string|null, bool}
  * @phpstan-type CapturedTag = array{string, string, int}
  * @phpstan-type RelativeClasses = array<string, class-string>
  *
@@ -71,8 +71,9 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
+     * Capture an inline `@var` on a local assignment: its type, the variable it names, null when it names none, and
+     * whether it spells a `self`, `static` or `parent`. Null unless the type is a VarTypeWhitelist form that resolves
+     * with no `unknown` part but its callables'.
      *
      * Each `self`, `static` or `parent` in the type comes back as the class $relative maps it to, the one the body
      * holding the tag binds it to; one the map lacks stays as written, which no reading accepts.
@@ -81,7 +82,7 @@ final class PropertyDocblockTypeReader
      * @param  RelativeClasses  $relative  the class each of `self`, `static` and `parent` names, keyed by that name
      * @return VarTag|null
      */
-    public function extractVarTag(string $docComment, ReflectionClass $context, array $relative = []): ?array
+    public function extractVarTag(string $docComment, ReflectionClass $context, array $relative): ?array
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
@@ -96,7 +97,9 @@ final class PropertyDocblockTypeReader
             return null;
         }
 
-        return [$type, preg_match('/^\s*\$([a-zA-Z_\x80-\xff][\w\x80-\xff]*)/', $tag[1], $match) === 1 ? $match[1] : null];
+        $name = preg_match('/^\s*\$([a-zA-Z_\x80-\xff][\w\x80-\xff]*)/', $tag[1], $match) === 1 ? $match[1] : null;
+
+        return [$type, $name, $type !== $tag[0]];
     }
 
     /**
@@ -194,7 +197,8 @@ final class PropertyDocblockTypeReader
 
     /**
      * A type with each `self`, `static` and `parent` it names spelled as the fully qualified class $relative maps it
-     * to; a quoted string, a shape's key and a `self::` constant keep the word.
+     * to; a quoted string, a shape's key and a `self::` constant keep the word, as does a conditional type's `? self :`
+     * arm, so the tag declines as it did before.
      *
      * @param  RelativeClasses  $relative
      */

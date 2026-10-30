@@ -98,6 +98,20 @@ final class MethodReturnTypeResolver
     }
 
     /**
+     * A method's declared return type, native or by `@return`, where it is precise enough to publish; null for a vague
+     * or absent one, which only the body could refine.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    public function declaredType(string $class, string $methodName): ?array
+    {
+        $reflected = $this->reflected($class, $methodName);
+
+        return $reflected !== null && ! TsTypeString::isVagueTsType($reflected['type']) ? $reflected : null;
+    }
+
+    /**
      * What a call passes a method whose body would be read; nothing where the declaration answers without the body.
      *
      * @param  class-string  $class
@@ -115,12 +129,7 @@ final class MethodReturnTypeResolver
             return [];
         }
 
-        $reflected = resolve(ReflectedTypeAcceptor::class)
-            ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
-
-        return $reflected !== null && ! TsTypeString::isVagueTsType($reflected['type'])
-            ? []
-            : $site->passedTo($method, valueRead: true);
+        return $this->declaredType($class, $methodName) !== null ? [] : $site->passedTo($method, valueRead: true);
     }
 
     /**
@@ -139,8 +148,7 @@ final class MethodReturnTypeResolver
         ?string $backing,
         ?RuntimeClass $runtime,
     ): ?array {
-        $reflected = resolve(ReflectedTypeAcceptor::class)
-            ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
+        $reflected = $this->reflected($class, $methodName);
 
         if ($reflected !== null && ! TsTypeString::isVagueTsType($reflected['type'])) {
             return $reflected;
@@ -149,6 +157,18 @@ final class MethodReturnTypeResolver
         return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime)
             ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime), $reflected)
             ?? $reflected;
+    }
+
+    /**
+     * A method's reflected return type, native or by `@return`, vague or not; null where it declares none it accepts.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function reflected(string $class, string $methodName): ?array
+    {
+        return resolve(ReflectedTypeAcceptor::class)
+            ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
     }
 
     /**

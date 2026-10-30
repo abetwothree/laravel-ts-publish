@@ -108,9 +108,20 @@ final class SubjectPropertyTypeResolver
         // An assumed runtime class may be any subclass, so the property is read for the subject itself.
         $readFor = $runtime->known ? $runtime : RuntimeClass::assumed($subject);
 
+        return $this->declaredType($subject, $property) ?? $this->defaultValueType($subject, $property, $readFor);
+    }
+
+    /**
+     * A subject's property's declared type, its `@var` docblock else its native type, with no default or write read:
+     * what holds for a subclass that redeclares it too.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return ValueExpressionResult|null
+     */
+    public function declaredType(ReflectionClass $subject, ReflectionProperty $property): ?array
+    {
         return resolve(PropertyDocblockTypeReader::class)->read($property)
-            ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property, $readFor);
+            ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $property->getName()));
     }
 
     /**

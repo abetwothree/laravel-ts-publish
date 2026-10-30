@@ -76,9 +76,19 @@ final class ParameterBinder
     }
 
     /**
+     * Whether a closure parameter's type is `self` or `parent`, alone or behind a `?`: the object may be any subclass.
+     */
+    public static function spellsRelativeClass(Param $param): bool
+    {
+        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+
+        return $type instanceof Name && $type->isSpecialClassName();
+    }
+
+    /**
      * Bind a closure parameter by the one class its native type names, and say whether it bound a model, which stands
      * for its value too: a concrete model neither a `?` nor an `= null` default lets be null in varModelBindings, and
-     * any other class, a Request included, in varDeclaredBindings.
+     * any other class, a Request included, in varDeclaredBindings. A `self` or `parent` marks it in relativeParameters.
      */
     public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope): bool
     {
@@ -89,6 +99,12 @@ final class ParameterBinder
         }
 
         [$class, $nullable] = $declared;
+
+        if (self::spellsRelativeClass($param)) {
+            $scope->relativeParameters[$name] = true;
+        } else {
+            unset($scope->relativeParameters[$name]);
+        }
 
         if (! $nullable && ! self::defaultsToNull($param) && ReceiverType::isConcreteModel($class)) {
             $scope->varModelBindings[$name] = $class;

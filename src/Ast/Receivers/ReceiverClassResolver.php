@@ -499,6 +499,12 @@ final class ReceiverClassResolver
             return $assigned;
         }
 
+        // A `self`, `static` or `parent` names a class whose object, an element's too, may be any subclass, so members
+        // read by their declarations and the tag names no element.
+        if (isset($span['relative'])) {
+            return $declared->asDeclaredOnly();
+        }
+
         $element = $this->declaredElementModel($span, $declared);
         $keyed = in_array($this->declaredGeneric($span, $declared)['key'] ?? null, ['string', 'array-key'], true);
 
@@ -653,12 +659,14 @@ final class ReceiverClassResolver
      */
     private function fromBindings(string $name, AnalysisScope $scope, ?Variable $read = null): ?ReceiverType
     {
-        if (isset($scope->varModelBindings[$name])) {
-            return ReceiverType::of($scope->varModelBindings[$name]);
-        }
+        $declared = match (true) {
+            isset($scope->varModelBindings[$name]) => ReceiverType::of($scope->varModelBindings[$name]),
+            isset($scope->varDeclaredBindings[$name]) => new ReceiverType($scope->varDeclaredBindings[$name]),
+            default => null,
+        };
 
-        if (isset($scope->varDeclaredBindings[$name])) {
-            return new ReceiverType($scope->varDeclaredBindings[$name]);
+        if ($declared !== null) {
+            return isset($scope->relativeParameters[$name]) ? $declared->asDeclaredOnly() : $declared;
         }
 
         if (isset($scope->varCollectionBindings[$name])) {
