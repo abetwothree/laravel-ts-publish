@@ -67,6 +67,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ForwardedFreshPaylo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InheritedHelperPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LevelAliasChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MeasuredSizeChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamedPickHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NestedCaptureChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedTagsPayload;
@@ -823,6 +824,12 @@ it('reads `static` in a body a non-static call through an ancestor\'s name or a 
         SevenHelperLevelResource::class => $expected('string | number', 'number', 7),
         TrueHelperLevelResource::class => $expected('string | boolean', 'boolean', true),
     ]);
+});
+
+// An instance method named through a class runs on `$this` where the object is one, so `static` may be a subclass.
+it('assumes the class an instance method named through a class runs as, since the object may be a further subclass', function () {
+    expect(analyzedKeyTypes(NamedPickHolder::class))->toBe(['v' => '{ label: unknown }'])
+        ->and(json_encode((new NamedPickHolder)->toArray()))->toBe('{"v":{"label":true}}');
 });
 
 it('reads a call through an unrelated class\'s name on that class, which PHP runs on no other object', function () {

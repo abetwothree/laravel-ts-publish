@@ -225,13 +225,14 @@ reads a property for an assumed one as the subject's own. The runtime class is k
   is known where the caller's is (`AnalysisScope::calleeRuntime()`);
 - for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
 - for a `final` collaborator the container fills (`RuntimeClass::injected()`);
-- for a call through a class's name that forwards nothing, since PHP binds `static` to that class;
+- for a static method called through a class's name, since PHP binds `static` to that class;
 - for an exact construction, `new X` or `X::make()`, and a method a chain calls on it
   (`AnalysisScope::builtRuntime()`).
 
 Anywhere else it is assumed (`RuntimeClass::assumed()`, or `held()` from a class name), since the object may be a
-subclass: a receiver's declared class, the model `$this->resource` forwards to and a method macro's object, and a
-collaborator that is not final.
+subclass: a receiver's declared class, the model `$this->resource` forwards to and a method macro's object, a
+collaborator that is not final, and an instance method a class's name calls without forwarding, which runs on `$this`
+wherever the object is one.
 
 ### Writing a scope binding
 

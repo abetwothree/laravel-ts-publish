@@ -360,7 +360,7 @@ test('reset drops every answer', function () use ($counting) {
     expect($memo->remember('k', $counting($runs)))->toBe(2);
 });
 
-// A call that forwards nothing binds `static` to the class it names, so its read is that class's own, under one key.
+// A static method called through a class's name binds `static` to that class, so its read is that class's own.
 test('keys a static call through a class\'s name that forwards nothing as a read of that class itself', function () {
     $memo = resolve(AnalysisMemo::class);
     $memo->reset();
