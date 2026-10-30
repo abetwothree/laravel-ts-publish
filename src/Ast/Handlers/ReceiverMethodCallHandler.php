@@ -69,7 +69,7 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
 
         // A macro runs before anything the subject forwards to; `$this` is never null, so `?->` adds no `| null`.
         if ($reached !== null && resolve(MacroCallResolver::class)->runsMacro($reached, $method)) {
-            return resolve(MacroCallResolver::class)->resolve($scope, $method);
+            return resolve(MacroCallResolver::class)->resolve($scope, $method, $reached);
         }
 
         $receiver = match (true) {

@@ -55,7 +55,7 @@ final class SubjectMethodTypeResolver
         $macros = resolve(MacroCallResolver::class);
 
         if ($macros->runsMacro($class, $methodName)) {
-            return $macros->resolve($scope, $methodName);
+            return $macros->resolve($scope, $methodName, $class);
         }
 
         return $this->resolveForwarded($scope, $methodName, $site);

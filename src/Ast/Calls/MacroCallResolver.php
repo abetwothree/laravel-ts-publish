@@ -102,21 +102,24 @@ final class MacroCallResolver
 
     /**
      * What the macro a call runs returns: its native return, else its `@return`, else, for a closure, its body read
-     * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class, known or assumed,
-     * name and model.
+     * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class the call reaches,
+     * runtime class known or assumed, name and model.
      *
+     * @param  ReflectionClass<object>|null  $on  the class the call reaches, which decides whether a macro runs; null
+     *                                            for `$this->`, which reaches AnalysisScope::thisMemberClass()
      * @return ValueExpressionResult|null
      */
-    public function resolve(AnalysisScope $scope, string $method): ?array
+    public function resolve(AnalysisScope $scope, string $method, ?ReflectionClass $on = null): ?array
     {
         $runtime = $scope->runtime;
-        $class = $runtime->class->getName();
+        $reached = $on ?? $scope->thisMemberClass($method, true);
+        $class = $reached->getName();
         $modelClass = $scope->modelClass;
 
         return resolve(AnalysisMemo::class)->remember(
             'macro:'.$class.'@'.$method.'@'.($modelClass ?? '').$runtime->memoKey($class),
-            function () use ($runtime, $method, $modelClass): ?array {
-                $function = $this->reflect($this->macroFor($runtime->class, $method));
+            function () use ($reached, $runtime, $method, $modelClass): ?array {
+                $function = $this->reflect($this->macroFor($reached, $method));
                 $result = match (true) {
                     // A method macro runs on the object its callable holds, never the subject.
                     $function instanceof ReflectionMethod => resolve(MethodReturnTypeResolver::class)->resolve(

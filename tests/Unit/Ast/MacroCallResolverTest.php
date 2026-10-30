@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroAncestorResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroScopeLeakResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\SelfTypedTwin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MacroShadowedPost;
@@ -19,6 +22,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\Post;
 
 /**
  * A post the macro fixtures serialize, so the runtime value each macro sends can be read.
@@ -187,6 +191,25 @@ describe('with no resource macro registered', function () {
         'a missing method' => [[Str::class, 'noSuchMethod']],
         'an object that is not invokable' => [new stdClass],
     ]);
+});
+
+it('reads self::m() in an ancestor body as the macro __call() runs, though the runtime class declares m()', function () {
+    JsonResource::macro('ancestorProbe', fn (): string => 'X');
+
+    expect(publishedResourceKeyTypes(MacroShadowResource::class, Post::class))->toBe(['m' => 'string', 'n' => 'number'])
+        ->and(json_encode(new MacroShadowResource(null)->resolve(request())))->toBe('{"m":"X","n":1}');
+});
+
+it('looks a macro up on the class the call reaches, and keeps that answer from a call the runtime class declares', function () {
+    JsonResource::macro('ancestorProbe', fn (): string => 'X');
+    $scope = AnalysisScope::detached(
+        new ReflectionClass(MacroAncestorResource::class),
+        RuntimeClass::known(new ReflectionClass(MacroShadowResource::class)),
+    );
+    $macros = resolve(MacroCallResolver::class);
+
+    expect($macros->resolve($scope, 'ancestorProbe', $scope->declaringClass))->toMatchArray(['type' => 'string'])
+        ->and($macros->resolve($scope, 'ancestorProbe'))->toBeNull();
 });
 
 // Macroable binds a macro to the class it is called on, so a closure's `self` names that class, not the mixin.
