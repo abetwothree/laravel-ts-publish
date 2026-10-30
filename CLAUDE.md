@@ -19,6 +19,8 @@ The `abetwothree/laravel-ts-publish` project is a Laravel package aiming to conv
 
 Do not try to run the `ts:publish` command from the workbench directory because it won't have a database connection, so the output will not have DB backed values.
 
+To publish from a real app with a database and a frontend, use `fixture-app/`; see [Fixture app](./docs/testing/fixture-app.md).
+
 ## Implementing Types
 
 Implementing features related to figuring out types and publishing them to TypeScript should follow this workflow:
