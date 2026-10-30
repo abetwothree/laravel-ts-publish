@@ -201,8 +201,7 @@ docblocks say what each binding table holds. These eight facts span other classe
   through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
   runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
   collection's items as the class Laravel builds does. A built collection's method changes only `collectedElement`,
-  through `seedBuiltElement()`, which `within()` puts back, and only where the built class's own `collects()` picks a
-  class the scope's element is not: the outer response's `filter()` still re-indexes its arrays.
+  through `seedBuiltElement()`; see [A method called on a new resource types its payload][built-payload].
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
@@ -222,12 +221,13 @@ reads a property for an assumed one as the subject's own. The runtime class is k
 - in the published class's own scope;
 - in a helper that scope reaches through `$this->`, `$this::`, `self::`, `static::`, `parent::` or a non-static
   `Ancestor::m()` from an instance of it, and in a body run on what a `$this->` call declared `: static` returns: each
-  is known where the caller's is (`AnalysisScope::calleeRuntime()`);
+  is known where the caller's is (the forwarding calls hand on `$scope->runtime`; `AnalysisScope::calleeRuntime()` does
+  so for the `: static` receiver);
 - for a class the route or config names: a controller, an Inertia middleware, a metadata provider;
 - for a `final` collaborator the container fills (`RuntimeClass::injected()`);
 - for a static method called through a class's name, since PHP binds `static` to that class;
 - for an exact construction, `new X` or `X::make()`, and a method a chain calls on it
-  (`AnalysisScope::builtRuntime()`).
+  (`AnalysisScope::builtRuntime()`), except the class an assumed scope's `static` stands for, which stays assumed.
 
 Anywhere else it is assumed (`RuntimeClass::assumed()`, or `held()` from a class name), since the object may be a
 subclass: a receiver's declared class, the model `$this->resource` forwards to and a method macro's object, a
@@ -839,6 +839,7 @@ These pages cover the engine's neighbors:
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
 [body-fallback]: receiver-types.md#the-body-fallback-carries-no-fqcn-channel
+[built-payload]: resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload
 [collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
 [gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways
 [gap-non-goals]: ../known-gaps.md#deliberate-non-goals
