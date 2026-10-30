@@ -113,9 +113,9 @@ A method that builds an array in a variable and returns it publishes the keys it
   instead: a key first set there is optional, and a key re-set there publishes only its last write's type.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
-  literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
-  does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or any
-  other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
+  literal with a `$this->`, `self::`, `static::` or `parent::` helper spread the analyzer declines, and one with a write
+  the walk does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or
+  any other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
   reads instead, beside `[key: string]: unknown` for a helper read as a value whose base or key write the walk could
   not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a

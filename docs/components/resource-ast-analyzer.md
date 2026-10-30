@@ -94,11 +94,13 @@ every profile, the order handlers run in decides which one answers; see
   binding; a value read of a local built by keys shares it through `walkedLocal()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
-  the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
-  spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterMethod()`, keeping only
-  the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
-  `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and `declaringClass`, binds the method's
-  parameters, and what the call passes them through `CallSite::passedTo()`, as
+  the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and
+  `...parent::m()` spread the same way (`relativeSpreadClass()`), the last only for a user-land parent's method PHP can
+  call there: a private or abstract one throws, and Laravel's is read only where `readParentCall()` reads it. The
+  runtime class stays the caller's, as PHP forwards it. It sets every name-keyed table aside through
+  `AnalysisScope::enterMethod()`, keeping only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and
+  empties the `resolvingLocalVars` and `readingLocals` guards. It re-derives `requestVarNames`, `declaringFileClass` and
+  `declaringClass`, binds the method's parameters, and what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
