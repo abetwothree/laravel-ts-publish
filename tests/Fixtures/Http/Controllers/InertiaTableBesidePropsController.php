@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCountRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\DocblockPostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\StaticRootTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\UserQueryPostTable;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -93,6 +94,18 @@ class InertiaTableBesidePropsController
     public function docblockTotal(): Response
     {
         return Inertia::render('Tables/DocblockTotal', ['total' => DocblockPostTable::make()->total()]);
+    }
+
+    /** Renders a static call on a table other than make() that returns a number. */
+    public function staticTotal(): Response
+    {
+        return Inertia::render('Tables/StaticTotal', ['n' => StaticRootTable::total()]);
+    }
+
+    /** Renders a static call on a table other than make() that returns the table, with a chain on it. */
+    public function staticNamed(): Response
+    {
+        return Inertia::render('Tables/StaticNamed', ['posts' => StaticRootTable::named()->defaultSort('-id')]);
     }
 
     /** Renders a resolved resource whose body holds the count of a table's query. */

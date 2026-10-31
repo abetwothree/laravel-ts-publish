@@ -106,8 +106,9 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
   table class, or with no native type a `@return` naming one, read against the file's use statements, or `$this`). A
   chain past the table's own `query()` reads as that chain on `query()` of the model it queries, and past any other
-  call as the rest of the profile reads it. Where that is `unknown` in a render call's props literal, the one place the
-  reader it replaced typed such a chain, the table type stands. The type is a custom import from the configured or
+  call as the rest of the profile reads it. Where that is `unknown` on a value `InertiaPageAnalyzer` marks
+  `TYPED_AS_TABLE` (a string-keyed item of the action's first render call's props literal, the one place the reader
+  it replaced typed such a chain), the table type stands. The type is a custom import from the configured or
   installed table package. A table naming no model falls through, to `unknown`. So a table is one more prop: the
   render call's other props, the action's casts, a collaborator's props, shared data and a `->resolve()`d body's
   restated keys all read it.

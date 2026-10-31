@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -147,6 +148,7 @@ class InertiaPageAnalyzer
             return null;
         }
 
+        $this->markTableReads($context);
         $scope = resolve(AstEngine::class)->bindingsFor($context);
         $analyzer = $this->analyzerFor($context, $scope);
         $branches = $this->collectComponentBranches($context, $analyzer, $scope);
@@ -650,6 +652,22 @@ class InertiaPageAnalyzer
         }
 
         return $inForce;
+    }
+
+    /**
+     * Mark each string-keyed value of the first render call's props literal, where the table reader this analyzer once
+     * held typed a chain rooted at a table, so such a chain nothing else reads keeps that type.
+     */
+    private function markTableReads(MethodContext $context): void
+    {
+        $locator = resolve(InertiaRenderLocator::class);
+        $render = $locator->findRenderCall($context->method);
+
+        foreach (($render === null ? null : $locator->propsArray($render))->items ?? [] as $item) {
+            if ($item->key instanceof String_) {
+                $item->value->setAttribute(InertiaTableHandler::TYPED_AS_TABLE, true);
+            }
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableBesidePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
@@ -120,6 +121,41 @@ it('keeps the table type of a chain past the table that nothing else reads where
         ->toBe('Inertia.SharedData & { ids: TableResource<Post>, query: TableResource<Post>, held: unknown }')
         ->and([$sent->ids, $sent->held])->toBe([[1, 2], [1, 2]])
         ->and($sent->query)->toBeObject();
+});
+
+// The table type a props literal's item keeps is marked on the node the page analyzer reads, so it holds after the
+// parse cache drops the file, which one page analyzed per route meets in a large app.
+it('keeps the table type of a props literal item past the table after the parse cache drops the file', function () {
+    $evict = function (): void {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
+            dirname(__DIR__, 4).'/vendor/laravel/framework/src/Illuminate',
+            FilesystemIterator::SKIP_DOTS,
+        ));
+        $parsed = 0;
+
+        foreach ($files as $file) {
+            if ($parsed < 300 && str_ends_with((string) $file, '.php')) {
+                resolve(AstParser::class)->parseFile((string) $file);
+                $parsed++;
+            }
+        }
+    };
+    $type = 'Inertia.SharedData & { ids: TableResource<Post>, query: TableResource<Post>, held: unknown }';
+    resolve(MethodLocator::class)->locateDeclared(InertiaTableBesidePropsController::class, 'plucked');
+    $evict();
+    $afterLocated = pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'];
+    $evict();
+
+    expect($afterLocated)->toBe($type)
+        ->and(pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'])->toBe($type);
+});
+
+// A static root other than make() is a call like any other: the table where it says it returns one.
+it('reads a static root other than make() as the call it is', function () {
+    expect(pageData(InertiaTableBesidePropsController::class.'@staticTotal')['pageType'])->toBe('Inertia.SharedData & { n: number }')
+        ->and(inertiaProps(new InertiaTableBesidePropsController()->staticTotal())->n)->toBe(4)
+        ->and(pageData(InertiaTableBesidePropsController::class.'@staticNamed')['pageType'])
+        ->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
 });
 
 // A docblock's short name and alias are read against the declaring file's use statements, as PHP reads them.

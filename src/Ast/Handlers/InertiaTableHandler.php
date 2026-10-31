@@ -7,9 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -17,13 +15,11 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
-use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
 use ReflectionMethod;
@@ -40,6 +36,9 @@ use ReflectionNamedType;
  */
 final class InertiaTableHandler implements ExpressionHandler
 {
+    /** Marks a value the table reader this handler replaced typed as a table, a first render call's props item. */
+    public const string TYPED_AS_TABLE = 'typedAsTable';
+
     /** A dev dependency, so named by string: an import would declare a requirement this package lacks. */
     private const TABLE_BASE = 'InertiaUI\\Table\\Table';
 
@@ -72,7 +71,7 @@ final class InertiaTableHandler implements ExpressionHandler
         $past = $leaving === null ? null : $this->readPast($expr, $leaving, $table, $model, $engine);
 
         // A chain past the table that nothing reads keeps the table type where the reader before this handler gave it.
-        if ($past !== null && ($past['type'] !== 'unknown' || ! $this->typedAsTableBefore($expr, $scope))) {
+        if ($past !== null && ($past['type'] !== 'unknown' || $expr->getAttribute(self::TYPED_AS_TABLE) !== true)) {
             return $past;
         }
 
@@ -132,32 +131,6 @@ final class InertiaTableHandler implements ExpressionHandler
         } finally {
             unset($this->readingPast[spl_object_id($expr)]);
         }
-    }
-
-    /**
-     * Whether an expression is a string-keyed value of a first render call's props literal in the scope's file.
-     *
-     * The only place the reader this handler replaced typed a chain rooted at a table, whatever its calls returned.
-     */
-    private function typedAsTableBefore(Expr $expr, AnalysisScope $scope): bool
-    {
-        $path = $scope->declaringFileClass->getFileName();
-        $locator = resolve(InertiaRenderLocator::class);
-
-        foreach ($path === false ? [] : resolve(AstParser::class)->parseFileMethods($path)[1] as $methods) {
-            foreach ($methods as $method) {
-                $render = $locator->findRenderCall($method);
-                $props = $render === null ? null : $locator->propsArray($render);
-
-                $holds = fn (ArrayItem $item): bool => $item->key instanceof String_ && $item->value === $expr;
-
-                if (array_any($props->items ?? [], $holds)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**
