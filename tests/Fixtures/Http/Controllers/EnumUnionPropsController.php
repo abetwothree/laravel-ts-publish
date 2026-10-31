@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\NullableWrapBuilder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -62,6 +63,24 @@ class EnumUnionPropsController
     {
         return Inertia::render('EnumUnions/HelperElvis', [
             'status' => NullableWrapBuilder::statusFrom($request->integer('s', 9)),
+        ]);
+    }
+
+    /** Renders the helper's short ternary itself, then a resolved resource whose body reads the same helper. */
+    public function helperBesideSpread(Request $request): Response
+    {
+        return Inertia::render('EnumUnions/HelperBesideSpread', [
+            'a' => NullableWrapBuilder::statusFrom($request->integer('s', 9)),
+            ...CheckedResourceElvisResource::make(null)->resolve(),
+        ]);
+    }
+
+    /** Renders the same two reads in the other order. */
+    public function spreadBesideHelper(Request $request): Response
+    {
+        return Inertia::render('EnumUnions/SpreadBesideHelper', [
+            ...CheckedResourceElvisResource::make(null)->resolve(),
+            'a' => NullableWrapBuilder::statusFrom($request->integer('s', 9)),
         ]);
     }
 

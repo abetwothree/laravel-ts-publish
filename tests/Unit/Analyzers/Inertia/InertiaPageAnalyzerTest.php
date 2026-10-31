@@ -1120,6 +1120,23 @@ it('types a short ternary a props helper returns over an enum resource as that r
         ->and([$picked->status->name, $absent->status])->toBe([Status::Published->name, []]);
 });
 
+// The helper's own reading and its reading under the resource's filter() are two memo entries, so neither order of the
+// two reads lends the other its answer.
+it('reads a helper beside a resolved resource whose body reads it, each as Inertia sends it', function (string $action) {
+    [$picked, $absent] = array_map(function (array $query) use ($action): stdClass {
+        $request = Request::create('/', 'GET', $query);
+        app()->instance('request', $request);
+
+        return inertiaProps(new EnumUnionPropsController()->{$action}($request), $request);
+    }, [['s' => 1], []]);
+    $page = pageData(EnumUnionPropsController::class.'@'.$action)['pageType'] ?? '';
+    $types = array_column(TsTypeShape::members(substr($page, strlen('Inertia.SharedData & '))) ?? [], 1, 0);
+
+    expect([$types['a'] ?? null, $types['helperTryFrom'] ?? null])->toBe(['AsEnum<typeof Status>', 'AsEnum<typeof Status> | null'])
+        ->and([$picked->a->name, $picked->helperTryFrom->name])->toBe([Status::Published->name, Status::Published->name])
+        ->and([$absent->a, $absent->helperTryFrom])->toBe([[], null]);
+})->with(['helperBesideSpread', 'spreadBesideHelper']);
+
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
     $sent = inertiaProps(new AliasedHelperController()->index());
     $shape = '{ tk: number; tn: string }';
