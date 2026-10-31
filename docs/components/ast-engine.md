@@ -40,6 +40,7 @@ These are the classes a change to the engine usually touches:
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
 | [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node |
+| [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
 | [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()` |
@@ -846,6 +847,7 @@ These pages cover the engine's neighbors:
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
+[`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php

@@ -15,6 +15,7 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 | [`CastChannels`](../../src/Ast/Composition/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
 | [`ResourceTransformer::collectCastsInForce()`](../../src/Transformers/ResourceTransformer.php) | Picks the cast in force per key from the method, model and resource casts. |
 | [`JsEmitter::castTargets()`](../../src/Support/JsEmitter.php) | Decides which published key a cast key retypes. |
+| [`ParentCallChain`](../../src/Ast/Parsing/ParentCallChain.php) | Finds each `share()` whose keys shared data returns, through `parent::share()`. |
 
 ## Sources and precedence
 
@@ -25,11 +26,15 @@ Each row lists a publisher's sources, lowest first. A later source wins the key,
 | Model | class < `$casts` < `casts()` |
 | API resource | its model's casts < the resource's own: a spread helper's method < `toArray()` < class < `$casts` < `casts()` |
 | Broadcast event | `broadcastWith()` < class < `$casts` < `casts()`; a class-level cast on a key the payload lacks adds nothing |
-| Inertia shared data | inference < `@return` docblock < the middleware class < `share()` |
+| Inertia shared data | inference < `@return` docblock < each class from the deepest `share()` it reads to the middleware: a class < its own `share()` |
 | Inertia page | inference < the action's `#[TsCasts]` |
 | Model metadata `provide()` | inference < docblock < `#[TsCasts]` |
 
 An API resource's method casts outrank its model's, so `modelCastsOver()` skips every key a method casts.
+
+Shared data reads a parent's `share()` when the middleware inherits it or returns its keys through `parent::share()`.
+PHP never hands a class its parent's attributes, so each class on that chain is a location of its own, and a parent
+whose `share()` the middleware never reads, or nests under a key, adds no cast.
 
 `optional` follows the same order on every publisher: a cast's own flag wins, even over shared data's `key?`, and a cast
 that says nothing about it keeps the next source's flag (an earlier location's, a resource's model cast, shared data's
@@ -71,8 +76,8 @@ queue meets the displaced value. `ResourceTransformer::runAstAnalysis()`,
 `InertiaSharedDataAnalyzer::buildResult()` call it after the reconcile, `AnalysisComposer::compose()` first, for
 `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can retype.
 A page's casts in force are a props helper's own method casts under the action's; shared data's are a helper's under
-the middleware class's and `share()`'s. A class-level event cast whose key names no payload property adds neither the
-key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a resource method cast does.
+those of each class and `share()` it reads. A class-level event cast whose key names no payload property adds neither
+the key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a resource method cast does.
 
 A key only shared data's `@return` shape retypes still drops its import channels (`forgetChannels()`): the shape may
 spell a name its own custom import brings beside a same-named class the value carried, which a fit would bind the token

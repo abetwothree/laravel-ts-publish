@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ParentCallChain;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
@@ -136,7 +137,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Built once per instance by dispatcher(), so the handler-candidate memo survives across dispatches. */
     protected ?ExpressionDispatcher $dispatcher = null;
 
-    /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
+    /** The class declaring the share() the analyzed middleware runs; a parent's analyzer keeps it. */
     protected ?string $sharedDataShareClass = null;
 
     /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
@@ -920,7 +921,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
-        $this->applyTsCastsFromMethod($method, $analysis);
+
+        if (! $this->isInertiaShare($method)) {
+            $this->applyTsCastsFromMethod($method, $analysis);
+        }
 
         // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
@@ -1288,7 +1292,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
 
-        // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+        // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
         if (! $this->isInertiaShare($ownMethod)) {
             $this->applyTsCastsFromMethod($ownMethod, $analysis);
         }
@@ -2004,7 +2008,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * The one place a nested analyzer is built: it reads a body as the runtime class runs it, with the methods whose
-     * reads enclose it and the share() whose casts InertiaSharedDataAnalyzer applies.
+     * reads enclose it and the share() whose chain's casts InertiaSharedDataAnalyzer applies.
      *
      * @param  ReflectionClass<object>  $class
      * @param  class-string<Model>|null  $modelClass
@@ -2086,8 +2090,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The class declaring the share() InertiaSharedDataAnalyzer reads the casts of, own or inherited by the analyzed
-     * middleware; an empty string for any other subject.
+     * The class declaring the share() the analyzed middleware runs, own or inherited; an empty string for any other
+     * subject.
      */
     private function sharedDataShareClass(): string
     {
@@ -2098,12 +2102,20 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether the method is the share() whose casts InertiaSharedDataAnalyzer applies, never a parent's one that the
-     * middleware's own share() spreads.
+     * Whether the method is a share() whose casts InertiaSharedDataAnalyzer applies: the middleware's own or inherited
+     * one, or an ancestor's whose keys a `parent::share()` call returns.
      */
     private function isInertiaShare(ReflectionMethod $method): bool
     {
-        return $method->getDeclaringClass()->getName() === $this->sharedDataShareClass();
+        $shareClass = $this->sharedDataShareClass();
+
+        return $shareClass !== ''
+            && strtolower($method->getName()) === 'share'
+            && in_array(
+                $method->getDeclaringClass()->getName(),
+                resolve(ParentCallChain::class)->declaringClasses($shareClass, 'share'),
+                true,
+            );
     }
 
     /**

@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastChildMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastOverInheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
@@ -43,10 +45,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NestedParentShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\OptionalCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\UnreadParentShareMiddleware;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Inertia;
@@ -576,7 +581,7 @@ test('a cast that says nothing about optional keeps the docblock\'s flag, else t
         ->toBe('{ flash?: Flash, notice: Notice, banner: Banner, held?: HeldShare, id: number, [key: `${string}_note`]: number | undefined }');
 });
 
-// The shared-data analyzer reads only the subclass's share(), so the engine still applies the parent's own cast.
+// The parent whose share() the subclass spreads is a cast location of its own, which the engine leaves alone.
 test('a parent middleware\'s share() cast reaches a subclass that spreads parent::share()', function () {
     expect(analyzeSharedDataFor(ShareCastChildMiddleware::class)['sharedPageProps'])
         ->toBe("{ locale: 'en' | 'es', id: number }");
@@ -590,4 +595,59 @@ test('a subclass that inherits share() whole gets its casts once', function () {
 test('a share() cast that says nothing about optional keeps the class cast\'s flag', function () {
     expect(analyzeSharedDataFor(MiddlewareWithFlaggedClassCastUnderShareCast::class)['sharedPageProps'])
         ->toBe('{ held?: HeldShare, id: number }');
+});
+
+test('a parent share() cast reached through parent::share() keeps its ? suffix', function () {
+    $request = Request::create('/');
+    Inertia::share(new OptionalCastChildMiddleware()->share($request));
+
+    // The cast is the user's own type for `filters`, laid as written over the null the parent sends.
+    expect(sharedProps(OptionalCastChildMiddleware::class))
+        ->toBe(['filters?' => 'string[]', 'app' => 'string', 'child' => 'number'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))
+        ->toBe(['filters' => null, 'app' => 'x', 'child' => 1]);
+});
+
+// PHP never gives a subclass its parent's attributes, so the parent whose share() is read is a location of its own.
+test('a parent class-level cast reaches a child that spreads parent::share()', function () {
+    $request = Request::create('/');
+    Inertia::share(new ClassCastChildMiddleware()->share($request));
+
+    expect(sharedProps(ClassCastChildMiddleware::class))->toBe(['flag' => 'boolean'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['flag' => 1]);
+});
+
+// The share() the subclass inherits is its parent's location, so the subclass's own class comes after it.
+test('a subclass\'s class-level cast outranks the share() cast it inherits, keeping that cast\'s optional flag', function () {
+    $request = Request::create('/');
+    Inertia::share(new ClassCastOverInheritedShareMiddleware()->share($request));
+
+    expect(sharedProps(ClassCastOverInheritedShareMiddleware::class))
+        ->toBe(['filters?' => 'Record<string, string>', 'locale?' => "'en'", 'id' => 'number'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['filters' => [], 'locale' => 'en', 'id' => 1]);
+});
+
+test('a parent whose share() the child never reads adds no cast key', function () {
+    $request = Request::create('/');
+    Inertia::share(new UnreadParentShareMiddleware()->share($request));
+
+    expect(sharedProps(UnreadParentShareMiddleware::class))->toBe(['own' => 'number'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['own' => 1]);
+});
+
+test('a parent share() nested under a key adds no top-level cast key', function () {
+    $request = Request::create('/');
+    Inertia::share(new NestedParentShareMiddleware()->share($request));
+
+    expect(sharedProps(NestedParentShareMiddleware::class))
+        ->toBe(['nested' => '{ filters: null; app: string }', 'child' => 'number'])
+        ->and(json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true))
+        ->toBe(['nested' => ['filters' => null, 'app' => 'x'], 'child' => 1]);
+});
+
+test('the engine leaves a parent share()\'s casts to the shared-data analyzer too', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(OptionalCastChildMiddleware::class, 'share');
+
+    expect(array_column($analysis->properties, 'type', 'name'))
+        ->toBe(['filters' => 'null', 'app' => 'string', 'child' => 'number']);
 });

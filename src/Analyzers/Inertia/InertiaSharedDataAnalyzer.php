@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ParentCallChain;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -220,9 +221,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Parse #[TsCasts] attributes from the middleware class and its share() method.
-     *
-     * Method-level attributes take priority over class-level, matching Laravel's cast resolution order.
+     * Parse the #[TsCasts] attributes of the middleware's share() chain, a later location winning a key.
      *
      * @param  class-string  $className
      * @return TsCastsParseResult
@@ -240,24 +239,25 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * The middleware's #[TsCasts] instances in precedence order: the class, then its share() method.
+     * The middleware's #[TsCasts] instances in precedence order: each class of its share() chain from the root, a
+     * class before the share() it declares.
      *
      * @param  class-string  $className
      * @return list<TsCasts>
      */
     protected function tsCastsAttributesFromMiddleware(string $className): array
     {
-        /** @var ReflectionClass<object> $reflection */
-        $reflection = new ReflectionClass($className);
-
+        $declaring = resolve(ParentCallChain::class)->declaringClasses($className, 'share');
         $attributes = [];
 
-        foreach ($reflection->getAttributes(TsCasts::class) as $attr) {
-            $attributes[] = $attr->newInstance();
-        }
+        foreach (array_reverse($this->castClasses($className, $declaring)) as $class) {
+            $located = $class->getAttributes(TsCasts::class);
 
-        if ($reflection->hasMethod('share')) {
-            foreach ($reflection->getMethod('share')->getAttributes(TsCasts::class) as $attr) {
+            if (in_array($class->getName(), $declaring, true)) {
+                $located = [...$located, ...$class->getMethod('share')->getAttributes(TsCasts::class)];
+            }
+
+            foreach ($located as $attr) {
                 $attributes[] = $attr->newInstance();
             }
         }
@@ -385,6 +385,27 @@ class InertiaSharedDataAnalyzer
         $docblockNames = array_map(fn (int|string $key): string => rtrim((string) $key, '?'), array_keys($docblockOverrides));
 
         return array_diff_key(array_column($analysis->properties, 'optional', 'name'), array_flip($docblockNames));
+    }
+
+    /**
+     * Each class from the middleware up to the deepest declaring a share() the analysis reads, inherited or through
+     * `parent::share()`; PHP gives no class its parent's attributes, so each is a cast location of its own.
+     *
+     * @param  class-string  $className
+     * @param  list<class-string>  $declaring  the classes declaring each share() the analysis reads
+     * @return non-empty-list<ReflectionClass<object>>
+     */
+    private function castClasses(string $className, array $declaring): array
+    {
+        $class = new ReflectionClass($className);
+        $deepest = $declaring === [] ? $className : $declaring[array_key_last($declaring)];
+        $chain = [$class];
+
+        while ($class->getName() !== $deepest && ($class = $class->getParentClass()) !== false) {
+            $chain[] = $class;
+        }
+
+        return $chain;
     }
 
     /**
