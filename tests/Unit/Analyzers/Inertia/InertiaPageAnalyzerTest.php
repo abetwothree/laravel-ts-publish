@@ -215,6 +215,30 @@ it('reads a props local through its writes', function (string $action, string $t
         [['x' => 1], []],
         [['a' => 1], ['a' => 'x']],
     ],
+    'a ??= over a key a block may set' => [
+        'coalesceAssigned',
+        '{ heading: string, a: number | string }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a write reading the local itself' => [
+        'coalesceSelfRead',
+        '{ heading: string, a?: number | string }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a whole write reading the local it replaces' => [
+        'selfReplaced',
+        '{ a?: number | string }',
+        [['x' => 1], []],
+        [['a' => 1], ['a' => 'none']],
+    ],
+    'a ??= over a key a loop may set to a value no reading types' => [
+        'loopedCoalesce',
+        '{ heading: string, a: unknown }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
     'written after the render call' => ['late', '{ heading: string }', [[]], [['heading' => 'x']]],
     'written in a loop' => [
         'looped',
@@ -229,7 +253,7 @@ it('throws for the request the in-block props local is never assigned on', funct
 });
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,
-// and a `+=`, a loop's `continue` or a `try` or `switch` keeps a value the walk reads past.
+// a `+=`, a loop's `continue` or a `try` or `switch` keeps a value the walk reads past, and `??` drops an untyped key.
 it('reads no props from a local the walk cannot follow', function (string $action, array $queries, array $sent) {
     $props = array_map(function (array $query) use ($action): array {
         $request = Request::create('/', 'GET', $query);
@@ -251,6 +275,11 @@ it('reads no props from a local the walk cannot follow', function (string $actio
     'a continue in a loop' => ['continued', [['x' => 1], []], [['a' => 1], ['a' => 'x']]],
     'a try' => ['tried', [['x' => 1], []], [['a' => 1], ['a' => 'x']]],
     'a switch' => ['switched', [['x' => 1], []], [['heading' => 'x', 'n' => 1], ['heading' => 'x', 'n' => 'two']]],
+    'a write reading a key of the local no reading types' => [
+        'loopedSelfRead',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1, 'b' => 1], ['heading' => 'x', 'b' => 'none']],
+    ],
 ]);
 
 it('reads a props local\'s values as Inertia sends them, as the same literal reads', function () {

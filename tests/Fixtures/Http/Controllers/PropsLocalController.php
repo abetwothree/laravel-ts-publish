@@ -82,7 +82,7 @@ class PropsLocalController
         return Inertia::render('PropsLocal/Looped', $props);
     }
 
-    /** Renders a `+` whose left side holds its key only when the request asks, so the right side's value lands else. */
+    /** Renders a `+` whose left side holds its key only when the request asks; otherwise the right side's lands. */
     public function plusOptional(Request $request): Response
     {
         $base = [];
@@ -92,6 +92,76 @@ class PropsLocalController
         }
 
         return Inertia::render('PropsLocal/PlusOptional', $base + ['a' => 'x']);
+    }
+
+    /** Renders a local whose key a block may set, which `??=` fills otherwise. */
+    public function coalesceAssigned(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = 1;
+        }
+
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceAssigned', $props);
+    }
+
+    /** Renders a local whose key a block may set, which a write reading the local itself fills otherwise. */
+    public function coalesceSelfRead(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = 1;
+        }
+
+        $props['a'] = $props['a'] ?? 'none';
+
+        return Inertia::render('PropsLocal/CoalesceSelfRead', $props);
+    }
+
+    /** Renders a local whose key a loop may set to a value no reading types, which `??=` fills otherwise. */
+    public function loopedCoalesce(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        foreach ($request->boolean('x') ? [1] : [] as $id) {
+            $props['a'] = $id;
+        }
+
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/LoopedCoalesce', $props);
+    }
+
+    /** Renders a local whose key a write fills from a key a loop may set to a value no reading types. */
+    public function loopedSelfRead(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        foreach ($request->boolean('x') ? [1] : [] as $id) {
+            $props['a'] = $id;
+        }
+
+        $props['b'] = $props['a'] ?? 'none';
+
+        return Inertia::render('PropsLocal/LoopedSelfRead', $props);
+    }
+
+    /** Renders a local replaced by a literal that reads a key a block may have set on the local before. */
+    public function selfReplaced(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = 1;
+        }
+
+        $props = ['a' => $props['a'] ?? 'none'];
+
+        return Inertia::render('PropsLocal/SelfReplaced', $props);
     }
 
     /** Renders a `+` whose left side holds keys a loop names, one of which the right side names too. */

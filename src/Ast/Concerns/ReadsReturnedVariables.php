@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Support\Arr;
 use PhpParser\Node;
@@ -58,6 +59,9 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\CloningVisitor;
+use PhpParser\NodeVisitorAbstract;
 use WeakMap;
 
 /**
@@ -414,7 +418,12 @@ trait ReadsReturnedVariables
 
             // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
             if ($assigned !== null) {
-                $baseAnalysis = $this->analyzeArrayExpression($assigned, $topLevel);
+                $baseAnalysis = $this->readAgainstWalk(
+                    $assigned,
+                    $varName,
+                    $into,
+                    fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
+                );
 
                 if ($baseAnalysis === null) {
                     $keepsKeys = $stmt instanceof ExpressionStmt && $this->keepsEveryKey($stmt->expr, $varName);
@@ -445,7 +454,12 @@ trait ReadsReturnedVariables
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
                 && $stmt->expr->var->name === $varName) {
-                $addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
+                $addedAnalysis = $this->readAgainstWalk(
+                    $stmt->expr->expr,
+                    $varName,
+                    $into,
+                    fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
+                );
 
                 if ($addedAnalysis === null) {
                     $into->holdUnreadKeys();
@@ -469,7 +483,14 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->var->name === $varName
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
-                $result = $this->analyzeValueExpression($stmt->expr->expr);
+                $result = $this->readAgainstWalk($stmt->expr->expr, $varName, $into, $this->analyzeValueExpression(...));
+
+                if ($result === null) {
+                    $into->holdUnreadKeys();
+
+                    continue;
+                }
+
                 $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
@@ -479,6 +500,19 @@ trait ReadsReturnedVariables
                 }
 
                 $this->writeKey($into, $keyName, $result, $isConditional);
+
+                continue;
+            }
+
+            // $var['key'] ??= expr on a key the walk holds; writesUnreadKey() left one it does not hold unread.
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof CoalesceAssign
+                && $stmt->expr->var instanceof ArrayDimFetch
+                && $stmt->expr->var->var instanceof Variable
+                && $stmt->expr->var->var->name === $varName
+                && $stmt->expr->var->dim !== null
+                && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
+                $this->coalesceKey($into, $keyName, $stmt->expr->expr, $varName, $isConditional);
 
                 continue;
             }
@@ -646,9 +680,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether statements write the variable where the walk keeps one of the values it may hold: a `+=` of it, which
-     * drops the right side's copy of a key the left may lack, a loop writing it that a `continue` or `break` leaves
-     * early, or a `try` or `switch` writing it, whose writes it reads in sequence.
+     * Whether statements write the variable where the walk keeps only one of the values it may hold.
+     *
+     * Those are a `+=` of it, which drops the right side's copy of a key the left may lack, a loop writing it that a
+     * `continue` or `break` leaves early, and a `try` or `switch` writing it, whose writes it reads in sequence.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -742,7 +777,8 @@ trait ReadsReturnedVariables
 
     /**
      * The statements from the last top-level assignment that replaces the whole variable, which overwrites every
-     * write before it; an assignment that spreads the variable into itself keeps the earlier keys, so replaces nothing.
+     * write before it; an assignment that spreads the variable into itself keeps the earlier keys, so replaces nothing,
+     * and one whose value reads the variable needs the keys written before it.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return array<Node\Stmt>
@@ -755,7 +791,7 @@ trait ReadsReturnedVariables
         foreach ($stmts as $index => $stmt) {
             $value = $this->replacingValue($stmt, $varName);
 
-            if ($value !== null && $this->readsAsArray($value)) {
+            if ($value !== null && $this->readsAsArray($value) && ! $this->readsVariableIn($value, $varName)) {
                 $start = $index;
             }
         }
@@ -1298,6 +1334,142 @@ trait ReadsReturnedVariables
             $into->properties[$existingIndex] = $appended;
             array_splice($into->properties, $appendedIndex, 1);
         }
+    }
+
+    /**
+     * Fill a held key as `??=` does: a value that is not null stays, and where the key is absent or null the default
+     * lands, so the key is required with both, or `unknown` beside a value the engine cannot type, which may be sent.
+     *
+     * @param  TAnalysis  $into
+     */
+    private function coalesceKey(MethodAnalysis $into, string $keyName, Expr $value, string $varName, bool $isConditional): void
+    {
+        $held = array_find($into->properties, fn (array $property): bool => $property['name'] === $keyName);
+        $signature = JsEmitter::isIndexSignatureKey($keyName);
+
+        if ($held === null || ! ($signature || $held['optional'] || $held['type'] === 'unknown'
+            || ValueResult::hasNullArm($held['type']))) {
+            return;
+        }
+
+        $default = $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...));
+
+        if ($default === null) {
+            $into->holdUnreadKeys();
+
+            return;
+        }
+
+        // A signature stands for many runtime keys, so the default is one more it may cover.
+        if ($signature) {
+            $into->addSignatureEntry($keyName, $default);
+
+            return;
+        }
+
+        $kept = clone $into;
+        $kept->properties = array_map(
+            fn (array $property): array => $property['name'] === $keyName
+                ? [...$property, 'type' => ValueResult::stripNullArm($property['type']), 'optional' => false]
+                : $property,
+            $into->properties,
+        );
+        $filled = clone $into;
+        $this->writeKey($filled, $keyName, $default, false);
+        $onlyNull = TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
+        $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
+
+        foreach ($branches as $index => $branch) {
+            foreach (array_slice($branches, 0, $index) as $earlier) {
+                $branch->dropRepeatsOf($earlier);
+            }
+        }
+
+        $joined = $this->joinedBranches($branches);
+
+        if ((! $onlyNull && ValueResult::stripNullArm($held['type']) === 'unknown') || $default['type'] === 'unknown') {
+            $joined->forgetChannels($keyName);
+            $joined->properties = array_map(
+                fn (array $property): array => $property['name'] === $keyName
+                    ? [...$property, 'type' => 'unknown']
+                    : $property,
+                $joined->properties,
+            );
+        }
+
+        $into->replaceWith($joined);
+    }
+
+    /**
+     * Read a value a write of the variable assigns, each read of the variable in it standing for the keys $state holds,
+     * as PHP evaluates the value before the write lands; null where it reads the variable and $state cannot spell it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(Expr): TRead  $read
+     * @return TRead|null
+     */
+    private function readAgainstWalk(Expr $value, string $varName, MethodAnalysis $state, Closure $read): mixed
+    {
+        // A walk holds no key before its first whole write, while a parameter may hold its caller's, read as before.
+        if ($state->properties === [] || ! $this->readsVariableIn($value, $varName)) {
+            return $read($value);
+        }
+
+        // A partly read state may hold the key read unread.
+        if (! $state->readsCompletely) {
+            return null;
+        }
+
+        $held = clone $state;
+        resolve(IndexSignatureReconciler::class)->reconcile($held);
+        $bound = new InlineObjectResult()->of($held);
+        // No PHP variable can be named `@…`, so the copy's reads reach only the state bound to it.
+        $alias = '@'.$varName;
+        [$copy] = new NodeTraverser(new CloningVisitor, new class($varName, $alias) extends NodeVisitorAbstract
+        {
+            /**
+             * Hold the variable's name and the name its reads take.
+             */
+            public function __construct(private readonly string $from, private readonly string $to) {}
+
+            /**
+             * Rename a variable node the copy holds, when it names the variable.
+             */
+            public function enterNode(Node $node): null
+            {
+                if ($node instanceof Variable && $node->name === $this->from) {
+                    $node->name = $this->to;
+                }
+
+                return null;
+            }
+        })->traverse([$value]);
+
+        if (! $copy instanceof Expr) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $dropped = DroppedUnionArms::dropped();
+        $result = $this->analysisScope()->within(
+            function (AnalysisScope $scope) use ($alias, $bound): void {
+                $scope->varValueBindings[$alias] = $bound;
+            },
+            fn (): mixed => $read($copy),
+        );
+
+        // A member the read cannot type, such as one naming a class, is left out, though it may be what is sent.
+        return DroppedUnionArms::dropped() === $dropped ? $result : null;
+    }
+
+    /**
+     * Whether an expression reads the variable anywhere within it.
+     */
+    private function readsVariableIn(Expr $expr, string $varName): bool
+    {
+        $reads = fn (Node $node): bool => $node instanceof Variable && $node->name === $varName;
+
+        return new NodeFinder()->findFirst($expr, $reads) !== null;
     }
 
     /**

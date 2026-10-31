@@ -137,7 +137,8 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 An `Inertia::render()` props local is read by the same walk, from its writes before the render call. It publishes no
 props where the walk declines, where a `+=`, a `try`, a `switch` or a loop with a `continue` or `break` writes it first,
-or where a callback holds the render call or the statement holding it writes the local.
+where a value written to it reads a key of it the engine cannot type, or where a callback holds the render call or the
+statement holding it writes the local.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
