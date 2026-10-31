@@ -264,13 +264,14 @@ it('locate resolves an alias of the trait method an insteadof rule excludes, bes
         ->and($literal($locator->locate(UsesInsteadofTraits::class, 'label')))->toBe('from A');
 });
 
-it('follows an alias of an alias a used trait gives, to the method its own trait declares', function () use ($literal) {
+it('finds the body PHP runs under an alias a used trait declares, and under the class\'s alias of it', function (string $name) use ($literal) {
     require_once __DIR__.'/Fixtures/TraitAliasesInOneFile.php';
     $locator = new MethodLocator(new AstParser);
+    $runs = new ReflectionMethod(UsesNestedTraitAlias::class, $name)->invoke(new UsesNestedTraitAlias);
 
-    expect($literal($locator->locate(UsesNestedTraitAlias::class, 'tag')))->toBe('from trait')
-        ->and($literal($locator->locateOwn(UsesNestedTraitAlias::class, 'tag')))->toBe('from trait');
-});
+    expect($literal($locator->locate(UsesNestedTraitAlias::class, $name)))->toBe($runs)
+        ->and($literal($locator->locateOwn(UsesNestedTraitAlias::class, $name)))->toBe($runs);
+})->with(['the used trait\'s alias' => 'midLabel', 'the class\'s alias of it' => 'tag']);
 
 it('keeps a class\'s own method over the trait alias of its name', function () use ($literal) {
     require_once __DIR__.'/Fixtures/TraitAliasesInOneFile.php';

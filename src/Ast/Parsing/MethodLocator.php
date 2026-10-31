@@ -163,8 +163,7 @@ class MethodLocator
     }
 
     /**
-     * The name a trait declares a method under where the class reaches it through a trait alias, alias by alias; null
-     * where no alias reaches it.
+     * The name a trait declares a method under where an alias reaches it, alias by alias; null where none does.
      */
     private function traitDeclaredName(ReflectionMethod $declaration): ?string
     {
@@ -179,25 +178,45 @@ class MethodLocator
     }
 
     /**
-     * The trait method a trait alias of its declaring class gives a method, null where none does.
+     * The trait method an alias of the declaring class, or of a trait it uses, points at; null where none.
      *
-     * getTraitAliases() keeps an alias a method of the class's own shadows, so the alias holds only where reflection
-     * reports the trait method's own body.
+     * PHP reports the using class as the declaring class of a trait's own alias, which its getTraitAliases() omits.
      */
     private function aliasTarget(ReflectionMethod $method): ?ReflectionMethod
     {
-        $aliases = array_change_key_case($method->getDeclaringClass()->getTraitAliases());
-        $target = $aliases[strtolower($method->getName())] ?? null;
+        foreach ($this->selfAndTraits($method->getDeclaringClass()) as $class) {
+            $target = array_change_key_case($class->getTraitAliases())[strtolower($method->getName())] ?? null;
 
-        if ($target === null) {
-            return null;
+            if ($target === null) {
+                continue;
+            }
+
+            $original = ReflectionMethod::createFromMethodName($target);
+
+            // getTraitAliases() keeps an alias a method of the class's own shadows, so only the body PHP runs counts.
+            if ($original->getFileName() === $method->getFileName() && $original->getEndLine() === $method->getEndLine()) {
+                return $original;
+            }
         }
 
-        $original = ReflectionMethod::createFromMethodName($target);
+        return null;
+    }
 
-        return $original->getFileName() === $method->getFileName() && $original->getEndLine() === $method->getEndLine()
-            ? $original
-            : null;
+    /**
+     * The class and every trait it uses, at any depth.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return list<ReflectionClass<object>>
+     */
+    private function selfAndTraits(ReflectionClass $class): array
+    {
+        $found = [$class];
+
+        foreach ($class->getTraits() as $trait) {
+            $found = [...$found, ...$this->selfAndTraits($trait)];
+        }
+
+        return $found;
     }
 
     /**
