@@ -11,7 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /** Inertia actions whose props are API resources resolved to the keys their bodies return. */
@@ -57,5 +59,13 @@ class ResolvedCardController
     public function elvis(): Response
     {
         return Inertia::render('ResolvedCard/Elvis', ['card' => CheckedResourceElvisResource::make(null)->resolve()]);
+    }
+
+    /** Renders every team's card under its slug, from a collection that keeps its source keys. */
+    public function teams(): Response
+    {
+        return Inertia::render('ResolvedCard/Teams', [
+            'teams' => PreserveKeysPropertyCollection::make(Team::with('owner')->get()->keyBy('slug'))->resolve(),
+        ]);
     }
 }

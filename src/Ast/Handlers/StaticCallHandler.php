@@ -450,17 +450,21 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         $name = TsNaming::resourceTypeName($resource);
-        $reflection = new ReflectionClass($resource);
-        $list = ResourceCollections::listType($name, $reflection);
-        $sent = in_array($resolved['type'], [$name, $list], true) ? resolve(ResolvedResourceBody::class)->sent($resource) : null;
+        // A named collection keeps its keys by its own flag, not its items' class's, so either list spelling is R's.
+        $keepsKeys = match ($resolved['type']) {
+            ValueResult::collectionListType($name, false) => false,
+            ValueResult::collectionListType($name, true) => true,
+            default => null,
+        };
+        $sent = $resolved['type'] === $name || $keepsKeys !== null ? resolve(ResolvedResourceBody::class)->sent($resource) : null;
 
         if ($sent === null) {
             return $resolved;
         }
 
-        return $resolved['type'] === $name
+        return $keepsKeys === null
             ? [...$sent, 'optional' => $resolved['optional'], 'resolvedFqcn' => $resource]
-            : [...$sent, 'type' => ResourceCollections::listType($sent['type'], $reflection), 'optional' => $resolved['optional']];
+            : [...$sent, 'type' => ValueResult::collectionListType($sent['type'], $keepsKeys), 'optional' => $resolved['optional']];
     }
 
     /**

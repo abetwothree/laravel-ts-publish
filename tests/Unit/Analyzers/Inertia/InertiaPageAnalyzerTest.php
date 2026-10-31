@@ -77,6 +77,7 @@ use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Grade;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 afterEach(function () {
@@ -1219,6 +1220,17 @@ it('sends the resources each item of a resolved resource collection holds as the
     expect(pageData(ResolvedCardController::class.'@index')['pageType'])
         ->toBe("Inertia.SharedData & { cards: (Omit<PostCardResource, 'author'> & { author: { data: UserCardResource } })[] }")
         ->and(inertiaProps(new ResolvedCardController()->index())->cards[0]->author->data->name)->toBe('Ada');
+});
+
+it('sends the resources each item of a resolved key-preserving collection holds as their responses', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    (new Team)->forceFill(['name' => 'Core', 'slug' => 'core', 'owner_id' => $user->id])->save();
+    $sent = inertiaProps(new ResolvedCardController()->teams())->teams;
+    $team = "Omit<TeamResource, 'owner' | 'members'> & { owner?: { data: UserResource }; members?: AnonymousResourceCollection<TeamMemberResource> }";
+
+    expect(pageData(ResolvedCardController::class.'@teams')['pageType'])
+        ->toBe("Inertia.SharedData & { teams: Record<string, {$team}> }")
+        ->and([$sent->core->name, $sent->core->owner->data->name])->toBe(['Core', 'Ada']);
 });
 
 // resolve() runs the resource's filter(), which sends a nested resource built around null as null.
