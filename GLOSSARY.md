@@ -130,7 +130,7 @@ _Avoid_: wrapper, resource property
 Working out a property's type from PHP code when no override or docblock states it.
 
 **Inertia profile**:
-The handlers that read a value Inertia sends, a page prop or a shared value, typing it as Inertia sends it: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
+The handlers that read a value Inertia sends, a page prop, a shared value or a body either reads, typing it as Inertia sends it: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
 _Avoid_: controller profile, page-prop profile
 
 **Vague type**:

@@ -38,8 +38,14 @@ function dispatcherTestEngine(): ExpressionEngine
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }

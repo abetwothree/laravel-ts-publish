@@ -61,20 +61,15 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
-     * An Inertia middleware's is forInertia()'s, since Inertia sends each shared value as it sends a page prop.
+     * The profile a subject runs when its caller names none: make() or forNonResourceSubjects(), through forInertia().
      *
      * @return list<ExpressionHandler>
      */
-    public static function forSubject(string $subjectClass, ExpressionEngine $engine): array
+    public static function forSubject(string $subjectClass, ExpressionEngine $engine, bool $inertiaProps = false): array
     {
-        if (is_a($subjectClass, JsonResource::class, true)) {
-            return self::make($engine);
-        }
+        $own = is_a($subjectClass, JsonResource::class, true) ? self::make($engine) : self::forNonResourceSubjects();
 
-        return is_subclass_of($subjectClass, 'Inertia\\Middleware')
-            ? self::forInertia(self::forNonResourceSubjects())
-            : self::forNonResourceSubjects();
+        return $inertiaProps ? self::forInertia($own) : $own;
     }
 
     /**

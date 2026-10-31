@@ -109,8 +109,14 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -148,8 +154,14 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }
@@ -217,8 +229,14 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }

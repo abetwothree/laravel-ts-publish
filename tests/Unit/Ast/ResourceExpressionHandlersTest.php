@@ -118,8 +118,14 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called while merely constructing handlers');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -197,7 +203,7 @@ it('inserts InertiaResourcePropHandler before ToResourceHandler and ModelFinderH
         ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
 });
 
-// A list without an insertion point would silently lose a page-prop handler, and the later tasks build on forInertia().
+// Without an insertion point forInertia() would drop a page-prop handler silently, and every value that handler types.
 it('throws when forInertia() is given a list without ToResourceHandler or StaticCallHandler', function (array $handlers, string $missing) {
     expect(fn () => ResourceExpressionHandlers::forInertia($handlers))
         ->toThrow(LogicException::class, "forInertia() inserts a page-prop handler before {$missing}, which the list lacks.");
@@ -206,16 +212,17 @@ it('throws when forInertia() is given a list without ToResourceHandler or Static
     'a list without StaticCallHandler' => [fn (): array => [new ToResourceHandler], StaticCallHandler::class],
 ]);
 
-// Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
-// the event warns.
-it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type, int $warnings) {
+// Inertia calls each callable it sends, while anything else is encoded as it stands, so only a read for Inertia types
+// the call; a share middleware's body read for an API resource is one of the latter.
+it('types a first-class callable as its call only where Inertia reads it', function (string $subject, bool $inertiaProps, string $type, int $warnings) {
     $now = new FuncCall(new Name('now'), [new VariadicPlaceholder]);
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($now)['type'])->toBe($type)
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, inertiaProps: $inertiaProps)->resolve($now)['type'])->toBe($type)
         ->and(AnalysisWarnings::all())->toHaveCount($warnings);
 })->with([
-    'a shared-data middleware' => [HandleInertiaRequests::class, 'string', 0],
-    'a broadcast event' => [PayloadDiffersEvent::class, 'Record<string, never>', 1],
+    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, true, 'string', 0],
+    'a shared-data middleware read for anything else' => [HandleInertiaRequests::class, false, 'Record<string, never>', 1],
+    'a broadcast event' => [PayloadDiffersEvent::class, false, 'Record<string, never>', 1],
 ]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —

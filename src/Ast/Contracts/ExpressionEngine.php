@@ -43,8 +43,12 @@ interface ExpressionEngine
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
 
     /**
-     * Whether the subject's caller calls each callable value it reads, as Inertia does with props and shared data, so a
-     * callable's value is what it returns wherever it sits.
+     * Whether Inertia sends the values read, calling each callable among them: props, shared data, a body they read.
      */
-    public function invokesCallables(): bool;
+    public function readsInertiaProps(): bool;
+
+    /**
+     * Whether a JsonResource's filter() runs over the values Inertia sends, as over a resource's toArray() read whole.
+     */
+    public function readsFilteredValues(): bool;
 }

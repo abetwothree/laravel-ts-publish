@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
-/** A real Inertia middleware whose share() marks `filters` optional by a `?` cast key, for subclasses to read. */
+/** A real Inertia middleware whose share() marks `filters` optional by a `?` cast key and shares a callable. */
 class OptionalCastBaseMiddleware extends Middleware
 {
     /**
@@ -19,6 +19,6 @@ class OptionalCastBaseMiddleware extends Middleware
     #[TsCasts(['filters?' => 'string[]'])]
     public function share(Request $request): array
     {
-        return ['filters' => null, 'app' => 'x'];
+        return ['filters' => null, 'app' => 'x', 'stamp' => now(...)];
     }
 }

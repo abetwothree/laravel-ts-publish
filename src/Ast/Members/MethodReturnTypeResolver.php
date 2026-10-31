@@ -45,7 +45,7 @@ use ReflectionMethod;
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
  * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
- * known or assumed runtime class, and bindings; docs/components/receiver-types.md § Following a method's return type.
+ * runtime class, bindings and Inertia reading; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -65,7 +65,8 @@ final class MethodReturnTypeResolver
      * declines one naming a model with no published file.
      *
      * @param  class-string  $class
-     * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
+     * @param  CallSite|null  $site  the call, read where it is written, whose caller's reading the body takes; null
+     *                               reads the body with its declarations only, as a value Inertia never sends
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or only assumed, as a receiver's is: what
      *                                      `static` names in the body and whose model `$this` reads, as PHP forwards it
@@ -85,12 +86,22 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
+        $inertiaProps = $site?->readsInertiaProps() ?? false;
+        $filtered = $site?->readsFilteredValues() ?? false;
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime?->memoKey($class) ?? ''),
-            function () use ($class, $methodName, $passed, $backing, $runtime): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime);
+                .($runtime?->memoKey($class) ?? '').AstEngine::readingKey($inertiaProps, $filtered),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered): ?array {
+                $result = $this->reflectOrReadBody(
+                    $class,
+                    $methodName,
+                    $passed,
+                    $backing,
+                    $runtime,
+                    $inertiaProps,
+                    $filtered,
+                );
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -147,6 +158,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        bool $inertiaProps,
+        bool $filtered,
     ): ?array {
         $reflected = $this->reflected($class, $methodName);
 
@@ -154,8 +167,11 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime)
-            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime), $reflected)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $inertiaProps, $filtered)
+            ?? $this->declaredOverVagueList(
+                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered),
+                $reflected,
+            )
             ?? $reflected;
     }
 
@@ -207,6 +223,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        bool $inertiaProps,
+        bool $filtered,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -235,6 +253,8 @@ final class MethodReturnTypeResolver
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
+                inertiaProps: $inertiaProps,
+                filtered: $filtered,
             );
         } finally {
             $memo->leave($key);
@@ -319,6 +339,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        bool $inertiaProps,
+        bool $filtered,
     ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -330,7 +352,8 @@ final class MethodReturnTypeResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime);
+            return resolve(AstEngine::class)
+                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered);
         } finally {
             $memo->leave($key);
         }

@@ -7,7 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
@@ -417,7 +416,7 @@ describe('ReceiverMethodReturnResolver', function () {
 
     test('an overridden toArray() publishes its declared shape through $this->resource and on a controller\'s property', function () {
         $resource = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), ReceiverShapedToArrayModel::class);
-        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', inertiaProps: true);
 
         expect($resource->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])->toBe('{ id: number }')
             ->and($controller->resolve(receiverHandlerExpr('$this->shaped->toArray()'))['type'])->toBe('{ id: number }');
@@ -1613,7 +1612,7 @@ describe('a call on $this->prop types from the class the property holds, never f
     ]);
 
     test('a model-less scope types a filter on a held model by the receiver rules', function (string $php, string $type) {
-        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', inertiaProps: true);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
@@ -1753,7 +1752,7 @@ describe('the resource proxy', function () {
     ]);
 
     test('a model-less subject reads $this->resource as its own property', function (string $php, string $type) {
-        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationController::class), null, '__construct', inertiaProps: true);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([

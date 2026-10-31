@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceResponseBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\HelperCallablePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
@@ -113,6 +114,21 @@ test('a resource spread twice inside another analysis is analyzed once', functio
 
     expect(array_column($properties, 'type', 'name'))->toBe(['badge' => 'string', 'header' => 'boolean', 'footer' => 'boolean'])
         ->and($lookups['own:'.PostBadgeResource::class.'::toArray'] ?? 0)->toBe(1);
+});
+
+// Inertia calls a callable a body returns, which json_encode() writes as `{}`, so the readings never share an answer.
+test('a body read for Inertia and the same body read for anything else are each analyzed once, apart', function () use ($countLookups) {
+    $lookups = $countLookups();
+    $engine = resolve(AstEngine::class);
+
+    $types = array_map(
+        fn (bool $inertiaProps): ?string => $engine
+            ->analyzeMethod(HelperCallablePropsController::class, 'meta', inertiaProps: $inertiaProps)->properties[0]['type'] ?? null,
+        [false, true, false, true],
+    );
+
+    expect($types)->toBe(['Record<string, never>', 'string', 'Record<string, never>', 'string'])
+        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(2);
 });
 
 test('an accessor body is analyzed once per model, attribute and import mode', function () use ($countLookups) {

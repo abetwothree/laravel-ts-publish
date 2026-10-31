@@ -112,7 +112,7 @@ class InertiaSharedDataAnalyzer
      */
     protected function buildResult(string $middlewareClass): array
     {
-        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share');
+        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share', inertiaProps: true);
         $keys = array_column($analysis->properties, 'name');
 
         // Each location decides alone, so share() outranks the class whatever the spelling; a loser imports nothing.

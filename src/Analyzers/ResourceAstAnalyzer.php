@@ -143,8 +143,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
     private readonly bool $ownsScope;
 
-    /** Whether the handler profile invokes callables, read once from it by invokesCallables(). */
-    private ?bool $invokingProfile = null;
+    /** Whether a JsonResource's filter() runs over the values Inertia sends from this body; false outside Inertia. */
+    private readonly bool $filtered;
 
     /** @var array<string, true> the runtime class's methods whose reads enclose this one, so a read of one re-enters */
     private array $methodsOnStack = [];
@@ -172,6 +172,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                                      scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
+     * @param  bool  $inertiaProps  whether Inertia sends the values read, which runs the subject's profile through
+     *                              ResourceExpressionHandlers::forInertia() and every body it reads the same way
+     * @param  bool  $filtered  whether a JsonResource's filter() runs over those values; only read with $inertiaProps
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -184,7 +187,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         private readonly array $passed = [],
         ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
+        private readonly bool $inertiaProps = false,
+        bool $filtered = false,
     ) {
+        $this->filtered = $inertiaProps && $filtered;
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
             $this->modelClass,
@@ -361,14 +367,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether this analyzer's handler profile reads a callable as the call it stands for, as Inertia's profiles do.
+     * Whether Inertia sends the values this analyzer reads, as a page's props, shared data and every body they reach.
      */
-    public function invokesCallables(): bool
+    public function readsInertiaProps(): bool
     {
-        return $this->invokingProfile ??= array_any(
-            $this->handlers(),
-            fn (ExpressionHandler $handler): bool => $handler instanceof FirstClassCallableHandler && $handler->invokesCallables(),
-        );
+        return $this->inertiaProps;
+    }
+
+    /**
+     * Whether a JsonResource's filter() runs over the values Inertia sends from this body.
+     */
+    public function readsFilteredValues(): bool
+    {
+        return $this->filtered;
     }
 
     /**
@@ -693,8 +704,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function handlers(): array
     {
-        return $this->handlerProfile
-            ?? ResourceExpressionHandlers::forSubject($this->scope->subjectReflection->getName(), $this);
+        $subject = $this->scope->subjectReflection->getName();
+
+        return $this->handlerProfile ?? ResourceExpressionHandlers::forSubject($subject, $this, $this->inertiaProps);
     }
 
     /**
@@ -1722,8 +1734,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         DependencyRecorder::recordClass($resourceFqcn);
 
-        $analysis = resolve(AstEngine::class)
-            ->analyzeMethod($resourceFqcn, 'toArray', runtime: $this->scope->builtRuntime($resourceFqcn));
+        $analysis = resolve(AstEngine::class)->analyzeMethod(
+            $resourceFqcn,
+            'toArray',
+            runtime: $this->scope->builtRuntime($resourceFqcn),
+            inertiaProps: $this->inertiaProps,
+            filtered: $this->filtered,
+        );
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;
@@ -2022,6 +2039,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
             runtime: $this->scope->runtime,
+            inertiaProps: $this->inertiaProps,
+            filtered: $this->filtered,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];

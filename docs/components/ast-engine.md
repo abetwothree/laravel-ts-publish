@@ -34,7 +34,7 @@ These are the classes a change to the engine usually touches:
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
-| [`ResourceExpressionHandlers`], [`ControllerExpressionHandlers`] | The ordered handler profiles |
+| [`ResourceExpressionHandlers`] | The ordered handler profiles |
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
@@ -71,8 +71,8 @@ winner changes published types, so treat it as a behavior change, not a refactor
   `Eloquent\Collection` accessor.
 
 `forInertia()` builds the [Inertia profile](#inertia-profile) over a list. `ResourceExpressionHandlers::forSubject()`
-gives a `JsonResource` subject `make()`, an Inertia middleware that profile and any other subject
-`forNonResourceSubjects()`. `ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
+gives a `JsonResource` subject `make()` and any other subject `forNonResourceSubjects()`, each through `forInertia()`
+where the analysis reads what Inertia sends. `ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -91,10 +91,9 @@ Its Inertia half does the same for each pair with a handler only the Inertia pro
 
 ### Inertia profile
 
-`ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs: a page prop, through
-`ControllerExpressionHandlers::make()`, and a share middleware's value, through `forSubject()`, both over
-`forNonResourceSubjects()`, since Inertia sends a shared value as it sends a page prop. It inserts two handlers, and
-throws a `LogicException` for a list that lacks either insertion point:
+`ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs, over the subject's own
+profile, since Inertia sends a shared value as it sends a page prop. It inserts two handlers, and throws a
+`LogicException` for a list that lacks either insertion point:
 
 - `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource as the value a nested key flattens it
   to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
@@ -105,9 +104,25 @@ throws a `LogicException` for a list that lacks either insertion point:
 
 `InertiaResourcePropHandler` also types a JSON:API resource's single and collection props as their `@tolki/types`
 documents. `forInertia()` also swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop,
-at any depth, so a first-class callable there types as the call it stands for. `ControllerExpressionHandlersTest` pins
-that both callers build this profile, and each ordering above, the method-call claimants that leave `toResource()` and
+at any depth, so a first-class callable there types as the call it stands for. `InertiaProfileTest` pins that a page and
+a share middleware build this profile, and each ordering above, the method-call claimants that leave `toResource()` and
 `toResourceCollection()` `unknown` included.
+
+The `inertiaProps` flag on `analyzeMethod()`, `analyzeMethodValue()` and `ResourceAstAnalyzer`, not the class that
+declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` reports it.
+
+- **Who sets it**: `InertiaPageAnalyzer`, on a page's analyzer and on the collaborator method a page's props come
+  from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`.
+- **Who passes it on**: every body read below a flagged one: a helper `MethodReturnTypeResolver` reads through the
+  caller's `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
+  middleware's helper an API resource reads runs the resource's reading.
+- **Who does not**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`), a
+  property's written value and an accessor body.
+- **The filtered fact**: `ExpressionEngine::readsFilteredValues()` is set where a flagged read enters a
+  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and kept below it. `TernaryHandler`'s `?:` rule applies
+  only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null.
+
+Both facts join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -352,7 +367,7 @@ keeps `| null`, as a `transform()` callback's does. An argument holding narrower
 interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A call binds
 nothing for an argument that may hold a closure, whose value hangs on whether the method calls it: the closure itself,
 an arm of `?:`, `??` or `match`, or a local the caller's scope binds to one (`InspectsAstNodes::mayHoldCallable()`).
-Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`), binds it. A
+Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::readsInertiaProps()`), binds it. A
 value read binds nothing for a first-class callable either; a spread binds it to the `Closure` it creates, which Laravel
 sends as `{}`.
 
@@ -644,6 +659,9 @@ which decides whether `__call()` runs, and adds the runtime class, whose macros 
 that only assumes its runtime class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never
 shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
 cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
+A body read for Inertia adds `AstEngine::readingKey()`'s `@inertia` to its `analysis:` and `method-return:` keys, and
+`@filtered` after it under a resource's filter, so a helper read for a page never shares the answer a read for anything
+else gets ([Inertia profile](#inertia-profile)).
 
 A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
 computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's
@@ -847,7 +865,6 @@ These pages cover the engine's neighbors:
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
-[`ControllerExpressionHandlers`]: ../../src/Ast/Dispatch/ControllerExpressionHandlers.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php

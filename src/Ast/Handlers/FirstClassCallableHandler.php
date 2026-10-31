@@ -92,14 +92,6 @@ final class FirstClassCallableHandler implements ExpressionHandler
         return $held !== null && self::isFirstClassCallable($held) ? $held : $value;
     }
 
-    /**
-     * Whether this handler reads a first-class callable as the call it stands for, as the caller invokes it.
-     */
-    public function invokesCallables(): bool
-    {
-        return $this->invoked;
-    }
-
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {

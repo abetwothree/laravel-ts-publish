@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
@@ -30,23 +29,24 @@ use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Warehouse;
 
-/** An analyzer over the Inertia profile a page's props run, with no backing model, as the page analyzer builds it. */
-function controllerProfileAnalyzer(): ResourceAstAnalyzer
+/** An analyzer reading what Inertia sends, with no backing model, as the page analyzer builds it. */
+function inertiaProfileAnalyzer(): ResourceAstAnalyzer
 {
-    return new ResourceAstAnalyzer(
-        new ReflectionClass(InertiaController::class),
-        null,
-        'dashboard',
-        ControllerExpressionHandlers::make(),
-    );
+    return new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', inertiaProps: true);
 }
 
-// Inertia sends a page prop as it sends a shared value, so a page and shared data run one profile.
-it('gives a page and a shared-data middleware the one Inertia profile', function () {
+// Inertia sends a page prop as it sends a shared value, so a page and shared data run one profile; the flag decides
+// it, not the class, so a share middleware's helper an API resource reads runs that resource's profile.
+it('gives a page and a shared-data middleware the one Inertia profile, and only where Inertia reads', function () {
+    $engine = inertiaProfileAnalyzer();
     $inertia = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
 
-    expect(ControllerExpressionHandlers::make())->toEqual($inertia)
-        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, controllerProfileAnalyzer()))->toEqual($inertia)
+    expect(ResourceExpressionHandlers::forSubject(InertiaController::class, $engine, inertiaProps: true))->toEqual($inertia)
+        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, $engine, inertiaProps: true))->toEqual($inertia)
+        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, $engine))
+        ->toEqual(ResourceExpressionHandlers::forNonResourceSubjects())
+        ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, inertiaProps: true))
+        ->toEqual(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::make($engine)))
         ->and($inertia)->toHaveCount(29);
 });
 
@@ -55,7 +55,7 @@ it('gives a page and a shared-data middleware the one Inertia profile', function
 it('tries ModelFinderHandler before StaticCallHandler for Post::find(1)', function () {
     $expr = new StaticCall(new Name(Post::class), 'find', [new Arg(new Int_(1))]);
 
-    expect(controllerProfileAnalyzer()->resolve($expr))->toBe([
+    expect(inertiaProfileAnalyzer()->resolve($expr))->toBe([
         'type' => 'Post | null',
         'optional' => false,
         'modelFqcn' => Post::class,
@@ -67,7 +67,7 @@ it('tries ModelFinderHandler before StaticCallHandler for Post::find(1)', functi
 it('tries InertiaResourcePropHandler before StaticCallHandler for WarehouseResource::collection()', function () {
     $expr = new StaticCall(new Name(WarehouseResource::class), 'collection', [new Arg(new Variable('rows'))]);
 
-    expect(controllerProfileAnalyzer()->resolve($expr))->toBe([
+    expect(inertiaProfileAnalyzer()->resolve($expr))->toBe([
         'type' => 'AnonymousResourceCollection<WarehouseResource>',
         'optional' => false,
         'resourceFqcn' => WarehouseResource::class,
@@ -80,7 +80,7 @@ it('tries InertiaResourcePropHandler before StaticCallHandler for WarehouseResou
 it('tries InertiaResourcePropHandler before NewResourceHandler for new PostCollection()', function () {
     $expr = new New_(new Name(PostCollection::class), [new Arg(new Variable('rows'))]);
 
-    expect(controllerProfileAnalyzer()->resolve($expr))->toBe([
+    expect(inertiaProfileAnalyzer()->resolve($expr))->toBe([
         'type' => 'PostCollection',
         'optional' => false,
         'resourceFqcn' => PostCollection::class,
@@ -93,12 +93,12 @@ it('tries InertiaResourcePropHandler before NewResourceHandler and StaticCallHan
     $built = new New_(new Name(WarehouseResource::class), [new Arg(new Variable('row'))]);
     $made = new StaticCall(new Name(WarehouseResource::class), 'make', [new Arg(new Variable('row'))]);
 
-    expect(controllerProfileAnalyzer()->resolve($built))->toBe([
+    expect(inertiaProfileAnalyzer()->resolve($built))->toBe([
         'type' => '{ data: WarehouseResource }',
         'optional' => false,
         'resourceFqcn' => WarehouseResource::class,
     ])
-        ->and(controllerProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
+        ->and(inertiaProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
 });
 
 // ToResourceHandler after it types these calls as a nested key's value, and the receiver handlers leave them `unknown`,
@@ -107,7 +107,7 @@ it('tries InertiaResourcePropHandler before ToResourceHandler and the receiver h
     $reflection = new ReflectionClass(InertiaController::class);
     $scope = new AnalysisScope($reflection);
     $scope->varModelBindings['warehouse'] = Warehouse::class;
-    $analyzer = new ResourceAstAnalyzer($reflection, null, 'dashboard', ControllerExpressionHandlers::make(), $scope);
+    $analyzer = new ResourceAstAnalyzer($reflection, null, 'dashboard', scope: $scope, inertiaProps: true);
     $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
 
     expect($analyzer->resolve(new MethodCall(new Variable('warehouse'), 'toResource'))['type'])->toBe('{ data: WarehouseResource }')
@@ -121,9 +121,9 @@ test('ModelFinderHandler and InertiaResourcePropHandler decline each other\'s me
     $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
     $collection = new MethodCall($paginator, 'toResourceCollection');
 
-    expect(new ModelFinderHandler()->resolve($collection, new AnalysisScope($reflection), controllerProfileAnalyzer()))->toBeNull()
-        ->and(new InertiaResourcePropHandler()->resolve($paginator, new AnalysisScope($reflection), controllerProfileAnalyzer()))->toBeNull()
-        ->and(new ModelFinderHandler()->resolve($paginator, new AnalysisScope($reflection), controllerProfileAnalyzer())['type'] ?? null)
+    expect(new ModelFinderHandler()->resolve($collection, new AnalysisScope($reflection), inertiaProfileAnalyzer()))->toBeNull()
+        ->and(new InertiaResourcePropHandler()->resolve($paginator, new AnalysisScope($reflection), inertiaProfileAnalyzer()))->toBeNull()
+        ->and(new ModelFinderHandler()->resolve($paginator, new AnalysisScope($reflection), inertiaProfileAnalyzer())['type'] ?? null)
         ->toBe('LengthAwarePaginator<Post>');
 });
 
@@ -132,10 +132,10 @@ it('types a first-class-callable prop as the call it stands for', function () {
     $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
     $props = $parse('["meta" => ["stamp" => now(...)]]');
     assert($props instanceof Array_);
-    $meta = collect(controllerProfileAnalyzer()->returnArrayAnalysis($props, topLevel: true)->properties)->firstWhere('name', 'meta');
+    $meta = collect(inertiaProfileAnalyzer()->returnArrayAnalysis($props, topLevel: true)->properties)->firstWhere('name', 'meta');
 
-    expect(controllerProfileAnalyzer()->resolve($parse('now(...)'))['type'])->toBe('string')
-        ->and(controllerProfileAnalyzer()->resolve($parse('auth()->user(...)'))['type'])->toBe('User | null')
+    expect(inertiaProfileAnalyzer()->resolve($parse('now(...)'))['type'])->toBe('string')
+        ->and(inertiaProfileAnalyzer()->resolve($parse('auth()->user(...)'))['type'])->toBe('User | null')
         ->and($meta['type'])->toBe('{ stamp: string }')
         ->and(AnalysisWarnings::all())->toBe([]);
 });
@@ -145,7 +145,7 @@ it('types a first-class-callable prop as the call it stands for', function () {
 it('RelationCollectionChainHandler and ReceiverMethodCallHandler agree on a call on a held receiver', function (string $php, string $type) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
     $subject = new ReflectionClass(PostReceiverController::class);
-    $engine = new ResourceAstAnalyzer($subject, null, '__construct', ControllerExpressionHandlers::make());
+    $engine = new ResourceAstAnalyzer($subject, null, '__construct', inertiaProps: true);
 
     $chain = new RelationCollectionChainHandler()->resolve($expr, new AnalysisScope($subject), $engine);
     $receiver = new ReceiverMethodCallHandler()->resolve($expr, new AnalysisScope($subject), $engine);

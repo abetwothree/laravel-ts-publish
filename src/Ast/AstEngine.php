@@ -36,7 +36,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other seven methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other eight methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -46,6 +46,16 @@ final class AstEngine
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
+
+    /**
+     * The memo key suffix of a body read Inertia sends, `@inertia`, then `@filtered` under a resource's filter().
+     *
+     * @internal
+     */
+    public static function readingKey(bool $inertiaProps, bool $filtered): string
+    {
+        return $inertiaProps ? '@inertia'.($filtered ? '@filtered' : '') : '';
+    }
 
     /**
      * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
@@ -60,6 +70,8 @@ final class AstEngine
      *                           resource's toArray() is its body, never the resource object it publishes
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
+     * @param  bool  $inertiaProps  true when Inertia sends what the body returns, as a page's props or shared data
+     * @param  bool  $filtered  true when a JsonResource's filter() runs over it there, as over a resource's toArray()
      *
      * @internal
      */
@@ -71,6 +83,8 @@ final class AstEngine
         array $passed = [],
         bool $readsCall = false,
         ?RuntimeClass $runtime = null,
+        bool $inertiaProps = false,
+        bool $filtered = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
         $runs = $runtime->class ?? $reflection;
@@ -80,8 +94,11 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($runs);
         }
 
+        $filtered = $inertiaProps && ($filtered || self::readsFilteredBody($runs, $method, $readsCall));
+
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '');
+            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')
+            .self::readingKey($inertiaProps, $filtered);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
@@ -94,6 +111,8 @@ final class AstEngine
                 $passed,
                 $readsCall,
                 $runtime,
+                $inertiaProps,
+                $filtered,
             ),
         );
 
@@ -108,6 +127,8 @@ final class AstEngine
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
+     * @param  bool  $inertiaProps  true when Inertia sends what the method returns
+     * @param  bool  $filtered  true when a JsonResource's filter() runs over it there
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -118,6 +139,8 @@ final class AstEngine
         array $passed = [],
         ?string $backing = null,
         ?RuntimeClass $runtime = null,
+        bool $inertiaProps = false,
+        bool $filtered = false,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -125,7 +148,15 @@ final class AstEngine
             return null;
         }
 
-        [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime);
+        [$analyzer, $scope] = $this->valueReader(
+            $context,
+            $method,
+            $passed,
+            $backing,
+            $runtime,
+            $inertiaProps,
+            $filtered,
+        );
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }
@@ -349,6 +380,16 @@ final class AstEngine
     }
 
     /**
+     * Whether a read enters the body resolve() filters: an API resource's toArray() read whole, not called as a value.
+     *
+     * @param  ReflectionClass<object>  $runs
+     */
+    private static function readsFilteredBody(ReflectionClass $runs, string $method, bool $readsCall): bool
+    {
+        return ! $readsCall && $method === 'toArray' && is_a($runs->getName(), JsonResource::class, true);
+    }
+
+    /**
      * Enter a closure's own scope as its body runs: its declared parameters, its body's locals, and for a closure only
      * what it imports, as the enclosing scope held it there; an arrow function reads every enclosing variable.
      */
@@ -376,6 +417,8 @@ final class AstEngine
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        bool $inertiaProps = false,
+        bool $filtered = false,
     ): array {
         $runs = $runtime->class ?? $context->reflection;
         $modelClass = match (true) {
@@ -392,6 +435,8 @@ final class AstEngine
             scope: $scope,
             context: $context,
             runtime: $runtime,
+            inertiaProps: $inertiaProps,
+            filtered: $filtered,
         );
 
         return [$analyzer, $scope];
@@ -448,6 +493,8 @@ final class AstEngine
         array $passed,
         bool $readsCall,
         ?RuntimeClass $runtime,
+        bool $inertiaProps,
+        bool $filtered,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -466,6 +513,8 @@ final class AstEngine
                 passed: $passed,
                 runtime: $runtime,
                 readsCall: $readsCall,
+                inertiaProps: $inertiaProps,
+                filtered: $filtered,
             );
 
             return $analyzer->analyze();

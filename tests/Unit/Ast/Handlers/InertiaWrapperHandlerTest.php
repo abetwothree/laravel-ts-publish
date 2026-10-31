@@ -6,7 +6,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -36,8 +35,14 @@ function inertiaWrapperEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -100,12 +105,7 @@ it('types a deferred closure over an Eloquent finder through the controller prof
         'expr' => new StaticCall(new Name(Post::class), 'all'),
     ]))]);
 
-    $analyzer = new ResourceAstAnalyzer(
-        new ReflectionClass(InertiaController::class),
-        null,
-        'dashboard',
-        ControllerExpressionHandlers::make(),
-    );
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', inertiaProps: true);
 
     expect($analyzer->resolve($expr))->toBe([
         'type' => 'Post[]',
@@ -140,8 +140,14 @@ it('reads the wrapped value by name when the group is written first', function (
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }

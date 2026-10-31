@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\NullableWrapBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrapHelpers;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
@@ -25,6 +26,8 @@ class CheckedResourceElvisResource extends JsonResource
             'helperTryFrom' => NullableWrapBuilder::statusFrom($request->integer('s', 9)),
             'helperUser' => NullableWrapBuilder::user($request->input('u')),
             'helperInst' => (new NullableWrapBuilder)->instanceStatusFrom($request->integer('s', 9)),
+            'mwTryFrom' => MiddlewareWithWrapHelpers::statusFrom($request->integer('s', 9)),
+            'mwUser' => MiddlewareWithWrapHelpers::user($request->input('u')),
         ];
     }
 }

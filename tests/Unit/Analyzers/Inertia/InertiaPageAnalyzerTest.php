@@ -13,9 +13,11 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\FilteredRelationsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\HelperCallablePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
@@ -29,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -325,16 +328,21 @@ it('types an action a trait in another file supplies', function () {
 });
 
 // Task 32 review, fix round 2: the props array literal passed to Inertia::render() is a whole
-// return shape in its own right, so a top-level resource spread inside it must flatten too.
+// return shape in its own right, so a top-level resource spread inside it must flatten too. Inertia then sends each
+// resource still inside what resolve() returned as its response.
 it('flattens a top-level resource spread inside the render props array', function () {
     $data = pageData(ControllerWithSpreadProps::class.'@index');
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
 
     expect($data['component'])->toBe('Dashboard/Spread')
         ->and($data['pageType'])->toBe(
             'Inertia.SharedData & { id: number, name: string, email: string, role: AsEnum<typeof Role> | null, '.
-            'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
-            'posts_count?: number, comments_count?: number, flag: boolean }'
-        );
+            'profile?: Profile | null, posts?: AnonymousResourceCollection<PostResource>, phone?: string | null, '.
+            'avatar?: string, posts_count?: number, comments_count?: number, flag: boolean }'
+        )
+        ->and(inertiaProps(new ControllerWithSpreadProps()->index($user->load('posts')))->posts->data[0]->title)->toBe('First')
+        ->and(inertiaProps(new ControllerWithSpreadProps()->index($user->fresh() ?? $user)))->not->toHaveProperty('posts');
 });
 
 it('returns null for an action that renders no Inertia response', function () {
@@ -1098,6 +1106,20 @@ it('keeps a short ternary\'s other arm where the enum resource it checks cannot 
         ->toBe([Status::Published->name, Status::Published->name, [], []]);
 });
 
+// A helper's body is read as Inertia sends it, unfiltered, so the other arm never runs. Its wrap around null sends
+// `[]`, which this type does not admit, as the `| null` the helper's own reading keeps does not.
+it('types a short ternary a props helper returns over an enum resource as that resource alone', function () {
+    [$picked, $absent] = array_map(function (array $query): stdClass {
+        $request = Request::create('/', 'GET', $query);
+
+        return inertiaProps(new EnumUnionPropsController()->helperElvis($request), $request);
+    }, [['s' => 1], []]);
+
+    expect(pageData(EnumUnionPropsController::class.'@helperElvis')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> }')
+        ->and([$picked->status->name, $absent->status])->toBe([Status::Published->name, []]);
+});
+
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
     $sent = inertiaProps(new AliasedHelperController()->index());
     $shape = '{ tk: number; tn: string }';
@@ -1108,4 +1130,28 @@ it('reads a props helper a trait supplies under an alias, called or spread, as u
             ['meta', 'spread', 'guarded', 'base'],
             ['tk' => 1, 'tn' => 'x'],
         ));
+});
+
+it('reads a first-class callable in props a helper builds as Inertia calls it', function () {
+    expect(pageData(HelperCallablePropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { meta: { stamp: string } }')
+        ->and(AnalysisWarnings::all())->toBe([])
+        ->and(inertiaProps(new HelperCallablePropsController()->show())->meta->stamp)->toMatch('/^\d{4}-\d{2}-\d{2}T/');
+});
+
+it('reads props a collaborator builds as Inertia sends them', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = inertiaProps(new CollaboratorPropsController(new CardPropsBuilder)->show($user));
+
+    expect(pageData(CollaboratorPropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { stamp: string, card: { data: UserCardResource } }')
+        ->and(AnalysisWarnings::all())->toBe([])
+        ->and($sent->stamp)->toMatch('/^\d{4}-\d{2}-\d{2}T/')
+        ->and([$sent->card->data->id, $sent->card->data->name])->toBe([$user->id, 'Ada']);
+});
+
+// The same helper read for anything but Inertia keeps the Closure json_encode() writes as `{}`.
+it('keeps a helper read outside Inertia as it was', function () {
+    expect(array_column(resolve(AstEngine::class)->analyzeMethod(HelperCallablePropsController::class, 'meta')->properties, 'type', 'name'))
+        ->toBe(['stamp' => 'Record<string, never>']);
 });

@@ -233,8 +233,14 @@ function inertEngine(): ExpressionEngine
             throw new RuntimeException('the matrix never resolves through make()');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }

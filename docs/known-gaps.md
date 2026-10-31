@@ -684,13 +684,6 @@ the prop with `#[TsCasts]`.
 resource still inside them as its response, so a key such as `'author' => new UserResource($this->user)` arrives as
 `{ data: … }` while `R` types it `UserResource`. Pass the resource itself, or type the prop with `#[TsCasts]`.
 
-### Props a collaborator builds publish their API resources bare
-
-`Inertia::render('Page', $this->props->build())` types the props from what the collaborator's method returns, where an
-API resource is the value a nested resource key holds: `'warehouse' => new WarehouseResource($w)` publishes
-`WarehouseResource`, though Inertia sends `{ data: … }`. Build the props array in the action, or type the props with
-`#[TsCasts]`.
-
 ### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
 
 The generation cache rebuilds a file when a file it read changes, but an argument-less `toResourceCollection()` can pick
@@ -808,15 +801,14 @@ A class cast whose caster implements `SerializesCastableAttributes` publishes th
 because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
 instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 
-### A closure nothing calls, and some first-class callables Laravel or Inertia call, publish the wrong type
+### A closure nothing calls, and a first-class callable Inertia calls through a property, publish the wrong type
 
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
-as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
-helper method the action calls, are read as that method's own values, so a first-class callable there publishes
-`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. Use a closure such as
-`fn () => $this->label()` there instead. A closure held in a local and passed to a helper, read as a value or spread,
-publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns `['v' => $v]`:
-`{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
+as `strlen(...)` is read by where it sits. A property's type is the same for every reader, so a first-class callable a
+constructor writes, as in `$this->stamp = now(...)`, publishes `Record<string, never>`, and `ts:publish` warns, even
+in a page prop `'stamp' => $this->stamp`, though Inertia calls it. A closure held in a local and passed to a helper,
+read as a value or spread, publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns
+`['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 

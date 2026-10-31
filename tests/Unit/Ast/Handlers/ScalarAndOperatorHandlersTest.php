@@ -69,8 +69,14 @@ function throwingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -105,8 +111,14 @@ final class SpyExpressionEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }
@@ -143,8 +155,14 @@ it('resolves a first-class callable as the call it stands for where the caller i
             return null;
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }

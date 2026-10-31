@@ -52,8 +52,14 @@ function closureHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -91,8 +97,14 @@ final class ClosureHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }
@@ -130,8 +142,14 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }
@@ -167,8 +185,14 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }
@@ -198,8 +222,14 @@ function closureHandlerBlowingUpEngine(): ExpressionEngine
             throw new RuntimeException('body resolution exploded');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads nothing Inertia sends. */
+        public function readsInertiaProps(): bool
+        {
+            return false;
+        }
+
+        /** Reads nothing a JsonResource filters for Inertia. */
+        public function readsFilteredValues(): bool
         {
             return false;
         }
@@ -382,8 +412,14 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads nothing Inertia sends. */
+    public function readsInertiaProps(): bool
+    {
+        return false;
+    }
+
+    /** Reads nothing a JsonResource filters for Inertia. */
+    public function readsFilteredValues(): bool
     {
         return false;
     }

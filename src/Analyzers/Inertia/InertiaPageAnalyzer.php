@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -185,8 +184,8 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Build the expression engine for one action: the controller handler profile over a scope
-     * already carrying the action's route-bound models, request parameters, and local variables.
+     * Build the expression engine for one action: reading what Inertia sends, over a scope already carrying the
+     * action's route-bound models, request parameters, and local variables.
      */
     protected function analyzerFor(MethodContext $context, AnalysisScope $scope): ResourceAstAnalyzer
     {
@@ -194,8 +193,8 @@ class InertiaPageAnalyzer
             $context->reflection,
             null,
             $context->method->name->toString(),
-            ControllerExpressionHandlers::make(),
-            $scope,
+            scope: $scope,
+            inertiaProps: true,
         );
     }
 
@@ -329,8 +328,8 @@ class InertiaPageAnalyzer
 
     /**
      * Type a props argument delegated to a collaborator — `Inertia::render('X', $this->props->build())` —
-     * by analyzing that method on the property's own class, which the container may fill with a subclass unless it is
-     * final, so the body only assumes it.
+     * by analyzing that method, as Inertia sends what it returns, on the property's own class, which the container may
+     * fill with a subclass unless it is final, so the body only assumes it.
      */
     protected function analyzeDelegatedProps(Expr $propsArg, MethodContext $context): ResourceAnalysis
     {
@@ -349,6 +348,7 @@ class InertiaPageAnalyzer
             $propertyClass,
             $propsArg->name->toString(),
             runtime: RuntimeClass::injected(new ReflectionClass($propertyClass)),
+            inertiaProps: true,
         ));
 
         return $analysis;

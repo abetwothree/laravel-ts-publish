@@ -48,6 +48,22 @@ final readonly class CallSite
     }
 
     /**
+     * Whether Inertia sends what the caller reads, so the body the call runs is read as Inertia sends its value.
+     */
+    public function readsInertiaProps(): bool
+    {
+        return $this->engine->readsInertiaProps();
+    }
+
+    /**
+     * Whether a JsonResource's filter() runs over what the caller reads, and so over what the call returns there.
+     */
+    public function readsFilteredValues(): bool
+    {
+        return $this->engine->readsFilteredValues();
+    }
+
+    /**
      * Whether the call writes any argument a parameter could take, a first-class callable's `...` being none.
      */
     public function passesArguments(): bool
@@ -137,6 +153,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->engine->invokesCallables() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
+        return ! $this->engine->readsInertiaProps() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
     }
 }

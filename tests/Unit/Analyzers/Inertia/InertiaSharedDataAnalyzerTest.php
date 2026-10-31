@@ -55,6 +55,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrapHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedEnumBesideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NestedParentShareMiddleware;
@@ -727,15 +728,19 @@ test('a share() cast that says nothing about optional keeps the class cast\'s fl
         ->toBe('{ held?: HeldShare, id: number }');
 });
 
+// The parent's body is read as Inertia sends it too, so the callable it shares types as the call Inertia makes.
 test('a parent share() cast reached through parent::share() keeps its ? suffix', function () {
     $request = Request::create('/');
     Inertia::share(new OptionalCastChildMiddleware()->share($request));
+    $sent = (array) inertiaProps(Inertia::render('Shared', []), $request);
 
     // The cast is the user's own type for `filters`, laid as written over the null the parent sends.
     expect(sharedProps(OptionalCastChildMiddleware::class))
-        ->toBe(['filters?' => 'string[]', 'app' => 'string', 'child' => 'number'])
-        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))
-        ->toBe(['filters' => null, 'app' => 'x', 'child' => 1]);
+        ->toBe(['filters?' => 'string[]', 'app' => 'string', 'stamp' => 'string', 'child' => 'number'])
+        ->and(AnalysisWarnings::all())->toBe([])
+        ->and(array_keys($sent))->toBe(['filters', 'app', 'stamp', 'child'])
+        ->and([$sent['filters'], $sent['app'], $sent['child']])->toBe([null, 'x', 1])
+        ->and($sent['stamp'])->toMatch('/^\d{4}-\d{2}-\d{2}T/');
 });
 
 // PHP never gives a subclass its parent's attributes, so the parent whose share() is read is a location of its own.
@@ -776,18 +781,38 @@ test('a parent whose share() the child never reads adds none of its class-level 
 test('a parent share() nested under a key adds no top-level cast key', function () {
     $request = Request::create('/');
     Inertia::share(new NestedParentShareMiddleware()->share($request));
+    $sent = json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true);
 
     expect(sharedProps(NestedParentShareMiddleware::class))
-        ->toBe(['nested' => '{ filters: null; app: string }', 'child' => 'number'])
-        ->and(json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true))
-        ->toBe(['nested' => ['filters' => null, 'app' => 'x'], 'child' => 1]);
+        ->toBe(['nested' => '{ filters: null; app: string; stamp: string }', 'child' => 'number'])
+        ->and(array_keys($sent['nested']))->toBe(['filters', 'app', 'stamp'])
+        ->and([$sent['nested']['filters'], $sent['nested']['app'], $sent['child']])->toBe([null, 'x', 1])
+        ->and($sent['nested']['stamp'])->toMatch('/^\d{4}-\d{2}-\d{2}T/');
 });
 
+// Read as the shared-data analyzer reads it, for Inertia; read for anything else the callable stays the Closure.
 test('the engine leaves a parent share()\'s casts to the shared-data analyzer too', function () {
-    $analysis = resolve(AstEngine::class)->analyzeMethod(OptionalCastChildMiddleware::class, 'share');
+    $types = fn (bool $inertiaProps): array => array_column(
+        resolve(AstEngine::class)->analyzeMethod(OptionalCastChildMiddleware::class, 'share', inertiaProps: $inertiaProps)->properties,
+        'type',
+        'name',
+    );
 
-    expect(array_column($analysis->properties, 'type', 'name'))
-        ->toBe(['filters' => 'null', 'app' => 'string', 'child' => 'number']);
+    expect($types(true))->toBe(['filters' => 'null', 'app' => 'string', 'stamp' => 'string', 'child' => 'number'])
+        ->and($types(false)['stamp'])->toBe('Record<string, never>');
+});
+
+// Read here as Inertia sends shared data; an API resource reading the same helper keeps both arms.
+test('a share middleware types the short ternary its own helper returns over an enum resource as that resource alone', function () {
+    [$picked, $absent] = array_map(function (array $query): array {
+        $request = Request::create('/', 'GET', $query);
+        Inertia::share(new MiddlewareWithWrapHelpers()->share($request));
+
+        return json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true);
+    }, [['s' => 1], []]);
+
+    expect(sharedProps(MiddlewareWithWrapHelpers::class))->toBe(['status' => 'AsEnum<typeof Status>'])
+        ->and([$picked['status']['name'], $absent['status']])->toBe([Status::Published->name, []]);
 });
 
 test('a share() a trait supplies under an alias publishes the keys the trait method returns', function () {

@@ -36,8 +36,8 @@ These are the classes a change to resource analysis usually touches:
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
 
 The model-getter profile drops `ConditionalMethodHandler` and `ToResourceHandler`, any other non-resource subject drops
-`ConditionalMethodHandler` alone, and the Inertia profile, a page's and a share middleware's, adds the page-prop
-handlers to that. In every profile, the order handlers run in decides which one answers; see
+`ConditionalMethodHandler` alone, and the Inertia profile, which every body Inertia sends runs, adds the page-prop
+handlers to the subject's own. In every profile, the order handlers run in decides which one answers; see
 [AST engine § Handler ordering](ast-engine.md#handler-ordering).
 
 ## How `analyze()` reads a method
@@ -942,9 +942,10 @@ A mixed ternary wraps the enum in one arm and reads it directly in the other, as
 `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
 mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand builds a
 resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is always
-true, so `TernaryHandler` types it as that operand alone where the operand types and the engine reads a value Inertia
-sends (`ExpressionEngine::invokesCallables()`): a page's props or the shared data. Anywhere else, an API resource or a
-helper body read on its own subject's profile, both arms stay, since filter() sends a resource around null as null;
+true, so `TernaryHandler` types it as that operand alone where the operand types, the engine reads a value Inertia
+sends (`ExpressionEngine::readsInertiaProps()`), a page's props, the shared data or a body they read, and no
+`JsonResource::filter()` reaches it (`readsFilteredValues()`). Anywhere else, an API resource, a helper it reads, or a
+resource body Inertia reads through `resolve()`, both arms stay, since filter() sends a resource around null as null;
 they stay too beside an operand the engine cannot type.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.

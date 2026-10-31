@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\NullableWrapBuilder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -53,6 +54,14 @@ class EnumUnionPropsController
     {
         return Inertia::render('EnumUnions/Elvis', [
             'status' => EnumResource::make(Status::Draft) ?: Status::Published,
+        ]);
+    }
+
+    /** Renders the short ternary a helper returns over an enum resource, which Inertia sends as it is returned. */
+    public function helperElvis(Request $request): Response
+    {
+        return Inertia::render('EnumUnions/HelperElvis', [
+            'status' => NullableWrapBuilder::statusFrom($request->integer('s', 9)),
         ]);
     }
 
