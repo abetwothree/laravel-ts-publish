@@ -724,6 +724,7 @@ beside a signature are all known:
 - **In each publisher, over every cast in force**, method casts included: `ResourceTransformer::runAstAnalysis()`,
   `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
   `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
+  Inertia analyzers pass only the action's or the middleware's casts, not a spread helper's own. The two
   transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
   entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
   channels, since the cast type is what publishes. After the reconcile, every one of them fits them to the cast's

@@ -367,10 +367,7 @@ it('imports a class an import-less shared-data cast spells', function () {
 });
 
 it('imports a class one shared-data cast displaced for another import-less cast that spells it', function () {
-    $request = Request::create('/');
-    // Rebinding the request resets its user resolver to the auth guard's.
-    app()->instance('request', $request);
-    $request->setUserResolver(fn () => (new User)->forceFill(['name' => 'Ada']));
+    $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
     Inertia::share(new MiddlewareWithCarriedCast()->share($request));
     $shared = analyzeSharedDataFor(MiddlewareWithCarriedCast::class);
     $sent = inertiaProps(Inertia::render('Shared', []), $request);

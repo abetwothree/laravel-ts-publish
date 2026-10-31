@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Response as InertiaResponse;
@@ -181,6 +182,19 @@ function inertiaProps(InertiaResponse $page, ?Request $request = null): stdClass
     $request->headers->set('X-Inertia', 'true');
 
     return json_decode((string) $page->toResponse($request)->getContent(), false)->props;
+}
+
+/**
+ * A fresh request bound as the app's, resolving the given user for `request()->user()` and `$request->user()`.
+ */
+function bindRequestUser(Authenticatable $user): Request
+{
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's, so the resolver is set after.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn (): Authenticatable => $user);
+
+    return $request;
 }
 
 /**

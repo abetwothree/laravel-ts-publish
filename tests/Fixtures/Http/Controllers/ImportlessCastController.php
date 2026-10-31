@@ -35,6 +35,25 @@ class ImportlessCastController
         ]);
     }
 
+    /** Renders the author model itself under a cast not spelling it, beside a cast that does over an untyped value. */
+    #[TsCasts(['author' => 'Record<string, unknown>', 'owner' => 'User | null'])]
+    public function carriedDirect(Post $post): Response
+    {
+        return Inertia::render('ImportlessCast/CarriedDirect', [
+            'author' => $post->author,
+            'owner' => request()->user(),
+        ]);
+    }
+
+    /** Renders a spread helper's owner under the helper's cast importing its own `User`, beside the author's model. */
+    public function spreadCastFromModule(Post $post): Response
+    {
+        return Inertia::render('ImportlessCast/SpreadCastFromModule', [
+            ...$this->ownerFromModule($post),
+            'writer' => $post->author,
+        ]);
+    }
+
     /** Renders the author under a cast that imports its own `User`. */
     #[TsCasts(['author' => ['type' => 'User', 'import' => '@js/types/ui']])]
     public function castFromModule(Post $post): Response
@@ -57,5 +76,12 @@ class ImportlessCastController
     private function noteProps(): array
     {
         return ['x_note' => 'y', 'n' => 1];
+    }
+
+    /** The post's author as the owner, under a cast that imports its own `User`. */
+    #[TsCasts(['owner' => ['type' => 'User', 'import' => '@js/types/ui']])]
+    private function ownerFromModule(Post $post): array
+    {
+        return ['owner' => $post->author];
     }
 }
