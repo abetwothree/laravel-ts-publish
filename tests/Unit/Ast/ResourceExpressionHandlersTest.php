@@ -40,12 +40,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use Inertia\AlwaysProp;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -286,6 +288,14 @@ it('tries ThisPropertyHandler before PropertyChainHandler for a multi-FQCN acces
 // unknown instead of resolving the wrapped value.
 it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...)', function () {
     $expr = new StaticCall(new Name('Inertia'), 'always', [new Arg(new String_('en'))]);
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+
+    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
+});
+
+// NewResourceHandler reads a `new` of a class that is no resource as `unknown`, so it would floor a prop object there.
+it('tries InertiaWrapperHandler before NewResourceHandler for new AlwaysProp(...)', function () {
+    $expr = new New_(new Name(AlwaysProp::class), [new Arg(new String_('en'))]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
     expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);

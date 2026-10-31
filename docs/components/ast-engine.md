@@ -168,6 +168,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
 | `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
+| `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown` | None |
 
 `OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, sits
 after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no pair.
@@ -786,8 +787,10 @@ array item the branch saw, never a sibling's, that it reads as `unknown`) and th
 spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
 it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
-returns that `null`, which the ternary union would keep. It unions both operands through `unionResults()`, which leaves
-an untyped one out. `applyConditionalDefault()` records a default only beside a value arm with a type.
+returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
+exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
+arm's `null` is replaced. It unions both operands through `unionResults()`, which leaves an untyped one out.
+`applyConditionalDefault()` records a default only beside a value arm with a type.
 `ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
 walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole

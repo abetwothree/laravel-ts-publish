@@ -64,7 +64,7 @@ function coalesceHandlerThrowingEngine(): ExpressionEngine
 final class CoalesceArmStubEngine implements ExpressionEngine
 {
     /** @param list<array{0: Expr, 1: array<string, mixed>}> $arms */
-    public function __construct(private array $arms) {}
+    public function __construct(private array $arms, private Reading $reading = Reading::Encoded) {}
 
     /** @return array<string, mixed> */
     public function resolve(Expr $expr): array
@@ -83,10 +83,10 @@ final class CoalesceArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Reads every value as `json_encode()` sends it. */
+    /** Reads every value as the test says, as `json_encode()` sends it unless told otherwise. */
     public function reading(): Reading
     {
-        return Reading::Encoded;
+        return $this->reading;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -347,6 +347,52 @@ it('keeps the key optional by the rule for each operand of ??', function (string
     'an optional right past an untyped left' => ['unknown', false, 'User', true, true],
     'neither optional' => ['string | null', false, 'number', false, false],
 ]);
+
+// An object is never null, so `??` returns a closure or prop whole, which Inertia calls; the right operand never runs.
+it('keeps a left holding an object on every path whole where Inertia reads it', function (array $left) {
+    $leftExpr = new Variable('f');
+    $engine = new CoalesceArmStubEngine([[$leftExpr, $left]], Reading::Inertia);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, new Variable('b')), coalesceHandlerTestScope(), $engine))
+        ->toBe($left);
+})->with([
+    'a closure that may resolve to null' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true]],
+    'an optional prop' => [['type' => 'number', 'optional' => true, 'heldObject' => true]],
+    'arms none of which is a plain null' => [[
+        'type' => 'number | null',
+        'optional' => false,
+        'mayHoldObject' => ['objectNull' => true, 'plainNull' => false],
+    ]],
+]);
+
+// Only a plain null is replaced, so an object arm's null stays, and what is left past `??` is never a plain null.
+it('replaces only the plain null of a left that may hold an object where Inertia reads it', function (bool $objectNull, string $type) {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$leftExpr, ['type' => 'number | null', 'optional' => false, 'mayHoldObject' => ['objectNull' => $objectNull, 'plainNull' => true]]],
+        [$rightExpr, ['type' => 'string', 'optional' => false]],
+    ], Reading::Inertia);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => false, 'mayHoldObject' => ['objectNull' => $objectNull, 'plainNull' => false]]);
+})->with([
+    'an object arm that may resolve to null' => [true, 'number | string | null'],
+    'an object arm that never does' => [false, 'number | string'],
+]);
+
+// json_encode() sends a closure as `{}`, which neither reading admits, so outside Inertia `??` reads as it always has.
+it('strips a held object\'s null where json_encode() sends it', function () {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$leftExpr, ['type' => 'number | null', 'optional' => false, 'heldObject' => true]],
+        [$rightExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine)['type'])
+        ->toBe('number | string');
+});
 
 it('declines a non-coalesce BinaryOp', function () {
     $handler = new CoalesceHandler;

@@ -8,10 +8,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
+use Inertia\AlwaysProp;
+use Inertia\DeferProp;
+use Inertia\MergeProp;
+use Inertia\OnceProp;
+use Inertia\OptionalProp;
+use Inertia\Response as InertiaResponse;
+use Inertia\ScrollProp;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -70,6 +78,31 @@ it('marks an IgnoreFirstLoad wrapper optional', function (string $method) {
     expect((new InertiaWrapperHandler)->resolve(inertiaWrapperCall('Inertia', $method), inertiaWrapperScope(), inertiaWrapperEngine())['optional'])
         ->toBeTrue();
 })->with(['defer', 'optional', 'lazy']);
+
+// A `new` builds what its factory returns, so it reads as the factory; LazyProp, gone in v3, reads by position.
+it('reads a new of each prop class as its factory', function (string $class, bool $optional) {
+    $expr = new New_(new Name($class), [new Arg(new String_('x'))]);
+
+    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), inertiaWrapperEngine()))
+        ->toBe(['type' => 'string', 'optional' => $optional, 'modelFqcn' => 'Some\Model', 'heldObject' => true]);
+})->with([
+    [DeferProp::class, true],
+    [OptionalProp::class, true],
+    ['Inertia\\LazyProp', true],
+    [AlwaysProp::class, false],
+    [MergeProp::class, false],
+    [ScrollProp::class, false],
+    [OnceProp::class, false],
+]);
+
+it('declines a new of another class, of a class it cannot name, and with no value', function () {
+    $scope = inertiaWrapperScope();
+    $engine = inertiaWrapperEngine();
+
+    expect((new InertiaWrapperHandler)->resolve(new New_(new Name(InertiaResponse::class), [new Arg(new String_('x'))]), $scope, $engine))->toBeNull()
+        ->and((new InertiaWrapperHandler)->resolve(new New_(new Variable('class'), [new Arg(new String_('x'))]), $scope, $engine))->toBeNull()
+        ->and((new InertiaWrapperHandler)->resolve(new New_(new Name(OptionalProp::class)), $scope, $engine))->toBeNull();
+});
 
 // shareOnce takes the value second, so claiming it would type the key string. It shares the prop
 // itself, so it is written as a statement and never reaches this handler as a prop expression.
@@ -150,4 +183,17 @@ it('reads the wrapped value by name when the group is written first', function (
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $engine))
         ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true]);
+});
+
+// The constructor's own names map the arguments, so the callback is read wherever it is written.
+it('reads a new prop\'s value by its constructor\'s parameter name', function () {
+    $callback = new ArrowFunction(['expr' => new StaticCall(new Name(Post::class), 'all')]);
+    $expr = new New_(new Name(DeferProp::class), [
+        new Arg(new String_('sidebar'), name: new Identifier('group')),
+        new Arg($callback, name: new Identifier('callback')),
+    ]);
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', reading: Reading::Inertia);
+
+    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $analyzer))
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'modelFqcn' => Post::class, 'heldObject' => true]);
 });

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\OptionalProp;
 use Inertia\Response;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -250,6 +251,55 @@ class PropsLocalController
         $props['a'] ??= 'none';
 
         return Inertia::render('PropsLocal/CoalesceClosureLocal', $props);
+    }
+
+    /** Renders a local whose key holds a `new` optional prop over a closure that may resolve to null, then `??=`. */
+    public function newOptionalProp(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = new OptionalProp(fn (): ?int => $request->boolean('x') ? 1 : null);
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/NewOptionalProp', $props);
+    }
+
+    /** Renders a local whose key holds a `new` optional prop over a closure that may resolve to null. */
+    public function newOptionalPropPlain(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = new OptionalProp(fn (): ?int => $request->boolean('x') ? 1 : null);
+
+        return Inertia::render('PropsLocal/NewOptionalPropPlain', $props);
+    }
+
+    /** Renders the literal the newOptionalPropPlain() local builds. */
+    public function newOptionalLiteral(Request $request): Response
+    {
+        return Inertia::render('PropsLocal/NewOptionalLiteral', [
+            'heading' => 'x',
+            'a' => new OptionalProp(fn (): ?int => $request->boolean('x') ? 1 : null),
+        ]);
+    }
+
+    /** Renders a local whose key holds `??` over a local closure that may resolve to null, which `??=` keeps. */
+    public function coalesceObjectLeft(Request $request): Response
+    {
+        $f = fn (): ?int => $request->boolean('x') ? 1 : null;
+        $props = ['heading' => 'x'];
+        $props['a'] = $f ?? 5;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceObjectLeft', $props);
+    }
+
+    /** Renders a local whose key holds `??` over a local closure that may resolve to null. */
+    public function coalesceObjectLeftPlain(Request $request): Response
+    {
+        $f = fn (): ?int => $request->boolean('x') ? 1 : null;
+        $props = ['heading' => 'x'];
+        $props['a'] = $f ?? 5;
+
+        return Inertia::render('PropsLocal/CoalesceObjectLeftPlain', $props);
     }
 
     /** Renders a local whose key holds a first-class callable resolving to null, which `??=` keeps. */
