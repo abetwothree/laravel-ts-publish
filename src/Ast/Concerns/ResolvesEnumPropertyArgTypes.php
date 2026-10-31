@@ -118,8 +118,8 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm goes only inside a map()
-     * kept as a Collection, which filter() never enters, so a null payload there is sent as `[]`.
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm is dropped only inside a
+     * map() kept as a Collection, which filter() never enters, so a null payload there is sent as `[]`.
      *
      * @return ValueExpressionResult|null
      */

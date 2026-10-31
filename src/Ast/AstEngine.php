@@ -167,8 +167,7 @@ final class AstEngine
     }
 
     /**
-     * What `json_encode()` sends for an expression of the body an engine reads for Inertia: read by that body's own
-     * analyzer under the encoded reading, so its method and the call it reads stay as they are.
+     * What `json_encode()` sends for an expression of the body an engine reads, read by that body's own analyzer.
      *
      * @return ValueExpressionResult
      *

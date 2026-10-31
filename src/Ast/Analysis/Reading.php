@@ -37,8 +37,7 @@ enum Reading
     }
 
     /**
-     * The reading a method's body takes when this one reads it: an Inertia read of a JsonResource's `toArray()` whole,
-     * which `resolve()` filters, is filtered from there down; calling it for its value runs no filter.
+     * The reading a body takes from this one: filtered once an Inertia read enters an API resource's whole `toArray()`.
      *
      * @param  ReflectionClass<object>  $runs  the class the body runs for
      */
@@ -52,8 +51,7 @@ enum Reading
     }
 
     /**
-     * The reading the body a call runs takes from a value read in the scope: `filter()` never enters a map() kept as a
-     * Collection, so what a call returns there reaches Inertia unfiltered.
+     * The reading a call's body takes from a value read in the scope: unfiltered inside a map() kept as a Collection.
      */
     public function calledFrom(AnalysisScope $scope): self
     {
@@ -69,8 +67,7 @@ enum Reading
     }
 
     /**
-     * Whether `filter()` runs over what the scope's body returns: below a filtered Inertia read, and outside Inertia
-     * over a JsonResource subject's own; it enters arrays only, which AnalysisScope::$filtersNestedResources tracks.
+     * Whether `filter()` runs over the scope's body: below a filtered Inertia read, or an API resource's own elsewhere.
      */
     public function filtersBodyOf(AnalysisScope $scope): bool
     {

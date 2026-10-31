@@ -377,8 +377,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * A reader of this analyzer's body as `json_encode()` sends its values: the same scope, method and call read, under
-     * the encoded reading and with the subject's own profile.
+     * A reader of this body as `json_encode()` sends it: the same scope, method and call, under the encoded reading.
      */
     public function encodedReader(): self
     {
