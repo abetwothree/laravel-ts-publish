@@ -133,13 +133,13 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
     /**
      * `SomeResource::make($model)`, `SomeCollection::make($items)`, `SomeResource::collection($items)` and
-     * `EnumResource::collection($cases)`.
+     * `EnumResource::collection($cases)`, the class named or as `self` or `static`.
      *
      * @return ValueExpressionResult|null
      */
     private function resolveStatic(StaticCall $expr, AnalysisScope $scope, ExpressionEngine $engine, ?ResponseExtras $added): ?array
     {
-        $className = $this->resolveStaticCallClassName($expr);
+        $className = $expr->class instanceof Name ? $this->scopeClassName($expr->class, $scope) : null;
 
         if ($className === null || ! $expr->name instanceof Identifier || $expr->isFirstClassCallable()) {
             return null;

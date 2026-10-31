@@ -33,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
@@ -1267,6 +1268,34 @@ it('keeps the null a resolved resource sends for a nested resource a service bui
         ->toBe("Inertia.SharedData & { card: Omit<HelperViewerCardResource, 'viewer' | 'authors'> & {$sent} }")
         ->and([$guest->card->viewer, $member->card->viewer->data->name])->toBe([null, 'Ada'])
         ->and([$guest->card->authors[0]->data->name, $member->card->authors[0]->data->name])->toBe(['Ada', 'Ada']);
+});
+
+// make() is `new static`, so a factory's self::make() and static::make() are sent as the response a named make() is.
+it('sends a resource a self::make() or static::make() factory builds as its response', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $guest = inertiaProps(new ViewerBadgeController()->page());
+    auth()->setUser($user);
+    $member = inertiaProps(new ViewerBadgeController()->page());
+
+    expect(pageData(ViewerBadgeController::class.'@page')['pageType'])
+        ->toBe('Inertia.SharedData & { selfMake: { data: ViewerBadgeResource }, staticMake: { data: ViewerBadgeResource } }')
+        ->and([$guest->selfMake->data->id, $guest->staticMake->data->id])->toBe([null, null])
+        ->and([$member->selfMake->data->id, $member->staticMake->data->id])->toBe([$user->id, $user->id]);
+});
+
+// filter() sends the factory's badge around a guest as null, but never enters the map() kept as a Collection.
+it('sends a factory-built resource in a resolved body as filter() and Inertia send it', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $guest = inertiaProps(new ViewerBadgeController()->resolved($post))->card;
+    auth()->setUser($user);
+    $member = inertiaProps(new ViewerBadgeController()->resolved($post))->card;
+    $sent = '{ badges: { data: ViewerBadgeResource }[]; badge: { data: ViewerBadgeResource } | null }';
+
+    expect(pageData(ViewerBadgeController::class.'@resolved')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<ViewerBadgeListResource, 'badges' | 'badge'> & {$sent} }")
+        ->and([$guest->badges[0]->data->id, $guest->badge])->toBe([null, null])
+        ->and([$member->badges[0]->data->id, $member->badge->data->id])->toBe([$user->id, $user->id]);
 });
 
 it('keeps the null a spread resolved resource sends for a nested resource around null', function () {
