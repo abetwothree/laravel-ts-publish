@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedSh
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastOverInheritedShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastUnreadChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
@@ -633,6 +634,14 @@ test('a parent whose share() the child never reads adds no cast key', function (
     Inertia::share(new UnreadParentShareMiddleware()->share($request));
 
     expect(sharedProps(UnreadParentShareMiddleware::class))->toBe(['own' => 'number'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['own' => 1]);
+});
+
+test('a parent whose share() the child never reads adds none of its class-level cast keys', function () {
+    $request = Request::create('/');
+    Inertia::share(new ClassCastUnreadChildMiddleware()->share($request));
+
+    expect(sharedProps(ClassCastUnreadChildMiddleware::class))->toBe(['own' => 'number'])
         ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['own' => 1]);
 });
 

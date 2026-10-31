@@ -2090,8 +2090,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The class declaring the share() the analyzed middleware runs, own or inherited; an empty string for any other
-     * subject.
+     * The class declaring the share() the analyzed middleware runs; an empty string for any other subject.
      */
     private function sharedDataShareClass(): string
     {
@@ -2102,8 +2101,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether the method is a share() whose casts InertiaSharedDataAnalyzer applies: the middleware's own or inherited
-     * one, or an ancestor's whose keys a `parent::share()` call returns.
+     * Whether the method is a share() of the chain whose casts InertiaSharedDataAnalyzer lays itself.
      */
     private function isInertiaShare(ReflectionMethod $method): bool
     {

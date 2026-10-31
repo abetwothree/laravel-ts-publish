@@ -239,8 +239,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * The middleware's #[TsCasts] instances in precedence order: each class of its share() chain from the root, a
-     * class before the share() it declares.
+     * The #[TsCasts] instances of the middleware's share() chain, root first, each class's before its own share()'s.
      *
      * @param  class-string  $className
      * @return list<TsCasts>
@@ -388,8 +387,9 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Each class from the middleware up to the deepest declaring a share() the analysis reads, inherited or through
-     * `parent::share()`; PHP gives no class its parent's attributes, so each is a cast location of its own.
+     * Each class from the middleware up to the deepest declaring a share() the analysis reads.
+     *
+     * PHP gives no class its parent's attributes, so each is a cast location of its own.
      *
      * @param  class-string  $className
      * @param  list<class-string>  $declaring  the classes declaring each share() the analysis reads

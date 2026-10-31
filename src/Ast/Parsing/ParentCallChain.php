@@ -36,8 +36,7 @@ final class ParentCallChain
     use InspectsAstNodes;
 
     /**
-     * The classes declaring each body whose keys a call of the method on the class returns, the one it runs first;
-     * empty where the class has no such method.
+     * The classes declaring each body whose keys a call of the method returns, the one the class runs first.
      *
      * @return list<class-string>
      */

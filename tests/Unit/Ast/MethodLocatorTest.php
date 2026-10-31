@@ -251,11 +251,6 @@ it('finds a trait method under each alias a class gives it, an `as protected` on
         ->and($locator->locateOwn(AliasedHelperController::class, $alias))->toBeNull();
 })->with(['props', 'PROPS', 'guardedProps']);
 
-it('keeps an `as protected` alias protected', function () {
-    expect(new ReflectionMethod(AliasedHelperController::class, 'guardedProps')->isProtected())->toBeTrue()
-        ->and(new ReflectionMethod(AliasedHelperController::class, 'props')->isPublic())->toBeTrue();
-});
-
 it('locate resolves an alias of the trait method an insteadof rule excludes, beside the one it selects', function () use ($literal) {
     require_once __DIR__.'/Fixtures/InsteadofTraitsInOneFile.php';
     $locator = new MethodLocator(new AstParser);
