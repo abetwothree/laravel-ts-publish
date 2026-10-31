@@ -125,18 +125,16 @@ final class TernaryHandler implements ExpressionHandler
     }
 
     /**
-     * The checked operand of a short ternary that builds an API resource, where it types and no filter() reaches it.
+     * The checked operand of a short ternary that builds an API resource, where Inertia reads the value and it types.
      *
-     * An object is always true, so the other arm never runs; but JsonResource::filter() sends a resource around null as
-     * null, and an operand the engine cannot type leaves the other arm as the union's only reading.
+     * An object is always true and Inertia sends it as it is, so the other arm never runs; elsewhere filter() can send
+     * a resource around null as null, and an operand the engine cannot type leaves the other arm as the only reading.
      *
      * @return ValueExpressionResult|null
      */
     private function resourceOperand(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $filtered = $scope->filtersNestedResources && $scope->subjectReflection->isSubclassOf(JsonResource::class);
-
-        if ($expr->if !== null || $filtered || ! $this->buildsResource($expr->cond, $scope)) {
+        if ($expr->if !== null || ! $engine->invokesCallables() || ! $this->buildsResource($expr->cond, $scope)) {
             return null;
         }
 

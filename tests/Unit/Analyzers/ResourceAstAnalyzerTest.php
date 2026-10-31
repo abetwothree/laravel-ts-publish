@@ -7305,7 +7305,8 @@ test('a union holding an enum resource beside two same-named enums keeps the mer
         ]);
 });
 
-// JsonResource::filter() sends a resource around null as null, so a short ternary over one keeps both arms here.
+// JsonResource::filter() sends a resource around null as null, so a short ternary over one keeps both arms here, in a
+// helper's body the resource reads too.
 test('a short ternary over a resource it builds keeps both arms in an API resource', function () {
     $user = (new User)->forceFill(['id' => 7, 'name' => 'Ada', 'email' => 'ada@example.com']);
     $filled = Request::create('/', 'GET', ['s' => 1]);
@@ -7318,9 +7319,15 @@ test('a short ternary over a resource it builds keeps both arms in an API resour
         'built' => 'AsEnum<typeof Status> | null',
         'tryFrom' => 'AsEnum<typeof Status> | null',
         'user' => 'UserResource | null',
+        'helperTryFrom' => 'AsEnum<typeof Status> | null',
+        'helperUser' => 'UserResource | null',
+        'helperInst' => 'AsEnum<typeof Status> | null',
     ])->and([$full->made->name, $full->built->name, $full->tryFrom->name, $full->user->name])
         ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->name, 'Ada'])
-        ->and([$empty->tryFrom, $empty->user])->toBe([null, null]);
+        ->and([$full->helperTryFrom->name, $full->helperUser->name, $full->helperInst->name])
+        ->toBe([Status::Published->name, 'Ada', Status::Published->name])
+        ->and([$empty->tryFrom, $empty->user, $empty->helperTryFrom, $empty->helperUser, $empty->helperInst])
+        ->toBe([null, null, null, null, null]);
 });
 
 // The body fallback flattens a helper's shape with no import, so the case types as the value it sends.
