@@ -94,7 +94,7 @@ class MethodLocator
     }
 
     /**
-     * Find the named ClassMethod with a non-null body.
+     * Find the named ClassMethod with a non-null body, under the name its trait declares it where an alias reaches it.
      * Matches PHP's own reflected end line when a file declares more than one candidate under the name,
      * and rejects when $method isn't declared in $file, so locateOwn() misses a method inherited from another file.
      *
@@ -108,6 +108,7 @@ class MethodLocator
             return null;
         }
 
+        $method = $this->traitDeclaredName($declaration) ?? $method;
         [$stmts, $methods] = $this->parser->parseFileMethods($file);
         $candidates = array_values(array_filter(
             $methods[strtolower($method)] ?? [],
@@ -159,6 +160,44 @@ class MethodLocator
         }
 
         return $this->located[$key] = $resolve();
+    }
+
+    /**
+     * The name a trait declares a method under where the class reaches it through a trait alias, alias by alias; null
+     * where no alias reaches it.
+     */
+    private function traitDeclaredName(ReflectionMethod $declaration): ?string
+    {
+        $name = null;
+
+        while (($target = $this->aliasTarget($declaration)) !== null) {
+            $declaration = $target;
+            $name = $target->getName();
+        }
+
+        return $name;
+    }
+
+    /**
+     * The trait method a trait alias of its declaring class gives a method, null where none does.
+     *
+     * getTraitAliases() keeps an alias a method of the class's own shadows, so the alias holds only where reflection
+     * reports the trait method's own body.
+     */
+    private function aliasTarget(ReflectionMethod $method): ?ReflectionMethod
+    {
+        $aliases = array_change_key_case($method->getDeclaringClass()->getTraitAliases());
+        $target = $aliases[strtolower($method->getName())] ?? null;
+
+        if ($target === null) {
+            return null;
+        }
+
+        $original = ReflectionMethod::createFromMethodName($target);
+
+        return $original->getFileName() === $method->getFileName() && $original->getEndLine() === $method->getEndLine()
+            ? $original
+            : null;
     }
 
     /**

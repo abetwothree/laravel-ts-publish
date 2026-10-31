@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastOverInheritedShareMiddleware;
@@ -650,4 +651,12 @@ test('the engine leaves a parent share()\'s casts to the shared-data analyzer to
 
     expect(array_column($analysis->properties, 'type', 'name'))
         ->toBe(['filters' => 'null', 'app' => 'string', 'child' => 'number']);
+});
+
+test('a share() a trait supplies under an alias publishes the keys the trait method returns', function () {
+    $request = Request::create('/');
+    Inertia::share(new AliasedShareMiddleware()->share($request));
+
+    expect(sharedProps(AliasedShareMiddleware::class))->toBe(['traitKey' => 'number', 'traitName' => 'string'])
+        ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['traitKey' => 1, 'traitName' => 'x']);
 });

@@ -39,7 +39,7 @@ These are the classes a change to the engine usually touches:
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
-| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node |
+| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node, under a trait alias too |
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |

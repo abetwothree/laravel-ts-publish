@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
@@ -923,4 +924,16 @@ it('binds a spread helper\'s own cast to the module it imports from, not to the 
             '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
         ])
         ->and([$sent->owner->name, $sent->writer->name])->toBe(['Ada', 'Ada']);
+});
+
+it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
+    $sent = inertiaProps(new AliasedHelperController()->index());
+    $shape = '{ tk: number; tn: string }';
+
+    expect(pageData(AliasedHelperController::class.'@index')['pageType'] ?? null)
+        ->toBe("Inertia.SharedData & { meta: {$shape}, spread: {$shape}, guarded: {$shape}, base: {$shape} }")
+        ->and(json_decode((string) json_encode($sent), true))->toBe(array_fill_keys(
+            ['meta', 'spread', 'guarded', 'base'],
+            ['tk' => 1, 'tn' => 'x'],
+        ));
 });
