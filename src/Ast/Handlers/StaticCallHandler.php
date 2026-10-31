@@ -441,10 +441,12 @@ final class StaticCallHandler implements ExpressionHandler
     {
         $resource = $resolved['resourceFqcn'] ?? null;
 
+        // A JSON:API resource object's attributes reach Inertia already serialized, so nothing in them is a response.
         if (! $engine->readsInertiaProps()
             || $resource === null
             || ! is_a($resource, JsonResource::class, true)
             || is_a($resource, ResourceCollection::class, true)
+            || JsonApiResources::is($resource)
         ) {
             return $resolved;
         }

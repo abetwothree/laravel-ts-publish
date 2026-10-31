@@ -124,7 +124,8 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
   under it `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
-  retypes keeps R's type. The result's `resolvedFqcn` lets a spread take R's keys, as it takes a plain `R`.
+  retypes keeps R's type, and a JSON:API resource keeps its own, its attributes reaching Inertia serialized. The
+  result's `resolvedFqcn` lets a spread take R's keys, as it takes a plain `R`.
 
 The flag and the filtered fact join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 

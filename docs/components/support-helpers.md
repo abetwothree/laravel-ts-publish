@@ -33,10 +33,9 @@ The helpers and the test that pins them live in these files:
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
   and paths sorted, the name each import binds, `X as Y` binding `Y`, and the part of a map a type spells. Static and
-  `@internal`. Every merge of import
-  maps added since goes through it; five older inline merges stay as they are, `ComposedClassTypes::resolveImports()`
-  among them, since it keeps key order by contract. Every reader of an import's local name goes through `localName()`
-  or `localNames()`.
+  `@internal`. Every merge of import maps added since goes through it; five older inline merges stay as they are,
+  `ComposedClassTypes::resolveImports()` among them, since it keeps key order by contract. Every reader of an import's
+  local name goes through `localName()` or `localNames()`.
 - [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
   `#[TsType]` and its traits', interfaces' and parents', and whether a `new` of the class publishes it. It reads
   attributes by reflection and never calls `toTsType()`, whose step 2 calls it. Static, memoized per run and

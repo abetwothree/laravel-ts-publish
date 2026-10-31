@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -35,6 +36,17 @@ final class ResolvedResourceBody
      * @return ValueExpressionResult|null
      */
     public function sent(string $resource): ?array
+    {
+        return resolve(AnalysisMemo::class)->remember('resolved-body:'.$resource, fn (): ?array => $this->sentOnce($resource));
+    }
+
+    /**
+     * What sent() answers, computed once a run; the memo replays the files recorded here on every later read.
+     *
+     * @param  class-string<JsonResource>  $resource
+     * @return ValueExpressionResult|null
+     */
+    private function sentOnce(string $resource): ?array
     {
         // The caller's type follows this body.
         DependencyRecorder::recordClass($resource);
@@ -108,7 +120,7 @@ final class ResolvedResourceBody
     }
 
     /**
-     * The keys a #[TsCasts] on the resource's toArray(), on the resource or on its model retypes.
+     * The keys a #[TsCasts] on its toArray(), its class or its model retypes; no JSON:API resource is read here.
      *
      * @param  class-string<JsonResource>  $resource
      * @return list<string>

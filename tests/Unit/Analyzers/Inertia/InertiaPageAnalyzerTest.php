@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -26,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedApiCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
@@ -1246,6 +1248,25 @@ it('keeps the null a resolved resource sends for a nested resource around null',
         ->and(resourceProps(ViewerCardResource::class)['viewer'])->toBe('UserCardResource | null')
         ->and([$guest->card->viewer, $member->card->viewer->data->name])->toBe([null, 'Ada']);
 });
+
+it('keeps the null a spread resolved resource sends for a nested resource around null', function () {
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret'])->id]);
+
+    expect(pageData(ResolvedCardController::class.'@viewerSpread')['pageType'])
+        ->toBe('Inertia.SharedData & { id: number, viewer: { data: UserCardResource } | null }')
+        ->and(inertiaProps(new ResolvedCardController()->viewerSpread($post))->viewer)->toBeNull();
+});
+
+// A JSON:API resource object's attributes reach Inertia already serialized, so the API resources in them stay bare.
+it('keeps a resolved JSON:API resource collection as its resource objects', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(ResolvedApiCardController::class.'@index')['pageType'])
+        ->toBe('Inertia.SharedData & { cards: CardAttributesApiResource[] }')
+        ->and(inertiaProps(new ResolvedApiCardController()->index())->cards[0]->attributes->author)
+        ->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
+})->skip(fn (): bool => ! JsonApiResources::shipped(), 'JsonApiResource ships from Laravel 12.45.');
 
 // A cast is the type its key publishes wherever the resource is read, and the resource's own file imports its names.
 it('keeps the keys a resolved resource\'s casts retype as the resource publishes them', function () {

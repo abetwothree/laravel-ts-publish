@@ -43,6 +43,12 @@ class ResolvedCardController
         return Inertia::render('ResolvedCard/Viewer', ['card' => ViewerCardResource::make($post)->resolve()]);
     }
 
+    /** Renders a post's card spread into the props, beside the signed-in user's, null for a guest. */
+    public function viewerSpread(Post $post): Response
+    {
+        return Inertia::render('ResolvedCard/ViewerSpread', [...ViewerCardResource::make($post)->resolve()]);
+    }
+
     /** Renders every post's card. */
     public function index(): Response
     {
