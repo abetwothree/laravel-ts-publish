@@ -228,6 +228,19 @@ it('types toResourceCollection(EnumResource::class) over enum cases as EnumResou
         ->and(inertiaResourcePropResult($listed))->toBe(inertiaResourcePropResult($collected));
 });
 
+// The nested value would be EnumResource[], a type no run publishes, where Laravel sends a list inside the wrap key.
+it('types toResourceCollection(EnumResource::class) over items no enum is named for as an unknown list in the wrap key', function () {
+    $listed = fn (Expr $items): MethodCall => new MethodCall($items, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(EnumResource::class), 'class'))]);
+    $unnamed = inertiaResourcePropResult($listed(new Variable('statuses')));
+    $models = inertiaResourcePropResult($listed(new StaticCall(new Name(Post::class), 'all')));
+
+    JsonResource::withoutWrapping();
+
+    expect($unnamed)->toBe(['type' => '{ data: unknown[] }', 'optional' => false])
+        ->and($models)->toBe($unnamed)
+        ->and(inertiaResourcePropResult($listed(new Variable('statuses')))['type'] ?? null)->toBe('unknown[]');
+});
+
 it('declines EnumResource::make(), a static call that builds no resource, and an enum list it cannot name', function () {
     $enum = new StaticCall(new Name(EnumResource::class), 'make', [new Arg(new Variable('role'))]);
     $enumCollection = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg(new Variable('roles'))]);
@@ -508,14 +521,12 @@ it('types a $wrap = null collection whose body sends the collected list as its p
         ]);
 });
 
-// Laravel calls `X::collection($items)`, which for a collection builds no anonymous resource list, and the EnumResource
-// lists no enum over models.
-it('declines toResourceCollection() of a collection or the EnumResource, given or named by #[UseResource]', function () {
+// Laravel calls `X::collection($items)`, which for a collection builds no anonymous resource list.
+it('declines toResourceCollection() of a collection, given or named by #[UseResource]', function () {
     $posts = new StaticCall(new Name(Post::class), 'all');
-    $given = fn (string $class): MethodCall => new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name($class), 'class'))]);
+    $given = new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(PostCollection::class), 'class'))]);
 
-    expect(inertiaResourcePropResult($given(PostCollection::class)))->toBeNull()
-        ->and(inertiaResourcePropResult($given(EnumResource::class)))->toBeNull();
+    expect(inertiaResourcePropResult($given))->toBeNull();
 });
 
 it('declines a guessed toResourceCollection() whose #[UseResource] names a collection', function () {

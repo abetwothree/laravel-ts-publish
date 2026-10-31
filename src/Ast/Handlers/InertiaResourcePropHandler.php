@@ -224,7 +224,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             // Laravel calls `$explicit::collection($items)`; the receiver is read only for a class this sends.
             return match (true) {
                 $explicit === null => null,
-                $this->isEnumResourceClass($explicit) => $this->enumListResponse($call->var, $scope, $engine),
+                $this->isEnumResourceClass($explicit) => $this->enumListResponse($call->var, $scope, $engine)
+                    ?? $this->unnamedEnumListResponse(),
                 $this->collectsAnonymously($explicit) => $this->anonymousCollectionType(
                     $explicit,
                     $this->paginatorsOf($engine->resolve($call->var)['type']),
@@ -328,6 +329,16 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $list = $this->enumCollectionValue($this->collectedItems($payload), $scope, $engine);
 
         return $list === null ? null : [...$list, 'type' => $this->response(AnonymousResourceCollection::class, $list['type'])];
+    }
+
+    /**
+     * What an EnumResource collection sends over items naming no enum, whose nested value names an unpublished type.
+     *
+     * @return ValueExpressionResult
+     */
+    private function unnamedEnumListResponse(): array
+    {
+        return [...ValueResult::unknown(), 'type' => $this->response(AnonymousResourceCollection::class, 'unknown[]')];
     }
 
     /**

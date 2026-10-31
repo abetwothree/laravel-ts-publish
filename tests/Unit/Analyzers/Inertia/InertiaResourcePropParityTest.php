@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithJsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithListedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceSpellings;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnnamedEnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -72,6 +73,26 @@ test('enum cases given to toResourceCollection(EnumResource::class) publish the 
         ->and($page['enumConstFqcns'] ?? null)->toBe([Status::class])
         ->and(array_column($sentPage->statuses->data, 'value'))->toBe([0, 1])
         ->and(array_column($sentShared->statuses->data, 'value'))->toBe([0, 1]);
+})->skip(
+    fn (): bool => ! method_exists(Collection::class, 'toResourceCollection'),
+    'Collection::toResourceCollection() ships from a later Laravel 12 release.',
+);
+
+// The nested value would be EnumResource[], a type no run publishes, so no enum leaves the list's element unknown.
+test('an EnumResource collection over items no enum is named for publishes the data list Inertia sends', function () {
+    $props = '{ statuses: { data: unknown[] } }';
+    $page = pageData(ListedEnumResourceController::class.'@unnamed');
+    $shared = analyzeSharedDataFor(MiddlewareWithUnnamedEnumResource::class);
+    $sentPage = inertiaProps(new ListedEnumResourceController()->unnamed(request()));
+    Inertia::share(new MiddlewareWithUnnamedEnumResource()->share(request()));
+    $sentShared = inertiaProps(Inertia::render('Shared', []));
+
+    expect($shared['sharedPageProps'] ?? null)->toBe($props)
+        ->and($shared['typeImports'] ?? null)->toBe([])
+        ->and($page['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
+        ->and($page['classFqcns'] ?? null)->toBe([])
+        ->and($sentPage->statuses)->toEqual((object) ['data' => []])
+        ->and($sentShared->statuses)->toEqual((object) ['data' => []]);
 })->skip(
     fn (): bool => ! method_exists(Collection::class, 'toResourceCollection'),
     'Collection::toResourceCollection() ships from a later Laravel 12 release.',
