@@ -2791,9 +2791,18 @@ class LaravelTsPublish
      */
     protected function docblockTypeInfo(array $info): array
     {
-        $tokens = $this->importsSpellClass($info) ? [] : $this->exportedTokenFqcns($info);
+        if ($this->importsSpellClass($info)) {
+            return ['type' => $info['type'], 'customImports' => []];
+        }
 
-        return [...$this->shapeTypeInfo($info), ...($tokens === [] ? [] : ['tokenFqcns' => $tokens])];
+        // A reader that keeps only the type string has no use for the classes behind its tokens.
+        $tokens = $this->shapesCarryImports ? $this->exportedTokenFqcns($info) : [];
+
+        return [
+            'type' => $info['type'],
+            'customImports' => $info['customImports'],
+            ...($tokens === [] ? [] : ['tokenFqcns' => $tokens]),
+        ];
     }
 
     /**

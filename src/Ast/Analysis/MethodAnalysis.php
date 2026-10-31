@@ -36,7 +36,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     type: string,
  *     import: string|null,
  *     optional?: bool,
- *     imports?: TypesImportMap,
+ *     customImports?: TypesImportMap,
  *     tokenFqcns?: TokenFqcns,
  * }
  * @phpstan-type CastMap = array<array-key, CastInForce>

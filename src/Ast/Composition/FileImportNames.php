@@ -23,6 +23,7 @@ use Closure;
  * Names one file's imports across every type it prints, a route file's pages or the shared data, as a resource's.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type TokenFqcns from MethodAnalysis
  *
  * @phpstan-type TokenQueue = list<class-string|null>
  * @phpstan-type TokenQueues = array{classes: TokenQueue, consts: TokenQueue}
@@ -34,7 +35,7 @@ use Closure;
  *     typed: bool,
  *     classes: list<class-string>,
  *     consts: list<class-string>,
- *     declared?: TokenQueue,
+ *     declared?: TokenFqcns,
  * }
  * @phpstan-type SoleClasses = array<string, class-string>
  *

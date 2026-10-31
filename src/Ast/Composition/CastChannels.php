@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Fits each key a `#[TsCasts]` entry retypes to the text that entry publishes.
@@ -39,7 +40,7 @@ final class CastChannels
     {
         return [
             ...($cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : []),
-            ...ImportMaps::localNames($cast['imports'] ?? []),
+            ...ImportMaps::localNames($cast['customImports'] ?? []),
         ];
     }
 
@@ -299,7 +300,8 @@ final class CastChannels
     }
 
     /**
-     * The classes an entry names behind its tokens, by the import channel each kind is queued on.
+     * The classes an entry names behind its tokens, by the import channel each kind is queued on; any other class has
+     * no channel.
      *
      * @param  list<class-string>  $fqcns
      * @return array{enums: list<class-string>, models: list<class-string>, resources: list<class-string>}
@@ -309,7 +311,16 @@ final class CastChannels
         $kinds = ['enums' => [], 'models' => [], 'resources' => []];
 
         foreach ($fqcns as $fqcn) {
-            $kinds[enum_exists($fqcn) ? 'enums' : (is_a($fqcn, Model::class, true) ? 'models' : 'resources')][] = $fqcn;
+            $kind = match (true) {
+                enum_exists($fqcn) => 'enums',
+                is_a($fqcn, Model::class, true) => 'models',
+                is_a($fqcn, JsonResource::class, true) => 'resources',
+                default => null,
+            };
+
+            if ($kind !== null) {
+                $kinds[$kind][] = $fqcn;
+            }
         }
 
         return $kinds;
@@ -352,7 +363,7 @@ final class CastChannels
                 ];
             }
 
-            foreach ($cast['imports'] ?? [] as $path => $names) {
+            foreach ($cast['customImports'] ?? [] as $path => $names) {
                 $bound[$path] = [...$bound[$path] ?? [], ...$names];
             }
         }

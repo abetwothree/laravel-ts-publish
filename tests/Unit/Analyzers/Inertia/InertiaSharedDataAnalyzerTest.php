@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalModelDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOverriddenUnionDocblock;
@@ -313,6 +314,16 @@ test('a union member named like another key\'s override import keeps its own cla
             '@js/types/ui' => ['User'],
         ])
         ->and([$sent->person, $sent->either->name])->toEqual([(object) ['name' => 'Ada'], 'Ada']);
+});
+
+test('an optional share() docblock key the value never sets imports the model it names', function () {
+    Inertia::share(new MiddlewareWithOptionalModelDocblock()->share(request()));
+    $shared = analyzeSharedDataFor(MiddlewareWithOptionalModelDocblock::class);
+    $sent = inertiaProps(Inertia::render('Shared', []));
+
+    expect($shared['sharedPageProps'] ?? null)->toBe('{ n: number, owner?: User }')
+        ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/models' => ['User']])
+        ->and($sent)->toEqual((object) ['n' => 1]);
 });
 
 test('a share() docblock member over a value that embeds its model imports the model the docblock names', function () {

@@ -460,7 +460,7 @@ class InertiaSharedDataAnalyzer
                 $inForce[$key] = [
                     'type' => $override['type'],
                     'import' => null,
-                    'imports' => $docblock[$key]['customImports'],
+                    'customImports' => $docblock[$key]['customImports'],
                     'tokenFqcns' => $docblock[$key]['tokenFqcns'] ?? [],
                 ];
             }
