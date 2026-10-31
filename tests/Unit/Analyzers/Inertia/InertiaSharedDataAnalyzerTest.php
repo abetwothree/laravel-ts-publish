@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEmbeddedCast;
@@ -31,12 +32,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithLosingSpellingImport;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOverriddenUnionDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSameNamedEnumNames;
@@ -284,6 +287,43 @@ test('TsCasts overrides win over docblock for same key', function () {
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number; name: string; email: string } | null }, flash: FlashMessages, appName: string }')
         ->and($result['typeImports'])->toBe([]);
+});
+
+test('a share() docblock member naming a model or an enum imports it', function () {
+    $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithModelDocblock()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithModelDocblock::class);
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect($shared['sharedPageProps'] ?? null)->toBe('{ owner: User, status: StatusType }')
+        ->and(array_merge(...array_values($shared['typeImports'] ?? [])))->toEqualCanonicalizing(['StatusType', 'User'])
+        ->and([$sent->owner->name, $sent->status])->toBe(['Ada', 0]);
+});
+
+test('a union member named like another key\'s override import keeps its own class', function () {
+    $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithOverriddenUnionDocblock()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithOverriddenUnionDocblock::class);
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect($shared['sharedPageProps'] ?? null)->toBe('{ person: User, either: User | WorkbenchUser }')
+        ->and(array_merge(...array_values($shared['typeImports'] ?? [])))->toEqualCanonicalizing(['User', 'User as WorkbenchUser'])
+        ->and($shared['typeImports'] ?? null)->toBe([
+            './workbench/app/models' => ['User as WorkbenchUser'],
+            '@js/types/ui' => ['User'],
+        ])
+        ->and([$sent->person, $sent->either->name])->toEqual([(object) ['name' => 'Ada'], 'Ada']);
+});
+
+test('a share() docblock member over a value that embeds its model imports the model the docblock names', function () {
+    $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithDocblockOverEmbeddedModel()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithDocblockOverEmbeddedModel::class);
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect($shared['sharedPageProps'] ?? null)->toBe('{ team: User[] }')
+        ->and($shared['typeImports'] ?? null)->toBe(['./workbench/app/models' => ['User']])
+        ->and(array_column($sent->team, 'name'))->toBe(['Ada']);
 });
 
 // ─── import channels ─────────────────────────────────────────────

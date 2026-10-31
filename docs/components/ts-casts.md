@@ -76,14 +76,17 @@ queue meets the displaced value. `ResourceTransformer::runAstAnalysis()`,
 `InertiaSharedDataAnalyzer::buildResult()` call it after the reconcile, `AnalysisComposer::compose()` first, for
 `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can retype.
 A page's casts in force are a props helper's own method casts under the action's; shared data's are a helper's under
-those of each class and `share()` it reads. A class-level event cast whose key names no payload property adds neither
-the key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a resource method cast does.
+its `@return` shape's and those of each class and `share()` it reads. A class-level event cast whose key names no
+payload property adds neither the key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a
+resource method cast does.
 
-A key only shared data's `@return` shape retypes still drops its import channels (`forgetChannels()`): the shape may
-spell a name its own custom import brings beside a same-named class the value carried, which a fit would bind the token
-to. Shared data carries the custom imports that shape keeps only for a key no cast replaces. Unlike
+Shared data's `@return` shape is a cast in force on each key no `#[TsCasts]` entry replaces, with the custom imports it
+keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`). The
+fit keeps exactly those classes and displaces every class the value carried, dropping one whose name the shape's own
+imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the namer
+reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. Unlike
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
-key there that names a model or an enum publishes the name with no import, not `unknown`.
+key there that names a model or an enum is imported; a nested one still follows that rule.
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.

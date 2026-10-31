@@ -31,7 +31,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
- * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
+ * @phpstan-type TokenFqcns = list<class-string|null>
+ * @phpstan-type CastInForce = array{
+ *     type: string,
+ *     import: string|null,
+ *     optional?: bool,
+ *     imports?: TypesImportMap,
+ *     tokenFqcns?: TokenFqcns,
+ * }
  * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{
  *     enums?: list<class-string>,
@@ -67,6 +74,14 @@ class MethodAnalysis
      * holdUnreadKeys(); the body fallback publishes such a shape open.
      */
     public bool $holdsUnreadKeys = false;
+
+    /**
+     * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
+     * where an override spells that name: a share() docblock entry's, recorded by CastChannels::fit() at publish time.
+     *
+     * @var array<array-key, TokenFqcns>
+     */
+    public array $declaredTokenFqcns = [];
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -265,6 +280,7 @@ class MethodAnalysis
         $this->enumResourceArmShapes = $source->enumResourceArmShapes;
         $this->casts = $source->casts;
         $this->carried = $source->carried;
+        $this->declaredTokenFqcns = $source->declaredTokenFqcns;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -464,7 +480,7 @@ class MethodAnalysis
             $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->casts[$name],
+            $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
         );
     }
 

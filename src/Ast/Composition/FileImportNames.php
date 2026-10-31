@@ -29,7 +29,13 @@ use Closure;
  * @phpstan-type PageQueues = array{classes: list<TokenQueue>, consts: list<TokenQueue>}
  * @phpstan-type FileMember = array{type: string, classes: TokenQueue, consts: TokenQueue}
  * @phpstan-type ComposedFile = array{types: list<string>, typeImports: TypesImportMap, valueImports: TypesImportMap}
- * @phpstan-type Piece = array{text: string, typed: bool, classes: list<class-string>, consts: list<class-string>}
+ * @phpstan-type Piece = array{
+ *     text: string,
+ *     typed: bool,
+ *     classes: list<class-string>,
+ *     consts: list<class-string>,
+ *     declared?: TokenQueue,
+ * }
  * @phpstan-type SoleClasses = array<string, class-string>
  *
  * @internal
@@ -76,12 +82,14 @@ final class FileImportNames
         $pieces = $before === '' ? [] : [$untyped($before)];
 
         foreach ($printed as $key => $type) {
+            $declared = $analysis->declaredTokenFqcns[$key] ?? null;
             $pieces[] = $untyped(JsEmitter::validJsObjectKey((string) $key, allowIndexSignature: true));
             $pieces[] = [
                 'text' => $type,
                 'typed' => true,
                 'classes' => $analysis->tokenFqcns((string) $key),
                 'consts' => $analysis->wrappedEnumFqcns((string) $key),
+                ...($declared === null ? [] : ['declared' => $declared]),
             ];
         }
 
@@ -108,24 +116,9 @@ final class FileImportNames
     }
 
     /**
-     * Respell each member's class tokens under the names the registries gave their classes.
-     */
-    protected function rewriteTypeReferences(): void
-    {
-        $this->types = array_map(fn (array $member): string => self::respell(
-            $member['type'],
-            $member['classes'],
-            'classes',
-            fn (string $fqcn, string $spelled): string => $spelled === self::typeName($fqcn)
-                ? $this->localImportName($fqcn, $spelled)
-                : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
-        ), $this->members);
-    }
-
-    /**
      * The name each class's token is spelled with: a `@tolki/types` class's, an enum's type or a resource's or model's.
      */
-    private static function typeName(string $fqcn): string
+    public static function typeName(string $fqcn): string
     {
         return TolkiTypes::MAP[$fqcn]
             ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
@@ -138,7 +131,7 @@ final class FileImportNames
      * @param  list<class-string>  $fqcns
      * @return list<string>
      */
-    private static function namesOf(string $channel, array $fqcns): array
+    public static function namesOf(string $channel, array $fqcns): array
     {
         $names = $channel === 'classes'
             ? array_merge([], ...array_map(
@@ -148,6 +141,21 @@ final class FileImportNames
             : array_map(ValueResult::enumConstName(...), $fqcns);
 
         return array_values(array_unique($names));
+    }
+
+    /**
+     * Respell each member's class tokens under the names the registries gave their classes.
+     */
+    protected function rewriteTypeReferences(): void
+    {
+        $this->types = array_map(fn (array $member): string => self::respell(
+            $member['type'],
+            $member['classes'],
+            'classes',
+            fn (string $fqcn, string $spelled): string => $spelled === self::typeName($fqcn)
+                ? $this->localImportName($fqcn, $spelled)
+                : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
+        ), $this->members);
     }
 
     /**
@@ -199,7 +207,7 @@ final class FileImportNames
         foreach ($pieces as $piece) {
             $fallback = $piece['typed'] ? $sole : [];
             $names = array_values(array_unique([...self::namesOf($channel, $piece[$channel]), ...array_keys($fallback)]));
-            $claimed = [...$claimed, ...self::walk($piece['text'], $channel, $piece[$channel], $names, $fallback)];
+            $claimed = [...$claimed, ...self::walk($piece, $channel, $names, $fallback)];
         }
 
         $names = self::namesOf($channel, array_values(array_filter($claimed)));
@@ -207,7 +215,7 @@ final class FileImportNames
 
         foreach ($pieces as $piece) {
             $fallback = $piece['typed'] ? $sole : [];
-            $queue = [...$queue, ...self::walk($piece['text'], $channel, $piece[$channel], $names, $fallback)];
+            $queue = [...$queue, ...self::walk($piece, $channel, $names, $fallback)];
         }
 
         return $queue;
@@ -216,21 +224,37 @@ final class FileImportNames
     /**
      * The class behind each token of the names in the text: the piece's own class of its name, else the fallback's.
      *
+     * A piece whose text a declaration wrote reads each token of its own classes' names from that declaration in order,
+     * since a per-name queue cannot hold the null an override spelled like a model's name needs.
+     *
+     * @param  Piece  $piece
      * @param  'classes'|'consts'  $channel
-     * @param  list<class-string>  $fqcns
      * @param  list<string>  $names
      * @param  SoleClasses  $fallback
      * @return TokenQueue
      */
-    private static function walk(string $text, string $channel, array $fqcns, array $names, array $fallback): array
+    private static function walk(array $piece, string $channel, array $names, array $fallback): array
     {
-        if ($names === [] || preg_match_all(self::patternOf($channel, $names), $text, $matches) === 0) {
+        if ($names === [] || preg_match_all(self::patternOf($channel, $names), $piece['text'], $matches) === 0) {
             return [];
         }
 
+        if ($channel === 'classes' && isset($piece['declared'])) {
+            $declared = $piece['declared'];
+            $own = self::namesOf($channel, array_values(array_filter($declared)));
+            $at = 0;
+
+            return array_map(
+                static function (string $token) use ($declared, $own, $fallback, &$at): ?string {
+                    return in_array($token, $own, true) ? $declared[$at++] ?? null : $fallback[$token] ?? null;
+                },
+                $matches[0],
+            );
+        }
+
         $own = $channel === 'classes'
-            ? new ClassTokenQueue($fqcns, self::typeName(...), ValueResult::enumSiblingNames(...))
-            : new ClassTokenQueue($fqcns, ValueResult::enumConstName(...));
+            ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))
+            : new ClassTokenQueue($piece[$channel], ValueResult::enumConstName(...));
 
         return array_map(
             static fn (string $token): ?string => $own->take($token)[0] ?? $fallback[$token] ?? null,

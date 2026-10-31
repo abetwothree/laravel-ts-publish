@@ -93,7 +93,8 @@ Callers fill their queues in one of three ways:
   that token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`.
   A key's token whose name no custom import brings takes the one class of that name on any channel or in
   `MethodAnalysis::$carried` instead: an import-less cast that spells a class another key holds or another cast
-  displaced has none of its own, nor has a `@return` shape over a value that embeds it.
+  displaced has none of its own. A key a `share()` docblock retypes reads each token of its own classes' names from
+  `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the override's `User`.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter

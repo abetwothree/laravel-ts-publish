@@ -287,6 +287,7 @@ it('takes over every field of another analysis, both flags included', function (
     );
     $source->readsCompletely = false;
     $source->holdsUnreadKeys = true;
+    $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);

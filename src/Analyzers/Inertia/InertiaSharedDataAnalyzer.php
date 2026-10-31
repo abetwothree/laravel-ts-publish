@@ -139,6 +139,7 @@ class InertiaSharedDataAnalyzer
             $this->castPathsByName($resolvedTsCasts['overrides'], $importPaths),
             $overrideTargets,
         );
+        $docblockByKey = JsEmitter::retargetCasts($this->docblockByName($docblock), $overrideTargets);
 
         // The overrides are laid over the props below, so they can add or retype a key a signature covers.
         resolve(IndexSignatureReconciler::class)->reconcile(
@@ -147,13 +148,8 @@ class InertiaSharedDataAnalyzer
             subject: $middlewareClass,
         );
 
-        // A docblock entry may spell a name its own custom import brings beside a same-named class the value carried,
-        // which fit() would bind the token to.
-        foreach (array_keys(array_diff_key($mergedOverrides, $castPaths)) as $name) {
-            $analysis->forgetChannels((string) $name);
-        }
-
-        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $mergedOverrides, $castPaths));
+        $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
+        resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
@@ -428,18 +424,46 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * The cast in force for each key a #[TsCasts] entry or a share() helper's own method cast retypes, with its import.
+     * Each docblock entry by the key it retypes, without the `?` normalizeOverrideKeys() drops.
+     *
+     * @param  array<string, ShapeTypeInfo>  $docblock
+     * @return array<array-key, ShapeTypeInfo>
+     */
+    private function docblockByName(array $docblock): array
+    {
+        $byName = [];
+
+        foreach ($docblock as $key => $info) {
+            $byName[rtrim((string) $key, '?')] = $info;
+        }
+
+        return $byName;
+    }
+
+    /**
+     * The cast in force for each key a #[TsCasts] entry, the share() docblock or a share() helper's own method cast
+     * retypes, with its imports, and for a docblock entry the class behind each token it names.
      *
      * @param  SharedPropMap  $overrides
      * @param  array<array-key, string|null>  $paths  each key a #[TsCasts] entry wins, with that entry's import path
+     * @param  array<array-key, ShapeTypeInfo>  $docblock  each docblock entry, by the key it retypes
      * @return CastMap
      */
-    private function castsInForce(MethodAnalysis $analysis, array $overrides, array $paths): array
+    private function castsInForce(MethodAnalysis $analysis, array $overrides, array $paths, array $docblock): array
     {
         $inForce = $analysis->casts;
 
-        foreach (array_intersect_key($overrides, $paths) as $key => $override) {
-            $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key]];
+        foreach ($overrides as $key => $override) {
+            if (array_key_exists($key, $paths)) {
+                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key]];
+            } elseif (isset($docblock[$key])) {
+                $inForce[$key] = [
+                    'type' => $override['type'],
+                    'import' => null,
+                    'imports' => $docblock[$key]['customImports'],
+                    'tokenFqcns' => $docblock[$key]['tokenFqcns'] ?? [],
+                ];
+            }
         }
 
         return $inForce;

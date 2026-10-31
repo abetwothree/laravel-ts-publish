@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -79,11 +83,16 @@ use UnitEnum;
  *    keepsKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
- * @phpstan-type ShapeTypeInfo = array{type: string, customImports: array<string, list<string>>}
+ * @phpstan-type ShapeTypeInfo = array{
+ *    type: string,
+ *    customImports: array<string, list<string>>,
+ *    tokenFqcns?: TokenFqcns,
+ * }
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
+ * @phpstan-import-type TokenFqcns from MethodAnalysis
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -94,6 +103,9 @@ use UnitEnum;
  *
  * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
  * never enters, so its numeric keys are never re-indexed.
+ *
+ * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
+ * file exports behind it, or null where an override spells that name: a reader that carries no class ignores it.
  *
  * The delegations below keep every `LaravelTsPublish::` helper answering for callers outside this
  * package; inside it, call the helper's own facade.
@@ -2765,12 +2777,23 @@ class LaravelTsPublish
      */
     protected function shapeTypeInfo(array $info): array
     {
-        $collides = array_intersect(
-            [...$info['classes'], ...$info['enumTypes']],
-            ImportMaps::localNames($info['customImports']),
-        ) !== [];
+        $collides = $this->importsSpellClass($info);
 
         return ['type' => $info['type'], 'customImports' => $collides ? [] : $info['customImports']];
+    }
+
+    /**
+     * A resolved type as a docblock shape's member carries it: shapeTypeInfo()'s, beside the class behind each token of
+     * a class's name, unless an import brings such a name and no token could say whose it is.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return ShapeTypeInfo
+     */
+    protected function docblockTypeInfo(array $info): array
+    {
+        $tokens = $this->importsSpellClass($info) ? [] : $this->exportedTokenFqcns($info);
+
+        return [...$this->shapeTypeInfo($info), ...($tokens === [] ? [] : ['tokenFqcns' => $tokens])];
     }
 
     /**
@@ -2813,8 +2836,13 @@ class LaravelTsPublish
             );
             $merged = ImportMaps::merge(...array_column($infos, 'customImports'));
             $borrows = array_any($infos, fn (array $info): bool => $this->borrowsImport($info, $merged));
+            $tokens = $this->unionTokenFqcns($infos);
 
-            return ['type' => implode(' | ', array_column($infos, 'type')), 'customImports' => $borrows ? [] : $merged];
+            return [
+                'type' => implode(' | ', array_column($infos, 'type')),
+                'customImports' => $borrows ? [] : $merged,
+                ...($tokens === [] ? [] : ['tokenFqcns' => $tokens]),
+            ];
         }
 
         if ($this->isParenthesizedGroup($phpType)) {
@@ -2824,7 +2852,7 @@ class LaravelTsPublish
         $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
 
         if ($generic !== null) {
-            return $this->shapeTypeInfo($generic);
+            return $this->docblockTypeInfo($generic);
         }
 
         if (str_starts_with($phpType, '?')) {
@@ -2856,7 +2884,7 @@ class LaravelTsPublish
             $info = $this->isUnreadForm($resolved, '<{(') ? $this->emptyTypeScriptInfo() : $this->toTsType($resolved);
         }
 
-        return $this->shapeTypeInfo($info);
+        return $this->docblockTypeInfo($info);
     }
 
     /**
@@ -3171,6 +3199,72 @@ class LaravelTsPublish
     private function shapeKeeps(array $info): bool
     {
         return TsTypeString::importsCover($info['type'], $this->shapesCarryImports ? $info['customImports'] : []);
+    }
+
+    /**
+     * Whether an import of a resolved type brings a name a model, enum or other class in it publishes as.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     */
+    private function importsSpellClass(array $info): bool
+    {
+        return array_intersect(
+            [...$info['classes'], ...$info['enumTypes']],
+            ImportMaps::localNames($info['customImports']),
+        ) !== [];
+    }
+
+    /**
+     * The class behind each token of a resolved type that spells a name of a class a generated file exports, in order.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return list<class-string>
+     */
+    private function exportedTokenFqcns(array $info): array
+    {
+        $fqcns = array_values(array_filter(
+            [...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']],
+            fn (string $fqcn): bool => class_exists($fqcn) && PublishedClasses::exports($fqcn),
+        ));
+
+        if ($fqcns === []) {
+            return [];
+        }
+
+        return new ClassTokenQueue($fqcns, FileImportNames::typeName(...), ValueResult::enumSiblingNames(...))
+            ->take($info['type']);
+    }
+
+    /**
+     * The class behind each token of a union's arms that spells one of their classes' names, in order: the arm's own,
+     * else null, as for an override spelled like the model beside it.
+     *
+     * @param  list<ShapeTypeInfo>  $arms
+     * @return TokenFqcns
+     */
+    private function unionTokenFqcns(array $arms): array
+    {
+        $classes = array_merge([], ...array_map(fn (array $arm): array => $arm['tokenFqcns'] ?? [], $arms));
+        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($classes))));
+
+        if ($names === []) {
+            return [];
+        }
+
+        $pattern = TsTypeString::queuedTokenPattern($names);
+        $tokens = [];
+
+        foreach ($arms as $arm) {
+            $own = FileImportNames::namesOf('classes', array_values(array_filter($arm['tokenFqcns'] ?? [])));
+            $at = 0;
+            preg_match_all($pattern, $arm['type'], $matches);
+
+            foreach ($matches[0] as $token) {
+                $tokens[] = in_array($token, $own, true) ? $arm['tokenFqcns'][$at++] ?? null : null;
+            }
+        }
+
+        return $tokens;
     }
 
     /**
