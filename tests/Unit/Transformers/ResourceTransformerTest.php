@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
@@ -25,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthand
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
@@ -3603,4 +3605,14 @@ test('a resource built around a payload that is only null publishes null', funct
         'nested' => '{ author: null }',
     ])->and($transformer->properties['null_default']['optional'])->toBeTrue()
         ->and($transformer->typeImports)->toBe(['.' => ['UserResource']]);
+});
+
+// A page reads the body as Inertia sends it, a reading the memo keeps apart from the resource's own.
+test('a resource a page resolves keeps its own interface', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(ResolvedCardController::class.'@show')['pageType'] ?? null)->toContain("Omit<PostCardResource, 'author'>")
+        ->and(resourceProps(PostCardResource::class))->toBe(['id' => 'number', 'title' => 'string', 'author' => 'UserCardResource'])
+        ->and(PostCardResource::make($post)->response()->getData()->data->author)->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
 });

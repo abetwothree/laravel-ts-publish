@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -75,7 +76,9 @@ final class StaticCallHandler implements ExpressionHandler
         ) {
             $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
 
-            return isset($resolved['resourceFqcn']) ? [...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])] : $resolved;
+            return isset($resolved['resourceFqcn'])
+                ? $this->sentResolvedBody([...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])], $engine)
+                : $resolved;
         }
 
         // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
@@ -89,7 +92,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver = $engine->resolve($expr->var);
 
             if (isset($receiver['resourceFqcn'])) {
-                return $this->resolvedBody($expr->var, $receiver, $receiver['resourceFqcn'], $scope);
+                return $this->sentResolvedBody($this->resolvedBody($expr->var, $receiver, $receiver['resourceFqcn'], $scope), $engine);
             }
         }
 
@@ -426,6 +429,38 @@ final class StaticCallHandler implements ExpressionHandler
         return $nested !== null
             ? [...$nested, 'optional' => $receiver['optional']]
             : [...$receiver, 'type' => JsonApiResources::instanceType($resourceFqcn)];
+    }
+
+    /**
+     * The keys `resolve()` returns as Inertia sends them: R, or R's list, with the keys it sends otherwise restated.
+     *
+     * @param  ValueExpressionResult  $resolved
+     * @return ValueExpressionResult
+     */
+    private function sentResolvedBody(array $resolved, ExpressionEngine $engine): array
+    {
+        $resource = $resolved['resourceFqcn'] ?? null;
+
+        if (! $engine->readsInertiaProps()
+            || $resource === null
+            || ! is_a($resource, JsonResource::class, true)
+            || is_a($resource, ResourceCollection::class, true)
+        ) {
+            return $resolved;
+        }
+
+        $name = TsNaming::resourceTypeName($resource);
+        $reflection = new ReflectionClass($resource);
+        $list = ResourceCollections::listType($name, $reflection);
+        $sent = in_array($resolved['type'], [$name, $list], true) ? resolve(ResolvedResourceBody::class)->sent($resource) : null;
+
+        if ($sent === null) {
+            return $resolved;
+        }
+
+        return $resolved['type'] === $name
+            ? [...$sent, 'optional' => $resolved['optional'], 'resolvedFqcn' => $resource]
+            : [...$sent, 'type' => ResourceCollections::listType($sent['type'], $reflection), 'optional' => $resolved['optional']];
     }
 
     /**

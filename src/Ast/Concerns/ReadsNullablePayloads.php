@@ -45,12 +45,20 @@ trait ReadsNullablePayloads
      */
     protected function resourceWrapType(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): string
     {
-        $instance = JsonApiResources::instanceType($className);
+        return $this->filteredType($call, $className, JsonApiResources::instanceType($className), $scope, $engine);
+    }
 
+    /**
+     * The type `new X(…)` or `X::make(…)` sends once filter() runs: `null`, or `| null`, as its payload may be null.
+     *
+     * @param  class-string  $className
+     */
+    protected function filteredType(StaticCall|New_ $call, string $className, string $type, AnalysisScope $scope, ExpressionEngine $engine): string
+    {
         return match ($this->nullablePayloadType($call, $className, $scope, $engine)) {
-            null => $instance,
+            null => $type,
             'null' => 'null',
-            default => ValueResult::withNullArm($instance),
+            default => ValueResult::withNullArm($type),
         };
     }
 

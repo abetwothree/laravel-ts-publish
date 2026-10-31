@@ -32,7 +32,8 @@ The helpers and the test that pins them live in these files:
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
-  and paths sorted, and the name each import binds, `X as Y` binding `Y`. Static and `@internal`. Every merge of import
+  and paths sorted, the name each import binds, `X as Y` binding `Y`, and the part of a map a type spells. Static and
+  `@internal`. Every merge of import
   maps added since goes through it; five older inline merges stay as they are, `ComposedClassTypes::resolveImports()`
   among them, since it keeps key order by contract. Every reader of an import's local name goes through `localName()`
   or `localNames()`.
@@ -67,6 +68,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is one import map, path => names, made of these? | `ImportMaps` |
 | Which name does this import, or this import map, bind in the file? | `ImportMaps::localName()`, `localNames()` |
+| Which imports of this map does this type spell? | `ImportMaps::spelledIn()` |
 | Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
 | Does a `new` of this class publish its override, or the class itself? | `ClassTypeOverride::appliesToNew()` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |

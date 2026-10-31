@@ -15,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
@@ -49,7 +48,6 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
- * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type OwnReturn = array{Return_, bool}
  *
@@ -292,37 +290,14 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        $imports = $this->spelledImports($analysis->customImports, $type);
+        // A member left `unknown` brings no import.
+        $imports = ImportMaps::spelledIn($analysis->customImports, $type);
 
         return [
             ...ValueResult::unknown(),
             'type' => TsTypeString::hoistNull([$type, ...$otherArms]),
             ...($imports === [] ? [] : ['customImports' => $imports]),
         ];
-    }
-
-    /**
-     * The custom imports a shape spells a name of, each name once, so a member left `unknown` brings none.
-     *
-     * @param  TypesImportMap  $imports
-     * @return TypesImportMap
-     */
-    private function spelledImports(array $imports, string $type): array
-    {
-        $spelled = [];
-
-        foreach ($imports as $path => $names) {
-            $kept = array_filter(
-                array_unique($names),
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), $type),
-            );
-
-            if ($kept !== []) {
-                $spelled[$path] = array_values($kept);
-            }
-        }
-
-        return $spelled;
     }
 
     /**

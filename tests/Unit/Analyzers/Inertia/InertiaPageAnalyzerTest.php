@@ -26,11 +26,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
@@ -50,6 +54,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
+use Inertia\Inertia;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -66,6 +71,7 @@ use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
 use Workbench\App\Http\Controllers\UiDashboardController;
+use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
@@ -290,10 +296,20 @@ it('wraps a resource nested in a prop array, a toResource() call, an enum list a
         ->and($data['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourcePagination']]);
 });
 
+// Inertia sends each API resource still inside what resolve() returns as its response, in each item of a list too.
+// The workbench CommentResource throws once its user is loaded (a closure typed Status returns null), so none renders.
 it('keeps the body resolve() returns, and the response a fluent call on a resource hands back', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $item = inertiaProps(Inertia::render('Resources/Chained', ['list' => (new PostCollection(Post::all()))->resolve()]))->list[0];
+    $comment = "Omit<CommentResource, 'author' | 'author_new' | 'author_direct' | 'post' | 'post_new' | 'post_direct'> & { "
+        .'author?: { data: UserResource }; author_new?: { data: UserResource }; author_direct: { data: UserResource }; '
+        .'post?: { data: PostResource }; post_new?: { data: PostResource }; post_direct: { data: PostResource } }';
+
     expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource }, '
-        .'list: PostResource[], body: ItemsKeyPostCollection }');
+        ."list: (Omit<PostResource, 'comments_resolved'> & { comments_resolved?: ({$comment})[] })[], body: ItemsKeyPostCollection }")
+        ->and([$item->title, $item->comments_resolved])->toBe(['First', []]);
 });
 
 it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {
@@ -1171,4 +1187,89 @@ it('reads props a collaborator builds as Inertia sends them', function () {
 it('keeps a helper read outside Inertia as it was', function () {
     expect(array_column(resolve(AstEngine::class)->analyzeMethod(HelperCallablePropsController::class, 'meta')->properties, 'type', 'name'))
         ->toBe(['stamp' => 'Record<string, never>']);
+});
+
+// Inertia sends each API resource still inside the keys resolve() returns as its response.
+it('sends the resources a resolved resource prop holds as their responses', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $sent = inertiaProps(new ResolvedCardController()->show($post));
+
+    expect(pageData(ResolvedCardController::class.'@show')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<PostCardResource, 'author'> & { author: { data: UserCardResource } } }")
+        ->and(resourceProps(PostCardResource::class)['author'])->toBe('UserCardResource')
+        ->and([$sent->card->title, $sent->card->author->data->id])->toBe(['First', $user->id])
+        ->and(pageData(ResolvedCardController::class.'@plain')['pageType'])->toBe('Inertia.SharedData & { card: UserCardResource }')
+        ->and(inertiaProps(new ResolvedCardController()->plain($user))->card)->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
+});
+
+it('sends a resource built by new and resolved as one built by make()', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(ResolvedCardController::class.'@built')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<PostCardResource, 'author'> & { author: { data: UserCardResource } } }")
+        ->and(inertiaProps(new ResolvedCardController()->built($post))->card->author->data->name)->toBe('Ada');
+});
+
+it('sends the resources each item of a resolved resource collection holds as their responses', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(ResolvedCardController::class.'@index')['pageType'])
+        ->toBe("Inertia.SharedData & { cards: (Omit<PostCardResource, 'author'> & { author: { data: UserCardResource } })[] }")
+        ->and(inertiaProps(new ResolvedCardController()->index())->cards[0]->author->data->name)->toBe('Ada');
+});
+
+// resolve() runs the resource's filter(), which sends a nested resource built around null as null.
+it('keeps the null a resolved resource sends for a nested resource around null', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $guest = inertiaProps(new ResolvedCardController()->viewer($post));
+    auth()->setUser($user);
+    $member = inertiaProps(new ResolvedCardController()->viewer($post));
+
+    expect(pageData(ResolvedCardController::class.'@viewer')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<ViewerCardResource, 'viewer'> & { viewer: { data: UserCardResource } | null } }")
+        ->and(resourceProps(ViewerCardResource::class)['viewer'])->toBe('UserCardResource | null')
+        ->and([$guest->card->viewer, $member->card->viewer->data->name])->toBe([null, 'Ada']);
+});
+
+// A cast is the type its key publishes wherever the resource is read, and the resource's own file imports its names.
+it('keeps the keys a resolved resource\'s casts retype as the resource publishes them', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $card = inertiaProps(new ResolvedCardController()->cast(Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id])))->card;
+    $page = pageData(ResolvedCardController::class.'@cast');
+
+    expect([$page['pageType'], $page['externalImports']])
+        ->toBe(["Inertia.SharedData & { card: Omit<CastCardResource, 'writer'> & { writer: { data: UserCardResource } } }", []])
+        ->and(resourceProps(CastCardResource::class))
+        ->toBe(['author' => 'Record<string, unknown>', 'editor' => 'EditorCard', 'writer' => 'UserCardResource'])
+        ->and([$card->author->data->name, $card->editor->data->name, $card->writer->data->name])->toBe(['Ada', 'Ada', 'Ada']);
+});
+
+// The guard: under resolve()'s filter() a short ternary keeps its null arm, so only the keys holding a resource move.
+it('keeps a resolved resource\'s short ternaries over a resource around null', function () {
+    $user = (new User)->forceFill(['id' => 7, 'name' => 'Ada', 'email' => 'ada@example.com']);
+    $filled = Request::create('/', 'GET', ['s' => 1]);
+    $filled->merge(['u' => $user]);
+    app()->instance('request', $filled);
+    $full = inertiaProps(new ResolvedCardController()->elvis(), $filled)->card;
+    app()->instance('request', $empty = Request::create('/'));
+    $none = inertiaProps(new ResolvedCardController()->elvis(), $empty)->card;
+    $sent = '{ data: UserResource } | null';
+
+    expect(pageData(ResolvedCardController::class.'@elvis')['pageType'])->toBe('Inertia.SharedData & { card: '
+        ."Omit<CheckedResourceElvisResource, 'user' | 'helperUser' | 'mwUser'> & { user: {$sent}; helperUser: {$sent}; mwUser: {$sent} } }")
+        ->and([$full->tryFrom->name, $full->user->data->name, $full->helperUser->data->name, $full->mwUser->data->name])
+        ->toBe([Status::Published->name, 'Ada', 'Ada', 'Ada'])
+        ->and([$none->tryFrom, $none->helperTryFrom, $none->user, $none->helperUser, $none->mwUser])
+        ->toBe([null, null, null, null, null]);
+});
+
+it('imports the resources a resolved resource prop restates', function () {
+    app(Router::class)->get('/resolved-card/{post}', [ResolvedCardController::class, 'show']);
+
+    expect(new RouteTransformer(ResolvedCardController::class)->typeImports)
+        ->toBe(['../resources' => ['PostCardResource', 'UserCardResource']]);
 });

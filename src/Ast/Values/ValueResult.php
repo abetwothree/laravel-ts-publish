@@ -120,7 +120,7 @@ final class ValueResult
      */
     public static function collectionListType(string $element, bool $keepsKeys): string
     {
-        return $keepsKeys ? "Record<string, {$element}>" : $element.'[]';
+        return $keepsKeys ? "Record<string, {$element}>" : TsTypeShape::listType([$element]);
     }
 
     /**

@@ -22,7 +22,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
-| `Resources/` | API resource facts: backing model, collections, response body, JSON:API |
+| `Resources/` | API resource facts: backing model, collections, response body, resolved body, JSON:API |
 | `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
 
 These are the classes a change to the engine usually touches:
@@ -120,9 +120,13 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
   property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
 - **The filtered fact**: `ExpressionEngine::readsFilteredValues()` is set where a flagged read enters a
   `JsonResource`'s `toArray()` whole, which `resolve()` filters, and kept below it. `TernaryHandler`'s `?:` rule applies
-  only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null.
+  only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null;
+  under it `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
+- **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
+  than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
+  retypes keeps R's type. The result's `resolvedFqcn` lets a spread take R's keys, as it takes a plain `R`.
 
-Both facts join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
+The flag and the filtered fact join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -875,6 +879,7 @@ These pages cover the engine's neighbors:
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
+[`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php

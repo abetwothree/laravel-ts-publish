@@ -499,7 +499,8 @@ arm of an intersection instead of flattening its keys. `InlineArrayHandler::clas
 - **Collection arm**: `$var->toArray()` on a to-many `whenLoaded()` parameter, or a relation chain that ends to-many.
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
 - **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
-  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries.
+  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries. So does a resolved resource whose keys
+  Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
@@ -652,7 +653,8 @@ keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay 
 `filter()` re-indexes what the method returns. A foreign receiver such as `new CategoryResource($x)->summary()` keeps
 the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that.
 `resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`. Where Inertia reads it, each key it
+sends otherwise is restated over that type ([AST engine § Inertia profile](ast-engine.md#inertia-profile)).
 
 ## Numeric keys
 

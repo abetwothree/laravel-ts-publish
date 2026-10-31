@@ -678,11 +678,12 @@ Inertia sends a resource prop as its whole response, beside the keys `additional
 Laravel nest the body under `data` after `JsonResource::withoutWrapping()`, where the package publishes it bare. Type
 the prop with `#[TsCasts]`.
 
-### A `->resolve()`d resource prop publishes the API resources its body holds bare
+### A `->resolve()`d resource collection whose `toArray()` returns its items publishes them bare
 
-`R::make($x)->resolve()` as an Inertia prop publishes `R`, the keys `resolve()` returns. Inertia then sends each API
-resource still inside them as its response, so a key such as `'author' => new UserResource($this->user)` arrives as
-`{ data: … }` while `R` types it `UserResource`. Pass the resource itself, or type the prop with `#[TsCasts]`.
+`SomeCollection::make($items)->resolve()` as an Inertia prop publishes the collection's own type where its `toArray()`
+returns its items itself, such as `['items' => $this->collection]`. Inertia then sends each item as its response, so
+an item arrives as `{ data: … }` where that type gives the resource's keys. Pass the collection itself, or type the
+prop with `#[TsCasts]`.
 
 ### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
 

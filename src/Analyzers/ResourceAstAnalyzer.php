@@ -1674,7 +1674,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Classify a top-level spread's value via InlineArrayHandler::classifySpreadArm() and flatten its shape into this
      * resource's own properties. Null for anything the classifier declines, or takes only by its type other than a
-     * JSON:API instance, so the caller falls through to $this->merge()'s own handling.
+     * JSON:API instance or a resolved resource, so the caller falls through to $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {
@@ -1682,6 +1682,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         if ($arm === null) {
             return null;
+        }
+
+        // A resolved resource's restated keys flatten as the resource does, which a flagged read restates the same way.
+        if (isset($arm['result']['resolvedFqcn'])) {
+            return $this->analyzeResourceSpreadArm($arm['result']['resolvedFqcn']);
         }
 
         if (isset($arm['type'])) {
