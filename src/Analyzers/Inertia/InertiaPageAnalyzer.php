@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
@@ -35,6 +36,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Ternary;
@@ -235,24 +237,58 @@ class InertiaPageAnalyzer
             return new ResourceAnalysis;
         }
 
+        return $this->propsAnalysis($propsArg, $context, $analyzer, $scope)
+            ?? $this->analyzeDelegatedProps($propsArg, $context);
+    }
+
+    /**
+     * The props an argument holds: its literals, a local walked from its writes before the render call, or a `+`.
+     */
+    protected function propsAnalysis(
+        Expr $propsArg,
+        MethodContext $context,
+        ResourceAstAnalyzer $analyzer,
+        AnalysisScope $scope,
+    ): ?ResourceAnalysis {
         $literals = $this->propsArrayLiterals($propsArg, $scope);
 
-        if ($literals === []) {
-            return $this->analyzeDelegatedProps($propsArg, $context);
+        if ($literals !== []) {
+            // This literal IS the render call's whole props shape, not an array embedded inside it —
+            // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
+            $analyses = array_map(
+                fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
+                $literals,
+            );
+
+            return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
         }
 
-        // This literal IS the render call's whole props shape, not an array embedded inside it —
-        // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
-        $analyses = array_map(
-            fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
-            $literals,
-        );
-
-        if (count($analyses) === 1) {
-            return $analyses[0];
+        if ($propsArg instanceof Variable) {
+            return $analyzer->variableAnalysis($propsArg, $context->method->stmts ?? []);
         }
 
-        return $analyzer->mergeReturnBranches($analyses);
+        if (! $propsArg instanceof Plus) {
+            return null;
+        }
+
+        $unread = UnreadSpreads::count();
+        $left = $this->propsAnalysis($propsArg->left, $context, $analyzer, $scope);
+
+        // `+` keeps each key its left side holds, so a key the left may hold unread may take the right's place.
+        if ($left === null || ! $left->readsCompletely || UnreadSpreads::count() !== $unread) {
+            return null;
+        }
+
+        $right = $this->propsAnalysis($propsArg->right, $context, $analyzer, $scope);
+
+        if ($right === null) {
+            return null;
+        }
+
+        $right->dropKeysHeldBy($left);
+        $left->merge($right);
+
+        return $left;
     }
 
     /**

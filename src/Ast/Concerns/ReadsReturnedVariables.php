@@ -39,10 +39,12 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
@@ -199,16 +201,14 @@ trait ReadsReturnedVariables
     public function walkedLocal(Variable $read, array $stmts): ?array
     {
         $name = $read->name;
-        $stmts = array_values($stmts);
-        $offset = $read->getStartFilePos();
-        $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
-        $holding = $stmts[count($before)] ?? null;
 
-        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable([$holding], $name))) {
+        if (! is_string($name)) {
             return null;
         }
 
-        return $this->walkedValue($before, $name, $this->parameterSeed($name));
+        $before = $this->statementsBefore($read, $name, $stmts);
+
+        return $before === null ? null : $this->walkedValue($before, $name, $this->parameterSeed($name));
     }
 
     /**
@@ -228,6 +228,29 @@ trait ReadsReturnedVariables
         $analysis->readsCompletely = $analysis->readsCompletely && $reads;
 
         return $analysis;
+    }
+
+    /**
+     * The keys a local holds where it is read, walked as a returned variable's are; null where the walk declines.
+     *
+     * A function or class nested in the body may bind the name itself, so a read inside one is declined too.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
+     * @return TAnalysis|null
+     */
+    protected function walkedAnalysis(Variable $read, array $stmts): ?MethodAnalysis
+    {
+        $name = $read->name;
+        $nested = fn (Node $node): bool => ($node instanceof FunctionLike || $node instanceof ClassLike)
+            && StatementBlocks::encloses($node, $read);
+
+        if (! is_string($name) || new NodeFinder()->findFirst($stmts, $nested) !== null) {
+            return null;
+        }
+
+        $before = $this->statementsBefore($read, $name, $stmts);
+
+        return $before === null ? null : $this->variableBranch($before, $name);
     }
 
     /**
@@ -603,6 +626,22 @@ trait ReadsReturnedVariables
         resolve(IndexSignatureReconciler::class)->reconcile($branch);
 
         return new InlineObjectResult()->of($branch);
+    }
+
+    /**
+     * The statements ending before a read, or null where none does or the one holding the read writes the local too.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
+     * @return list<Node\Stmt>|null
+     */
+    private function statementsBefore(Variable $read, string $varName, array $stmts): ?array
+    {
+        $stmts = array_values($stmts);
+        $offset = $read->getStartFilePos();
+        $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
+        $holding = $stmts[count($before)] ?? null;
+
+        return $before === [] || ($holding !== null && $this->writesVariable([$holding], $varName)) ? null : $before;
     }
 
     /**

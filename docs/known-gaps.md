@@ -120,10 +120,11 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - The branches of an `if` chain and a loop's body join, so a key holds each branch's value, optional where a branch, or
-  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but a
-  `continue` or `break` is not followed: after `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`,
-  `a?: string` publishes, though Laravel can send `1`. A `switch` case, a `try` body and a `catch` are read in sequence
-  instead: a key first set there is optional, and a key re-set there publishes only its last write's type.
+  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but not one
+  that ends in `abort()`, and a `continue` or `break` is not followed: after
+  `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`, `a?: string` publishes, though Laravel can send
+  `1`. A `switch` case, a `try` body and a `catch` are read in sequence instead: a key first set there is optional, and
+  a key re-set there publishes only its last write's type.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
@@ -133,6 +134,9 @@ A method that builds an array in a variable and returns it publishes the keys it
   reads instead, beside `[key: string]: unknown` for a helper read as a value whose base or key write the walk could
   not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
   variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
+
+An `Inertia::render()` props local is read by the same walk, from its writes before the render call. It publishes no
+props where the walk declines, or where a callback holds the render call or the statement holding it writes the local.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -915,8 +919,8 @@ closure's own included. Type the operand with a docblock, or the key with `#[TsC
 
 `if ($c) { $d['label'] = 5; } $d += ['label' => 'none'];` publishes `label?: number`, though Laravel always sends
 `label`, as `5` or `'none'`: a key the left side of `+` holds drops the right side's copy, even where the left's is
-optional. Write the default first, `$d = ['label' => 'none'];`, and the branch's write after it, which publishes
-`label: string | number`.
+optional. An `Inertia::render()` props argument `$d + ['label' => 'none']` publishes the same. Write the default
+first, `$d = ['label' => 'none'];`, and the branch's write after it, which publishes `label: string | number`.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 

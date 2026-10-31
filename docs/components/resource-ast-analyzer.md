@@ -91,7 +91,8 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
   method's of its name. A closure's returns and a method's read as a value share the walk through
   `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
-  binding; a value read of a local built by keys shares it through `walkedLocal()`.
+  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local, read
+  from its writes before the render call, through `variableAnalysis()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and

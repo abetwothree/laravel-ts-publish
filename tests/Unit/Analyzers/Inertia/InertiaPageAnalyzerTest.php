@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceT
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PropsLocalController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedApiCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
@@ -185,6 +186,60 @@ it('merges a ternary-assigned props array so a key only one arm sets is optional
     expect($data['component'])->toBe('UserShapes/Toggled')
         ->and($data['pageType'])->toBe('Inertia.SharedData & { post: Post | null, views?: number }')
         ->and($data['classFqcns'])->toBe([Post::class]);
+});
+
+// Each oracle is what Inertia sends for one request; the render call copies the array, so a later write never lands.
+it('reads a props local through its writes', function (string $action, string $type, array $queries, array $sent) {
+    $props = array_map(function (array $query) use ($action): array {
+        $request = Request::create('/', 'GET', $query);
+
+        return (array) inertiaProps(new PropsLocalController()->{$action}($request), $request);
+    }, $queries);
+
+    expect(pageData(PropsLocalController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and($props)->toEqual($sent);
+})->with([
+    'grown' => ['grown', '{ heading: string, total: number }', [[]], [['heading' => 'x', 'total' => 5]]],
+    'in a block' => ['inBlock', '{ heading: string, n: number }', [['x' => 1]], [['heading' => 'x', 'n' => 1]]],
+    'joined' => [
+        'joined',
+        '{ heading: string, n?: number }',
+        [['full' => 1], []],
+        [['heading' => 'full', 'n' => 1], ['heading' => 'short']],
+    ],
+    'plus' => ['plus', '{ a: number, k: number }', [['x' => 1], []], [['a' => 1, 'k' => 1], ['a' => 2, 'k' => 1]]],
+    'written after the render call' => ['late', '{ heading: string }', [[]], [['heading' => 'x']]],
+    'written in a loop' => [
+        'looped',
+        '{ heading: string, [key: `k${string}`]: unknown | undefined }',
+        [[]],
+        [['heading' => 'x', 'k1' => 1, 'k2' => 2]],
+    ],
+]);
+
+// A callback's parameter is not the action's local, and a key the left side of `+` holds unread keeps its own value.
+it('reads no props from a local the render call does not see, or a + over keys it cannot read', function () {
+    $request = Request::create('/', 'GET', ['k' => 'x']);
+
+    expect(pageData(PropsLocalController::class.'@shadowed')['pageType'])->toBe('Inertia.SharedData')
+        ->and(inertiaProps(new PropsLocalController()->shadowed()))->toEqual((object) ['own' => 1])
+        ->and(pageData(PropsLocalController::class.'@opaquePlus')['pageType'])->toBe('Inertia.SharedData')
+        ->and(inertiaProps(new PropsLocalController()->opaquePlus($request), $request))->toEqual((object) ['k' => 'x', 'a' => 1]);
+});
+
+it('reads a props local\'s values as Inertia sends them, as the same literal reads', function () {
+    app(Router::class)->get('/props-local/{post}/stamped', [PropsLocalController::class, 'stamped']);
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $card = (object) ['id' => $user->id, 'name' => 'Ada'];
+    $sent = inertiaProps(new PropsLocalController()->stamped($post));
+    $type = '{ stamp: string, card: { data: UserCardResource }, extra: { data: UserCardResource; meta: number } }';
+
+    expect(pageData(PropsLocalController::class.'@stamped')['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and(pageData(PropsLocalController::class.'@stampedLiteral')['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and(new RouteTransformer(PropsLocalController::class)->typeImports)->toBe(['../resources' => ['UserCardResource']])
+        ->and($sent->stamp)->toMatch('/^\d{4}-\d{2}-\d{2}T/')
+        ->and([$sent->card, $sent->extra])->toEqual([(object) ['data' => $card], (object) ['data' => $card, 'meta' => 1]]);
 });
 
 // Both branches name Post, so a merge that appended per occurrence instead of per key would emit

@@ -369,6 +369,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * The keys a local holds where it is read, walked as a returned variable's are; null where the walk declines.
+     *
+     * Public for `Inertia::render()`, which copies its props argument where it runs.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
+     */
+    public function variableAnalysis(Variable $read, array $stmts): ?ResourceAnalysis
+    {
+        return $this->walkedAnalysis($read, $stmts);
+    }
+
+    /**
      * How the values this analyzer reads reach the client.
      */
     public function reading(): Reading
