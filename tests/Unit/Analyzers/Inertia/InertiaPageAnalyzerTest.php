@@ -60,6 +60,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
 use Inertia\Inertia;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -208,6 +209,12 @@ it('reads a props local through its writes', function (string $action, string $t
         [['heading' => 'full', 'n' => 1], ['heading' => 'short']],
     ],
     'plus' => ['plus', '{ a: number, k: number }', [['x' => 1], []], [['a' => 1, 'k' => 1], ['a' => 2, 'k' => 1]]],
+    'plus over a key the left side may lack' => [
+        'plusOptional',
+        '{ a: number | string }',
+        [['x' => 1], []],
+        [['a' => 1], ['a' => 'x']],
+    ],
     'written after the render call' => ['late', '{ heading: string }', [[]], [['heading' => 'x']]],
     'written in a loop' => [
         'looped',
@@ -217,15 +224,34 @@ it('reads a props local through its writes', function (string $action, string $t
     ],
 ]);
 
-// A callback's parameter is not the action's local, and a key the left side of `+` holds unread keeps its own value.
-it('reads no props from a local the render call does not see, or a + over keys it cannot read', function () {
-    $request = Request::create('/', 'GET', ['k' => 'x']);
-
-    expect(pageData(PropsLocalController::class.'@shadowed')['pageType'])->toBe('Inertia.SharedData')
-        ->and(inertiaProps(new PropsLocalController()->shadowed()))->toEqual((object) ['own' => 1])
-        ->and(pageData(PropsLocalController::class.'@opaquePlus')['pageType'])->toBe('Inertia.SharedData')
-        ->and(inertiaProps(new PropsLocalController()->opaquePlus($request), $request))->toEqual((object) ['k' => 'x', 'a' => 1]);
+it('throws for the request the in-block props local is never assigned on', function () {
+    expect(fn () => new PropsLocalController()->inBlock(Request::create('/')))->toThrow(NotFoundHttpException::class);
 });
+
+// Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,
+// and a `+=`, a loop's `continue` or a `try` or `switch` keeps a value the walk reads past.
+it('reads no props from a local the walk cannot follow', function (string $action, array $queries, array $sent) {
+    $props = array_map(function (array $query) use ($action): array {
+        $request = Request::create('/', 'GET', $query);
+
+        return (array) inertiaProps(new PropsLocalController()->{$action}($request), $request);
+    }, $queries);
+
+    expect(pageData(PropsLocalController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData')
+        ->and($props)->toEqual($sent);
+})->with([
+    'a callback\'s own local' => ['shadowed', [[]], [['own' => 1]]],
+    'a + over a spread it cannot read' => ['opaquePlus', [['k' => 'x']], [['k' => 'x', 'a' => 1]]],
+    'a + over an index signature' => ['loopedPlus', [[]], [['heading' => 'x', 'k1' => 1, 'k2' => 2]]],
+    'a +=' => [
+        'plusAssigned',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a continue in a loop' => ['continued', [['x' => 1], []], [['a' => 1], ['a' => 'x']]],
+    'a try' => ['tried', [['x' => 1], []], [['a' => 1], ['a' => 'x']]],
+    'a switch' => ['switched', [['x' => 1], []], [['heading' => 'x', 'n' => 1], ['heading' => 'x', 'n' => 'two']]],
+]);
 
 it('reads a props local\'s values as Inertia sends them, as the same literal reads', function () {
     app(Router::class)->get('/props-local/{post}/stamped', [PropsLocalController::class, 'stamped']);

@@ -233,7 +233,8 @@ trait ReadsReturnedVariables
     /**
      * The keys a local holds where it is read, walked as a returned variable's are; null where the walk declines.
      *
-     * A function or class nested in the body may bind the name itself, so a read inside one is declined too.
+     * A function or class nested in the body may bind the name itself, so a read inside one is declined too, and so is
+     * one past a write whose value the walk may lose (writesPastTheWalk()).
      *
      * @param  array<Node\Stmt>  $stmts  the body holding the read
      * @return TAnalysis|null
@@ -250,7 +251,7 @@ trait ReadsReturnedVariables
 
         $before = $this->statementsBefore($read, $name, $stmts);
 
-        return $before === null ? null : $this->variableBranch($before, $name);
+        return $before === null || $this->writesPastTheWalk($before, $name) ? null : $this->variableBranch($before, $name);
     }
 
     /**
@@ -642,6 +643,29 @@ trait ReadsReturnedVariables
         $holding = $stmts[count($before)] ?? null;
 
         return $before === [] || ($holding !== null && $this->writesVariable([$holding], $varName)) ? null : $before;
+    }
+
+    /**
+     * Whether statements write the variable where the walk keeps one of the values it may hold: a `+=` of it, which
+     * drops the right side's copy of a key the left may lack, a loop writing it that a `continue` or `break` leaves
+     * early, or a `try` or `switch` writing it, whose writes it reads in sequence.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function writesPastTheWalk(array $stmts, string $varName): bool
+    {
+        $loses = function (Node $node) use ($varName): bool {
+            $loop = $node instanceof Foreach_ || $node instanceof For_ || $node instanceof While_ || $node instanceof Do_;
+
+            return match (true) {
+                $node instanceof Plus => $node->var instanceof Variable && $node->var->name === $varName,
+                $node instanceof TryCatch, $node instanceof Switch_ => $this->writesVariable([$node], $varName),
+                $loop => $this->holdsBreakOrContinue($node) && $this->writesVariable([$node], $varName),
+                default => false,
+            };
+        };
+
+        return new NodeFinder()->findFirst($stmts, $loses) !== null;
     }
 
     /**

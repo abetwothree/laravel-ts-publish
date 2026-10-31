@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Workbench\App\Models\Post;
 
@@ -79,6 +80,94 @@ class PropsLocalController
         }
 
         return Inertia::render('PropsLocal/Looped', $props);
+    }
+
+    /** Renders a `+` whose left side holds its key only when the request asks, so the right side's value lands else. */
+    public function plusOptional(Request $request): Response
+    {
+        $base = [];
+
+        if ($request->boolean('x')) {
+            $base['a'] = 1;
+        }
+
+        return Inertia::render('PropsLocal/PlusOptional', $base + ['a' => 'x']);
+    }
+
+    /** Renders a `+` whose left side holds keys a loop names, one of which the right side names too. */
+    public function loopedPlus(): Response
+    {
+        $props = ['heading' => 'x'];
+
+        foreach ([1, 2] as $id) {
+            $props["k{$id}"] = $id;
+        }
+
+        return Inertia::render('PropsLocal/LoopedPlus', $props + ['k1' => 'x']);
+    }
+
+    /** Renders a local a `+=` adds a key to that a block may have set first. */
+    public function plusAssigned(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = 1;
+        }
+
+        $props += ['a' => 'none'];
+
+        return Inertia::render('PropsLocal/PlusAssigned', $props);
+    }
+
+    /** Renders a local a loop writes twice, the first write kept by a `continue`. */
+    public function continued(Request $request): Response
+    {
+        $props = [];
+
+        foreach ([1] as $ignored) {
+            if ($request->boolean('x')) {
+                $props['a'] = 1;
+
+                continue;
+            }
+
+            $props['a'] = 'x';
+        }
+
+        return Inertia::render('PropsLocal/Continued', $props);
+    }
+
+    /** Renders a local a `try` writes twice, the second write skipped where the request does not ask. */
+    public function tried(Request $request): Response
+    {
+        $props = [];
+
+        try {
+            $props['a'] = 'x';
+            $request->boolean('x') ?: throw new RuntimeException('skipped');
+            $props['a'] = 1;
+        } catch (RuntimeException) {
+        }
+
+        return Inertia::render('PropsLocal/Tried', $props);
+    }
+
+    /** Renders a local each case of a `switch` writes. */
+    public function switched(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        switch ($request->boolean('x')) {
+            case true:
+                $props['n'] = 1;
+
+                break;
+            default:
+                $props['n'] = 'two';
+        }
+
+        return Inertia::render('PropsLocal/Switched', $props);
     }
 
     /** Renders a callback's own `$props`, which the action's local of that name does not reach. */

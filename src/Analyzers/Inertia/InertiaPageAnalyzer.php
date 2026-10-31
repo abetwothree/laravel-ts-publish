@@ -237,14 +237,14 @@ class InertiaPageAnalyzer
             return new ResourceAnalysis;
         }
 
-        return $this->propsAnalysis($propsArg, $context, $analyzer, $scope)
+        return $this->readProps($propsArg, $context, $analyzer, $scope)
             ?? $this->analyzeDelegatedProps($propsArg, $context);
     }
 
     /**
      * The props an argument holds: its literals, a local walked from its writes before the render call, or a `+`.
      */
-    protected function propsAnalysis(
+    protected function readProps(
         Expr $propsArg,
         MethodContext $context,
         ResourceAstAnalyzer $analyzer,
@@ -272,23 +272,18 @@ class InertiaPageAnalyzer
         }
 
         $unread = UnreadSpreads::count();
-        $left = $this->propsAnalysis($propsArg->left, $context, $analyzer, $scope);
+        $left = $this->readProps($propsArg->left, $context, $analyzer, $scope);
 
-        // `+` keeps each key its left side holds, so a key the left may hold unread may take the right's place.
-        if ($left === null || ! $left->readsCompletely || UnreadSpreads::count() !== $unread) {
+        // `+` keeps each key its left side holds, so a key the left may hold unread, or a signature may stand for, may
+        // take the right's place.
+        if ($left === null || ! $left->readsCompletely || UnreadSpreads::count() !== $unread
+            || array_any($left->properties, fn (array $prop): bool => JsEmitter::isIndexSignatureKey($prop['name']))) {
             return null;
         }
 
-        $right = $this->propsAnalysis($propsArg->right, $context, $analyzer, $scope);
+        $right = $this->readProps($propsArg->right, $context, $analyzer, $scope);
 
-        if ($right === null) {
-            return null;
-        }
-
-        $right->dropKeysHeldBy($left);
-        $left->merge($right);
-
-        return $left;
+        return $right === null ? null : $this->plusProps($left, $right, $analyzer);
     }
 
     /**
@@ -678,6 +673,41 @@ class InertiaPageAnalyzer
         }
 
         return $inForce;
+    }
+
+    /**
+     * The props `$left + $right` holds: on the path where the left lacks each key it may lack, the right's value lands.
+     */
+    private function plusProps(ResourceAnalysis $left, ResourceAnalysis $right, ResourceAstAnalyzer $analyzer): ResourceAnalysis
+    {
+        // With no key the left may lack, both paths are one.
+        if (! array_any($left->properties, fn (array $prop): bool => $prop['optional'])) {
+            $right->dropKeysHeldBy($left);
+            $left->merge($right);
+
+            return $left;
+        }
+
+        $present = clone $left;
+        $present->properties = array_map(fn (array $prop): array => [...$prop, 'optional' => false], $left->properties);
+        $absent = clone $left;
+        $absent->properties = [];
+
+        foreach ($left->properties as $prop) {
+            if ($prop['optional']) {
+                $absent->forgetChannels($prop['name']);
+            } else {
+                $absent->properties[] = $prop;
+            }
+        }
+
+        foreach ([$present, $absent] as $branch) {
+            $added = clone $right;
+            $added->dropKeysHeldBy($branch);
+            $branch->merge($added);
+        }
+
+        return $analyzer->mergeReturnBranches([$present, $absent]);
     }
 
     /**
