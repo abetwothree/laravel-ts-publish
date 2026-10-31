@@ -6,20 +6,28 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeFinder;
+use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Http\Resources\PostResource;
@@ -685,17 +693,57 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
 ]);
 
-it('takes one local by its syntax as the whole list does, leaving out one a by-reference call keeps in some form', function () {
-    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
-    $bound = new Int_(1);
-    $scope->localVarBindings = ['kept' => $bound, 'sorted' => new Int_(2)];
-    $scope->byReferenceForms['sorted'] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
+/**
+ * What writesSeenBy() answers for a body's last `$x` read, the body seeded as a Post-backed resource's, each write
+ * printed; null where it declines.
+ *
+ * @param  array<string, class-string<Model>>  $parameters  each parameter's model, bound before the body is seeded
+ * @return list<string>|null
+ */
+function writesSeenByLastRead(string $body, array $parameters = []): ?array
+{
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+    $scope->varModelBindings = $parameters;
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
 
-    expect($scope->literalLocalBinding('kept'))->toBe($bound)
-        ->and($scope->literalLocalBinding('sorted'))->toBeNull()
-        ->and($scope->literalLocalBinding('missing'))->toBeNull()
-        ->and($scope->literalLocalBindings())->toBe(['kept' => $bound]);
-});
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the scope from the body, as every body reader does.
+         *
+         * @param  list<Stmt>  $stmts
+         */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+    $reads = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof Variable && $node->name === 'x');
+    $read = $reads[array_key_last($reads)];
+    $writes = $read instanceof Variable ? $scope->writesSeenBy($read) : null;
+
+    return $writes === null ? null : array_map(fn (Expr $write): string => new Standard()->prettyPrintExpr($write), $writes);
+}
+
+it('answers which writes a read of a local sees, and declines where a parameter\'s binding holds', function (string $body, array $parameters, ?array $writes) {
+    expect(writesSeenByLastRead($body, $parameters))->toBe($writes);
+})->with([
+    'a single write' => ['$x = 1; return $x;', [], ['1']],
+    'a block write, read in its block' => ['if ($c) { $x = 1; return $x; }', [], ['1']],
+    'a two-arm join' => ['if ($c) { $x = 1; } else { $x = 2; } return $x;', [], ['1', '2']],
+    'a join over an earlier write' => ['$x = 1; if ($c) { $x = 2; } return $x;', [], ['1', '2']],
+    'a branch that throws' => ['if ($c) { $x = 1; } else { throw new \\RuntimeException(); } return $x;', [], ['1']],
+    'a block write, read past a block that may not run' => ['if ($c) { $x = 1; } return $x;', [], null],
+    'a write in a condition every branch replaces' => ['if ($x = $c) { $x = 1; } else { $x = 2; } return $x;', [], ['1', '2']],
+    'a branch holding a closure, which a join leaves unbound' => ['if ($c) { $x = fn () => 1; } else { $x = 2; } return $x;', [], null],
+    'a parameter whose binding holds' => ['return $x;', ['x' => Post::class], null],
+    'a parameter whose binding a branch may keep' => ['if ($c) { $x = 1; } return $x;', ['x' => Post::class], null],
+]);
 
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));

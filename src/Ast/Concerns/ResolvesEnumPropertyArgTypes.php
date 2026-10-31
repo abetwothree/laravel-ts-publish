@@ -30,7 +30,7 @@ use PhpParser\Node\Name;
  * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
  * channel, while a cast, an accessor or a declared type is read from its class.
  *
- * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
+ * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `spelledWrites()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -59,9 +59,9 @@ trait ResolvesEnumPropertyArgTypes
         $result = ValueResult::unknown();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
-            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local
-            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: a parameter is
-            // never bound to a variable.
+            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local whose
+            // read sees one write; a join reads as its resolved value. Only the local takes VariableHandler's guard
+            // against a cyclic binding: a parameter is never bound to a variable.
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
                 $name = $argExpr->name;
 
@@ -69,7 +69,8 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                $local = $scope->literalLocalBinding($name);
+                $writes = $this->spelledWrites($argExpr, $scope);
+                $local = $writes !== null && count($writes) === 1 ? $writes[0] : null;
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
                     return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));

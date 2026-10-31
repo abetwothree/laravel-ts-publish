@@ -296,6 +296,19 @@ restores one name's entry. State outside the scope saves and restores itself the
 whole body by design, and `ClosureHandler` calls it inside its own `within()`. The closure writers' reads restore over
 it, so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
 
+#### One lookup for the write a read sees
+
+`AnalysisScope::writesSeenBy()` answers which writes a read of a local sees: its one top-level write, or the values
+the gap it falls in holds, a block's write or a branch join's. It answers null where a parameter's binding may still
+hold, or a gap's write assigns no value the scan reads. `VariableHandler`, `ReceiverClassResolver`,
+`FirstClassCallableHandler::heldCallable()` and `ParentCallChain` read it. `VariableHandler::joinedValue()` and
+`ReceiverClassResolver::fromGap()` type a gap's writes themselves: a parameter's gap joins its old binding, and a write
+that reads the name lifts the gap (`beforeGap()`). A reader that takes a local by its syntax goes through
+`InspectsAstNodes::spelledWrites()`, which also declines past a by-reference form or a write that reads the local
+itself: the `+` operand (one union literal per write, joined), an `EnumResource` payload, a props local, an
+`array_merge()` argument and `ResourceAstAnalyzer`'s written local. `InspectsAstNodes::mayHoldCallable()` still reads a
+local's one top-level write.
+
 #### A closure parameter owns its name
 
 Readers rank the name-keyed tables differently. `VariableHandler` reads `varDocBindings` first and `varValueBindings`
@@ -463,7 +476,8 @@ A `$x = …;` nested in a block binds `$x` past its statement, to the end of tha
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), a bound
 name's only where a statement of its block follows the write. A block may not run and a loop runs it again, so a read
-before the write or past the block stays unbound, as does a name a reference can write through (`=&`, `use (&$x)`,
+before the write or past the block stays unbound, but past an `if` that assigns it on every path (below), as does a
+name a reference can write through (`=&`, `use (&$x)`,
 `foreach (… as &$x)`, `global`, `static`). A name a parameter or a seeded binding holds takes its gaps from the join
 below instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own
 `$x` never reads its enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up
@@ -473,7 +487,10 @@ joined with the gap's writes.
 
 A name with no binding that the body writes more than once is joined statement by statement (`bindJoinedLocals()`), each
 span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all nested
-`$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A member
+`$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. Past an
+`if` whose every branch, `else` included, ends with its own `$x = …;` or such an `if`, or always leaves the function, a
+read takes only those branches' values, a local written once there included (`branchValues()`); a value that may be a
+callable leaves it unbound, since a returned Closure object reads apart. A member
 read leaves out a joined `null`, as it does a ternary's `null` arm. A write in a block that always exits reaches no read
 past it. Any other write leaves the name unbound until its next top-level `$x = …;`, and a name a reference can write
 through is never joined. A parameter takes the same walk from its own binding, for values only, and walks each block a
@@ -533,7 +550,7 @@ Laravel throws on and `??` replaces. Every other callee, a flag, a named group o
 of reads it holds for, placed as a binding end or gap is: a copy taken before the call reads the value as it was.
 `VariableHandler` reads the value the forms leave, or drops a read whose value lacks one. A class binding ends there,
 since no form but `ksort()`'s is an object's. A reader that takes a local by its syntax, such as an array literal's
-keys, reads `literalLocalBindings()`, which leaves such a local out.
+keys, reads `InspectsAstNodes::spelledWrites()`, which declines a read past such a call.
 
 ### What deliberately stays unbound
 
@@ -847,7 +864,7 @@ Each consumer enters the engine at the point that fits its subject:
 | --- | --- | --- |
 | `ResourceTransformer` | `ResourceAstAnalyzer::analyze()` on the resource profile | A resource's `toArray()` is that profile's own subject |
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
-| `InertiaPageAnalyzer` | The Inertia profile over `bindingsFor()`'s scope, a props local walked from its writes before the render call (`variableAnalysis()`), and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
+| `InertiaPageAnalyzer` | The Inertia profile over `bindingsFor()`'s scope, a props local read as the literals its read sees or walked from its writes before the render call (`variableAnalysis()`), and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |

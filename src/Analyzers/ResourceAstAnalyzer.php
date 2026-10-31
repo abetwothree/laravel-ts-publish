@@ -634,11 +634,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The string, int or class-constant literal a local written once holds at a read, as literalWriteAt() reads it.
+     * The string, int or class-constant literal a local holds at a read that sees its one write.
      */
     protected function literalLocal(Variable $read): ?Expr
     {
-        $bound = $this->scope->literalWriteAt($read);
+        $bound = $this->soleSpelledWrite($read);
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
@@ -1898,8 +1898,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * A local variable's name and the value its one write assigns, unless its read is under way; null for any other
-     * expression.
+     * A local variable's name and the value of the one write its read sees, unless its read is under way; null for any
+     * other expression.
      *
      * @return WrittenLocal|null
      */
@@ -1909,9 +1909,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        $bound = $this->scope->literalWriteAt($expr);
+        $bound = $this->soleSpelledWrite($expr);
 
         return $bound === null ? null : [$expr->name, $bound];
+    }
+
+    /**
+     * The one write a read of a local sees whose syntax spells its value; null where it sees none, or a join.
+     */
+    private function soleSpelledWrite(Variable $read): ?Expr
+    {
+        $writes = $this->spelledWrites($read, $this->scope);
+
+        return $writes !== null && count($writes) === 1 ? $writes[0] : null;
     }
 
     /**

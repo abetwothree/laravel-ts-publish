@@ -5,9 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ParentCallChain;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HoldsParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritsSpreadPayload;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\JoinsParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergesParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestsParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ParentCallBase;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReplacesParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnsParentPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadsNestingPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadsParentPayload;
@@ -26,6 +28,8 @@ it('follows each parent:: call whose keys the body returns, and stops at one it 
     'an array_merge()' => [MergesParentPayload::class, [MergesParentPayload::class, ParentCallBase::class]],
     'a whole return on one branch' => [ReturnsParentPayload::class, [ReturnsParentPayload::class, ParentCallBase::class]],
     'a local written by += and returned' => [HoldsParentPayload::class, [HoldsParentPayload::class, ParentCallBase::class]],
+    'a local whose parent write a later write replaces' => [ReplacesParentPayload::class, [ReplacesParentPayload::class]],
+    'a local whose parent write a branch may replace' => [JoinsParentPayload::class, [JoinsParentPayload::class, ParentCallBase::class]],
     'calls under keys and in a closure' => [NestsParentPayload::class, [NestsParentPayload::class]],
     'an inherited body' => [InheritsSpreadPayload::class, [SpreadsParentPayload::class, ParentCallBase::class]],
     'two spreads up the chain' => [

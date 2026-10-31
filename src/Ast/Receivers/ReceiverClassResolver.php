@@ -554,7 +554,8 @@ final class ReceiverClassResolver
 
     /**
      * What a variable holds before any `instanceof` proof: a morphTo parameter's targets, what an inline `@var`
-     * declares, the binding its name came into the body with, or what the body assigned past the write that ended it.
+     * declares, inside a gap what its writes assigned joined with the old binding where that may still hold, the one
+     * write its read sees, or the binding its name came into the body with.
      */
     private function heldBy(Variable $variable, string $name, AnalysisScope $scope): ?ReceiverType
     {
@@ -569,13 +570,19 @@ final class ReceiverClassResolver
             return $this->resolveDeclared($name, $span, $scope);
         }
 
-        if ($scope->holdsBinding($variable)) {
-            return $this->fromBindings($name, $scope, $variable);
-        }
-
         $gap = $scope->gapAt($variable);
 
-        return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($variable, $name, $gap, $scope);
+        if ($gap !== null) {
+            return $this->fromGap($variable, $name, $gap, $scope);
+        }
+
+        $write = $scope->writesSeenBy($variable)[0] ?? null;
+
+        if ($write !== null) {
+            return $this->fromBoundExpression($name, $write, $scope);
+        }
+
+        return $scope->holdsBinding($variable) ? $this->fromBindings($name, $scope, $variable) : null;
     }
 
     /**
@@ -697,9 +704,10 @@ final class ReceiverClassResolver
             return ReceiverType::of($enum);
         }
 
-        $bound = $scope->closureParamExprBindings[$name] ?? null;
+        // A parameter binding no class of its own reads the body's one write of it, as a value read does.
+        $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
-        return $bound === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $bound, $scope);
+        return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }
 
     /**
@@ -708,7 +716,7 @@ final class ReceiverClassResolver
      */
     private function rekeyedBefore(string $name, Variable $read, AnalysisScope $scope): bool
     {
-        $written = $scope->literalLocalBinding($name);
+        $written = $scope->localVarBindings[$name] ?? null;
 
         return $written !== null
             && $read->getStartFilePos() > $written->getEndFilePos()
@@ -767,16 +775,6 @@ final class ReceiverClassResolver
         return $span === null
             ? $this->fromBoundExpression($name, $value, $scope)
             : $this->resolveDeclared($name, $span, $scope);
-    }
-
-    /**
-     * Resolve a variable through its body's single-write assignment, re-read so the value keeps every flag it carries.
-     */
-    private function fromLocal(string $name, AnalysisScope $scope): ?ReceiverType
-    {
-        $bound = $scope->literalLocalBinding($name);
-
-        return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }
 
     /**

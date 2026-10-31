@@ -288,7 +288,7 @@ class InertiaPageAnalyzer
 
     /**
      * Re-express a props argument as the array literal(s) it evaluates to: an inline array, a
-     * `compact()` call, an `array_merge()` of literals, a bound variable, or a ternary of those.
+     * `compact()` call, an `array_merge()` of literals, each write a variable's read sees, or a ternary of those.
      *
      * @return list<Array_>
      */
@@ -311,24 +311,20 @@ class InertiaPageAnalyzer
             ));
         }
 
-        if ($propsArg instanceof Variable && is_string($propsArg->name)) {
-            $bound = $scope->literalLocalBinding($propsArg->name);
+        if ($propsArg instanceof Variable) {
+            $literals = array_map(
+                fn (Expr $write): array => $this->propsArrayLiterals($write, $scope, $hops + 1),
+                $this->spelledWrites($propsArg, $scope) ?? [],
+            );
 
-            return $bound === null ? [] : $this->propsArrayLiterals($bound, $scope, $hops + 1);
+            // A write it cannot re-express leaves its branch unread, so the walk reads the local instead.
+            return in_array([], $literals, true) ? [] : array_merge(...$literals);
         }
 
         if ($propsArg instanceof FuncCall) {
             $compacted = $this->compactedArrayLiteral($propsArg);
 
-            if ($compacted !== null) {
-                return [$compacted];
-            }
-
-            $merged = $this->mergedArrayLiteral($propsArg, $scope, null, $scope->literalLocalBindings());
-
-            if ($merged !== null) {
-                return [$merged];
-            }
+            return $compacted === null ? $this->mergedArrayLiterals($propsArg, $scope) : [$compacted];
         }
 
         return [];

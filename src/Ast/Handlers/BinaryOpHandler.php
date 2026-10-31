@@ -48,6 +48,9 @@ final class BinaryOpHandler implements ExpressionHandler
     /** A value the engine cannot type, which PHP proves an array when the other operand is one. */
     private const string UNTYPED = 'untyped';
 
+    /** The most union literals a `+` is read as, one per write each local operand's read may see, before those join. */
+    private const int MAX_UNION_LITERALS = 16;
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -122,7 +125,8 @@ final class BinaryOpHandler implements ExpressionHandler
     }
 
     /**
-     * `+` as arithmetic, or, when an operand is an array, as PHP's array union, typed as the spread literal it equals.
+     * `+` as arithmetic, or, when an operand is an array, as PHP's array union, typed as the spread literal it equals:
+     * one literal for each write a local operand's read may see, joined.
      *
      * @return ValueExpressionResult
      */
@@ -130,33 +134,48 @@ final class BinaryOpHandler implements ExpressionHandler
     {
         // The operands bind as the read resolves them, so there is nothing to enter.
         return $scope->within(static function (): void {}, function () use ($plus, $scope, $engine): array {
-            [$kind, $union] = $this->boundUnion($plus, $scope, $engine);
+            [$kind, $unions] = $this->boundUnion($plus, $scope, $engine);
 
-            return $kind === self::ARRAY
-                ? $engine->resolve($this->arrayUnionLiteral($union, $scope->literalLocalBindings()))
-                : ['type' => 'number', 'optional' => false];
+            if ($kind !== self::ARRAY) {
+                return ['type' => 'number', 'optional' => false];
+            }
+
+            $results = array_map(
+                fn (BinaryOp\Plus $union): array => $engine->resolve($this->arrayUnionLiteral($union)),
+                $unions,
+            );
+
+            return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
         });
     }
 
     /**
-     * A `+`'s kind, with each operand the union literal does not read from its syntax spread as a value bound to its
-     * one resolution, so the literal neither resolves it again nor reads its arm by anything but the type it publishes.
+     * A `+`'s kind, and the unions it may be, one for each write a local operand's read sees: each operand the union
+     * literal does not read from its syntax is spread as a value bound to its one resolution, so the literal neither
+     * resolves it again nor reads its arm by anything but the type it publishes.
      *
-     * @return array{string, BinaryOp\Plus}
+     * @return array{string, non-empty-list<BinaryOp\Plus>}
      */
     private function boundUnion(BinaryOp\Plus $plus, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         // `+` on an array and a number throws, so a number literal settles it before any operand is resolved.
         if ($this->isNumberLiteral($plus->left) || $this->isNumberLiteral($plus->right)) {
-            return [self::SCALAR, $plus];
+            return [self::SCALAR, [$plus]];
         }
 
-        [$leftKind, $left] = $plus->left instanceof BinaryOp\Plus
-            ? $this->boundUnion($plus->left, $scope, $engine)
-            : $this->boundOperand($plus->left, $scope, $engine);
-        [$rightKind, $right] = $plus->right instanceof BinaryOp\Plus
-            ? $this->boundUnion($plus->right, $scope, $engine)
-            : $this->boundOperand($plus->right, $scope, $engine);
+        [$leftKind, $lefts] = $this->boundSide($plus->left, $scope, $engine);
+        [$rightKind, $rights] = $this->boundSide($plus->right, $scope, $engine);
+
+        // Past the cap a side that may be several literals is read as its one value instead.
+        if (count($lefts) * count($rights) > self::MAX_UNION_LITERALS) {
+            [$leftKind, $lefts] = count($lefts) === 1
+                ? [$leftKind, $lefts]
+                : $this->valueOperand($plus->left, $scope, $engine);
+            [$rightKind, $rights] = count($rights) === 1
+                ? [$rightKind, $rights]
+                : $this->valueOperand($plus->right, $scope, $engine);
+        }
+
         $kinds = [$leftKind, $rightKind];
 
         $kind = match (true) {
@@ -164,29 +183,59 @@ final class BinaryOpHandler implements ExpressionHandler
             in_array(self::SCALAR, $kinds, true) => self::SCALAR,
             default => self::UNTYPED,
         };
+        $unions = [];
 
-        return [$kind, new BinaryOp\Plus($left, $right, $plus->getAttributes())];
+        foreach ($lefts as $left) {
+            foreach ($rights as $right) {
+                $unions[] = new BinaryOp\Plus($left, $right, $plus->getAttributes());
+            }
+        }
+
+        return [$kind, $unions];
     }
 
     /**
-     * One operand's kind, and the expression the union literal spreads for it.
+     * One side of a `+`: a nested `+`'s unions, or an operand's.
      *
-     * @return array{string, Expr}
+     * @return array{string, non-empty-list<Expr>}
+     */
+    private function boundSide(Expr $side, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        return $side instanceof BinaryOp\Plus
+            ? $this->boundUnion($side, $scope, $engine)
+            : $this->boundOperand($side, $scope, $engine);
+    }
+
+    /**
+     * One operand's kind, and the expressions the union literal spreads for it: a literal, each literal write a local's
+     * read sees, or one value.
+     *
+     * @return array{string, non-empty-list<Expr>}
      */
     private function boundOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $local = $operand instanceof Variable && is_string($operand->name) ? $scope->literalLocalBinding($operand->name) : null;
+        $writes = $operand instanceof Array_ ? [$operand] : $this->spelledWrites($operand, $scope);
 
-        if ($operand instanceof Array_ || $local instanceof Array_) {
-            return [self::ARRAY, $operand];
+        if ($writes !== null && $writes !== [] && array_all($writes, fn (Expr $write): bool => $write instanceof Array_)) {
+            return [self::ARRAY, $writes];
         }
 
+        return $this->valueOperand($operand, $scope, $engine);
+    }
+
+    /**
+     * One operand's kind, and the one expression the union literal spreads for its value.
+     *
+     * @return array{string, non-empty-list<Expr>}
+     */
+    private function valueOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
         $result = $engine->resolve($operand);
         $kind = $this->operandKind($result);
 
         // The literal flattens a `$this->method()` spread from the method's own body, as a resource spread does.
         if ($kind === self::HIDDEN_KEYS && $operand instanceof MethodCall && $this->hasThisReceiver($operand)) {
-            return [self::ARRAY, $operand];
+            return [self::ARRAY, [$operand]];
         }
 
         // No PHP variable can be named `+…`, so the binding shadows none.
@@ -195,7 +244,7 @@ final class BinaryOpHandler implements ExpressionHandler
             ? ['type' => 'Record<string, unknown>', 'optional' => false]
             : $result;
 
-        return [$kind, new Variable($name)];
+        return [$kind, [new Variable($name)]];
     }
 
     /**

@@ -60,6 +60,18 @@ class PropsLocalController
         return Inertia::render('PropsLocal/Plus', $base + ['k' => 1]);
     }
 
+    /** Renders a prop joining a block-assigned local with a literal by `+`. */
+    public function plusProp(Request $request): Response
+    {
+        if ($request->boolean('x')) {
+            $base = ['a' => 1];
+        } else {
+            $base = ['a' => 2];
+        }
+
+        return Inertia::render('PropsLocal/PlusProp', ['merged' => $base + ['k' => 1]]);
+    }
+
     /** Renders a local the action writes again after the render call. */
     public function late(): Response
     {

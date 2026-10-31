@@ -126,3 +126,42 @@ class SpreadsNestingPayload extends NestsParentPayload
         return [...parent::payload(), 'e' => 5];
     }
 }
+
+/** Writes its parent's payload to a local, then replaces it before it returns the local. */
+class ReplacesParentPayload extends ParentCallBase
+{
+    /**
+     * The payload.
+     *
+     * @return array<string, mixed>
+     */
+    public function payload(): array
+    {
+        $data = parent::payload();
+        $data = ['b' => 2];
+
+        return $data;
+    }
+}
+
+/** Writes its parent's payload to a local a branch may replace, and returns the local. */
+class JoinsParentPayload extends ParentCallBase
+{
+    public bool $flag = false;
+
+    /**
+     * The payload.
+     *
+     * @return array<string, mixed>
+     */
+    public function payload(): array
+    {
+        $data = parent::payload();
+
+        if ($this->flag) {
+            $data = ['b' => 2];
+        }
+
+        return $data;
+    }
+}

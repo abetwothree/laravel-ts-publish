@@ -30,14 +30,18 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\List_;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Stmt\Block;
@@ -201,6 +205,9 @@ trait CollectsLocalVarBindings
      * value it assigns, past a statement whose writes are all nested `$x = …` the values before it and theirs, and past
      * a `try` what its body, a catch and its finally leave. Any other write leaves it unbound until such a write.
      *
+     * Past an `if` whose every branch, `else` included, ends assigning the local or leaves the function, a read takes
+     * only what those branches assign, a local's one write in such a branch included.
+     *
      * A name a reference can write through, made by `=&`, `use (&$x)`, `global`, `static` or `foreach (… as &$x)`, is
      * never joined: another name or a closure may write it at any point, as blockSpanEnd() also declines.
      *
@@ -245,7 +252,7 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            if ($bound || $passed || count($own) > 1) {
+            if ($bound || $passed || count($own) > 1 || $this->writesOnlyInIf($stmts, $own[0][1])) {
                 $initial = match (true) {
                     $bound => [[], true, true, []],
                     $passed => [[], true, false, []],
@@ -933,9 +940,11 @@ trait CollectsLocalVarBindings
 
             // The value a statement assigns reads what the name held before it, so that span runs through it.
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
+            $branches = $stmt instanceof If_ && $state[3] === null ? $this->branchValues($stmt, $held, $scope) : null;
             $state = match (true) {
                 $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $exitingBlock, $writes, $ender, $state, $scope),
                 $assigned !== null => $this->assignedState($name, $own[0], $assigned, $state, $ender, $inBlock, $scope),
+                $branches !== null => [$branches, $state[1], $state[2], null],
                 default => $this->joinNested($own, $state),
             };
 
@@ -1044,6 +1053,100 @@ trait CollectsLocalVarBindings
             && $kind === VariableWrite::Replaces
                 ? $node->expr
                 : null;
+    }
+
+    /**
+     * Whether a local's one write lies in an `if` statement of the body, which may assign it on every path.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function writesOnlyInIf(array $stmts, Node $write): bool
+    {
+        return array_find($stmts, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $write)) instanceof If_;
+    }
+
+    /**
+     * The values an `if` leaves in a local on every path past it: each branch's, `else` included, from its last
+     * statement writing the local, a `$x = …;` or such an `if`, and none from a branch that always leaves the function;
+     * null where a branch may keep what the local held. Each branch replaces what a condition wrote.
+     *
+     * @param  NamedWrites  $held  the statement's writes of the local
+     * @return non-empty-list<Expr>|null
+     */
+    private function branchValues(If_ $if, array $held, AnalysisScope $scope): ?array
+    {
+        if ($if->else === null) {
+            return null;
+        }
+
+        $branches = [$if->stmts, ...array_map(fn (ElseIf_ $elseIf): array => $elseIf->stmts, $if->elseifs), $if->else->stmts];
+        $values = [];
+
+        foreach ($branches as $branch) {
+            $writes = array_values(array_filter($held, fn (array $write): bool => array_any(
+                $branch,
+                fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $write[1]),
+            )));
+
+            if ($this->alwaysExits(array_values($branch))) {
+                continue;
+            }
+
+            $last = array_find(
+                array_reverse($branch),
+                fn (Node\Stmt $stmt): bool => array_any($writes, fn (array $write): bool => StatementBlocks::encloses($stmt, $write[1])),
+            );
+            $lastWrites = $last === null ? [] : array_values(array_filter(
+                $writes,
+                fn (array $write): bool => StatementBlocks::encloses($last, $write[1]),
+            ));
+            $assigned = $last === null || $lastWrites === [] ? null : $this->wholeAssignment($last, $lastWrites);
+            $left = match (true) {
+                $assigned !== null => [$assigned],
+                $last instanceof If_ => $this->branchValues($last, $lastWrites, $scope),
+                default => null,
+            };
+
+            // A returned callable is the Closure object, which a read of the join would type as the call it makes.
+            if ($left === null || array_any($left, fn (Expr $value): bool => $this->mayBeCallable($value, $scope))) {
+                return null;
+            }
+
+            $values = $this->joinValues($values, $left);
+        }
+
+        return $values === [] ? null : $values;
+    }
+
+    /**
+     * Whether a written value may be a closure, an arrow function or a first-class callable by its syntax, as itself or
+     * an arm of `?:`, `??` or `match`; a variable may hold one unless it holds a model, a collection or a request, or
+     * its one top-level write holds none.
+     *
+     * @param  array<string, true>  $followed  the variables already followed, so a cycle of copies ends
+     */
+    private function mayBeCallable(Expr $value, AnalysisScope $scope, array $followed = []): bool
+    {
+        if ($value instanceof Variable) {
+            $name = is_string($value->name) ? $value->name : null;
+            $written = $name === null ? null : $scope->localVarBindings[$name] ?? null;
+
+            return $name === null || isset($followed[$name]) || (! isset($scope->varModelBindings[$name])
+                && ! isset($scope->varCollectionBindings[$name])
+                && ! isset($scope->requestVarNames[$name])
+                && ($written === null || $this->mayBeCallable($written, $scope, [...$followed, $name => true])));
+        }
+
+        $arms = match (true) {
+            $value instanceof Ternary => [$value->if ?? $value->cond, $value->else],
+            $value instanceof BinaryOp\Coalesce => [$value->left, $value->right],
+            $value instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $value->arms),
+            default => [],
+        };
+
+        return $value instanceof ClosureExpr || $value instanceof ArrowFunction
+            || ($value instanceof CallLike && $value->isFirstClassCallable())
+            || array_any($arms, fn (Expr $arm): bool => $this->mayBeCallable($arm, $scope, $followed));
     }
 
     /**

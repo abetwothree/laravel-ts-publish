@@ -138,10 +138,10 @@ A method that builds an array in a variable and returns it publishes the keys it
   not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
   variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
 
-An `Inertia::render()` props local is read by the same walk, from its writes before the render call. It publishes no
-props where the walk declines, where a `+=`, a `try`, a `switch` or a loop with a `continue` or `break` writes it first,
-where a value written to it reads a key of it the engine cannot type, or where a callback holds the render call or the
-statement holding it writes the local.
+An `Inertia::render()` props local is read by the same walk, from its writes before the render call, unless every
+write the render call sees assigns it a literal whole. It publishes no props where the walk declines, where a `+=`, a
+`try`, a `switch` or a loop with a `continue` or `break` writes it first, where a value written to it reads a key of it
+the engine cannot type, or where a callback holds the render call or the statement holding it writes the local.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -917,8 +917,8 @@ package reads the cycle once, with the first call's bindings. Type the key with 
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
-adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value, a merge
-closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
+adds nothing. A local whose read sees one write reads as the array it holds, in a method's whole `return` as in a
+value, a merge closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
 
 ### A `+` default for a key only some paths set is left out
 

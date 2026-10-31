@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -25,7 +28,7 @@ use ReflectionClass;
 
 /**
  * Follows a method's `parent::` calls up its class chain, as far as each body returns the keys its call returns: the
- * call returned whole, spread, merged with array_merge(), added with `+`, or written to a local the body returns.
+ * call returned whole, spread, merged with array_merge(), added with `+`, or written to a local the return reads.
  *
  * A call under a key nests its keys there, so the chain stops at the body that makes it.
  *
@@ -61,15 +64,22 @@ final class ParentCallChain
     }
 
     /**
-     * Whether the body a class declares for a method returns the keys its parent's declaration returns.
+     * Whether the body a class declares for a method returns the keys its parent's declaration returns, once a run.
      */
     private function returnsParentKeys(string $class, string $method): bool
     {
-        $stmts = resolve(MethodLocator::class)->locate($class, $method)?->method->stmts ?? [];
+        return resolve(AnalysisMemo::class)->remember(
+            'parent-keys:'.$class.'::'.strtolower($method),
+            function () use ($class, $method): bool {
+                $context = resolve(MethodLocator::class)->locate($class, $method);
+                $stmts = $context?->method->stmts ?? [];
+                $scope = $context === null ? null : resolve(AstEngine::class)->bindingsFor($context);
 
-        return array_any(
-            $this->collectReturnExpressions($stmts),
-            fn (Expr $returned): bool => $this->holdsParentKeys($returned, $method, $stmts),
+                return $scope !== null && array_any(
+                    $this->collectReturnExpressions($stmts),
+                    fn (Expr $returned): bool => $this->holdsParentKeys($returned, $method, $stmts, $scope),
+                );
+            },
         );
     }
 
@@ -77,11 +87,12 @@ final class ParentCallChain
      * Whether an expression's own keys include those a `parent::` call of the method returns.
      *
      * @param  array<Stmt>  $stmts  the body, whose writes a local holds
-     * @param  array<string, true>  $followed  the locals already followed, so a write reading its own local ends
+     * @param  AnalysisScope  $scope  the body's, which tells the writes a read of a local sees
+     * @param  array<int, true>  $followed  the writes already followed, by object id, so a write reading itself ends
      */
-    private function holdsParentKeys(Expr $expr, string $method, array $stmts, array $followed = []): bool
+    private function holdsParentKeys(Expr $expr, string $method, array $stmts, AnalysisScope $scope, array $followed = []): bool
     {
-        $holds = fn (Expr $part): bool => $this->holdsParentKeys($part, $method, $stmts, $followed);
+        $holds = fn (Expr $part): bool => $this->holdsParentKeys($part, $method, $stmts, $scope, $followed);
 
         return match (true) {
             $expr instanceof StaticCall => $this->isParentCallOf($expr, $method),
@@ -90,28 +101,38 @@ final class ParentCallChain
                 && array_any($expr->getArgs(), fn (Arg $arg): bool => $holds($arg->value)),
             $expr instanceof Plus, $expr instanceof Coalesce => $holds($expr->left) || $holds($expr->right),
             $expr instanceof Ternary => $holds($expr->if ?? $expr->cond) || $holds($expr->else),
-            $expr instanceof Variable => $this->localHoldsParentKeys($expr, $method, $stmts, $followed),
+            $expr instanceof Variable => $this->localHoldsParentKeys($expr, $method, $stmts, $scope, $followed),
             default => false,
         };
     }
 
     /**
-     * Whether a write to a local holds the keys a `parent::` call of the method returns.
+     * Whether a write a read of a local sees holds the keys a `parent::` call of the method returns; every write of a
+     * local the lookup leaves unbound, such as one built by `+=`, counts.
      *
      * @param  array<Stmt>  $stmts  the body, whose writes the local holds
-     * @param  array<string, true>  $followed  the locals already followed
+     * @param  array<int, true>  $followed  the writes already followed, by object id
      */
-    private function localHoldsParentKeys(Variable $local, string $method, array $stmts, array $followed): bool
-    {
-        $name = $local->name;
-
-        if (! is_string($name) || isset($followed[$name])) {
+    private function localHoldsParentKeys(
+        Variable $local,
+        string $method,
+        array $stmts,
+        AnalysisScope $scope,
+        array $followed,
+    ): bool {
+        if (! is_string($local->name)) {
             return false;
         }
 
         return array_any(
-            $this->localWrites($stmts, $name),
-            fn (Expr $written): bool => $this->holdsParentKeys($written, $method, $stmts, $followed + [$name => true]),
+            $scope->writesSeenBy($local) ?? $this->localWrites($stmts, $local->name),
+            fn (Expr $written): bool => ! isset($followed[spl_object_id($written)]) && $this->holdsParentKeys(
+                $written,
+                $method,
+                $stmts,
+                $scope,
+                $followed + [spl_object_id($written) => true],
+            ),
         );
     }
 
@@ -137,7 +158,8 @@ final class ParentCallChain
     }
 
     /**
-     * What the body writes to a local, by `=` or `+=`.
+     * Every value the body writes to a local, by `=` or `+=`, in any order: what a local the lookup leaves unbound may
+     * hold.
      *
      * @param  array<Stmt>  $stmts
      * @return list<Expr>

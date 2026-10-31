@@ -841,18 +841,26 @@ final class AnalysisScope
     }
 
     /**
-     * The value a local written once holds at a read, but where a by-reference call reshapes it: none where a
-     * parameter's binding or a join holds there instead, as VariableHandler::boundValue() reads it.
+     * The writes a read of a local sees: the one it holds, or each a branch join holds there; null where a parameter's
+     * binding may still hold, or a gap whose write assigns no value the scan reads.
+     *
+     * @return list<Expr>|null
      */
-    public function literalWriteAt(Variable $read): ?Expr
+    public function writesSeenBy(Variable $read): ?array
     {
         $name = $read->name;
 
-        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read)) || $this->gapAt($read) !== null) {
+        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read))) {
             return null;
         }
 
-        return $this->literalLocalBinding($name);
+        $gap = $this->gapAt($read);
+
+        if ($gap !== null) {
+            return $gap[3] || $gap[2] === null ? null : $gap[2];
+        }
+
+        return isset($this->localVarBindings[$name]) ? [$this->localVarBindings[$name]] : null;
     }
 
     /**
@@ -1290,25 +1298,6 @@ final class AnalysisScope
         if (isset($snapshot['passedValues'][$from])) {
             $this->passedValues[$to] = $snapshot['passedValues'][$from];
         }
-    }
-
-    /**
-     * The local bindings a reader may take by their syntax, such as an array literal's keys: each but those a
-     * by-reference call keeps only in some forms, which only a read of the value's type can check.
-     *
-     * @return LocalVarBindingsMap
-     */
-    public function literalLocalBindings(): array
-    {
-        return array_diff_key($this->localVarBindings, $this->byReferenceForms);
-    }
-
-    /**
-     * The local binding of one name a reader may take by its syntax, as literalLocalBindings() lists it, or null.
-     */
-    public function literalLocalBinding(string $name): ?Expr
-    {
-        return isset($this->byReferenceForms[$name]) ? null : ($this->localVarBindings[$name] ?? null);
     }
 
     /**

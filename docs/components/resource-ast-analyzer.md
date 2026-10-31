@@ -86,7 +86,7 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
   object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
-  A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
+  A local whose read sees one write reads as its value (`writtenLocal()`), and the walk names a key such a local holds
   (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
   completely. A `??=` of a key the walk holds joins the value it keeps with the default, the key optional only where a
   value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. A placeholder, a closure and
@@ -100,8 +100,8 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
   method's of its name. A closure's returns and a method's read as a value share the walk through
   `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
-  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local, read
-  from its writes before the render call, through `variableAnalysis()`.
+  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local its
+  literal writes do not spell, read from its writes before the render call, through `variableAnalysis()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and
@@ -534,7 +534,8 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
 
 PHP's array union `$a + $b` keeps every key `$a` sets. In value position
 [`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
-`InspectsAstNodes::arrayUnionLiteral()` builds. With every key a literal, that literal holds the items PHP keeps, in
+`InspectsAstNodes::arrayUnionLiteral()` builds, or, where a local operand's read sees several literal writes, one
+literal per write, joined. With every key a literal, that literal holds the items PHP keeps, in
 PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
 cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
 one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
