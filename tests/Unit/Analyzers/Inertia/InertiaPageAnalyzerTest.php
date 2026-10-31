@@ -947,6 +947,7 @@ it('types each arm of an enum-resource ternary as Inertia sends it', function ()
         ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
 
+// No arm record tells a collection wrap from one beside a make(), so `mixed` keeps the wrapped case either may send.
 it('keeps the wrap key of each enum-resource collection arm of a ternary', function () {
     [$picked, $other] = array_map(function (int $c): stdClass {
         $request = Request::create('/', 'GET', ['c' => $c]);
@@ -956,9 +957,22 @@ it('keeps the wrap key of each enum-resource collection arm of a ternary', funct
 
     expect(pageData(EnumUnionPropsController::class.'@collections')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'either: { data: AsEnum<typeof Role>[] } | { data: AsEnum<typeof Status>[] }, '
-        .'mixed: { data: AsEnum<typeof Status>[] } | StatusType }')
+        .'mixed: AsEnum<typeof Status> | { data: AsEnum<typeof Status>[] } | StatusType }')
         ->and([$picked->either->data[0]->name, $picked->mixed->data[0]->name, $other->either->data[0]->name, $other->mixed])
         ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
+});
+
+it('keeps a wrapped case beside an enum-resource collection and a bare case of its enum', function () {
+    [$made, $collected, $bare] = array_map(function (int $n): stdClass {
+        $request = Request::create('/', 'GET', ['n' => $n]);
+
+        return inertiaProps(new EnumUnionPropsController()->threeArms($request), $request);
+    }, [1, 2, 3]);
+
+    expect(pageData(EnumUnionPropsController::class.'@threeArms')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | StatusType | { data: AsEnum<typeof Status>[] } }')
+        ->and([$made->status->name, $collected->status->data[0]->name, $bare->status])
+        ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
 
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {

@@ -11,7 +11,7 @@ use Inertia\Response;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 
-/** A test-only controller whose props are a ternary of two enums' resources, and of a resource and a bare case. */
+/** A test-only controller whose props are unions of enum resources, and of an enum resource and a bare case. */
 class EnumUnionPropsController
 {
     /** Renders each ternary, whose arms the `c` query flag picks. */
@@ -33,6 +33,18 @@ class EnumUnionPropsController
         return Inertia::render('EnumUnions/Collections', [
             'either' => $c ? EnumResource::collection(Role::cases()) : EnumResource::collection(Status::cases()),
             'mixed' => $c ? EnumResource::collection(Status::cases()) : Status::Published,
+        ]);
+    }
+
+    /** Renders a match that wraps a case, wraps every case or reads a case bare, as the `n` query flag picks. */
+    public function threeArms(Request $request): Response
+    {
+        return Inertia::render('EnumUnions/ThreeArms', [
+            'status' => match ($request->integer('n')) {
+                1 => EnumResource::make(Status::Draft),
+                2 => EnumResource::collection(Status::cases()),
+                default => Status::Published,
+            },
         ]);
     }
 }

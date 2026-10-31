@@ -79,22 +79,23 @@ trait RewritesEnumResourceProps
     /**
      * The type of a prop that wraps its enum in one branch and reads it bare in another, each arm as Inertia sends it.
      *
-     * Every member but the bare read's is substituted, as a wrapped collection is `{ data: … }` here; where the union
-     * deduped both arms into one member, the wrap's own is added back from its recorded shape.
+     * Every member but the bare read's is substituted, as a wrapped collection is `{ data: … }` here. A wrap whose own
+     * spelling no member holds merged into the bare read's member, which a `make()` always does, so it goes in front.
      *
      * @param  EnumResourceArm  $arm
      */
     private static function wrapBesideBareRead(string $type, array $arm): string
     {
         $bare = ValueResult::enumTypeName($arm['fqcn']).($arm['directIsArray'] ? '[]' : '');
+        $own = self::asEnum($arm['fqcn']).($arm['wrapIsCollection'] ? '[]' : '');
         $members = TsTypeString::splitTopLevelUnion($type);
         $wrapped = array_map(
             static fn (string $member): string => $member === $bare ? $member : self::wrapEnum($member, $arm['fqcn']),
             $members,
         );
 
-        return implode(' | ', $wrapped === $members
-            ? [self::asEnum($arm['fqcn']).($arm['wrapIsCollection'] ? '[]' : ''), ...$members]
+        return implode(' | ', in_array($bare, $members, true) && ! in_array($own, $wrapped, true)
+            ? [$own, ...$wrapped]
             : $wrapped);
     }
 

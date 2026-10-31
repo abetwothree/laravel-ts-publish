@@ -516,7 +516,7 @@ test('a two-enum ternary imports both consts and neither enum type it no longer 
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']]);
 });
 
-it('types each arm of a shared enum-resource ternary as Inertia sends it', function () {
+test('each arm of a shared enum-resource ternary types as Inertia sends it', function () {
     [$picked, $other] = array_map(function (int $c): stdClass {
         $request = Request::create('/', 'GET', ['c' => $c]);
         Inertia::share(new MiddlewareWithEnumUnions()->share($request));
