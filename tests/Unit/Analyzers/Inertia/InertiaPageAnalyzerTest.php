@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\FilteredRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
@@ -46,8 +47,10 @@ use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -862,6 +865,31 @@ it('types the route-bound reads #86 lists, as Inertia sends them', function () {
         ->and($sent = inertiaProps(new RouteBoundReadsController()->show($post)))
         ->and([$sent->status->name, $sent->authorPosts, $sent->comments, $sent->fresh->id])
         ->toBe([$post->status->name, 1, 1, $post->id]);
+});
+
+// A page runs RelationFilterHandler, as shared data does, so a `map` proxy's filter types as the rows it keeps.
+it('types the relation filters a page reads, as Inertia sends them', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $comment = Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $author->id]);
+    $page = pageData(FilteredRelationsController::class.'@show');
+    $sent = inertiaProps(new FilteredRelationsController($post)->show($post));
+    $kept = ['id', 'title', 'user_id', 'status', 'published_at', 'metadata', 'rating', 'category', 'options', 'deleted_at',
+        'category_id', 'visibility', 'priority', 'word_count', 'reading_time_minutes', 'featured_image_url', 'is_pinned'];
+
+    expect($page['pageType'])->toBe('Inertia.SharedData & { posts: { id: number; title: string }[], '
+        .'trimmed: ({ id: number; title: string; user_id: number; status: StatusType; published_at: string | null; '
+        .'metadata: unknown[] | null; rating: string | null; category: string; options: Record<string, string> | null; '
+        .'deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; '
+        .'priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; '
+        .'featured_image_url: string | null; is_pinned: boolean })[], '
+        .'comments: { id: number; content: string }[], held: { id: number }[] }')
+        ->and($page['classFqcns'])->toBe([Status::class, Visibility::class, Priority::class])
+        ->and($sent->posts)->toEqual([(object) ['id' => $post->id, 'title' => 'First']])
+        ->and(array_keys((array) $sent->trimmed[0]))->toBe($kept)
+        ->and($sent->trimmed[0]->status)->toBe(0)
+        ->and($sent->comments)->toEqual([(object) ['id' => $comment->id, 'content' => 'alpha']])
+        ->and($sent->held)->toEqual([(object) ['id' => $comment->id]]);
 });
 
 it('imports a class an import-less page cast spells', function () {
