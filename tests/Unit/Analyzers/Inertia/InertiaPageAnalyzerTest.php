@@ -221,6 +221,18 @@ it('reads a props local through its writes', function (string $action, string $t
         [['x' => 1], []],
         [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
     ],
+    'a ??= over an optional prop' => [
+        'coalesceOptionalProp',
+        '{ heading: string, a?: number | string }',
+        [[]],
+        [['heading' => 'x']],
+    ],
+    'a ??= over a deferred prop' => [
+        'coalesceDeferProp',
+        '{ heading: string, a?: number | string }',
+        [[]],
+        [['heading' => 'x']],
+    ],
     'a write reading the local itself' => [
         'coalesceSelfRead',
         '{ heading: string, a?: number | string }',

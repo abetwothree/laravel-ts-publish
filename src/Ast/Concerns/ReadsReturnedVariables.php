@@ -95,6 +95,12 @@ trait ReadsReturnedVariables
     /** @var WeakMap<MethodAnalysis, list<UntypedKeyWrite>>|null each walked or literal branch's untyped key writes */
     private ?WeakMap $branchNotes = null;
 
+    /** @var array<string, true> each key the walk under way gave a value that may be left out itself, as `when()` is */
+    private array $optionalValueKeys = [];
+
+    /** How many values written to a variable read it where the walk could not spell its keys, which a page declines. */
+    private int $selfReadsMissed = 0;
+
     /**
      * The analysis of a whole-array write's value, or null for an expression the host does not read.
      */
@@ -238,7 +244,8 @@ trait ReadsReturnedVariables
      * The keys a local holds where it is read, walked as a returned variable's are; null where the walk declines.
      *
      * A function or class nested in the body may bind the name itself, so a read inside one is declined too, and so is
-     * one past a write whose value the walk may lose (writesPastTheWalk()).
+     * one past a write whose value the walk may lose (writesPastTheWalk()), or past a value written to the variable
+     * that the walk could not read against its keys.
      *
      * @param  array<Node\Stmt>  $stmts  the body holding the read
      * @return TAnalysis|null
@@ -255,7 +262,15 @@ trait ReadsReturnedVariables
 
         $before = $this->statementsBefore($read, $name, $stmts);
 
-        return $before === null || $this->writesPastTheWalk($before, $name) ? null : $this->variableBranch($before, $name);
+        if ($before === null || $this->writesPastTheWalk($before, $name)) {
+            return null;
+        }
+
+        $missed = $this->selfReadsMissed;
+        $branch = $this->variableBranch($before, $name);
+
+        // Such a value is read as the body's other reads read it, which can leave out the type of a key that is sent.
+        return $this->selfReadsMissed === $missed ? $branch : null;
     }
 
     /**
@@ -484,13 +499,6 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->readAgainstWalk($stmt->expr->expr, $varName, $into, $this->analyzeValueExpression(...));
-
-                if ($result === null) {
-                    $into->holdUnreadKeys();
-
-                    continue;
-                }
-
                 $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
@@ -759,17 +767,22 @@ trait ReadsReturnedVariables
             $analysis->merge($seed);
         }
 
-        $live = $this->fromLastReplacement($stmts, $varName);
+        $live = $this->fromLastReplacement($stmts, $varName, readsBefore: true);
         // A value read during the walk can start a walk of its own, whose writes are not this one's.
-        $outer = $this->untypedKeyWrites;
+        $outer = [$this->untypedKeyWrites, $this->optionalValueKeys];
         $this->untypedKeyWrites = [];
+        $this->optionalValueKeys = [];
 
         try {
+            if ($seed !== null) {
+                $this->noteOptionalValues($seed);
+            }
+
             $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
             $this->branchNotes ??= new WeakMap;
             $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
-            $this->untypedKeyWrites = $outer;
+            [$this->untypedKeyWrites, $this->optionalValueKeys] = $outer;
         }
 
         return $analysis;
@@ -777,13 +790,14 @@ trait ReadsReturnedVariables
 
     /**
      * The statements from the last top-level assignment that replaces the whole variable, which overwrites every
-     * write before it; an assignment that spreads the variable into itself keeps the earlier keys, so replaces nothing,
-     * and one whose value reads the variable needs the keys written before it.
+     * write before it; an assignment that spreads the variable into itself keeps the earlier keys, so replaces nothing.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  bool  $readsBefore  whether one whose value reads the variable needs the keys written before it, as the
+     *                             walk reading that value does
      * @return array<Node\Stmt>
      */
-    private function fromLastReplacement(array $stmts, string $varName): array
+    private function fromLastReplacement(array $stmts, string $varName, bool $readsBefore = false): array
     {
         $stmts = array_values($stmts);
         $start = 0;
@@ -791,7 +805,8 @@ trait ReadsReturnedVariables
         foreach ($stmts as $index => $stmt) {
             $value = $this->replacingValue($stmt, $varName);
 
-            if ($value !== null && $this->readsAsArray($value) && ! $this->readsVariableIn($value, $varName)) {
+            if ($value !== null && $this->readsAsArray($value)
+                && ! ($readsBefore && $this->readsVariableIn($value, $varName))) {
                 $start = $index;
             }
         }
@@ -997,6 +1012,7 @@ trait ReadsReturnedVariables
      */
     private function mergeWholeArrayWrite(MethodAnalysis $into, MethodAnalysis $write, bool $isConditional): void
     {
+        $this->noteOptionalValues($write);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
         $written = [];
@@ -1320,6 +1336,10 @@ trait ReadsReturnedVariables
 
         $into->forgetChannels($keyName);
 
+        if ($result['optional']) {
+            $this->optionalValueKeys[$keyName] = true;
+        }
+
         $appendedIndex = count($into->properties);
 
         $into->addProperty($keyName, $result, $isConditional || $result['optional']);
@@ -1337,8 +1357,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Fill a held key as `??=` does: a value that is not null stays, and where the key is absent or null the default
-     * lands, so the key is required with both, or `unknown` beside a value the engine cannot type, which may be sent.
+     * Fill a held key as `??=` does: a value that is not null stays, and the default lands where it is absent or null.
+     *
+     * The key is then required, unless a value it held may be left out itself, as `when()` or `Inertia::optional()`
+     * is, which `??=` keeps. It is `unknown` beside a value the engine cannot type, which may be the one sent.
      *
      * @param  TAnalysis  $into
      */
@@ -1354,12 +1376,6 @@ trait ReadsReturnedVariables
 
         $default = $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...));
 
-        if ($default === null) {
-            $into->holdUnreadKeys();
-
-            return;
-        }
-
         // A signature stands for many runtime keys, so the default is one more it may cover.
         if ($signature) {
             $into->addSignatureEntry($keyName, $default);
@@ -1367,10 +1383,11 @@ trait ReadsReturnedVariables
             return;
         }
 
+        $leftOut = isset($this->optionalValueKeys[$keyName]);
         $kept = clone $into;
         $kept->properties = array_map(
             fn (array $property): array => $property['name'] === $keyName
-                ? [...$property, 'type' => ValueResult::stripNullArm($property['type']), 'optional' => false]
+                ? [...$property, 'type' => ValueResult::stripNullArm($property['type']), 'optional' => $leftOut && $property['optional']]
                 : $property,
             $into->properties,
         );
@@ -1401,13 +1418,15 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Read a value a write of the variable assigns, each read of the variable in it standing for the keys $state holds,
-     * as PHP evaluates the value before the write lands; null where it reads the variable and $state cannot spell it.
+     * Read a value a write of the variable assigns, each read of the variable in it standing for the keys $state holds.
+     *
+     * PHP evaluates the value before the write lands. Where $state cannot spell those keys, the value is read as the
+     * body's other reads read it, and the miss is counted for walkedAnalysis().
      *
      * @template TRead
      *
      * @param  Closure(Expr): TRead  $read
-     * @return TRead|null
+     * @return TRead
      */
     private function readAgainstWalk(Expr $value, string $varName, MethodAnalysis $state, Closure $read): mixed
     {
@@ -1418,7 +1437,9 @@ trait ReadsReturnedVariables
 
         // A partly read state may hold the key read unread.
         if (! $state->readsCompletely) {
-            return null;
+            $this->selfReadsMissed++;
+
+            return $read($value);
         }
 
         $held = clone $state;
@@ -1447,7 +1468,7 @@ trait ReadsReturnedVariables
         })->traverse([$value]);
 
         if (! $copy instanceof Expr) {
-            return null; // @codeCoverageIgnore
+            return $read($value); // @codeCoverageIgnore
         }
 
         $dropped = DroppedUnionArms::dropped();
@@ -1458,8 +1479,26 @@ trait ReadsReturnedVariables
             fn (): mixed => $read($copy),
         );
 
-        // A member the read cannot type, such as one naming a class, is left out, though it may be what is sent.
-        return DroppedUnionArms::dropped() === $dropped ? $result : null;
+        if (DroppedUnionArms::dropped() === $dropped) {
+            return $result;
+        }
+
+        // A member the read cannot type, such as one naming a class, was left out, though it may be what is sent.
+        $this->selfReadsMissed++;
+
+        return $read($value);
+    }
+
+    /**
+     * Note each key a write sets optional, which its value made so, since the walk's own writes go through writeKey().
+     */
+    private function noteOptionalValues(MethodAnalysis $write): void
+    {
+        foreach ($write->properties as $property) {
+            if ($property['optional']) {
+                $this->optionalValueKeys[$property['name']] = true;
+            }
+        }
     }
 
     /**

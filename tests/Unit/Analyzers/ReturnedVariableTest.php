@@ -28,6 +28,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastParti
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassBranchesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLoadedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedBareSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedSpreadResource;
@@ -79,6 +81,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReference
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRejectedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReplacedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRequiredResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadConfigResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadUnknownResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReplaceAppendResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReplaceDynamicResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedShapedLoneVariableResource;
@@ -929,3 +936,43 @@ test('a key-built local read where its join holds a value it cannot type reads t
         ->and(new KeyBuiltLocalGapResource($tag)->resolve(Request::create('/')))
         ->toBe(['first' => $attributes, 'm' => [...$attributes, 'extra' => 1]]);
 });
+
+// A `??=` keeps a value a `when*()` leaves out, which only a branch's write makes required. A value read against keys
+// the walk cannot spell reads as the body's other reads do, so the write and a replacement still land.
+test('a ??= or a write reading the variable itself publishes what Laravel sends', function (string $class, string $members, array $paths) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+    $sent = fn (array $query): array => new $class($tag)->resolve(Request::create('/', 'GET', $query));
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(array_map($sent, array_column($paths, 0)))->toBe(array_column($paths, 1));
+})->with([
+    'a ??= beside when() and beside a branch' => [ReturnedCoalesceWhenResource::class, 'id: number; w?: number | string; a: number | string', [
+        [[], ['id' => 9, 'a' => 'none']],
+        [['c' => '1'], ['id' => 9, 'w' => 1, 'a' => 1]],
+    ]],
+    'a ??= beside whenLoaded()' => [ReturnedCoalesceWhenLoadedResource::class, 'id: number; posts?: Post[] | string', [
+        [[], ['id' => 9]],
+    ]],
+    'a replacement reading the variable past a dynamic key' => [ReturnedSelfReplaceDynamicResource::class, 'x: number; y: string', [
+        [[], ['x' => 9, 'y' => 'php']],
+    ]],
+    'a replacement reading the variable past an appended key' => [ReturnedSelfReplaceAppendResource::class, 'id: unknown; name: string', [
+        [[], ['id' => 9, 'name' => 'php']],
+    ]],
+    'a key read from a key no reading types' => [ReturnedSelfReadUnknownResource::class, 'id: number; q: unknown; v: string', [
+        [[], ['id' => 9, 'q' => null, 'v' => 'none']],
+        [['q' => 'w'], ['id' => 9, 'q' => 'w', 'v' => 'w']],
+    ]],
+    'a key read from a missing config value' => [ReturnedSelfReadConfigResource::class, 'id: number; cfg: null; label: string', [
+        [[], ['id' => 9, 'cfg' => null, 'label' => 'none']],
+    ]],
+    'both, built by helpers' => [
+        ReturnedSelfReadHelperResource::class,
+        'meta: { id: number; q: unknown; v: string }; rep: { x: number; y: string }',
+        [
+            [[], ['meta' => ['id' => 9, 'q' => null, 'v' => 'none'], 'rep' => ['x' => 9, 'y' => 'php']]],
+            [['q' => 'w'], ['meta' => ['id' => 9, 'q' => 'w', 'v' => 'w'], 'rep' => ['x' => 9, 'y' => 'php']]],
+        ],
+    ],
+]);

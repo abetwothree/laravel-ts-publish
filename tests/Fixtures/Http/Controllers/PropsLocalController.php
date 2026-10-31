@@ -108,6 +108,24 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceAssigned', $props);
     }
 
+    /** Renders a local whose key holds an optional prop, which `??=` keeps, since it is no null. */
+    public function coalesceOptionalProp(): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::optional(fn (): int => 1)];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceOptionalProp', $props);
+    }
+
+    /** Renders a local whose key holds a deferred prop, which `??=` keeps, since it is no null. */
+    public function coalesceDeferProp(): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::defer(fn (): int => 1)];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceDeferProp', $props);
+    }
+
     /** Renders a local whose key a block may set, which a write reading the local itself fills otherwise. */
     public function coalesceSelfRead(Request $request): Response
     {
