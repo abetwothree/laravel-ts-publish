@@ -74,7 +74,8 @@ published text still needs it.
 queue meets the displaced value. `ResourceTransformer::runAstAnalysis()`,
 `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()` and
 `InertiaSharedDataAnalyzer::buildResult()` call it after the reconcile, `AnalysisComposer::compose()` first, for
-`AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can retype.
+`AstEngine::analyze()`, `ModelMetadataAnalyzer::composeTypes()` for a companion, and `InlineObjectResult` over an inline
+object's members, whose casts no outer cast can retype.
 A page's casts in force are a props helper's own method casts under the action's; shared data's are a helper's under
 its `@return` shape's and those of each class and `share()` it reads. A class-level event cast whose key names no
 payload property adds neither the key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a
@@ -104,7 +105,8 @@ pins it.
 
 - The cast's own import is kept, and it binds each name it brings. A displaced class of that name is dropped unless
   another key reads it, and `fit()` drops a custom import of that name from any other path, such as a displaced
-  `#[TsType]` import, on every publisher. `ResourceTransformer` also skips a model attribute's import of it.
+  `#[TsType]` import, on every publisher but a companion, whose transformer throws for one name from two paths.
+  `ResourceTransformer` also skips a model attribute's import of it.
 - A class the text spells stays queued for the key, so it is imported and aliased like any package name.
 - Every other displaced class is carried in `MethodAnalysis::$carried`, which an inline array passes on as its own
   result key. Each publisher registers a carried class only where `CastChannels::spelledUnclaimed()` finds a text

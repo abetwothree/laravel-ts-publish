@@ -179,9 +179,10 @@ so no queue is rebuilt beside the printer. A page hands its type over with `Iner
 `@tolki/types` class is imported from that module unaliased, and its name is reserved as a custom import's is. A page
 reserves the names its own branch's imports bring, so the order of an action's component branches decides nothing.
 
-A metadata companion is the same call with one member per inferred key, so same-named enums alias as in any file. The
-names its `#[TsCasts]` and docblock imports bring are reserved, and a cast's own aliases stay with
-`TsCastsImportResolver`. Only a composed class and a cast that import one name still collide, and the transformer throws.
+A metadata companion is the same call with one member per key whose text no cast import owns, after
+`CastChannels::fit()` over its casts and docblock keys, so same-named enums alias as in any file. The names its
+`#[TsCasts]` and docblock imports bring are reserved, and a cast's own aliases stay with `TsCastsImportResolver`. Only a
+composed class and a cast that import one name still collide, and the transformer throws.
 
 ### `BroadcastEventTransformer`
 

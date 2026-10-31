@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -28,10 +29,12 @@ use Throwable;
  * @phpstan-import-type TsCastsResult from ParsesTsCasts
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type TokenFqcns from MethodAnalysis
  *
- * @phpstan-type InferredFile array{types: array<string, string>, typeImports: TypesImportMap}
+ * @phpstan-type ComposedTypes array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>, imports: array<string, TypesImportMap>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens: array<string, TokenFqcns>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
@@ -60,8 +63,7 @@ class ModelMetadataAnalyzer
             return $result;
         }
 
-        $inferredKeys = array_keys(array_filter($result->sources, static fn (string $source): bool => $source === 'inferred'));
-        $file = $this->inferredTypeImports($analysis, $method, $inferredKeys, $result, $payloadKeys, $namespacePath);
+        $file = $this->composeTypes($analysis, $method, $result, $declared['tokens'], $payloadKeys, $namespacePath);
 
         return new ModelMetadataAnalysis(
             array_replace($result->types, $file['types']),
@@ -110,17 +112,18 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Respells the inferred types so same-named enums alias apart, and returns them with the imports they still spell.
+     * Fit each key a cast or the docblock retypes to its text, then respell every key whose text no cast import owns so
+     * same-named enums alias apart, and return those types with the imports they spell.
      *
-     * @param  list<string>  $inferredKeys
+     * @param  array<string, TokenFqcns>  $docblockTokens  each docblock key's class behind each token of its text
      * @param  list<string>  $payloadKeys
-     * @return InferredFile
+     * @return ComposedTypes
      */
-    protected function inferredTypeImports(
+    protected function composeTypes(
         MethodAnalysis $analysis,
         ReflectionMethod $method,
-        array $inferredKeys,
         ModelMetadataAnalysis $result,
+        array $docblockTokens,
         array $payloadKeys,
         string $namespacePath,
     ): array {
@@ -131,10 +134,13 @@ class ModelMetadataAnalyzer
         $analysis->modelFqcns = [];
         $analysis->nestedResources = [];
 
+        $payload = array_flip($payloadKeys);
+        $published = array_intersect_key($result->types, $payload);
+
         foreach (array_keys($analysis->enumResources + $analysis->directEnumFqcns + $analysis->inlineEnumFqcns) as $name) {
             // DispatchesFqcnResults keys an embedded enum by its own FQCN, so key-equals-value marks a channel
             // with no property name to prune by; the still-spelled filter below owns those instead.
-            if (in_array($name, $inferredKeys, true) || ($analysis->directEnumFqcns[$name] ?? null) === $name) {
+            if (isset($published[$name]) || ($analysis->directEnumFqcns[$name] ?? null) === $name) {
                 continue;
             }
 
@@ -145,24 +151,29 @@ class ModelMetadataAnalyzer
             );
         }
 
-        $payload = array_flip($payloadKeys);
-        $casts = new TsCastsImportResolver()->resolve(
-            array_intersect_key($result->types, $payload),
-            array_intersect_key($result->importPaths, $payload),
-        )['typeImports'];
+        // The transformer throws for one name imported from two paths, so no cast may unbind another path's import.
+        $customImports = $analysis->customImports;
+        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $result, $docblockTokens, $published));
+        $analysis->customImports = $customImports;
+
+        $castPaths = array_intersect_key($result->importPaths, $payload);
+        $casts = new TsCastsImportResolver()->resolve($published, $castPaths)['typeImports'];
         $declared = ImportMaps::merge($casts, ...array_values(array_intersect_key($result->docblockImports, $payload)));
         $brought = ImportMaps::localNames($declared);
+
+        // A cast's own import owns its text, which TsCastsImportResolver respells.
+        $keys = array_keys(array_diff_key($published, $castPaths));
         $members = [];
 
-        foreach ($inferredKeys as $key) {
-            $printed = [['key' => '', 'type' => $result->types[$key], 'source' => $key]];
-            $members[] = ['type' => $result->types[$key], ...FileImportNames::objectQueues($analysis, $printed, brought: $brought)];
+        foreach ($keys as $key) {
+            $printed = [['key' => '', 'type' => $published[$key], 'source' => $key]];
+            $members[] = ['type' => $published[$key], ...FileImportNames::objectQueues($analysis, $printed, brought: $brought)];
         }
 
         $file = FileImportNames::compose($members, ImportMaps::merge($analysis->customImports, $declared), $namespacePath);
 
         return [
-            'types' => array_combine($inferredKeys, $file['types']),
+            'types' => array_combine($keys, $file['types']),
             'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath),
         ];
     }
@@ -259,6 +270,7 @@ class ModelMetadataAnalyzer
     {
         $types = [];
         $imports = [];
+        $tokens = [];
         $requiredKeys = [];
         $optionalKeys = [];
 
@@ -268,6 +280,7 @@ class ModelMetadataAnalyzer
             $property = $optional ? substr($property, 0, -1) : $property;
             $types[$property] = $info['type'];
             $imports[$property] = $info['customImports'];
+            $tokens[$property] = $info['tokenFqcns'] ?? [];
 
             if ($optional) {
                 $optionalKeys[$property] = true;
@@ -279,6 +292,7 @@ class ModelMetadataAnalyzer
         return [
             'overrides' => $types,
             'imports' => $imports,
+            'tokens' => $tokens,
             'requiredKeys' => $requiredKeys,
             'optionalKeys' => $optionalKeys,
         ];
@@ -340,5 +354,40 @@ class ModelMetadataAnalyzer
             $casts['importPaths'],
             docblockImports: array_intersect_key($declared['imports'], $docblockKeys),
         );
+    }
+
+    /**
+     * The cast in force for each published key a helper's cast, provide()'s own #[TsCasts] or the docblock retypes:
+     * a docblock key names only the enums behind its tokens, since a companion imports no model.
+     *
+     * @param  array<string, TokenFqcns>  $docblockTokens
+     * @param  array<string, string>  $published  each payload key's type
+     * @return CastMap
+     */
+    private function castsInForce(
+        MethodAnalysis $analysis,
+        ModelMetadataAnalysis $result,
+        array $docblockTokens,
+        array $published,
+    ): array {
+        $inForce = array_intersect_key($analysis->casts, $published);
+
+        foreach ($published as $key => $type) {
+            if ($result->sources[$key] === 'casts') {
+                $inForce[$key] = ['type' => $type, 'import' => $result->importPaths[$key] ?? null];
+            } elseif ($result->sources[$key] === 'docblock') {
+                $inForce[$key] = [
+                    'type' => $type,
+                    'import' => null,
+                    'customImports' => $result->docblockImports[$key] ?? [],
+                    'tokenFqcns' => array_map(
+                        static fn (?string $fqcn): ?string => $fqcn !== null && enum_exists($fqcn) ? $fqcn : null,
+                        $docblockTokens[$key] ?? [],
+                    ),
+                ];
+            }
+        }
+
+        return $inForce;
     }
 }
