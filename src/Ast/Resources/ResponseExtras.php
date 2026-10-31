@@ -52,7 +52,7 @@ final readonly class ResponseExtras
      */
     public static function withOf(string $resource): self
     {
-        // The caller's type follows this method.
+        // The prop's type depends on this class's with(), which no file the page records holds.
         DependencyRecorder::recordClass($resource);
 
         $reflection = self::reflect($resource);

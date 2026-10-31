@@ -82,6 +82,7 @@ use Workbench\App\Models\Grade;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
 
 afterEach(function () {
     JsonResource::flushState();
@@ -306,6 +307,7 @@ it('keeps the body resolve() returns, and the response a fluent call on a resour
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
     $item = inertiaProps(Inertia::render('Resources/Chained', ['list' => (new PostCollection(Post::all()))->resolve()]))->list[0];
+    $added = WarehouseResource::make(Warehouse::create(['name' => 'Main']))->additional(['meta' => 1]);
     $comment = "Omit<CommentResource, 'author' | 'author_new' | 'author_direct' | 'post' | 'post_new' | 'post_direct'> & { "
         .'author?: { data: UserResource }; author_new?: { data: UserResource }; author_direct: { data: UserResource }; '
         .'post?: { data: PostResource }; post_new?: { data: PostResource }; post_direct: { data: PostResource } }';
@@ -313,7 +315,8 @@ it('keeps the body resolve() returns, and the response a fluent call on a resour
     expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource; meta: number }, '
         ."list: (Omit<PostResource, 'comments_resolved'> & { comments_resolved?: ({$comment})[] })[], body: ItemsKeyPostCollection }")
-        ->and([$item->title, $item->comments_resolved])->toBe(['First', []]);
+        ->and([$item->title, $item->comments_resolved])->toBe(['First', []])
+        ->and(inertiaProps(Inertia::render('Resources/Chained', ['additional' => $added]))->additional->meta)->toBe(1);
 });
 
 it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {

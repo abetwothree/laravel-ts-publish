@@ -30,8 +30,7 @@ final class ResourceWrapping
     }
 
     /**
-     * The key a response nests its body in: the live wrap key, else, once `with()` or `additional()` adds a key beside
-     * the body, the empty `$wrap` itself or `data` (ResourceResponse::wrap()); null where it sends the body bare.
+     * The key ResourceResponse::wrap() nests a body in, with or without extra keys beside it; null for a bare body.
      *
      * @param  class-string<JsonResource>  $class
      */

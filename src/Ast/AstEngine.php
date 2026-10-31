@@ -189,8 +189,7 @@ final class AstEngine
     }
 
     /**
-     * What `json_encode()` sends for an expression of a body Inertia reads, such as `additional()`'s argument: Inertia
-     * walks none of it, so the scope's subject reads it with its own profile, as a resource's own body is read.
+     * What `json_encode()` sends for an expression of a body Inertia reads, read with the scope subject's own profile.
      *
      * @return ValueExpressionResult
      *
