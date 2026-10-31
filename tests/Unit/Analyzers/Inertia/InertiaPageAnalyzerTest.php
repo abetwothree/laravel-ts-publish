@@ -223,13 +223,13 @@ it('reads a props local through its writes', function (string $action, string $t
     ],
     'a ??= over an optional prop' => [
         'coalesceOptionalProp',
-        '{ heading: string, a?: number | string }',
+        '{ heading: string, a?: number }',
         [[]],
         [['heading' => 'x']],
     ],
     'a ??= over a deferred prop' => [
         'coalesceDeferProp',
-        '{ heading: string, a?: number | string }',
+        '{ heading: string, a?: number }',
         [[]],
         [['heading' => 'x']],
     ],
@@ -263,6 +263,16 @@ it('reads a props local through its writes', function (string $action, string $t
 it('throws for the request the in-block props local is never assigned on', function () {
     expect(fn () => new PropsLocalController()->inBlock(Request::create('/')))->toThrow(NotFoundHttpException::class);
 });
+
+// The props hold the lazy prop object, which is not null, so `??=` never lands its default on any request.
+it('sends a lazy prop a ??= never fills on the partial reload that asks for it', function (string $action, string $component) {
+    $page = new PropsLocalController()->{$action}();
+
+    expect(inertiaProps($page, partialReload($component, 'a')))->toEqual((object) ['a' => 1]);
+})->with([
+    'optional' => ['coalesceOptionalProp', 'PropsLocal/CoalesceOptionalProp'],
+    'deferred' => ['coalesceDeferProp', 'PropsLocal/CoalesceDeferProp'],
+]);
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,
 // a `+=`, a loop's `continue` or a `try` or `switch` keeps a value the walk reads past, and `??` drops an untyped key.

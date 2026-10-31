@@ -125,6 +125,9 @@ A method that builds an array in a variable and returns it publishes the keys it
   `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`, `a?: string` publishes, though Laravel can send
   `1`. A `switch` case, a `try` body and a `catch` are read in sequence instead: a key first set there is optional, and
   a key re-set there publishes only its last write's type.
+- A `??=` of a key a helper's array, a parent `toArray()` or a parameter's argument holds optionally keeps the key's
+  type, as over a `when()` value, though the key may be unset there and the default sent: after
+  `$d = $this->base(); $d['k'] ??= 'x';`, `k?: number` publishes where `base()` sets `k` only in a branch.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk

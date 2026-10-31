@@ -108,7 +108,7 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceAssigned', $props);
     }
 
-    /** Renders a local whose key holds an optional prop, which `??=` keeps, since it is no null. */
+    /** Renders a local whose key holds an optional prop, which `??=` keeps, since it is not null. */
     public function coalesceOptionalProp(): Response
     {
         $props = ['heading' => 'x', 'a' => Inertia::optional(fn (): int => 1)];
@@ -117,7 +117,7 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceOptionalProp', $props);
     }
 
-    /** Renders a local whose key holds a deferred prop, which `??=` keeps, since it is no null. */
+    /** Renders a local whose key holds a deferred prop, which `??=` keeps, since it is not null. */
     public function coalesceDeferProp(): Response
     {
         $props = ['heading' => 'x', 'a' => Inertia::defer(fn (): int => 1)];

@@ -98,6 +98,9 @@ trait ReadsReturnedVariables
     /** @var array<string, true> each key the walk under way gave a value that may be left out itself, as `when()` is */
     private array $optionalValueKeys = [];
 
+    /** @var array<string, true> each key a path of the walk under way may reach unset, where a `??=` of it runs */
+    private array $possiblyUnsetKeys = [];
+
     /** How many values written to a variable read it where the walk could not spell its keys, which a page declines. */
     private int $selfReadsMissed = 0;
 
@@ -458,7 +461,8 @@ trait ReadsReturnedVariables
                 }
 
                 $this->noteUntypedItems($assigned, $baseAnalysis);
-                $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
+                $unset = $this->keysLeftUnset($assigned, $baseAnalysis);
+                $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional, $unset);
 
                 continue;
             }
@@ -484,7 +488,8 @@ trait ReadsReturnedVariables
 
                 $addedAnalysis->dropKeysHeldBy($into);
                 $this->noteUntypedItems($stmt->expr->expr, $addedAnalysis);
-                $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
+                $unset = $this->keysLeftUnset($stmt->expr->expr, $addedAnalysis);
+                $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional, $unset);
 
                 continue;
             }
@@ -769,9 +774,10 @@ trait ReadsReturnedVariables
 
         $live = $this->fromLastReplacement($stmts, $varName, readsBefore: true);
         // A value read during the walk can start a walk of its own, whose writes are not this one's.
-        $outer = [$this->untypedKeyWrites, $this->optionalValueKeys];
+        $outer = [$this->untypedKeyWrites, $this->optionalValueKeys, $this->possiblyUnsetKeys];
         $this->untypedKeyWrites = [];
         $this->optionalValueKeys = [];
+        $this->possiblyUnsetKeys = [];
 
         try {
             if ($seed !== null) {
@@ -782,7 +788,7 @@ trait ReadsReturnedVariables
             $this->branchNotes ??= new WeakMap;
             $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
-            [$this->untypedKeyWrites, $this->optionalValueKeys] = $outer;
+            [$this->untypedKeyWrites, $this->optionalValueKeys, $this->possiblyUnsetKeys] = $outer;
         }
 
         return $analysis;
@@ -1009,9 +1015,15 @@ trait ReadsReturnedVariables
      * A new key or a signature entry is appended, optional when the write is conditional or its value can vanish; a
      * named key set again keeps its first position and takes the last value, optional when that value can vanish or a
      * conditional write leaves an optional old one.
+     *
+     * @param  array<string, true>  $unset  the keys the write itself may leave unset (keysLeftUnset())
      */
-    private function mergeWholeArrayWrite(MethodAnalysis $into, MethodAnalysis $write, bool $isConditional): void
-    {
+    private function mergeWholeArrayWrite(
+        MethodAnalysis $into,
+        MethodAnalysis $write,
+        bool $isConditional,
+        array $unset,
+    ): void {
         $this->noteOptionalValues($write);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
@@ -1037,10 +1049,15 @@ trait ReadsReturnedVariables
 
             if ($index === false) {
                 $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
+                $this->markUnset($prop['name'], $isConditional || isset($unset[$prop['name']]));
 
                 continue;
             }
 
+            $this->markUnset(
+                $prop['name'],
+                isset($unset[$prop['name']]) || ($isConditional && isset($this->possiblyUnsetKeys[$prop['name']])),
+            );
             $into->forgetChannels($prop['name']);
             $optional = $prop['optional'] || ($isConditional && $properties[$index]['optional']);
             $properties[$index] = [...$prop, 'optional' => $optional];
@@ -1048,6 +1065,70 @@ trait ReadsReturnedVariables
 
         $into->merge($write);
         $into->properties = $properties;
+    }
+
+    /**
+     * The keys a whole write's value may leave unset in PHP: in an array literal, those only a keyless item brings, as
+     * `mergeWhen()` does once Laravel filters the array. Another value says nothing of which keys it sets, so it leaves
+     * none unset.
+     *
+     * @return array<string, true>
+     */
+    private function keysLeftUnset(Expr $value, MethodAnalysis $write): array
+    {
+        if (! $value instanceof Array_
+            || ! array_any($value->items, fn (ArrayItem $item): bool => $item->key === null && ! $item->unpack)) {
+            return [];
+        }
+
+        $named = array_map(
+            fn (ArrayItem $item): ?string => $item->key === null ? null : $this->namedKey($item->key),
+            $value->items,
+        );
+        $unset = [];
+
+        foreach ($write->properties as $property) {
+            if (! in_array($property['name'], $named, true)) {
+                $unset[$property['name']] = true;
+            }
+        }
+
+        return $unset;
+    }
+
+    /**
+     * Note whether a path of the walk under way may reach a key unset from here on.
+     */
+    private function markUnset(string $key, bool $unset): void
+    {
+        if ($unset) {
+            $this->possiblyUnsetKeys[$key] = true;
+        } else {
+            unset($this->possiblyUnsetKeys[$key]);
+        }
+    }
+
+    /**
+     * The keys a join of branches may reach unset: each one a branch leaves out, or may reach unset itself.
+     *
+     * @param  list<MethodAnalysis>  $branches
+     * @param  list<array<string, true>>  $unset  the keys each branch may reach unset, in branch order
+     * @return array<string, true>
+     */
+    private function unsetPastJoin(array $branches, array $unset): array
+    {
+        $held = array_map(fn (MethodAnalysis $branch): array => array_column($branch->properties, 'name'), $branches);
+        $joined = [];
+
+        foreach (array_merge(...$held) as $name) {
+            foreach ($held as $index => $names) {
+                if (isset($unset[$index][$name]) || ! in_array($name, $names, true)) {
+                    $joined[$name] = true;
+                }
+            }
+        }
+
+        return $joined;
     }
 
     /**
@@ -1101,21 +1182,26 @@ trait ReadsReturnedVariables
         }
 
         $before = $this->untypedKeyWrites;
+        $unsetBefore = $this->possiblyUnsetKeys;
         $branches = $mayRunNone ? [clone $into] : [];
         // Each branch's untyped writes: those before the branches, then its own, never a sibling's.
         $notes = $mayRunNone ? [$before] : [];
+        $unset = $mayRunNone ? [$unsetBefore] : [];
         $added = [];
 
         foreach ($bodies as $body) {
             $this->untypedKeyWrites = $before;
+            $this->possiblyUnsetKeys = $unsetBefore;
             $branch = clone $into;
             $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel, nested: true);
             $branches[] = $branch;
             $notes[] = $this->untypedKeyWrites;
+            $unset[] = $this->possiblyUnsetKeys;
             array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
         }
 
         $this->untypedKeyWrites = [...$before, ...$added];
+        $this->possiblyUnsetKeys = $this->unsetPastJoin($branches, $unset);
 
         foreach ($branches as $index => $branch) {
             foreach (array_slice($branches, 0, $index) as $earlier) {
@@ -1340,6 +1426,10 @@ trait ReadsReturnedVariables
             $this->optionalValueKeys[$keyName] = true;
         }
 
+        $this->markUnset(
+            $keyName,
+            $isConditional && ($existingIndex === null || isset($this->possiblyUnsetKeys[$keyName])),
+        );
         $appendedIndex = count($into->properties);
 
         $into->addProperty($keyName, $result, $isConditional || $result['optional']);
@@ -1357,10 +1447,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Fill a held key as `??=` does: a value that is not null stays, and the default lands where it is absent or null.
+     * Fill a held key as `??=` does: a value that is not null stays, and the default lands where it is unset or null.
      *
-     * The key is then required, unless a value it held may be left out itself, as `when()` or `Inertia::optional()`
-     * is, which `??=` keeps. It is `unknown` beside a value the engine cannot type, which may be the one sent.
+     * A value left out itself, as `when()` or `Inertia::optional()` is, is set and not null, so it stays optional, and
+     * the default lands only past a null or a path that leaves the key unset. It is `unknown` beside an untyped value.
      *
      * @param  TAnalysis  $into
      */
@@ -1368,8 +1458,10 @@ trait ReadsReturnedVariables
     {
         $held = array_find($into->properties, fn (array $property): bool => $property['name'] === $keyName);
         $signature = JsEmitter::isIndexSignatureKey($keyName);
+        $unset = isset($this->possiblyUnsetKeys[$keyName]);
+        $leftOutOnly = ! $unset && isset($this->optionalValueKeys[$keyName]);
 
-        if ($held === null || ! ($signature || $held['optional'] || $held['type'] === 'unknown'
+        if ($held === null || ! ($signature || ($held['optional'] && ! $leftOutOnly) || $held['type'] === 'unknown'
             || ValueResult::hasNullArm($held['type']))) {
             return;
         }
@@ -1415,6 +1507,7 @@ trait ReadsReturnedVariables
         }
 
         $into->replaceWith($joined);
+        $this->markUnset($keyName, $isConditional && $unset);
     }
 
     /**
@@ -1562,6 +1655,8 @@ trait ReadsReturnedVariables
                 continue;
             }
 
+            $this->markUnset($key, $isConditional);
+
             if ($isConditional) {
                 $into->properties = array_map(
                     fn (array $property): array => $property['name'] === $key
@@ -1591,6 +1686,10 @@ trait ReadsReturnedVariables
             fn (array $property): array => [...$property, 'optional' => true],
             $into->properties,
         );
+
+        foreach ($into->properties as $property) {
+            $this->markUnset($property['name'], true);
+        }
 
         if ($bringsKeys) {
             $into->holdUnreadKeys();
