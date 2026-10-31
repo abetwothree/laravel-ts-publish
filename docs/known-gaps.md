@@ -199,6 +199,25 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
+### Some unions of `EnumResource` arms publish the wrong enum shape
+
+With `enums.use_tolki_package` on, the default, each of these misses what Laravel sends, in an API resource as on an
+Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel that tells their arms apart, so the
+`AsEnum` rewrite cannot spell each arm as it is sent:
+
+- A wrap beside a bare case of another enum, `$c ? EnumResource::make(Role::Admin) : Status::Published`, publishes
+  `RoleType | StatusType`, though the wrap arm sends the `Role` object.
+- A wrap beside a nested nullable bare read, `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)`,
+  publishes `AsEnum<typeof Status> | null` and misses the `1` the bare arm sends.
+- A nested ternary over three enums' wraps publishes `AsEnum<typeof Role> | StatusType | VisibilityType` and imports
+  neither bare name, which is `TS2304` in a consumer's build.
+- Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
+- A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
+  publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
+
+No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
+that has an `import`.
+
 ### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
 
 `'priority' => EnumResource::make($this->priority)->resolve()` publishes `AsEnum<typeof Priority>`, but the outer

@@ -938,7 +938,9 @@ A mixed ternary wraps the enum in one arm and reads it directly in the other, as
 `ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/TernaryHandler.php) and
 [`MatchHandler`](../../src/Ast/Handlers/MatchHandler.php) call, reads each arm's own result and records the shape,
 `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
-mixed, or when the wrap arms, or the direct arms, disagree on their shape.
+mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand builds a
+resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is always
+true, so `TernaryHandler` types it as that operand alone.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
 `rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested
@@ -947,9 +949,11 @@ method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case wi
 
 On an Inertia page and in shared data, `RewritesEnumResourceProps` substitutes instead, because a wrapped collection
 there publishes its response, `{ data: AsEnum<typeof Status>[] }`. It respells every top-level member but the bare
-read's, and adds the wrap's own from `AnalysisComposer::enumResourceArms()` only where the union deduped both arms into
-that member. A ternary over two enums' wraps likewise has each member's own enum substituted, in branch order, where the
-resource rewrite replaces the whole member.
+read's, and puts the wrap's own spelling from `AnalysisComposer::enumResourceArms()` in front whenever the bare read's
+member is there and no member holds it, since a `make()` wrap always merges into that member. No arm record tells a
+collection wrap alone from one beside a `make()`, so the lone collection keeps that member too. A ternary over two
+enums' wraps has each member's own enum substituted, in branch order, where the resource rewrite replaces the whole
+member.
 
 Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
 members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which
