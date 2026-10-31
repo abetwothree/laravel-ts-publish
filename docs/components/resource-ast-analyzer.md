@@ -89,9 +89,10 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
   (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
   completely. A `??=` of a key the walk holds joins the value it keeps with the default, the key optional only where a
-  value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. Such a value is set and not
-  null, so the default joins only past a `null`, or where a path may leave the key unset, as a branch, a `switch` case
-  or a keyless `mergeWhen()` item can (`possiblyUnsetKeys`); a seed's or a non-literal write's keys count as set. A
+  value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. A placeholder, a closure and
+  an Inertia prop object are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop
+  resolves to; the default joins only past a plain `null`, or where a path may leave the key unset, as a branch, a
+  `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal write's keys count as set. A
   written value that reads the variable itself reads the keys the walk holds there (`readAgainstWalk()`), or, where the
   walk cannot spell them, reads as the body's other reads do, which a page declines. A merge closure's body is seeded as
   `ClosureHandler` seeds a closure's, so a local it assigns shadows the method's of its name. A closure's returns and a

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -25,6 +26,7 @@ use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
@@ -74,6 +76,7 @@ use WeakMap;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type UntypedKeyWrite = array{string, Expr}
+ * @phpstan-type KeyPaths = array{unset: bool, object: bool, objectNull: bool, plainNull: bool}
  *
  * @internal
  */
@@ -89,6 +92,9 @@ trait ReadsReturnedVariables
         'array_replace_recursive',
     ];
 
+    /** What a path that never set a key leaves it holding. */
+    private const array UNSET_PATHS = ['unset' => true, 'object' => false, 'objectNull' => false, 'plainNull' => false];
+
     /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
     private array $untypedKeyWrites = [];
 
@@ -98,8 +104,13 @@ trait ReadsReturnedVariables
     /** @var array<string, true> each key the walk under way gave a value that may be left out itself, as `when()` is */
     private array $optionalValueKeys = [];
 
-    /** @var array<string, true> each key a path of the walk under way may reach unset, where a `??=` of it runs */
-    private array $possiblyUnsetKeys = [];
+    /**
+     * What some path of the walk under way leaves each key holding, which decides whether a `??=` of it runs: no value,
+     * a plain value that may be null, or a closure or Inertia prop object (`holdsObject()`), which may resolve to null.
+     *
+     * @var array<string, KeyPaths>
+     */
+    private array $keyPaths = [];
 
     /** How many values written to a variable read it where the walk could not spell its keys, which a page declines. */
     private int $selfReadsMissed = 0;
@@ -461,8 +472,7 @@ trait ReadsReturnedVariables
                 }
 
                 $this->noteUntypedItems($assigned, $baseAnalysis);
-                $unset = $this->keysLeftUnset($assigned, $baseAnalysis);
-                $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional, $unset);
+                $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional, $assigned);
 
                 continue;
             }
@@ -488,8 +498,7 @@ trait ReadsReturnedVariables
 
                 $addedAnalysis->dropKeysHeldBy($into);
                 $this->noteUntypedItems($stmt->expr->expr, $addedAnalysis);
-                $unset = $this->keysLeftUnset($stmt->expr->expr, $addedAnalysis);
-                $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional, $unset);
+                $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional, $stmt->expr->expr);
 
                 continue;
             }
@@ -512,7 +521,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $this->writeKey($into, $keyName, $result, $isConditional);
+                $this->writeKey($into, $keyName, $result, $isConditional, $this->holdsObject($stmt->expr->expr));
 
                 continue;
             }
@@ -774,10 +783,10 @@ trait ReadsReturnedVariables
 
         $live = $this->fromLastReplacement($stmts, $varName, readsBefore: true);
         // A value read during the walk can start a walk of its own, whose writes are not this one's.
-        $outer = [$this->untypedKeyWrites, $this->optionalValueKeys, $this->possiblyUnsetKeys];
+        $outer = [$this->untypedKeyWrites, $this->optionalValueKeys, $this->keyPaths];
         $this->untypedKeyWrites = [];
         $this->optionalValueKeys = [];
-        $this->possiblyUnsetKeys = [];
+        $this->keyPaths = [];
 
         try {
             if ($seed !== null) {
@@ -788,7 +797,7 @@ trait ReadsReturnedVariables
             $this->branchNotes ??= new WeakMap;
             $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
-            [$this->untypedKeyWrites, $this->optionalValueKeys, $this->possiblyUnsetKeys] = $outer;
+            [$this->untypedKeyWrites, $this->optionalValueKeys, $this->keyPaths] = $outer;
         }
 
         return $analysis;
@@ -1015,16 +1024,12 @@ trait ReadsReturnedVariables
      * A new key or a signature entry is appended, optional when the write is conditional or its value can vanish; a
      * named key set again keeps its first position and takes the last value, optional when that value can vanish or a
      * conditional write leaves an optional old one.
-     *
-     * @param  array<string, true>  $unset  the keys the write itself may leave unset (keysLeftUnset())
      */
-    private function mergeWholeArrayWrite(
-        MethodAnalysis $into,
-        MethodAnalysis $write,
-        bool $isConditional,
-        array $unset,
-    ): void {
+    private function mergeWholeArrayWrite(MethodAnalysis $into, MethodAnalysis $write, bool $isConditional, Expr $value): void
+    {
         $this->noteOptionalValues($write);
+        $unset = $this->keysLeftUnset($value, $write);
+        $objects = $this->keysHoldingObjects($value);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
         $written = [];
@@ -1047,17 +1052,22 @@ trait ReadsReturnedVariables
             // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
             $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);
 
+            $heldType = $index === false ? null : $properties[$index]['type'];
+            $this->recordWrite(
+                $prop['name'],
+                $isConditional,
+                $heldType,
+                isset($unset[$prop['name']]),
+                isset($objects[$prop['name']]),
+                $prop['type'],
+            );
+
             if ($index === false) {
                 $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
-                $this->markUnset($prop['name'], $isConditional || isset($unset[$prop['name']]));
 
                 continue;
             }
 
-            $this->markUnset(
-                $prop['name'],
-                isset($unset[$prop['name']]) || ($isConditional && isset($this->possiblyUnsetKeys[$prop['name']])),
-            );
             $into->forgetChannels($prop['name']);
             $optional = $prop['optional'] || ($isConditional && $properties[$index]['optional']);
             $properties[$index] = [...$prop, 'optional' => $optional];
@@ -1068,9 +1078,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The keys a whole write's value may leave unset in PHP: in an array literal, those only a keyless item brings, as
-     * `mergeWhen()` does once Laravel filters the array. Another value says nothing of which keys it sets, so it leaves
-     * none unset.
+     * The keys a whole write's value may leave with no PHP value.
+     *
+     * In an array literal, those only a keyless item brings, as `mergeWhen()` does once Laravel filters the array.
+     * Another value says nothing of which keys it sets, so it leaves none unset.
      *
      * @return array<string, true>
      */
@@ -1097,35 +1108,138 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Note whether a path of the walk under way may reach a key unset from here on.
+     * The keys an array literal writes a closure or an Inertia prop object to, its last item for a key deciding.
+     *
+     * @return array<string, true>
      */
-    private function markUnset(string $key, bool $unset): void
+    private function keysHoldingObjects(Expr $value): array
     {
-        if ($unset) {
-            $this->possiblyUnsetKeys[$key] = true;
-        } else {
-            unset($this->possiblyUnsetKeys[$key]);
+        $objects = [];
+
+        foreach ($value instanceof Array_ ? $value->items : [] as $item) {
+            $key = $item->key === null ? null : $this->namedKey($item->key);
+
+            if ($key !== null && $this->holdsObject($item->value)) {
+                $objects[$key] = true;
+            } elseif ($key !== null) {
+                unset($objects[$key]);
+            }
         }
+
+        return $objects;
     }
 
     /**
-     * The keys a join of branches may reach unset: each one a branch leaves out, or may reach unset itself.
+     * Whether a value is a closure or an Inertia prop object, which PHP holds as an object that is not null until
+     * Inertia resolves it, though what it resolves to may be.
+     */
+    private function holdsObject(Expr $value): bool
+    {
+        return $value instanceof ClosureExpr || $value instanceof ArrowFunction
+            || InertiaWrapperHandler::isPropFactory($value);
+    }
+
+    /**
+     * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
+     */
+    private function mayBeNull(string $type): bool
+    {
+        return $type === 'unknown' || ValueResult::hasNullArm($type);
+    }
+
+    /**
+     * What some path leaves a key holding in a record, or, for a key no write recorded, what its own type says.
+     *
+     * @param  array<string, KeyPaths>  $record
+     * @return KeyPaths
+     */
+    private function pathsIn(array $record, string $key, string $type): array
+    {
+        return $record[$key]
+            ?? ['unset' => false, 'object' => false, 'objectNull' => false, 'plainNull' => $this->mayBeNull($type)];
+    }
+
+    /**
+     * What either of two sets of paths may leave a key holding.
+     *
+     * @param  KeyPaths  $one
+     * @param  KeyPaths  $other
+     * @return KeyPaths
+     */
+    private function eitherPaths(array $one, array $other): array
+    {
+        return [
+            'unset' => $one['unset'] || $other['unset'],
+            'object' => $one['object'] || $other['object'],
+            'objectNull' => $one['objectNull'] || $other['objectNull'],
+            'plainNull' => $one['plainNull'] || $other['plainNull'],
+        ];
+    }
+
+    /**
+     * Record what a write of a value leaves a key holding, beside what it held before where the write may not run.
+     *
+     * @param  string|null  $heldType  the type the key held before the write, null where it held none
+     */
+    private function recordWrite(
+        string $key,
+        bool $isConditional,
+        ?string $heldType,
+        bool $unset,
+        bool $object,
+        string $type,
+    ): void {
+        $paths = [
+            'unset' => $unset,
+            'object' => $object,
+            'objectNull' => $object && $this->mayBeNull($type),
+            'plainNull' => ! $object && $this->mayBeNull($type),
+        ];
+
+        if ($isConditional) {
+            $before = $heldType === null ? self::UNSET_PATHS : $this->pathsIn($this->keyPaths, $key, $heldType);
+            $paths = $this->eitherPaths($paths, $before);
+        }
+
+        $this->keyPaths[$key] = $paths;
+    }
+
+    /**
+     * Note that a path may leave a key the walk holds with no value, beside what other paths leave it holding.
+     */
+    private function markUnset(string $key, string $type): void
+    {
+        $this->keyPaths[$key] = [...$this->pathsIn($this->keyPaths, $key, $type), 'unset' => true];
+    }
+
+    /**
+     * What each key holds past a join of branches: no value where a branch leaves it out, and what any branch holds.
      *
      * @param  list<MethodAnalysis>  $branches
-     * @param  list<array<string, true>>  $unset  the keys each branch may reach unset, in branch order
-     * @return array<string, true>
+     * @param  list<array<string, KeyPaths>>  $records  each branch's record, in branch order
+     * @return array<string, KeyPaths>
      */
-    private function unsetPastJoin(array $branches, array $unset): array
+    private function pathsPastJoin(array $branches, array $records): array
     {
-        $held = array_map(fn (MethodAnalysis $branch): array => array_column($branch->properties, 'name'), $branches);
+        $types = array_map(fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'), $branches);
+        $names = [];
+
+        foreach ($types as $held) {
+            $names += $held;
+        }
+
         $joined = [];
 
-        foreach (array_merge(...$held) as $name) {
-            foreach ($held as $index => $names) {
-                if (isset($unset[$index][$name]) || ! in_array($name, $names, true)) {
-                    $joined[$name] = true;
-                }
+        foreach (array_keys($names) as $name) {
+            $name = (string) $name;
+            $paths = [...self::UNSET_PATHS, 'unset' => false];
+
+            foreach ($types as $index => $held) {
+                $branch = isset($held[$name]) ? $this->pathsIn($records[$index], $name, $held[$name]) : self::UNSET_PATHS;
+                $paths = $this->eitherPaths($paths, $branch);
             }
+
+            $joined[$name] = $paths;
         }
 
         return $joined;
@@ -1182,26 +1296,26 @@ trait ReadsReturnedVariables
         }
 
         $before = $this->untypedKeyWrites;
-        $unsetBefore = $this->possiblyUnsetKeys;
+        $pathsBefore = $this->keyPaths;
         $branches = $mayRunNone ? [clone $into] : [];
         // Each branch's untyped writes: those before the branches, then its own, never a sibling's.
         $notes = $mayRunNone ? [$before] : [];
-        $unset = $mayRunNone ? [$unsetBefore] : [];
+        $records = $mayRunNone ? [$pathsBefore] : [];
         $added = [];
 
         foreach ($bodies as $body) {
             $this->untypedKeyWrites = $before;
-            $this->possiblyUnsetKeys = $unsetBefore;
+            $this->keyPaths = $pathsBefore;
             $branch = clone $into;
             $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel, nested: true);
             $branches[] = $branch;
             $notes[] = $this->untypedKeyWrites;
-            $unset[] = $this->possiblyUnsetKeys;
+            $records[] = $this->keyPaths;
             array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
         }
 
         $this->untypedKeyWrites = [...$before, ...$added];
-        $this->possiblyUnsetKeys = $this->unsetPastJoin($branches, $unset);
+        $this->keyPaths = $this->pathsPastJoin($branches, $records);
 
         foreach ($branches as $index => $branch) {
             foreach (array_slice($branches, 0, $index) as $earlier) {
@@ -1407,9 +1521,15 @@ trait ReadsReturnedVariables
      * appends is folded back over the earlier one.
      *
      * @param  ValueExpressionResult  $result
+     * @param  bool  $object  whether the value written is a closure or an Inertia prop object (holdsObject())
      */
-    private function writeKey(MethodAnalysis $into, string $keyName, array $result, bool $isConditional): void
-    {
+    private function writeKey(
+        MethodAnalysis $into,
+        string $keyName,
+        array $result,
+        bool $isConditional,
+        bool $object = false,
+    ): void {
         $existingIndex = null;
 
         foreach ($into->properties as $index => $existing) {
@@ -1426,10 +1546,8 @@ trait ReadsReturnedVariables
             $this->optionalValueKeys[$keyName] = true;
         }
 
-        $this->markUnset(
-            $keyName,
-            $isConditional && ($existingIndex === null || isset($this->possiblyUnsetKeys[$keyName])),
-        );
+        $heldType = $existingIndex === null ? null : $into->properties[$existingIndex]['type'];
+        $this->recordWrite($keyName, $isConditional, $heldType, false, $object, $result['type']);
         $appendedIndex = count($into->properties);
 
         $into->addProperty($keyName, $result, $isConditional || $result['optional']);
@@ -1449,20 +1567,27 @@ trait ReadsReturnedVariables
     /**
      * Fill a held key as `??=` does: a value that is not null stays, and the default lands where it is unset or null.
      *
-     * A value left out itself, as `when()` or `Inertia::optional()` is, is set and not null, so it stays optional, and
-     * the default lands only past a null or a path that leaves the key unset. It is `unknown` beside an untyped value.
+     * A value left out itself, as `when()` is, or a closure or Inertia prop object, is set and not null, so it stays as
+     * published, and the default lands only past a plain null or a path that leaves the key unset (`keyPaths`).
      *
      * @param  TAnalysis  $into
      */
     private function coalesceKey(MethodAnalysis $into, string $keyName, Expr $value, string $varName, bool $isConditional): void
     {
         $held = array_find($into->properties, fn (array $property): bool => $property['name'] === $keyName);
-        $signature = JsEmitter::isIndexSignatureKey($keyName);
-        $unset = isset($this->possiblyUnsetKeys[$keyName]);
-        $leftOutOnly = ! $unset && isset($this->optionalValueKeys[$keyName]);
 
-        if ($held === null || ! ($signature || ($held['optional'] && ! $leftOutOnly) || $held['type'] === 'unknown'
-            || ValueResult::hasNullArm($held['type']))) {
+        if ($held === null) {
+            return;
+        }
+
+        $signature = JsEmitter::isIndexSignatureKey($keyName);
+        $paths = $this->pathsIn($this->keyPaths, $keyName, $held['type']);
+        $leftOut = isset($this->optionalValueKeys[$keyName]);
+        // PHP holds an object, never null, where Inertia later resolves it, so only a plain value's null runs `??=`.
+        $nullLands = $paths['object'] ? $paths['plainNull'] : $this->mayBeNull($held['type']);
+        $keptType = $paths['objectNull'] ? $held['type'] : ValueResult::stripNullArm($held['type']);
+
+        if (! ($signature || $nullLands || ($held['optional'] && ($paths['unset'] || (! $leftOut && ! $paths['object']))))) {
             return;
         }
 
@@ -1475,17 +1600,17 @@ trait ReadsReturnedVariables
             return;
         }
 
-        $leftOut = isset($this->optionalValueKeys[$keyName]);
         $kept = clone $into;
         $kept->properties = array_map(
             fn (array $property): array => $property['name'] === $keyName
-                ? [...$property, 'type' => ValueResult::stripNullArm($property['type']), 'optional' => $leftOut && $property['optional']]
+                ? [...$property, 'type' => $keptType, 'optional' => false]
                 : $property,
             $into->properties,
         );
         $filled = clone $into;
-        $this->writeKey($filled, $keyName, $default, false);
-        $onlyNull = TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
+        $defaultObject = $this->holdsObject($value);
+        $this->writeKey($filled, $keyName, $default, false, $defaultObject);
+        $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
 
         foreach ($branches as $index => $branch) {
@@ -1495,19 +1620,30 @@ trait ReadsReturnedVariables
         }
 
         $joined = $this->joinedBranches($branches);
+        $untyped = (! $onlyNull && $keptType === 'unknown') || $default['type'] === 'unknown';
 
-        if ((! $onlyNull && ValueResult::stripNullArm($held['type']) === 'unknown') || $default['type'] === 'unknown') {
+        if ($untyped) {
             $joined->forgetChannels($keyName);
-            $joined->properties = array_map(
-                fn (array $property): array => $property['name'] === $keyName
-                    ? [...$property, 'type' => 'unknown']
-                    : $property,
-                $joined->properties,
-            );
         }
 
+        // A value left out itself may still be on each path the default does not land, as a `when()` holding null is.
+        $joined->properties = array_map(
+            fn (array $property): array => $property['name'] === $keyName ? [
+                ...$property,
+                'type' => $untyped ? 'unknown' : $property['type'],
+                'optional' => $property['optional'] || ($leftOut && $held['optional']),
+            ] : $property,
+            $joined->properties,
+        );
+
         $into->replaceWith($joined);
-        $this->markUnset($keyName, $isConditional && $unset);
+        $defaultNull = $this->mayBeNull($default['type']);
+        $this->keyPaths[$keyName] = [
+            'unset' => $isConditional && $paths['unset'],
+            'object' => $paths['object'] || $defaultObject,
+            'objectNull' => $paths['objectNull'] || ($defaultObject && $defaultNull),
+            'plainNull' => (! $defaultObject && $defaultNull) || ($isConditional && $paths['plainNull']),
+        ];
     }
 
     /**
@@ -1655,9 +1791,13 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            $this->markUnset($key, $isConditional);
-
             if ($isConditional) {
+                $type = array_column($into->properties, 'type', 'name')[$key] ?? null;
+
+                if ($type !== null) {
+                    $this->markUnset($key, $type);
+                }
+
                 $into->properties = array_map(
                     fn (array $property): array => $property['name'] === $key
                         ? [...$property, 'optional' => true]
@@ -1688,7 +1828,7 @@ trait ReadsReturnedVariables
         );
 
         foreach ($into->properties as $property) {
-            $this->markUnset($property['name'], true);
+            $this->markUnset($property['name'], $property['type']);
         }
 
         if ($bringsKeys) {

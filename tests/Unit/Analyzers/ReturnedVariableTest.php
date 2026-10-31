@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceU
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenBranchSetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLoadedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenNullResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenRewrittenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
@@ -970,6 +971,10 @@ test('a ??= or a write reading the variable itself publishes what Laravel sends'
     'a ??= beside a when() holding a nullable value' => [ReturnedCoalesceNullableWhenResource::class, 'id: number; r?: string | number', [
         [[], ['id' => 9]],
         [['c' => '1'], ['id' => 9, 'r' => 0]],
+    ]],
+    'a ??= beside a when() holding only null' => [ReturnedCoalesceWhenNullResource::class, 'id: number; w?: string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 'x']],
     ]],
     'a ??= beside a when() only a branch writes' => [ReturnedCoalesceBranchWhenResource::class, 'id: number; w?: number | string', [
         [[], ['id' => 9, 'w' => 'none']],

@@ -233,6 +233,54 @@ it('reads a props local through its writes', function (string $action, string $t
         [[]],
         [['heading' => 'x']],
     ],
+    'a ??= over a closure resolving to null' => [
+        'coalesceClosureNull',
+        '{ heading: string, a: null }',
+        [[]],
+        [['heading' => 'x', 'a' => null]],
+    ],
+    'a ??= over a closure that may resolve to null' => [
+        'coalesceClosureNullable',
+        '{ heading: string, a: number | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => null]],
+    ],
+    'a ??= over an optional prop that may resolve to null' => [
+        'coalesceOptionalNullable',
+        '{ heading: string, a?: number | null }',
+        [[]],
+        [['heading' => 'x']],
+    ],
+    'a ??= over a deferred prop that may resolve to null' => [
+        'coalesceDeferNullable',
+        '{ heading: string, a?: number | null }',
+        [[]],
+        [['heading' => 'x']],
+    ],
+    'a ??= over an optional prop resolving to null' => [
+        'coalesceOptionalOnlyNull',
+        '{ heading: string, a?: null }',
+        [[]],
+        [['heading' => 'x']],
+    ],
+    'a ??= over a closure a block may set' => [
+        'coalesceClosureInBlock',
+        '{ heading: string, a: string | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a ??= over a closure or a null' => [
+        'coalesceClosureOrNull',
+        '{ heading: string, a: number | string }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'repeated ??= over a closure a block may set' => [
+        'coalesceClosureRepeated',
+        '{ heading: string, a: string | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 'none']],
+    ],
     'a write reading the local itself' => [
         'coalesceSelfRead',
         '{ heading: string, a?: number | string }',
@@ -265,13 +313,19 @@ it('throws for the request the in-block props local is never assigned on', funct
 });
 
 // The props hold the lazy prop object, which is not null, so `??=` never lands its default on any request.
-it('sends a lazy prop a ??= never fills on the partial reload that asks for it', function (string $action, string $component) {
-    $page = new PropsLocalController()->{$action}();
+it('sends a lazy prop a ??= never fills on the partial reload that asks for it', function (string $action, array $query, array $sent) {
+    $request = partialReload('PropsLocal/'.ucfirst($action), 'a');
+    $request->query->add($query);
 
-    expect(inertiaProps($page, partialReload($component, 'a')))->toEqual((object) ['a' => 1]);
+    expect((array) inertiaProps(new PropsLocalController()->{$action}($request), $request))->toBe($sent);
 })->with([
-    'optional' => ['coalesceOptionalProp', 'PropsLocal/CoalesceOptionalProp'],
-    'deferred' => ['coalesceDeferProp', 'PropsLocal/CoalesceDeferProp'],
+    'optional' => ['coalesceOptionalProp', [], ['a' => 1]],
+    'deferred' => ['coalesceDeferProp', [], ['a' => 1]],
+    'optional, resolving to a number' => ['coalesceOptionalNullable', ['x' => 1], ['a' => 1]],
+    'optional, resolving to null' => ['coalesceOptionalNullable', [], ['a' => null]],
+    'deferred, resolving to a number' => ['coalesceDeferNullable', ['x' => 1], ['a' => 1]],
+    'deferred, resolving to null' => ['coalesceDeferNullable', [], ['a' => null]],
+    'optional, only null' => ['coalesceOptionalOnlyNull', [], ['a' => null]],
 ]);
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,

@@ -126,6 +126,97 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceDeferProp', $props);
     }
 
+    /** Renders a local whose key holds a closure resolving to null, which `??=` keeps, as the closure is not null. */
+    public function coalesceClosureNull(): Response
+    {
+        $props = ['heading' => 'x', 'a' => fn () => null];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceClosureNull', $props);
+    }
+
+    /** Renders a local whose key holds a closure that may resolve to null, which `??=` keeps. */
+    public function coalesceClosureNullable(Request $request): Response
+    {
+        $props = ['heading' => 'x', 'a' => fn (): ?int => $request->boolean('x') ? 1 : null];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceClosureNullable', $props);
+    }
+
+    /** Renders a local whose key holds an optional prop that may resolve to null, which `??=` keeps. */
+    public function coalesceOptionalNullable(Request $request): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::optional(fn (): ?int => $request->boolean('x') ? 1 : null)];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceOptionalNullable', $props);
+    }
+
+    /** Renders a local whose key holds a deferred prop that may resolve to null, which `??=` keeps. */
+    public function coalesceDeferNullable(Request $request): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::defer(fn (): ?int => $request->boolean('x') ? 1 : null)];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceDeferNullable', $props);
+    }
+
+    /** Renders a local whose key holds an optional prop resolving to null, which `??=` keeps. */
+    public function coalesceOptionalOnlyNull(): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::optional(fn () => null)];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceOptionalOnlyNull', $props);
+    }
+
+    /** Renders a local whose key a block may set to a closure resolving to null, which `??=` fills otherwise. */
+    public function coalesceClosureInBlock(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = fn (): ?int => null;
+        }
+
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceClosureInBlock', $props);
+    }
+
+    /** Renders a local whose key holds a closure on one branch and null on the other, which `??=` fills. */
+    public function coalesceClosureOrNull(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = fn (): int => 1;
+        } else {
+            $props['a'] = null;
+        }
+
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceClosureOrNull', $props);
+    }
+
+    /** Renders a local whose key a block may set to a closure, which `??=` fills with null, a string, then a number. */
+    public function coalesceClosureRepeated(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+
+        if ($request->boolean('x')) {
+            $props['a'] = fn (): ?int => null;
+        }
+
+        $props['a'] ??= null;
+        $props['a'] ??= 'none';
+        $props['a'] ??= 0;
+
+        return Inertia::render('PropsLocal/CoalesceClosureRepeated', $props);
+    }
+
     /** Renders a local whose key a block may set, which a write reading the local itself fills otherwise. */
     public function coalesceSelfRead(Request $request): Response
     {
