@@ -459,6 +459,14 @@ A member whose override names a type with no import, such as `#[TsType('UiLocal'
 and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
 member brings for that name, or is `unknown` when none does. Give the override an `import`.
 
+### A `share()` docblock union of an override and a model spelled alike can bind both to the model
+
+In `share()`'s `@return`, `either: Person|User`, where `Person`'s override is `User` from another module, publishes
+`User | User` with only the model's import when neither the key's value nor another key brings the override's import.
+The override arm then reads as the model and `tsc` passes, though Inertia sends a `Person` as its own JSON, which the
+model's type does not describe. Type the key with an import-aware `#[TsCasts]`, or share a key that brings the
+override's import, such as `person: Person`: the arm then keeps its import and the model is aliased.
+
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.

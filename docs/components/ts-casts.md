@@ -82,11 +82,12 @@ resource method cast does.
 
 Shared data's `@return` shape is a cast in force on each key no `#[TsCasts]` entry replaces, with the custom imports it
 keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`). The
-fit keeps exactly those classes and displaces every class the value carried, dropping one whose name the shape's own
-imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the namer
-reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. Unlike
+fit keeps exactly those classes and displaces every other class the value carried, dropping one whose name the shape's
+own imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the
+namer reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. Unlike
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
-key there that names a model or an enum is imported; a nested one still follows that rule.
+key there that names a model or an enum is imported, unless its own override import spells that name; a nested one
+still follows that rule.
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.
