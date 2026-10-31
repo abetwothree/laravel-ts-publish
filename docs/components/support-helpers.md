@@ -22,8 +22,9 @@ The helpers and the test that pins them live in these files:
   re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
   resource publisher and the enum-value warning.
 - [`Support\ResourceWrapping`](../../src/Support/ResourceWrapping.php): the key an API resource response wraps its
-  body in, read from the live `$wrap` of the class Laravel instantiates, and each slot the booted app changed. Static
-  and `@internal`, read by the collection analysis, the Inertia collection props and the cache header.
+  body in, read from the live `$wrap` of the class Laravel instantiates, the key it nests in beside a `with()` or
+  `additional()` key, and each slot the booted app changed. Static and `@internal`, read by the collection analysis,
+  the Inertia resource props and the cache header.
 - [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
   `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
   payload. Static and `@internal`.

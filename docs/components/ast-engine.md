@@ -22,14 +22,14 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
-| `Resources/` | API resource facts: backing model, collections, response body, resolved body, JSON:API |
+| `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
 | `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
 
 These are the classes a change to the engine usually touches:
 
 | Class | Owns |
 | --- | --- |
-| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
@@ -117,15 +117,24 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
   caller's `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
   middleware's helper an API resource reads runs the resource's reading.
 - **Who does not**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`), a
-  property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
+  property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix,
+  and the keys a resource's response adds beside its body (below), which reach Inertia already JSON.
 - **The filtered fact**: `ExpressionEngine::readsFilteredValues()` is set where a flagged read enters a
   `JsonResource`'s `toArray()` whole, which `resolve()` filters, and kept below it. `TernaryHandler`'s `?:` rule applies
   only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null;
   under it `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
-  retypes keeps R's type, and a JSON:API resource keeps its own, its attributes reaching Inertia serialized. The
-  result's `resolvedFqcn` lets a spread take R's keys, as it takes a plain `R`.
+  retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
+  `PropsResolver` does not walk, so `json_encode()` sends the resources in them bare. The result's `resolvedFqcn` lets
+  a spread take R's keys, as it takes a plain `R`.
+- **A resource's response extras**: `InertiaResourcePropHandler` sets the keys a resource's or named collection's
+  `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), merged into a `{ data: R }` literal or
+  intersected with any other response. `with()` is the class's own reading; `additional()`'s argument is read in the
+  caller's scope without the profile (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the
+  `never[]` Inertia sends once it decodes the response. Once one is sent, a body with no live wrap key nests under
+  `data` (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource` collection declines an
+  `additional()` call.
 
 The flag and the filtered fact join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
@@ -883,6 +892,7 @@ These pages cover the engine's neighbors:
 [`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
+[`ResponseExtras`]: ../../src/Ast/Resources/ResponseExtras.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php

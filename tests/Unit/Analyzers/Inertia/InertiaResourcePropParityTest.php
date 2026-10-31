@@ -6,10 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ListedEnumResourceController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithResourceSpellings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithGuessedCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithJsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithListedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceExtras;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceSpellings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnnamedEnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -18,6 +20,8 @@ use Inertia\Inertia;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
  * The props one middleware shares, read without the filesystem discovery pass.
@@ -58,6 +62,21 @@ test('each resource spelling publishes the same type as a page prop and as share
 
     expect(parityShareType(MiddlewareWithResourceSpellings::class))->toBe($props)
         ->and(parityPageData('index')['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props);
+});
+
+// Inertia sends a shared resource as its whole response too, beside the keys additional() and with() add.
+test('the keys additional() and with() add publish beside data as a page prop and as shared data', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $props = '{ one: { data: UserCardResource; meta: { n: number } }, '
+        .'many: AnonymousResourceCollection<UserCardResource> & { meta: { n: number } }, '
+        .'withed: { data: WithMetaResource; meta: { v: number } } }';
+    Inertia::share(new MiddlewareWithResourceExtras()->share(request()));
+    $sent = inertiaProps(Inertia::render('Shared', []));
+
+    expect(parityShareType(MiddlewareWithResourceExtras::class))->toBe($props)
+        ->and(pageData(ResourceExtrasController::class.'@show')['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
+        ->and([$sent->one->data->name, $sent->one->meta->n, $sent->many->meta->n, $sent->withed->meta->v])->toBe(['Ada', 1, 1, 1]);
 });
 
 // Laravel's toResourceCollection(EnumResource::class) is EnumResource::collection() over the receiver's items.

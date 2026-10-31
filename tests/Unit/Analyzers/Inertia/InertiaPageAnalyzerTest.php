@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPageProps
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedApiCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
@@ -310,7 +311,7 @@ it('keeps the body resolve() returns, and the response a fluent call on a resour
         .'post?: { data: PostResource }; post_new?: { data: PostResource }; post_direct: { data: PostResource } }';
 
     expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
-        .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource }, '
+        .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource; meta: number }, '
         ."list: (Omit<PostResource, 'comments_resolved'> & { comments_resolved?: ({$comment})[] })[], body: ItemsKeyPostCollection }")
         ->and([$item->title, $item->comments_resolved])->toBe(['First', []]);
 });
@@ -1257,7 +1258,8 @@ it('keeps the null a spread resolved resource sends for a nested resource around
         ->and(inertiaProps(new ResolvedCardController()->viewerSpread($post))->viewer)->toBeNull();
 });
 
-// A JSON:API resource object's attributes reach Inertia already serialized, so the API resources in them stay bare.
+// A JSON:API resource object's attributes reach Inertia as a stdClass its PropsResolver does not walk, so json_encode()
+// sends the API resources in them bare.
 it('keeps a resolved JSON:API resource collection as its resource objects', function () {
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
@@ -1305,4 +1307,86 @@ it('imports the resources a resolved resource prop restates', function () {
 
     expect(new RouteTransformer(ResolvedCardController::class)->typeImports)
         ->toBe(['../resources' => ['PostCardResource', 'UserCardResource']]);
+});
+
+// Inertia sends a resource prop as its whole response, so the keys additional() and with() add arrive beside data.
+it('publishes the keys additional() and with() add beside a resource prop\'s data', function () {
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret'])->id]);
+    $sent = inertiaProps(new ResourceExtrasController()->show($post));
+
+    expect(pageData(ResourceExtrasController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'one: { data: UserCardResource; meta: { n: number } }, '
+        .'many: AnonymousResourceCollection<UserCardResource> & { meta: { n: number } }, '
+        .'withed: { data: WithMetaResource; meta: { v: number } } }')
+        ->and([$sent->one->data->name, $sent->one->meta->n, $sent->many->data[0]->name, $sent->many->meta->n])
+        ->toBe(['Ada', 1, 'Ada', 1])
+        ->and([$sent->withed->data->title, $sent->withed->meta->v])->toBe(['First', 1]);
+});
+
+// With no wrap key, Laravel's ResourceResponse::wrap() nests the body under `data` once a key is sent beside it.
+it('nests a resource prop\'s body under data beside its added keys after JsonResource::withoutWrapping()', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    JsonResource::withoutWrapping();
+    $sent = inertiaProps(new ResourceExtrasController()->show($post));
+
+    expect(pageData(ResourceExtrasController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'one: { data: UserCardResource; meta: { n: number } }, '
+        .'many: { data: UserCardResource[]; meta: { n: number } }, '
+        .'withed: { data: WithMetaResource; meta: { v: number } } }')
+        ->and([$sent->one->data->name, $sent->many->data[0]->name, $sent->withed->data->title])->toBe(['Ada', 'Ada', 'First'])
+        ->and(pageData(ResourceExtrasController::class.'@plain')['pageType'])->toBe('Inertia.SharedData & { card: UserCardResource }')
+        ->and(inertiaProps(new ResourceExtrasController()->plain($post))->card)->toEqual((object) ['id' => $user->id, 'name' => 'Ada'])
+        ->and(pageData(ResourceExtrasController::class.'@maybe')['pageType'])
+        ->toBe('Inertia.SharedData & { card: UserCardResource | { data: UserCardResource } }')
+        ->and(inertiaProps(new ResourceExtrasController()->maybe(Request::create('/'), $post))->card->name)->toBe('Ada')
+        ->and(inertiaProps(new ResourceExtrasController()->maybe(Request::create('/', 'GET', ['meta' => 1]), $post))->card->data->name)
+        ->toBe('Ada');
+});
+
+// Those keys reach Inertia already encoded, so a resource among them is sent bare and a callable as `[]`; a later
+// additional() replaces them, and array_merge_recursive() merges a key with() adds too: two objects, or else a list.
+it('types the keys added beside a resource prop\'s data as json_encode() sends them', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = inertiaProps(new ResourceExtrasController()->encoded(Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id])));
+
+    expect(pageData(ResourceExtrasController::class.'@encoded')['pageType'])->toBe('Inertia.SharedData & { '
+        .'card: { data: UserCardResource; author: UserCardResource; stamp: never[] }, '
+        .'replaced: { data: UserCardResource; b: string }, '
+        .'merged: { data: WithMetaResource; meta: { v: number; n: number } }, '
+        .'clashed: { data: WithMetaResource; meta: unknown } }')
+        ->and([$sent->card->author, $sent->card->stamp])->toEqual([(object) ['id' => $user->id, 'name' => 'Ada'], []])
+        ->and(array_keys((array) $sent->replaced))->toBe(['data', 'b'])
+        ->and($sent->merged->meta)->toEqual((object) ['v' => 1, 'n' => 1])
+        ->and((array) $sent->clashed->meta)->toEqual(['v' => 1, '0' => 2]);
+});
+
+// Over a paginator Laravel merges the added keys into the pagination block with array_merge_recursive().
+it('publishes the keys a collection\'s $with default and an additional() call add beside its data', function () {
+    User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $page = pageData(ResourceExtrasController::class.'@collections');
+    $sent = inertiaProps(new ResourceExtrasController()->collections());
+
+    expect($page['pageType'])->toBe('Inertia.SharedData & { '
+        .'versioned: VersionedUserCardCollection & { version: string }, '
+        .'paged: JsonResourcePaginator<UserCardResource> & { meta: { n: number } } }')
+        ->and($page['externalImports'])->toBe(['@tolki/types' => ['JsonResourcePaginator']])
+        ->and([$sent->versioned->data[0]->name, $sent->versioned->version])->toBe(['Ada', '1.0'])
+        ->and([$sent->paged->data[0]->name, $sent->paged->meta->n, $sent->paged->meta->total])->toBe(['Ada', 1, 1]);
+});
+
+it('imports the classes the keys added beside a resource prop\'s data name', function () {
+    app(Router::class)->get('/resource-extras/{post}/classes', [ResourceExtrasController::class, 'classes']);
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id, 'status' => Status::Draft]);
+    $sent = inertiaProps(new ResourceExtrasController()->classes($post));
+
+    expect(pageData(ResourceExtrasController::class.'@classes')['pageType'])
+        ->toBe('Inertia.SharedData & { card: { data: UserCardResource; post: Post; status: StatusType } }')
+        ->and(new RouteTransformer(ResourceExtrasController::class)->typeImports)->toBe([
+            '../../../../../../workbench/app/enums' => ['StatusType'],
+            '../../../../../../workbench/app/models' => ['Post'],
+            '../resources' => ['UserCardResource'],
+        ])
+        ->and([$sent->card->data->name, $sent->card->post->title, $sent->card->status])->toBe(['Ada', 'First', Status::Draft->value]);
 });

@@ -36,7 +36,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other eight methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other nine methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -186,6 +186,19 @@ final class AstEngine
         }
 
         return $reader->resolve($expr);
+    }
+
+    /**
+     * What `json_encode()` sends for an expression of a body Inertia reads, such as `additional()`'s argument: Inertia
+     * walks none of it, so the scope's subject reads it with its own profile, as a resource's own body is read.
+     *
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeEncodedValue(Expr $expr, AnalysisScope $scope): array
+    {
+        return new ResourceAstAnalyzer($scope->subjectReflection, $scope->modelClass, scope: $scope)->resolve($expr);
     }
 
     /**

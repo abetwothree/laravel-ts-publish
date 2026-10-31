@@ -30,6 +30,19 @@ final class ResourceWrapping
     }
 
     /**
+     * The key a response nests its body in: the live wrap key, else, once `with()` or `additional()` adds a key beside
+     * the body, the empty `$wrap` itself or `data` (ResourceResponse::wrap()); null where it sends the body bare.
+     *
+     * @param  class-string<JsonResource>  $class
+     */
+    public static function responseKey(string $class, bool $extras): ?string
+    {
+        $wrap = $class::$wrap;
+
+        return self::key($class) ?? ($extras ? (is_string($wrap) ? $wrap : 'data') : null);
+    }
+
+    /**
      * Each loaded class owning a `$wrap` slot whose live value differs from its declared default, for the cache
      * fingerprint. A class a provider re-wraps is loaded by that call, so the loaded classes are the complete set.
      *

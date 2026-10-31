@@ -670,13 +670,13 @@ differently, or drop the duplicated key from `$default` in `paginationInformatio
 `unset($default['meta']['total'])`. Do not build a block with other keys there: the package does not read
 `paginationInformation()`, so the published pagination type would no longer match.
 
-### A resource prop's `additional()` and `with()` keys are not published
+### A resource prop's `with()` or `additional()` key that its body holds too is sent as a list
 
-Inertia sends a resource prop as its whole response, beside the keys `additional()` and the resource's `with()` add.
-`R::make($x)->additional(['meta' => …])` publishes `{ data: R }` and `(new XCollection($items))->additional(…)`
-`XCollection`, without `meta`, and `R::collection($items)->additional(…)` publishes `unknown`. Such keys also make
-Laravel nest the body under `data` after `JsonResource::withoutWrapping()`, where the package publishes it bare. Type
-the prop with `#[TsCasts]`.
+A resource or collection whose own type holds its wrap key, such as a `toArray()` returning `['data' => …, 'count' =>
+1]`, is sent as it stands, and Laravel merges a key `with()` or `additional()` adds into it with
+`array_merge_recursive()`. The package intersects the two, which matches two objects, but values that are not both
+arrays are sent as a list: `->additional(['count' => 2])` sends `count` as `[1, 2]`, while the package publishes
+`number`. Name the key differently.
 
 ### A `->resolve()`d resource collection with its own `toArray()` publishes its items bare
 
