@@ -25,6 +25,7 @@ use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -215,6 +216,16 @@ it('types EnumResource::collection() as the enum list inside the anonymous colle
 
     expect($wrapped)->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
         ->and(inertiaResourcePropResult($cases)['type'] ?? null)->toBe('RoleType[]');
+});
+
+// Laravel's toResourceCollection(EnumResource::class) is EnumResource::collection() over the receiver's items.
+it('types toResourceCollection(EnumResource::class) over enum cases as EnumResource::collection() over them', function () {
+    $cases = fn (): FuncCall => new FuncCall(new Name('collect'), [new Arg(new StaticCall(new Name(Role::class), 'cases'))]);
+    $listed = new MethodCall($cases(), 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(EnumResource::class), 'class'))]);
+    $collected = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg($cases())]);
+
+    expect(inertiaResourcePropResult($listed))->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
+        ->and(inertiaResourcePropResult($listed))->toBe(inertiaResourcePropResult($collected));
 });
 
 it('declines EnumResource::make(), a static call that builds no resource, and an enum list it cannot name', function () {
@@ -497,7 +508,8 @@ it('types a $wrap = null collection whose body sends the collected list as its p
         ]);
 });
 
-// Laravel calls `X::collection($items)`, which for a collection or the EnumResource builds no anonymous resource list.
+// Laravel calls `X::collection($items)`, which for a collection builds no anonymous resource list, and the EnumResource
+// lists no enum over models.
 it('declines toResourceCollection() of a collection or the EnumResource, given or named by #[UseResource]', function () {
     $posts = new StaticCall(new Name(Post::class), 'all');
     $given = fn (string $class): MethodCall => new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name($class), 'class'))]);

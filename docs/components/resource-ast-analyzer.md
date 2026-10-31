@@ -616,11 +616,12 @@ lazy prop wrapper, as its `toResponse()` data. A single resource and a body with
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
 publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
-`import type`. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and
-an anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
-`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes
-none, publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare
-list once `withoutWrapping()` empties the shared key.
+`import type`. `toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items,
+the argument of a `collect()` receiver included. Over a paginator, a collection's own body sits beside the pagination
+blocks of the payload's kind, and an anonymous or flat one is that kind's paginator response, such as
+`JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind.
+A payload of several kinds, or sometimes none, publishes each. A JSON:API resource is its document
+([above](#jsonapi-resources)), and its collection the bare list once `withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 

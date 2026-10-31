@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
@@ -35,6 +36,7 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -42,6 +44,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use ReflectionClass;
+use ReflectionFunction;
 
 /**
  * A resource a controller hands to `Inertia::render()` or a middleware shares, at any depth of the props, is sent as
@@ -219,9 +222,15 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($explicitArg->value);
 
             // Laravel calls `$explicit::collection($items)`; the receiver is read only for a class this sends.
-            return $explicit !== null && $this->collectsAnonymously($explicit)
-                ? $this->anonymousCollectionType($explicit, $this->paginatorsOf($engine->resolve($call->var)['type']))
-                : null;
+            return match (true) {
+                $explicit === null => null,
+                $this->isEnumResourceClass($explicit) => $this->enumListResponse($call->var, $scope, $engine),
+                $this->collectsAnonymously($explicit) => $this->anonymousCollectionType(
+                    $explicit,
+                    $this->paginatorsOf($engine->resolve($call->var)['type']),
+                ),
+                default => null,
+            };
         }
 
         $receiver = $engine->resolve($call->var);
@@ -305,9 +314,36 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function enumResourceCollection(StaticCall $expr, string $className, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
-        $list = $payload === null ? null : $this->enumCollectionValue($payload, $scope, $engine);
+
+        return $payload === null ? null : $this->enumListResponse($payload, $scope, $engine);
+    }
+
+    /**
+     * What `EnumResource::collection($payload)` sends: the enum list inside the anonymous collection's wrap key.
+     *
+     * @return ValueExpressionResult|null null when no single enum resolves, as the nested value would not either
+     */
+    private function enumListResponse(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $list = $this->enumCollectionValue($this->collectedItems($payload), $scope, $engine);
 
         return $list === null ? null : [...$list, 'type' => $this->response(AnonymousResourceCollection::class, $list['type'])];
+    }
+
+    /**
+     * The items a `collect($items)` payload holds, which a resource collects as it collects the call; else the payload.
+     */
+    private function collectedItems(Expr $payload): Expr
+    {
+        if (! $payload instanceof FuncCall
+            || ! $payload->name instanceof Name
+            || $payload->name->getLast() !== 'collect'
+            || $payload->isFirstClassCallable()
+        ) {
+            return $payload;
+        }
+
+        return CallArguments::for($payload, new ReflectionFunction('collect'))->named('value')->value ?? $payload;
     }
 
     /**

@@ -5,11 +5,15 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ListedEnumResourceController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithResourceSpellings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithGuessedCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithJsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithListedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceSpellings;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
+use Inertia\Inertia;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\WarehouseResource;
@@ -54,6 +58,24 @@ test('each resource spelling publishes the same type as a page prop and as share
     expect(parityShareType(MiddlewareWithResourceSpellings::class))->toBe($props)
         ->and(parityPageData('index')['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props);
 });
+
+// Laravel's toResourceCollection(EnumResource::class) is EnumResource::collection() over the receiver's items.
+test('enum cases given to toResourceCollection(EnumResource::class) publish the collection Inertia sends', function () {
+    $props = '{ statuses: { data: AsEnum<typeof Status>[] } }';
+    $page = pageData(ListedEnumResourceController::class.'@index');
+    $sentPage = inertiaProps(new ListedEnumResourceController()->index());
+    Inertia::share(new MiddlewareWithListedEnumResource()->share(request()));
+    $sentShared = inertiaProps(Inertia::render('Shared', []));
+
+    expect(parityShareType(MiddlewareWithListedEnumResource::class))->toBe($props)
+        ->and($page['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
+        ->and($page['enumConstFqcns'] ?? null)->toBe([Status::class])
+        ->and(array_column($sentPage->statuses->data, 'value'))->toBe([0, 1])
+        ->and(array_column($sentShared->statuses->data, 'value'))->toBe([0, 1]);
+})->skip(
+    fn (): bool => ! method_exists(Collection::class, 'toResourceCollection'),
+    'Collection::toResourceCollection() ships from a later Laravel 12 release.',
+);
 
 // Inertia calls a lazy wrapper's closure and sends its value as a bare prop, kept out of the first load.
 test('a resource inside a lazy Inertia wrapper publishes as the bare prop, optional', function () {
