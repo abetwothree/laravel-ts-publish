@@ -817,12 +817,13 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * Types as the arms of one union, each intersection grouped so the union reads as its arms.
+     * Types as the arms of one union, once each, each intersection grouped so the union reads as its arms.
      *
      * @param  list<string>  $types
      */
     private function union(array $types): string
     {
+        $types = array_values(array_unique($types));
         $grouped = count($types) > 1;
 
         return implode(' | ', array_map(

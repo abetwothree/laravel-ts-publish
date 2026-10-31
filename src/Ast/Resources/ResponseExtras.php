@@ -19,9 +19,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * The keys a resource's response sends beside its body, from its `with()` and an `additional()` call. Laravel merges
- * them in with `array_merge_recursive()`, so an object type intersects them, and once one is sent a body that no live
- * wrap key nests goes under `data` (ResourceWrapping::responseKey()).
+ * The keys a resource's response sends beside its body, from its `with()` and an `additional()` call, which Laravel
+ * merges in once with `array_merge_recursive()`: into a literal response, else intersecting it, with a key both add
+ * `unknown` unless it holds two objects. Once one is sent, a body no live wrap key nests goes under `data`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -42,8 +42,9 @@ final readonly class ResponseExtras
     /**
      * @param  ValueExpressionResult|null  $object  the keys it types, as one object type with the classes it names
      * @param  bool|null  $sent  whether the response carries a key: always, never or on some paths only (null)
+     * @param  bool  $whole  whether it types every key it may send
      */
-    private function __construct(public ?array $object, public ?bool $sent) {}
+    private function __construct(public ?array $object, public ?bool $sent, private bool $whole = true) {}
 
     /**
      * The keys a resource's `with()` returns, its `$with` default where JsonResource's own runs, as its own body reads.
@@ -59,7 +60,7 @@ final readonly class ResponseExtras
 
         if (new ReflectionMethod($resource, 'with')->getDeclaringClass()->getName() === JsonResource::class) {
             if (! resolve(SubjectPropertyTypeResolver::class)->holdsDefault($reflection, 'with')) {
-                return new self(null, null);
+                return new self(null, null, false);
             }
 
             if ($reflection->getProperty('with')->getDefaultValue() === []) {
@@ -83,7 +84,9 @@ final readonly class ResponseExtras
 
         $members = TsTypeShape::members($value['type']);
 
-        return $members === null || $members === [] ? new self(null, null) : new self(self::asSent($value), self::anyRequired($members) ?: null);
+        return $members === null || $members === []
+            ? new self(null, null, false)
+            : new self(self::asSent($value), self::anyRequired($members) ?: null);
     }
 
     /**
@@ -95,10 +98,13 @@ final readonly class ResponseExtras
             return $this;
         }
 
+        // A key one side may send unread can be any key the other types, and Laravel sends such a pair as a list.
+        $mine = $later->whole ? $this->object : self::untyped($this->object);
+        $theirs = $this->whole ? $later->object : self::untyped($later->object);
         $object = match (true) {
-            $this->object === null => $later->object,
-            $later->object === null => $this->object,
-            default => self::joined($this->object, $later->object),
+            $mine === null => $theirs,
+            $theirs === null => $mine,
+            default => self::joined($mine, $theirs),
         };
         $sent = match (true) {
             $this->sent === true || $later->sent === true => true,
@@ -106,7 +112,7 @@ final readonly class ResponseExtras
             default => null,
         };
 
-        return new self($object, $sent);
+        return new self($object, $sent, $this->whole && $later->whole);
     }
 
     /**
@@ -147,14 +153,30 @@ final readonly class ResponseExtras
         $complete = $analysis->readsCompletely && ! $analysis->holdsUnreadKeys;
 
         if ($analysis->properties === []) {
-            return $complete ? self::none() : new self(null, null);
+            return $complete ? self::none() : new self(null, null, false);
         }
 
         $object = resolve(InlineObjectResult::class)->of($analysis);
         $members = TsTypeShape::members($object['type']) ?? [];
         $required = array_any($analysis->properties, fn (array $property): bool => ! $property['optional']);
 
-        return new self($members === [] ? null : self::asSent($object), $required ?: null);
+        return new self($members === [] ? null : self::asSent($object), $required ?: null, $complete && $members !== []);
+    }
+
+    /**
+     * An object with every key `unknown`, which names no class.
+     *
+     * @param  ValueExpressionResult|null  $object
+     * @return ValueExpressionResult|null
+     */
+    private static function untyped(?array $object): ?array
+    {
+        $members = $object === null ? null : TsTypeShape::members($object['type']);
+
+        return $members === null ? $object : [
+            'type' => self::printed(array_map(static fn (array $member): array => [$member[0], 'unknown'], $members)),
+            'optional' => false,
+        ];
     }
 
     /**
@@ -209,8 +231,7 @@ final readonly class ResponseExtras
     }
 
     /**
-     * A type no literal spells beside an object's members, intersected. The body's own key is sent merged with an added
-     * one, so it is `unknown` there, and the `Omit<>` keeps the type's own from narrowing it back.
+     * A type no literal spells beside an object's members, intersected, with the key the body sits under `unknown`.
      *
      * @param  ObjectMembers  $theirs
      */
@@ -228,6 +249,7 @@ final readonly class ResponseExtras
             $theirs,
         );
 
+        // Laravel merges an added body key into the body, and without the `Omit<>` the type's own would narrow it back.
         return "Omit<{$held}, '{$bodyKey}'> & ".self::printed($members);
     }
 

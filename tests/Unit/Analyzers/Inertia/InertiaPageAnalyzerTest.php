@@ -1397,6 +1397,24 @@ it('merges a key added beside a collection\'s data with the one its response hol
         ->and([$bare->versioned->version, $bare->listed->data])->toEqual([['1.0', '2.0'], [$card, 1]]);
 });
 
+// Keys no read types may be any key, so each key beside them may collide, and Laravel sends a collision as a list.
+it('types every key beside keys no read types unknown, wrapped or not', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $wrapped = pageData(ResourceExtrasController::class.'@loose')['pageType'];
+    $sent = inertiaProps(new ResourceExtrasController()->loose(Request::create('/', 'GET', ['v' => 1]), $post));
+    JsonResource::withoutWrapping();
+    $bare = inertiaProps(new ResourceExtrasController()->loose(Request::create('/'), $post));
+
+    expect($wrapped)->toBe('Inertia.SharedData & { card: { data: LooseWithResource; meta: unknown; n: unknown }, '
+        .'cards: VersionedUserCardCollection & { version: unknown } }')
+        ->and(pageData(ResourceExtrasController::class.'@loose')['pageType'])->toBe('Inertia.SharedData & { '
+            .'card: { data: LooseWithResource; meta: unknown; n: unknown }, '
+            .'cards: { data: VersionedUserCardCollection; version: unknown } }')
+        ->and([$sent->card->meta, $sent->card->n, $sent->cards->version])->toBe([[1, 2], 3, ['1.0', '2.0']])
+        ->and([$bare->card->data->title, $bare->card->meta, $bare->cards->version])->toBe(['First', [1, 2], '1.0']);
+});
+
 it('imports the classes the keys added beside a resource prop\'s data name', function () {
     app(Router::class)->get('/resource-extras/{post}/classes', [ResourceExtrasController::class, 'classes']);
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

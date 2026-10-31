@@ -131,11 +131,11 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
 - **A resource's response extras**: `InertiaResourcePropHandler` sets the keys a resource's or named collection's
   `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), joined in one step, as Laravel merges
   them once: merged into a `{ data: R }` literal, else intersected, with the key the body sits under `unknown` beside
-  an `Omit<>`. A key both add merges as `array_merge_recursive()` does. `with()` is the class's own reading;
-  `additional()`'s argument is read in the caller's scope without the profile (`AstEngine::analyzeEncodedValue()`),
-  and an empty JSON object among them is the `never[]` Inertia sends once it decodes the response. Once one is sent, a
-  body with no live wrap key nests under `data` (`ResourceWrapping::responseKey()`). A JSON:API resource or an
-  `EnumResource` collection declines an `additional()` call.
+  an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
+  of the other is `unknown`. `with()` is the class's own reading; `additional()`'s argument is read in the caller's
+  scope without the profile (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
+  Inertia sends once it decodes the response. Once one is sent, a body with no live wrap key nests under `data`
+  (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource` collection declines `additional()`.
 
 The flag and the filtered fact join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 

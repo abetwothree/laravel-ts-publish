@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LooseWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VersionedUserCardCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WithMetaResource;
@@ -66,6 +67,15 @@ class ResourceExtrasController
         return Inertia::render('ResourceExtras/Collisions', [
             'versioned' => (new VersionedUserCardCollection(User::all()))->additional(['version' => '2.0']),
             'listed' => UserCardResource::collection(User::all())->additional(['data' => 1]),
+        ]);
+    }
+
+    /** Renders added keys beside a `with()` no read types, and keys no read types beside a `$with` default. */
+    public function loose(Request $request, Post $post): Response
+    {
+        return Inertia::render('ResourceExtras/Loose', [
+            'card' => LooseWithResource::make($post)->additional(['meta' => 2, 'n' => 3]),
+            'cards' => (new VersionedUserCardCollection(User::all()))->additional($request->has('v') ? ['version' => '2.0'] : []),
         ]);
     }
 
