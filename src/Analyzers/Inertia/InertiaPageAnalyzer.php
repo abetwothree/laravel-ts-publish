@@ -81,11 +81,6 @@ class InertiaPageAnalyzer
     private const UTILITY_TYPES = ['Record', 'Omit', 'Pick', 'Partial', 'Required', 'Readonly', 'Exclude', 'Extract', 'NonNullable'];
 
     /**
-     * Create the analyzer with an optional table analyzer override.
-     */
-    public function __construct(protected ?InertiaTableAnalyzer $tableAnalyzer = null) {}
-
-    /**
      * Analyze a controller action and extract Inertia page data.
      *
      * @param  array{uses: string}  $action  The route action array with 'uses' key (Controller@method format).
@@ -93,12 +88,6 @@ class InertiaPageAnalyzer
      */
     public function analyze(array $action): ?array
     {
-        $tableData = $this->resolveTableAnalyzer()->analyze($action['uses']);
-
-        if ($tableData !== null) {
-            return $tableData;
-        }
-
         if (! str_contains($action['uses'], '@')) {
             return null;
         }
@@ -142,14 +131,6 @@ class InertiaPageAnalyzer
             ->map(fn (string $part): string => Str::studly($part))
             ->prepend('Inertia.Pages')
             ->implode('.');
-    }
-
-    /**
-     * Resolve the static Inertia UI Table analyzer.
-     */
-    protected function resolveTableAnalyzer(): InertiaTableAnalyzer
-    {
-        return $this->tableAnalyzer ??= resolve(InertiaTableAnalyzer::class);
     }
 
     /**

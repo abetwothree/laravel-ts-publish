@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
@@ -51,12 +52,12 @@ final class ResourceExpressionHandlers
 {
     /**
      * Each handler only Inertia runs, under the handler it goes before. InertiaResourcePropHandler precedes
-     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to; ModelFinderHandler
-     * precedes StaticCallHandler, whose last arm claims every static call, so a query chain types as its paginator.
+     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to. The query chain and
+     * table handlers precede StaticCallHandler, whose last arm claims every static call, and so NewResourceHandler too.
      */
     private const array INERTIA_HANDLERS = [
-        ToResourceHandler::class => InertiaResourcePropHandler::class,
-        StaticCallHandler::class => ModelFinderHandler::class,
+        ToResourceHandler::class => [InertiaResourcePropHandler::class],
+        StaticCallHandler::class => [ModelFinderHandler::class, InertiaTableHandler::class],
     ];
 
     /**
@@ -162,8 +163,8 @@ final class ResourceExpressionHandlers
 
         foreach ($handlers as $handler) {
             foreach (self::INERTIA_HANDLERS as $anchor => $inserted) {
-                if ($handler instanceof $anchor) {
-                    $profile[] = new $inserted;
+                foreach ($handler instanceof $anchor ? $inserted : [] as $class) {
+                    $profile[] = new $class;
                 }
             }
 

@@ -7,12 +7,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -23,6 +25,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Http\Resources\PostCollection;
@@ -48,7 +51,7 @@ it('gives a page and a shared-data middleware the one Inertia profile, and only 
         ->toEqual(ResourceExpressionHandlers::forNonResourceSubjects())
         ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, reading: Reading::Inertia))
         ->toEqual(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::make($engine)))
-        ->and($inertia)->toHaveCount(29);
+        ->and($inertia)->toHaveCount(30);
 });
 
 // An Inertia reading's CallSite binds a callable as called, which only the profile the reading builds reads as called.
@@ -69,6 +72,33 @@ it('tries ModelFinderHandler before StaticCallHandler for Post::find(1)', functi
         'optional' => false,
         'modelFqcn' => Post::class,
     ]);
+});
+
+// Ordering pin: StaticCallHandler reflects `make()`, and NewResourceHandler reads a `new` of a class no resource, each
+// as `unknown`, where Inertia sends the table's toArray(). It throws in the stub package, so no oracle runs here.
+it('tries InertiaTableHandler before StaticCallHandler and NewResourceHandler for a table', function () {
+    $made = new StaticCall(new Name(PostTable::class), 'make');
+    $built = new New_(new Name(PostTable::class));
+    $table = [
+        'type' => 'TableResource<Post>',
+        'optional' => false,
+        'modelFqcn' => Post::class,
+        'customImports' => ['@inertiaui/table-vue' => ['TableResource']],
+    ];
+
+    expect(inertiaProfileAnalyzer()->resolve($made))->toBe($table)
+        ->and(inertiaProfileAnalyzer()->resolve($built))->toBe($table)
+        ->and(inertiaProfileAnalyzer()->resolve(new MethodCall($made, 'defaultSort', [new Arg(new String_('-id'))])))->toBe($table);
+});
+
+// Both claim a static call and a chain on it, but on disjoint roots, a model and a table, so their order is free.
+test('ModelFinderHandler and InertiaTableHandler decline each other\'s calls', function () {
+    $scope = new AnalysisScope(new ReflectionClass(InertiaController::class));
+    $table = new StaticCall(new Name(PostTable::class), 'make');
+    $query = new StaticCall(new Name(Post::class), 'find', [new Arg(new Int_(1))]);
+
+    expect(new ModelFinderHandler()->resolve($table, $scope, inertiaProfileAnalyzer()))->toBeNull()
+        ->and(new InertiaTableHandler()->resolve($query, $scope, inertiaProfileAnalyzer()))->toBeNull();
 });
 
 // Ordering pin: same last-arm problem — StaticCallHandler types ::collection() as the element array,

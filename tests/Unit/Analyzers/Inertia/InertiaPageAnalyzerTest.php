@@ -918,7 +918,7 @@ test('analyze() isolates props when different methods share the same component n
 
 // ─── Inertia UI Table props ───────────────────────────────────────
 
-test('analyze() short-circuits Inertia UI Table props to the table analyzer', function () {
+test('analyze() types an Inertia UI Table prop as its TableResource', function () {
     $result = pageData(InertiaTableController::class.'@direct');
 
     expect($result)->not->toBeNull()
@@ -928,7 +928,7 @@ test('analyze() short-circuits Inertia UI Table props to the table analyzer', fu
         ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
 });
 
-test('analyze() short-circuits service-layer Inertia UI Table props to the table analyzer', function () {
+test('analyze() types a service-layer Inertia UI Table prop as its TableResource', function () {
     $result = pageData(InertiaTableController::class.'@service');
 
     expect($result)->not->toBeNull()
@@ -945,7 +945,7 @@ test('analyze() resolves the table model from a query() method rather than a $re
         ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
 });
 
-test('analyze() short-circuits the Inertia index action on a service-backed table controller', function () {
+test('analyze() types the table a service-backed table controller\'s index action renders', function () {
     $result = pageData(InertiaServiceTableController::class.'@index');
 
     expect($result)->not->toBeNull()

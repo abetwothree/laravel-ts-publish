@@ -12,8 +12,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\ModellessTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -23,6 +27,7 @@ use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -217,6 +222,10 @@ function inertiaMethodCallCorpus(): array
         new MethodCall(new MethodCall(new Variable('post'), 'comments'), 'count'),
         new MethodCall(new Variable('post'), 'fresh'),
         new MethodCall(new FuncCall(new Name('auth')), 'user'),
+        // Inertia UI Tables, whose model a `$resource` default or a `query()` names, and one naming none.
+        new MethodCall(new StaticCall(new Name(PostTable::class), 'make'), 'defaultSort', [new Arg(new String_('-id'))]),
+        new MethodCall(new New_(new Name(PostQueryTable::class)), 'defaultSort'),
+        new MethodCall(new StaticCall(new Name(ModellessTable::class), 'make'), 'defaultSort'),
     ];
 }
 
@@ -285,7 +294,7 @@ function inertiaMethodCallClaimantPairs(): array
 {
     return array_filter(
         methodCallPairsOf(inertiaMethodCallClaimants()),
-        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, ModelFinderHandler::class]) !== [],
+        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, ModelFinderHandler::class, InertiaTableHandler::class]) !== [],
     );
 }
 

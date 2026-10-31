@@ -92,8 +92,8 @@ Its Inertia half does the same for each pair with a handler only the Inertia pro
 ### Inertia profile
 
 `ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs, over the subject's own
-profile, since Inertia sends a shared value as it sends a page prop. It inserts two handlers, and throws a
-`LogicException` for a list that lacks either insertion point:
+profile, since Inertia sends a shared value as it sends a page prop. It inserts three handlers, and throws a
+`LogicException` for a list that lacks an insertion point:
 
 - `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource as the value a nested key flattens it
   to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
@@ -101,6 +101,11 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   and a `ResourceCollection` as its element array.
 - `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never
   declines one, so a query chain types as the paginator it returns.
+- `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
+  either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
+  `query()`, never by instantiating it. The type is a custom import from the configured or installed table package. A
+  table naming no model falls through, to `unknown`. So a table is one more prop: the render call's other props, the
+  action's casts, a collaborator's props, shared data and a `->resolve()`d body's restated keys all read it.
 
 `InertiaResourcePropHandler` also types a JSON:API resource's single and collection props as their `@tolki/types`
 documents. `forInertia()` also swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop,
@@ -196,12 +201,13 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 `VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`. It declines
 anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
-The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants, in the places
-[§ Inertia profile](#inertia-profile) gives. The two claim disjoint method names on a `MethodCall`, and on a
-`StaticCall` disjoint classes, a model and an API resource, since both claim `::make()`. The matrix's Inertia half runs
-each `MethodCall` pair either joins, over a page's model-less scope, and pins only the prop handler before
-`ToResourceHandler`.
+The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants,
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants, and
+`InertiaTableHandler` to the `StaticCall`, `New_` and `MethodCall` claimants, in the places
+[§ Inertia profile](#inertia-profile) gives. The first two claim disjoint method names on a `MethodCall`, and all three
+disjoint roots on a `StaticCall`, a model, an API resource and a table, though each claims `::make()`. The matrix's
+Inertia half runs each `MethodCall` pair any of them joins, over a page's model-less scope, and pins only the prop
+handler before `ToResourceHandler`.
 
 ## AnalysisScope
 

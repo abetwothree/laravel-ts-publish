@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
@@ -187,12 +188,12 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
 ]);
 
 // ToResourceHandler would type a resource as a nested key's value, where Inertia sends its response, and
-// StaticCallHandler would claim a query chain before ModelFinderHandler typed the paginator it returns.
-it('inserts InertiaResourcePropHandler before ToResourceHandler and ModelFinderHandler before StaticCallHandler in forInertia()', function () {
+// StaticCallHandler would claim a query chain or a table before ModelFinderHandler or InertiaTableHandler typed it.
+it('inserts InertiaResourcePropHandler before ToResourceHandler, and ModelFinderHandler and InertiaTableHandler before StaticCallHandler, in forInertia()', function () {
     $profile = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
     $expected = array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class]));
     array_splice($expected, (int) array_search(ToResourceHandler::class, $expected, true), 0, [InertiaResourcePropHandler::class]);
-    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [ModelFinderHandler::class]);
+    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [ModelFinderHandler::class, InertiaTableHandler::class]);
 
     expect(array_map(fn (ExpressionHandler $handler): string => $handler::class, $profile))->toBe($expected)
         ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
