@@ -117,7 +117,7 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
   caller's `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
   middleware's helper an API resource reads runs the resource's reading.
 - **Who does not**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`), a
-  property's written value and an accessor body.
+  property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
 - **The filtered fact**: `ExpressionEngine::readsFilteredValues()` is set where a flagged read enters a
   `JsonResource`'s `toArray()` whole, which `resolve()` filters, and kept below it. `TernaryHandler`'s `?:` rule applies
   only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null.

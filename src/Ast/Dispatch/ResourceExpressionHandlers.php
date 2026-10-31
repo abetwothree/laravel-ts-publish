@@ -61,7 +61,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The profile a subject runs when its caller names none: make() or forNonResourceSubjects(), through forInertia().
+     * The profile a subject runs unless its caller names one: its own, through forInertia() where Inertia reads it.
      *
      * @return list<ExpressionHandler>
      */

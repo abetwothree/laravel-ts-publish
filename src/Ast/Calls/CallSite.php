@@ -153,6 +153,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->engine->readsInertiaProps() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
+        return ! $this->readsInertiaProps() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
     }
 }

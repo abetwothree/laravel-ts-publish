@@ -125,8 +125,7 @@ final class TernaryHandler implements ExpressionHandler
     }
 
     /**
-     * The checked operand of a short ternary that builds an API resource, where Inertia reads the value, no
-     * JsonResource::filter() reaches it, and it types.
+     * The checked operand of a short ternary over a built API resource, where Inertia reads it unfiltered and it types.
      *
      * An object is always true and Inertia sends it as it is, so the other arm never runs; filter() can send a resource
      * around null as null, and an operand the engine cannot type leaves the other arm as the only reading.
