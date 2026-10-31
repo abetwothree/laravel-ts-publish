@@ -11,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTraitTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\ModellessTable;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTableCount;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -71,8 +70,18 @@ it('types a chain past the table as its last call, in a literal, a local, shared
         ->toBe('Inertia.SharedData & { n: number, held: number }')
         ->and(pageData(InertiaTableBesidePropsController::class.'@countedResolved')['pageType'])
         ->toBe('Inertia.SharedData & { card: PostTableCountResource }')
-        ->and(sharedProps(MiddlewareWithTableCount::class))->toBe(['n' => 'number'])
-        ->and([$counted->n, $counted->held, $resolved->card->n, $shared->n])->toBe([2, 2, 2, 2]);
+        ->and(sharedProps(MiddlewareWithTableCount::class))->toBe(['n' => 'number', 'ids' => 'unknown'])
+        ->and([$counted->n, $counted->held, $resolved->card->n, $shared->n, $shared->ids])->toBe([2, 2, 2, 2, [1, 2]]);
+});
+
+it('types a props local holding a chain past the table as its last call', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(InertiaTableBesidePropsController::class.'@countedLocal')['pageType'])
+        ->toBe('Inertia.SharedData & { h: string, n: number }')
+        ->and(inertiaProps(new InertiaTableBesidePropsController()->countedLocal())->n)->toBe(2);
 });
 
 // The table's query() is a query on its model, so a chain past it reads as the same chain on `Post::query()`.
@@ -86,6 +95,40 @@ it('types a chain past the table\'s query() as that chain on the model\'s query(
         ->toBe('Inertia.SharedData & { rows: Post[], first: Post | null }')
         ->and(array_column($sent->rows, 'title'))->toBe(['First', 'Second'])
         ->and($sent->first->title)->toBe('Second');
+});
+
+// `query()` queries User though `$resource` names Post, so the chain past it is a User query.
+it('reads a chain past the table\'s query() on the model that query() queries', function () {
+    User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = inertiaProps(new InertiaTableBesidePropsController()->mixedQueried());
+
+    expect(pageData(InertiaTableBesidePropsController::class.'@mixedQueried')['pageType'])
+        ->toBe('Inertia.SharedData & { rows: User[], first: User | null }')
+        ->and(array_column($sent->rows, 'name'))->toBe(['Ada'])
+        ->and($sent->first->name)->toBe('Ada');
+});
+
+// Nothing types a builder or its pluck(). In a render call's props literal, where the reader this replaced read them as
+// tables, they keep that type, though it rejects what Inertia sends, as it always did; elsewhere they stay `unknown`.
+it('keeps the table type of a chain past the table that nothing else reads where it always had it', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $user->id]);
+    $sent = inertiaProps(new InertiaTableBesidePropsController()->plucked());
+
+    expect(pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'])
+        ->toBe('Inertia.SharedData & { ids: TableResource<Post>, query: TableResource<Post>, held: unknown }')
+        ->and([$sent->ids, $sent->held])->toBe([[1, 2], [1, 2]])
+        ->and($sent->query)->toBeObject();
+});
+
+// A docblock's short name and alias are read against the declaring file's use statements, as PHP reads them.
+it('reads a table an untyped method returns by its docblock\'s short name or alias', function () {
+    expect(pageData(InertiaTableBesidePropsController::class.'@docblocked')['pageType'])
+        ->toBe('Inertia.SharedData & { short: TableResource<Post>, aliased: TableResource<Post> }')
+        ->and(pageData(InertiaTableBesidePropsController::class.'@docblockTotal')['pageType'])
+        ->toBe('Inertia.SharedData & { total: number }')
+        ->and(inertiaProps(new InertiaTableBesidePropsController()->docblockTotal())->total)->toBe(3);
 });
 
 it('detects direct Inertia UI Table props without calling toArray', function () {
@@ -168,6 +211,4 @@ it('declines a table naming no model, a chain on no table, and a receiver it can
     'a new of one' => ['new \\'.ModellessTable::class],
     'a model query' => ['\\'.Post::class.'::query()->latest()'],
     'a receiver' => ['$tables->defaultSort("-id")'],
-    'a chain past a call that is not query()' => ['\\'.PostQueryTable::class.'::make()->toArray()'],
-    'a static root that is not the table\'s' => ['\\'.PostQueryTable::class.'::undeclared()->defaultSort("-id")'],
 ]);

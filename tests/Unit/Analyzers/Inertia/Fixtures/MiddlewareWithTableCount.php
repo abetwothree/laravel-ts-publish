@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
-/** Shares the count of a table's query, a chain that ends past the table. */
+/** Shares the count and the plucked ids of a table's query, chains that end past the table. */
 class MiddlewareWithTableCount extends Middleware
 {
     /**
@@ -18,6 +18,6 @@ class MiddlewareWithTableCount extends Middleware
      */
     public function share(Request $request): array
     {
-        return ['n' => PostQueryTable::make()->query()->count()];
+        return ['n' => PostQueryTable::make()->query()->count(), 'ids' => PostQueryTable::make()->query()->pluck('id')];
     }
 }

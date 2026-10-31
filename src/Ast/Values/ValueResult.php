@@ -217,8 +217,9 @@ final class ValueResult
     }
 
     /**
-     * The result as an object PHP holds until its caller resolves it to the type: a callable, or with $prop an Inertia
-     * prop. A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled.
+     * The result as an object PHP holds until its caller resolves it: a callable, or with $prop an Inertia prop.
+     *
+     * A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled.
      *
      * @param  ValueExpressionResult  $result
      * @return ValueExpressionResult

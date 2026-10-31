@@ -87,8 +87,9 @@ final class InertiaWrapperHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * The factory an `Inertia::` call names, or the one that returns the prop class a `new` builds, with the method its
-     * arguments map against: the factory's own, or the class's constructor.
+     * The factory an `Inertia::` call names, or the one returning the prop class a `new` builds.
+     *
+     * With it, the method its arguments map against: the factory's own, or the class's constructor.
      *
      * @return PropFactory|null
      */

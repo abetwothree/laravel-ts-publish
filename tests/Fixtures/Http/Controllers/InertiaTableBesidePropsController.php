@@ -7,8 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCountResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\DocblockPostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\UserQueryPostTable;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Models\Post;
@@ -46,6 +48,51 @@ class InertiaTableBesidePropsController
             'rows' => PostQueryTable::make()->query()->get(),
             'first' => PostQueryTable::make()->query()->latest('id')->first(),
         ]);
+    }
+
+    /** Renders a props local whose key holds the count of a table's query. */
+    public function countedLocal(): Response
+    {
+        $props = ['h' => 'x'];
+        $props['n'] = PostQueryTable::make()->query()->count();
+
+        return Inertia::render('Tables/CountedLocal', $props);
+    }
+
+    /** Renders a table query's plucked ids, inline and in a local, and the query itself, which no handler reads. */
+    public function plucked(): Response
+    {
+        $held = PostQueryTable::make()->query()->pluck('id');
+
+        return Inertia::render('Tables/Plucked', [
+            'ids' => PostQueryTable::make()->query()->pluck('id'),
+            'query' => PostQueryTable::make()->query(),
+            'held' => $held,
+        ]);
+    }
+
+    /** Renders the rows and the first row of the query of a table whose `query()` names another model than its own. */
+    public function mixedQueried(): Response
+    {
+        return Inertia::render('Tables/MixedQueried', [
+            'rows' => UserQueryPostTable::make()->query()->get(),
+            'first' => UserQueryPostTable::make()->query()->first(),
+        ]);
+    }
+
+    /** Renders tables whose untyped methods return them by a docblock's short name and alias. */
+    public function docblocked(): Response
+    {
+        return Inertia::render('Tables/Docblocked', [
+            'short' => DocblockPostTable::make()->fluentShort(),
+            'aliased' => DocblockPostTable::make()->fluentAliased(),
+        ]);
+    }
+
+    /** Renders a docblock-typed untyped table method that returns no table. */
+    public function docblockTotal(): Response
+    {
+        return Inertia::render('Tables/DocblockTotal', ['total' => DocblockPostTable::make()->total()]);
     }
 
     /** Renders a resolved resource whose body holds the count of a table's query. */

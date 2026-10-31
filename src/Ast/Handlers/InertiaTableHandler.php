@@ -7,18 +7,23 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
 use ReflectionMethod;
@@ -42,6 +47,9 @@ final class InertiaTableHandler implements ExpressionHandler
 
     private const TABLE_PACKAGES = ['@inertiaui/table-vue', '@inertiaui/table-react'];
 
+    /** @var array<int, true> Chains past the table this handler declines while the rest of the profile reads them. */
+    private array $readingPast = [];
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -51,7 +59,9 @@ final class InertiaTableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $table = resolve(CallChainWalker::class)->resolveRootClass($expr, self::TABLE_BASE, allowNew: true);
+        $table = isset($this->readingPast[spl_object_id($expr)])
+            ? null
+            : resolve(CallChainWalker::class)->resolveRootClass($expr, self::TABLE_BASE, allowNew: true);
         $model = $table === null ? null : $this->tableModel($table);
 
         if ($table === null || $model === null) {
@@ -59,12 +69,11 @@ final class InertiaTableHandler implements ExpressionHandler
         }
 
         $leaving = $this->callLeavingTable($expr, $table);
+        $past = $leaving === null ? null : $this->readPast($expr, $leaving, $table, $model, $engine);
 
-        if ($leaving !== null) {
-            // The table's query() is a query on its model, so a chain past it reads as `Post::query()` with that chain.
-            return $leaving instanceof MethodCall && $this->callsQuery($leaving)
-                ? $engine->resolve($this->onModelQuery($expr, $leaving, $model))
-                : null;
+        // A chain past the table that nothing reads keeps the table type where the reader before this handler gave it.
+        if ($past !== null && ($past['type'] !== 'unknown' || ! $this->typedAsTableBefore($expr, $scope))) {
+            return $past;
         }
 
         return [
@@ -76,8 +85,7 @@ final class InertiaTableHandler implements ExpressionHandler
     }
 
     /**
-     * The call nearest the root where the chain stops returning the table, as `->query()` in `->query()->count()`; null
-     * where every call returns it, so the chain's value is the table.
+     * The call nearest the root where the chain stops returning the table; null where every call returns it.
      *
      * @param  class-string  $table
      */
@@ -94,6 +102,62 @@ final class InertiaTableHandler implements ExpressionHandler
         }
 
         return $leaving;
+    }
+
+    /**
+     * What the rest of the profile reads a chain past the table as.
+     *
+     * Past the table's own `query()`, it is the same chain on `query()` of the model that `query()` queries, else the
+     * table's; past any other call, the chain as it stands, with this handler declining it.
+     *
+     * @param  class-string  $table
+     * @param  class-string<Model>  $model
+     * @return ValueExpressionResult
+     */
+    private function readPast(
+        Expr $expr,
+        MethodCall|StaticCall $leaving,
+        string $table,
+        string $model,
+        ExpressionEngine $engine,
+    ): array {
+        if ($leaving instanceof MethodCall && $this->callsQuery($leaving)) {
+            return $engine->resolve($this->onModelQuery($expr, $leaving, $this->queryModel($table) ?? $model));
+        }
+
+        $this->readingPast[spl_object_id($expr)] = true;
+
+        try {
+            return $engine->resolve($expr);
+        } finally {
+            unset($this->readingPast[spl_object_id($expr)]);
+        }
+    }
+
+    /**
+     * Whether an expression is a string-keyed value of a first render call's props literal in the scope's file.
+     *
+     * The only place the reader this handler replaced typed a chain rooted at a table, whatever its calls returned.
+     */
+    private function typedAsTableBefore(Expr $expr, AnalysisScope $scope): bool
+    {
+        $path = $scope->declaringFileClass->getFileName();
+        $locator = resolve(InertiaRenderLocator::class);
+
+        foreach ($path === false ? [] : resolve(AstParser::class)->parseFileMethods($path)[1] as $methods) {
+            foreach ($methods as $method) {
+                $render = $locator->findRenderCall($method);
+                $props = $render === null ? null : $locator->propsArray($render);
+
+                $holds = fn (ArrayItem $item): bool => $item->key instanceof String_ && $item->value === $expr;
+
+                if (array_any($props->items ?? [], $holds)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -128,8 +192,7 @@ final class InertiaTableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a method of the table declares it returns the table: `static`, `self` or a table class, natively or, with
-     * no native type, by `@return`, which also takes `$this`.
+     * Whether a table method declares it returns the table, natively or, with no native type, by `@return`.
      *
      * @param  class-string  $table
      */
@@ -150,7 +213,18 @@ final class InertiaTableHandler implements ExpressionHandler
             return false;
         }
 
-        return $match[1] === '$this' || $this->namesTable($match[1]);
+        if ($match[1] === '$this' || $this->namesTable($match[1])) {
+            return true;
+        }
+
+        // A short or aliased name is read against the use statements of the file that declares the method.
+        $file = LaravelTsPublish::methodDeclaringFileClass($reflection);
+
+        return $this->namesTable(LaravelTsPublish::resolveDocblockTypeName(
+            $match[1],
+            LaravelTsPublish::parseFileUseStatements($file),
+            $file->getNamespaceName(),
+        ));
     }
 
     /**
