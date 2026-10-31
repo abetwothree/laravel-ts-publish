@@ -88,12 +88,14 @@ Callers fill their queues in one of three ways:
   A property in two channels carries both channels' entries, so its queue can run past the real occurrences. That is
   safe only while the prefix lines up, which is why `ResourceTransformer::resolveMultiClassAccessorFqcns()` skips a
   property the inline maps already cover.
-- **One entry per token of a whole printed type**: `FileImportNames::objectQueues()` queues null for a token no class
-  of its own key stands behind, such as a cast's `User`, a composed `ChartType` or a key. A per-name queue would hand
-  that token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`.
-  A key's token whose name no custom import brings takes the one class of that name on any channel or in
-  `MethodAnalysis::$carried` instead: an import-less cast that spells a class another key holds or another cast
-  displaced has none of its own. A key a `share()` docblock retypes reads each token of its own classes' names from
+- **One entry per token of a whole printed type**: `FileImportNames::objectQueues()` queues null for a token no class of
+  its own key stands behind, such as a cast's `User`, a composed `ChartType` or a key. A per-name queue would hand that
+  token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`. Under
+  [the unclaimed-token rule](ts-casts.md#imports), a key's token whose name no custom import brings takes the one class
+  of that name on any channel or in `MethodAnalysis::$carried` instead: an import-less cast that spells a class another
+  key holds or another cast displaced has none of its own. Neither channel reads a token inside a quoted literal or a
+  generated index signature key, whose text is a value or a key, and the class channel never reads the name after
+  `typeof`, which is a const's. A key a `share()` docblock retypes reads each token of its own classes' names from
   `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the override's `User` where
   another key brings that import.
 
@@ -168,11 +170,14 @@ transformed is never registered.
 
 ### `FileImportNames`
 
-The page and shared-data analyzers print each type from an analysis the file does not keep, so each hands its type
-over with its token queues: `InertiaPageData`'s `pageQueues` and `pageConstQueues`, one per page type. For an analyzer
-that returns none, `RouteTransformer` builds them from `classFqcns` and `enumConstFqcns` with
-`FileImportNames::typeQueues()`, so each token still takes its class. A `@tolki/types` class is imported from that
-module unaliased, and its name is reserved as a custom import's is.
+The page and shared-data analyzers print each type from an analysis the file does not keep. Each printer,
+`buildMembersWithOverrides()`, returns the members it prints (a key's text, its type's text and the analysis key it
+came from), and `FileImportNames::objectMember()` joins the type from exactly those members beside their token queues,
+so no queue is rebuilt beside the printer. A page hands its type over with `InertiaPageData`'s `pageQueues` and
+`pageConstQueues`, one per page type. For an analyzer that returns none, `RouteTransformer` builds them from
+`classFqcns` and `enumConstFqcns` with `FileImportNames::typeQueues()`, so each token still takes its class. A
+`@tolki/types` class is imported from that module unaliased, and its name is reserved as a custom import's is. A page
+reserves the names its own branch's imports bring, so the order of an action's component branches decides nothing.
 
 A metadata companion is the same call with one member per inferred key, so same-named enums alias as in any file. The
 names its `#[TsCasts]` and docblock imports bring are reserved, and a cast's own aliases stay with

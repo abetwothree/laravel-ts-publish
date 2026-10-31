@@ -20,7 +20,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use ReflectionClass;
 
@@ -28,6 +27,7 @@ use ReflectionClass;
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ComposedFile from FileImportNames
+ * @phpstan-import-type PrintedMember from FileImportNames
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type CastMap from MethodAnalysis
  *
@@ -152,15 +152,12 @@ class InertiaSharedDataAnalyzer
         resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
-        $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
-
-        $propsType = $this->buildTypeStringWithOverrides(
-            TopLevelRenumbering::rekey($props, $renumbered),
-            TopLevelRenumbering::rekey($mergedOverrides, $renumbered),
+        $members = $this->buildMembersWithOverrides(
+            $props,
+            $mergedOverrides,
+            $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass),
         );
-
-        $printed = array_map(fn (array $entry): string => $entry['type'], array_replace($props, $mergedOverrides));
-        $file = $this->buildInferredImports($analysis, $propsType, $printed, $resolvedTsCasts['typeImports']);
+        $file = $this->composeSharedData($analysis, $members, $resolvedTsCasts['typeImports']);
         ComposedClassTypes::warnOfSharedNames($middlewareClass, ComposedClassTypes::classesIn($analysis->customImports));
 
         return [
@@ -202,18 +199,19 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Respell the props type so two same-named classes alias apart, as a resource's do, beside the imports it spells.
+     * Join the printed members into the props type, two same-named classes aliased apart as a resource's are, beside
+     * the imports it spells.
      *
-     * @param  array<array-key, string>  $printed  each key's printed type, in print order
+     * @param  list<PrintedMember>  $members
      * @param  TypesImportMap  $castImports  the imports of the casts in force
      * @return ComposedFile
      */
-    protected function buildInferredImports(MethodAnalysis $analysis, string $propsType, array $printed, array $castImports): array
+    protected function composeSharedData(MethodAnalysis $analysis, array $members, array $castImports): array
     {
         $customImports = ImportMaps::merge($analysis->customImports, $castImports);
-        $queues = FileImportNames::objectQueues($analysis, $printed, brought: ImportMaps::localNames($customImports));
+        $member = FileImportNames::objectMember($analysis, $members, brought: ImportMaps::localNames($customImports));
 
-        return FileImportNames::compose([['type' => $propsType, ...$queues]], $customImports, '');
+        return FileImportNames::compose([$member], $customImports, '');
     }
 
     /**
@@ -317,27 +315,29 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Build a TypeScript object type string, applying overrides where present.
+     * Print each prop as an object type's member, an override in its place, on the key Laravel sends it on.
      *
      * @param  SharedPropMap  $props  the AST-inferred props
      * @param  SharedPropMap  $overrides  normalized type overrides keyed by property name
+     * @param  array<array-key, string>  $renumbered  the key Laravel sends each prop on, by its name
+     * @return list<PrintedMember>
      */
-    protected function buildTypeStringWithOverrides(array $props, array $overrides): string
+    protected function buildMembersWithOverrides(array $props, array $overrides, array $renumbered = []): array
     {
-        if ($props === [] && $overrides === []) {
-            return TsTypeStringService::EMPTY_OBJECT;
-        }
-
-        $parts = [];
+        $members = [];
 
         // An override keeps its prop's place, and one no prop has goes after them.
-        foreach (array_replace($props, $overrides) as $key => $entry) {
-            $key = (string) $key;
-            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
-                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
+        foreach (array_replace($props, $overrides) as $name => $entry) {
+            $key = $renumbered[$name] ?? (string) $name;
+            $members[] = [
+                'key' => JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
+                    .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': '),
+                'type' => $entry['type'],
+                'source' => $name,
+            ];
         }
 
-        return '{ '.implode(', ', $parts).' }';
+        return $members;
     }
 
     /**

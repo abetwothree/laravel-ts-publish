@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
@@ -29,7 +28,6 @@ use Throwable;
  * @phpstan-import-type TsCastsResult from ParsesTsCasts
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type FileMember from FileImportNames
  *
  * @phpstan-type InferredFile array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
@@ -155,28 +153,16 @@ class ModelMetadataAnalyzer
         $declared = ImportMaps::merge($casts, ...array_values(array_intersect_key($result->docblockImports, $payload)));
         $brought = ImportMaps::localNames($declared);
         $members = [];
-        $prefixes = [];
 
         foreach ($inferredKeys as $key) {
-            $prefixes[$key] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true).': ';
-            $queues = FileImportNames::objectQueues($analysis, [$key => $result->types[$key]], brought: $brought);
-            $members[] = ['type' => $prefixes[$key].$result->types[$key], ...$queues];
+            $printed = [['key' => '', 'type' => $result->types[$key], 'source' => $key]];
+            $members[] = ['type' => $result->types[$key], ...FileImportNames::objectQueues($analysis, $printed, brought: $brought)];
         }
 
-        $file = FileImportNames::compose(
-            $members,
-            ImportMaps::merge($analysis->customImports, $declared),
-            $namespacePath,
-        );
-        $types = [];
-
-        foreach ($inferredKeys as $index => $key) {
-            // The key's own text leads each member and no alias touches it, so what follows is the respelled type.
-            $types[$key] = substr($file['types'][$index], strlen($prefixes[$key]));
-        }
+        $file = FileImportNames::compose($members, ImportMaps::merge($analysis->customImports, $declared), $namespacePath);
 
         return [
-            'types' => $types,
+            'types' => array_combine($inferredKeys, $file['types']),
             'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath),
         ];
     }

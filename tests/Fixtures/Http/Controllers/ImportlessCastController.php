@@ -71,6 +71,31 @@ class ImportlessCastController
         ]);
     }
 
+    /** Renders a helper's owner under its cast importing `User`, else the author beside an untyped cast's `User`. */
+    #[TsCasts(['note' => 'User | null'])]
+    public function moduleBranchFirst(Post $post): Response
+    {
+        if (request()->boolean('module')) {
+            return Inertia::render('ImportlessCast/ModuleBranch', [...$this->ownerFromModule($post), 'note' => null]);
+        }
+
+        return Inertia::render('ImportlessCast/ModelBranch', ['writer' => $post->author, 'note' => request()->user()]);
+    }
+
+    /** Renders the same two branches as moduleBranchFirst(), the author's first. */
+    #[TsCasts(['note' => 'User | null'])]
+    public function modelBranchFirst(Post $post): Response
+    {
+        if (! request()->boolean('module')) {
+            return Inertia::render('ImportlessCast/ModelBranch', [
+                'writer' => $post->author,
+                'note' => request()->user(),
+            ]);
+        }
+
+        return Inertia::render('ImportlessCast/ModuleBranch', [...$this->ownerFromModule($post), 'note' => null]);
+    }
+
     /** The notes, a key of which the helper's cast types through its signature. */
     #[TsCasts(['[key: `${string}_note`]' => 'number'])]
     private function noteProps(): array

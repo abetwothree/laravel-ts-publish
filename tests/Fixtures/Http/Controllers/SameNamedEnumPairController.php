@@ -25,6 +25,18 @@ class SameNamedEnumPairController
         ]);
     }
 
+    /** Renders two same-named enums on either side of a key Laravel renumbers and a key a cast makes optional. */
+    #[TsCasts(['note' => ['type' => 'string', 'optional' => true]])]
+    public function aroundPrintedKeys(): Response
+    {
+        return Inertia::render('SameNamed/AroundPrintedKeys', [
+            'a' => Status::Draft,
+            7 => 'seven',
+            'note' => 'x',
+            'b' => CrmStatus::Lead,
+        ]);
+    }
+
     #[TsCasts(['owner' => ['type' => 'User', 'import' => '@js/types/ui']])]
     public function castBesideModel(Post $post): Response
     {

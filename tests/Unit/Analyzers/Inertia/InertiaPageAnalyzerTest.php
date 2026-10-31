@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
@@ -21,7 +23,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
@@ -57,6 +61,7 @@ use Workbench\App\Http\Controllers\UiDashboardController;
 use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Grade;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
@@ -805,14 +810,14 @@ test('the page type prints no ? after a signature, whatever flag reaches it', fu
     $analyzer = new class extends InertiaPageAnalyzer
     {
         /**
-         * The type string the builder prints.
+         * The type string joined from the members the builder prints.
          *
          * @param  array<string, array{type: string, optional: bool}>  $props
          * @param  array<string, string>  $overrides
          */
         public function build(array $props, array $overrides): string
         {
-            return $this->buildTypeStringWithOverrides($props, $overrides);
+            return FileImportNames::objectMember(new MethodAnalysis, $this->buildMembersWithOverrides($props, $overrides))['type'];
         }
     };
 
@@ -927,6 +932,64 @@ it('binds a spread helper\'s own cast to the module it imports from, not to the 
             '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
         ])
         ->and([$sent->owner->name, $sent->writer->name])->toBe(['Ada', 'Ada']);
+});
+
+it('aliases a cast\'s class beside the model in one component branch, whichever branch imports its name first', function () {
+    app(Router::class)->get('/importless-cast/{post}/module-first', [ImportlessCastController::class, 'moduleBranchFirst']);
+    app(Router::class)->get('/importless-cast/{post}/model-first', [ImportlessCastController::class, 'modelBranchFirst']);
+    $author = (new User)->forceFill(['name' => 'Ada']);
+    $post = (new Post)->setRelation('author', $author);
+    $transformer = new RouteTransformer(ImportlessCastController::class);
+    $pages = array_map(
+        fn (array $action): array => array_combine((array) $action['component'], (array) $action['pageType']),
+        $transformer->actions,
+    );
+    $request = bindRequestUser($author);
+    $model = inertiaProps(new ImportlessCastController()->moduleBranchFirst($post), $request);
+    app()->instance('request', $request = Request::create('/', 'GET', ['module' => '1']));
+    $module = inertiaProps(new ImportlessCastController()->moduleBranchFirst($post), $request);
+
+    expect(array_column($pages, 'ImportlessCast/ModelBranch'))
+        ->toBe(array_fill(0, 2, 'Inertia.SharedData & { writer: WorkbenchUser, note: WorkbenchUser | null }'))
+        ->and(array_column($pages, 'ImportlessCast/ModuleBranch'))
+        ->toBe(array_fill(0, 2, 'Inertia.SharedData & { owner: User, note: User | null }'))
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ])
+        ->and([$model->writer->name, $model->note->name, $module->owner->name, $module->note])
+        ->toBe(['Ada', 'Ada', 'Ada', null]);
+});
+
+it('spells a wrapped enum\'s const after typeof beside the same-named model, where another page imports that name', function () {
+    app(Router::class)->get('/wrapped-enum/module', [WrappedEnumBesideModelController::class, 'module']);
+    app(Router::class)->get('/wrapped-enum/{grade}', [WrappedEnumBesideModelController::class, 'page']);
+    $transformer = new RouteTransformer(WrappedEnumBesideModelController::class);
+    $sent = inertiaProps(new WrappedEnumBesideModelController()->page((new Grade)->forceFill(['subject' => 'Math'])));
+
+    expect(array_column($transformer->actions, 'pageType', 'originalMethodName'))->toBe([
+        'module' => 'Inertia.SharedData & { ui: Grade }',
+        'page' => 'Inertia.SharedData & { grade: WorkbenchGrade, badge: AsEnum<typeof WorkbenchGrade2> }',
+    ])->and($transformer->typeImports)->toBe([
+        '@js/types/ui' => ['Grade'],
+        '@tolki/ts' => ['AsEnum'],
+        '../../../../../../workbench/app/enums' => ['Grade as WorkbenchGrade2'],
+        '../../../../../../workbench/app/models' => ['Grade as WorkbenchGrade'],
+    ])->and([$sent->grade->subject, $sent->badge->name, $sent->badge->value])->toBe(['Math', 'Pass', 'pass']);
+});
+
+it('binds each same-named enum token to its own class on either side of a key the printer renumbers or marks optional', function () {
+    app(Router::class)->get('/pair/around', [SameNamedEnumPairController::class, 'aroundPrintedKeys']);
+    $transformer = new RouteTransformer(SameNamedEnumPairController::class);
+
+    expect($transformer->actions[0]['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { a: WorkbenchStatusType, "0": string, note?: string, b: CrmStatusType }')
+        ->and($transformer->typeImports)->toBe([
+            '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+            '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+        ])
+        ->and(inertiaProps(new SameNamedEnumPairController()->aroundPrintedKeys()))
+        ->toEqual((object) ['a' => 0, '0' => 'seven', 'note' => 'x', 'b' => 'lead']);
 });
 
 it('types each arm of an enum-resource ternary as Inertia sends it', function () {

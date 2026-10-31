@@ -31,7 +31,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -54,7 +53,7 @@ use Throwable;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type TokenQueue from FileImportNames
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type TokenQueues from FileImportNames
+ * @phpstan-import-type PrintedMember from FileImportNames
  *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
@@ -394,34 +393,40 @@ class InertiaPageAnalyzer
             JsEmitter::warnAmbiguousCasts($subject, array_keys($overrides), $keys);
             $casts = JsEmitter::retargetCasts($overrides, $targets);
             $paths = JsEmitter::retargetCasts($importPaths, $targets);
+            $castImports = [];
 
             // A losing spelling's import goes with its type.
             foreach ($paths as $key => $path) {
-                foreach (TsTypeString::extractImportableTypes($casts[$key] ?? '') as $type) {
-                    if (! in_array($type, $externalImports[$path] ?? [], true)) {
-                        $externalImports[$path][] = $type;
-                    }
-                }
+                $castImports[$path] = [
+                    ...$castImports[$path] ?? [],
+                    ...TsTypeString::extractImportableTypes($casts[$key] ?? ''),
+                ];
             }
+
+            $externalImports = $this->withImports($externalImports, $castImports);
 
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
             resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
-            $renumbered = $this->renumberTopLevel($props, $casts, $subject);
-            $pageType = $props === [] && $casts === []
-                ? 'Inertia.SharedData'
-                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides(
-                    TopLevelRenumbering::rekey($props, $renumbered),
-                    TopLevelRenumbering::rekey($casts, $renumbered),
-                    TopLevelRenumbering::rekey(JsEmitter::retargetCasts($optionalOverrides, $targets), $renumbered),
-                );
+            $members = $this->buildMembersWithOverrides(
+                $props,
+                $casts,
+                JsEmitter::retargetCasts($optionalOverrides, $targets),
+                $this->renumberTopLevel($props, $casts, $subject),
+            );
+
+            // Only this branch's own imports decide which tokens the fallback leaves alone, whatever branch came first.
+            $brought = ImportMaps::localNames(ImportMaps::merge($castImports, $analysis->customImports));
+            $page = $members === []
+                ? ['type' => 'Inertia.SharedData', 'classes' => [], 'consts' => []]
+                : FileImportNames::objectMember($analysis, $members, 'Inertia.SharedData & ', $brought);
+            $pageType = $page['type'];
 
             $pageTypes[] = $pageType;
-            $queues = $this->pageTokenQueues($analysis, $props, $casts, ImportMaps::merge($externalImports, $analysis->customImports));
-            $pageQueues[] = $queues['classes'];
-            $pageConstQueues[] = $queues['consts'];
+            $pageQueues[] = $page['classes'];
+            $pageConstQueues[] = $page['consts'];
 
             foreach ($this->usedFqcns($analysis, $pageType) as $fqcn) {
                 if (! in_array($fqcn, $allFqcns, true)) {
@@ -435,13 +440,7 @@ class InertiaPageAnalyzer
                 }
             }
 
-            foreach ($analysis->customImports as $path => $types) {
-                foreach ($types as $type) {
-                    if (! in_array($type, $externalImports[$path] ?? [], true)) {
-                        $externalImports[$path][] = $type;
-                    }
-                }
-            }
+            $externalImports = $this->withImports($externalImports, $analysis->customImports);
         }
 
         return [
@@ -487,18 +486,20 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Build a TypeScript object type string, applying TsCasts overrides for specific props.
+     * Print each prop as an object type's member, a TsCasts override in its place, on the key Laravel sends it on.
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $overrides
      * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  array<array-key, string>  $renumbered  the key Laravel sends each prop on, by its name
+     * @return list<PrintedMember>
      */
-    protected function buildTypeStringWithOverrides(array $props, array $overrides, array $optionalOverrides = []): string
-    {
-        if ($props === [] && $overrides === []) {
-            return TsTypeStringService::EMPTY_OBJECT; // @codeCoverageIgnore
-        }
-
+    protected function buildMembersWithOverrides(
+        array $props,
+        array $overrides,
+        array $optionalOverrides = [],
+        array $renumbered = [],
+    ): array {
         $casts = [];
 
         // A cast that says nothing about optional keeps the prop's own flag.
@@ -507,31 +508,20 @@ class InertiaPageAnalyzer
             $casts[$key] = JsEmitter::signatureSafeMember((string) $key, $type, $optional);
         }
 
-        $parts = [];
+        $members = [];
 
         // A cast keeps its prop's place, and one no prop has goes after them.
-        foreach (array_replace($props, $casts) as $key => $entry) {
-            $key = (string) $key;
-            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
-                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
+        foreach (array_replace($props, $casts) as $name => $entry) {
+            $key = $renumbered[$name] ?? (string) $name;
+            $members[] = [
+                'key' => JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
+                    .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': '),
+                'type' => $entry['type'],
+                'source' => $name,
+            ];
         }
 
-        return '{ '.implode(', ', $parts).' }';
-    }
-
-    /**
-     * The class behind each class token and the enum behind each `typeof` token of the page type, in token order.
-     *
-     * @param  PagePropMap  $props
-     * @param  array<array-key, string>  $casts
-     * @param  TypesImportMap  $customImports  the imports of the page's casts and of its custom types
-     * @return TokenQueues
-     */
-    protected function pageTokenQueues(MethodAnalysis $analysis, array $props, array $casts, array $customImports): array
-    {
-        $printed = array_replace(array_map(static fn (array $prop): string => $prop['type'], $props), $casts);
-
-        return FileImportNames::objectQueues($analysis, $printed, 'Inertia.SharedData', ImportMaps::localNames($customImports));
+        return $members;
     }
 
     /**
@@ -651,5 +641,25 @@ class InertiaPageAnalyzer
         }
 
         return $inForce;
+    }
+
+    /**
+     * The imports with each name the others bring appended under its path, once, in the order they bring them.
+     *
+     * @param  TypesImportMap  $imports
+     * @param  TypesImportMap  $more
+     * @return TypesImportMap
+     */
+    private function withImports(array $imports, array $more): array
+    {
+        foreach ($more as $path => $names) {
+            foreach ($names as $name) {
+                if (! in_array($name, $imports[$path] ?? [], true)) {
+                    $imports[$path][] = $name;
+                }
+            }
+        }
+
+        return $imports;
     }
 }

@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
@@ -34,6 +36,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelNamedLiterals;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
@@ -45,6 +48,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSameNamedEnumNames;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSameNamedEnumsAroundPrintedKeys;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
@@ -427,6 +431,21 @@ it('imports a class an import-less shared-data cast spells', function () {
         ->and(inertiaProps(Inertia::render('Shared', []), $request)->owner->name)->toBe('Ada');
 });
 
+it('leaves a string literal spelling a model\'s name as written, beside the model\'s aliased token', function () {
+    $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
+    Inertia::share(new MiddlewareWithModelNamedLiterals()->share($request));
+    $shared = analyzeSharedDataFor(MiddlewareWithModelNamedLiterals::class);
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect($shared['sharedPageProps'] ?? null)
+        ->toBe("{ doc: 'User' | WorkbenchUser | null, cast: 'User' | WorkbenchUser, ui: User }")
+        ->and($shared['typeImports'] ?? null)->toBe([
+            './workbench/app/models' => ['User as WorkbenchUser'],
+            '@js/types/ui' => ['User'],
+        ])
+        ->and([$sent->doc->name, $sent->cast->name, $sent->ui->name])->toBe(['Ada', 'Ada', 'Ada']);
+});
+
 it('imports a class one shared-data cast displaced for another import-less cast that spells it', function () {
     $request = bindRequestUser((new User)->forceFill(['name' => 'Ada']));
     Inertia::share(new MiddlewareWithCarriedCast()->share($request));
@@ -594,6 +613,19 @@ test('a numeric cast key lands on the key Laravel renumbers it to instead of sto
         ]]);
 });
 
+test('binds each same-named enum token to its own class on either side of a key the printer renumbers or marks optional', function () {
+    Inertia::share(new MiddlewareWithSameNamedEnumsAroundPrintedKeys()->share(request()));
+    $result = analyzeSharedDataFor(MiddlewareWithSameNamedEnumsAroundPrintedKeys::class);
+
+    expect($result['sharedPageProps'] ?? null)
+        ->toBe('{ a: WorkbenchStatusType, "0": string, note?: string, b: CrmStatusType }')
+        ->and($result['typeImports'] ?? null)->toBe([
+            './workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+            './workbench/crm/enums' => ['StatusType as CrmStatusType'],
+        ])
+        ->and(inertiaProps(Inertia::render('Shared', [])))->toEqual((object) ['a' => 0, '0' => 'seven', 'note' => 'x', 'b' => 'lead']);
+});
+
 test('a top-level int key of shared data publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
     expect(analyzeSharedDataFor(MiddlewareWithNumericBodyKey::class)['sharedPageProps'])
         ->toBe('{ appName: string, "0": boolean, codes: { "7": string } }')
@@ -624,14 +656,14 @@ test('the shared-data type prints no ? after a signature, whatever flag reaches 
     $analyzer = new class extends InertiaSharedDataAnalyzer
     {
         /**
-         * The type string the builder prints.
+         * The type string joined from the members the builder prints.
          *
          * @param  array<string, array{type: string, optional: bool}>  $props
          * @param  array<string, array{type: string, optional: bool}>  $overrides
          */
         public function build(array $props, array $overrides): string
         {
-            return $this->buildTypeStringWithOverrides($props, $overrides);
+            return FileImportNames::objectMember(new MethodAnalysis, $this->buildMembersWithOverrides($props, $overrides))['type'];
         }
     };
 

@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -15,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Closure;
@@ -29,6 +29,7 @@ use Closure;
  * @phpstan-type TokenQueues = array{classes: TokenQueue, consts: TokenQueue}
  * @phpstan-type PageQueues = array{classes: list<TokenQueue>, consts: list<TokenQueue>}
  * @phpstan-type FileMember = array{type: string, classes: TokenQueue, consts: TokenQueue}
+ * @phpstan-type PrintedMember = array{key: string, type: string, source: array-key}
  * @phpstan-type ComposedFile = array{types: list<string>, typeImports: TypesImportMap, valueImports: TypesImportMap}
  * @phpstan-type Piece = array{
  *     text: string,
@@ -38,6 +39,7 @@ use Closure;
  *     declared?: TokenFqcns,
  * }
  * @phpstan-type SoleClasses = array<string, class-string>
+ * @phpstan-type Token = array{string, int, bool}
  *
  * @internal
  */
@@ -45,6 +47,9 @@ final class FileImportNames
 {
     use BuildsImportMaps;
     use ResolvesImportConflicts;
+
+    /** The name a `typeof` reads, which is a const's and never a class channel's type. */
+    private const string AFTER_TYPEOF = '/(?<![A-Za-z0-9_$.])typeof\s+\K[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
 
     /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
     protected array $enumConstMap = [];
@@ -71,25 +76,43 @@ final class FileImportNames
     }
 
     /**
-     * The token queues of an object type printed from one analysis's keys, a key's own name queuing null.
+     * An object type printed from one analysis's keys as a file member: the text joined from the printed members after
+     * `$before`, beside the token queues of exactly that text.
      *
-     * @param  array<array-key, string>  $printed  key => the type printed for it, in print order
+     * @param  list<PrintedMember>  $members  each key as its printer printed it, in print order
+     * @param  list<string>  $brought  the names the file's custom imports bring, which no class of the analysis spells
+     * @return FileMember
+     */
+    public static function objectMember(MethodAnalysis $analysis, array $members, string $before = '', array $brought = []): array
+    {
+        $printed = array_map(static fn (array $member): string => $member['key'].$member['type'], $members);
+        $text = $printed === [] ? TsTypeStringService::EMPTY_OBJECT : '{ '.implode(', ', $printed).' }';
+
+        return ['type' => $before.$text, ...self::objectQueues($analysis, $members, $before, $brought)];
+    }
+
+    /**
+     * The token queues of the text `$before` and the printed members spell, a key's own text queuing null; the
+     * separators between them spell no token.
+     *
+     * @param  list<PrintedMember>  $members  each key as its printer printed it, in print order
      * @param  list<string>  $brought  the names the file's custom imports bring, which no class of the analysis spells
      * @return TokenQueues
      */
-    public static function objectQueues(MethodAnalysis $analysis, array $printed, string $before = '', array $brought = []): array
+    public static function objectQueues(MethodAnalysis $analysis, array $members, string $before = '', array $brought = []): array
     {
         $untyped = static fn (string $text): array => ['text' => $text, 'typed' => false, 'classes' => [], 'consts' => []];
         $pieces = $before === '' ? [] : [$untyped($before)];
 
-        foreach ($printed as $key => $type) {
-            $declared = $analysis->declaredTokenFqcns[$key] ?? null;
-            $pieces[] = $untyped(JsEmitter::validJsObjectKey((string) $key, allowIndexSignature: true));
+        foreach ($members as $member) {
+            $source = (string) $member['source'];
+            $declared = $analysis->declaredTokenFqcns[$source] ?? null;
+            $pieces[] = $untyped($member['key']);
             $pieces[] = [
-                'text' => $type,
+                'text' => $member['type'],
                 'typed' => true,
-                'classes' => $analysis->tokenFqcns((string) $key),
-                'consts' => $analysis->wrappedEnumFqcns((string) $key),
+                'classes' => $analysis->tokenFqcns($source),
+                'consts' => $analysis->wrappedEnumFqcns($source),
                 ...($declared === null ? [] : ['declared' => $declared]),
             ];
         }
@@ -236,35 +259,71 @@ final class FileImportNames
      */
     private static function walk(array $piece, string $channel, array $names, array $fallback): array
     {
-        if ($names === [] || preg_match_all(self::patternOf($channel, $names), $piece['text'], $matches) === 0) {
-            return [];
-        }
+        $tokens = $names === [] ? [] : self::tokens($channel, $names, $piece['text']);
+        $queue = [];
 
         if ($channel === 'classes' && isset($piece['declared'])) {
             $declared = $piece['declared'];
             $own = self::namesOf($channel, array_values(array_filter($declared)));
             $at = 0;
 
-            return array_map(
-                static function (string $token) use ($declared, $own, $fallback, &$at): ?string {
-                    return in_array($token, $own, true) ? $declared[$at++] ?? null : $fallback[$token] ?? null;
-                },
-                $matches[0],
-            );
+            // The declaration holds an entry for every token of its classes' names, one the channel leaves unread too.
+            foreach ($tokens as [$token, , $read]) {
+                $fqcn = in_array($token, $own, true) ? $declared[$at++] ?? null : $fallback[$token] ?? null;
+
+                if ($read) {
+                    $queue[] = $fqcn;
+                }
+            }
+
+            return $queue;
         }
 
         $own = $channel === 'classes'
             ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))
             : new ClassTokenQueue($piece[$channel], ValueResult::enumConstName(...));
 
-        return array_map(
-            static fn (string $token): ?string => $own->take($token)[0] ?? $fallback[$token] ?? null,
-            $matches[0],
-        );
+        foreach ($tokens as [$token, , $read]) {
+            if ($read) {
+                $queue[] = $own->take($token)[0] ?? $fallback[$token] ?? null;
+            }
+        }
+
+        return $queue;
     }
 
     /**
-     * The type with its Nth token respelled for the Nth entry: aliasPropertyType()'s per-name queue cannot skip a null.
+     * Each token of the names in the text, its offset, and whether the channel reads it: none inside a quoted literal
+     * or a generated index signature key, whose text is a value or a key, and no class token after `typeof`.
+     *
+     * @param  'classes'|'consts'  $channel
+     * @param  non-empty-list<string>  $names
+     * @return list<Token>
+     */
+    private static function tokens(string $channel, array $names, string $text): array
+    {
+        if (preg_match_all(self::patternOf($channel, $names), $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
+            return [];
+        }
+
+        $unread = TsTypeString::literalSpans($text);
+
+        if ($channel === 'classes' && preg_match_all(self::AFTER_TYPEOF, $text, $consts, PREG_OFFSET_CAPTURE) > 0) {
+            foreach ($consts[0] as [$const, $at]) {
+                $unread[] = [$at, $at + strlen($const)];
+            }
+        }
+
+        return array_map(static fn (array $match): array => [
+            $match[0],
+            $match[1],
+            ! array_any($unread, static fn (array $span): bool => $match[1] >= $span[0] && $match[1] < $span[1]),
+        ], $matches[0]);
+    }
+
+    /**
+     * The type with its Nth read token respelled for the Nth entry: aliasPropertyType()'s per-name queue cannot skip a
+     * null.
      *
      * @param  TokenQueue  $queue
      * @param  'classes'|'consts'  $channel
@@ -278,19 +337,24 @@ final class FileImportNames
             return $type;
         }
 
+        $respelled = '';
+        $from = 0;
         $at = 0;
 
-        return preg_replace_callback(
-            self::patternOf($channel, $names),
-            static function (array $match) use ($queue, $channel, $localName, &$at): string {
-                $fqcn = $queue[$at++] ?? null;
+        foreach (self::tokens($channel, $names, $type) as [$token, $offset, $read]) {
+            if (! $read) {
+                continue;
+            }
 
-                return $fqcn !== null && in_array($match[0], self::namesOf($channel, [$fqcn]), true)
-                    ? $localName($fqcn, $match[0])
-                    : $match[0];
-            },
-            $type,
-        ) ?? $type;
+            $fqcn = $queue[$at++] ?? null;
+            $spelled = $fqcn !== null && in_array($token, self::namesOf($channel, [$fqcn]), true)
+                ? $localName($fqcn, $token)
+                : $token;
+            $respelled .= substr($type, $from, $offset - $from).$spelled;
+            $from = $offset + strlen($token);
+        }
+
+        return $respelled.substr($type, $from);
     }
 
     /**

@@ -96,7 +96,7 @@ enum for the generation cache.
 `validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
 only in a type position, so every value-position caller must leave the default alone.
 [The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does. The type positions that pass it are
-the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildTypeStringWithOverrides()` methods and
+the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildMembersWithOverrides()` methods and
 `BuildsInlineObjectTypes::buildInlineObjectType()`; each prints `?` only after a key `isIndexSignatureKey()` rejects.
 
 `signatureSafeMember()` sits beside `isIndexSignatureKey()` as the one home for the optional-signature rule: each site

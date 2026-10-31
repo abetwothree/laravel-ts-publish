@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Routing\Router;
@@ -1027,6 +1028,23 @@ it('imports the model an import-less cast spells over the key whose value embeds
     expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null } }')
         ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
         ->and(inertiaProps(new EmbeddedCastController()->show($post))->meta->author->name)->toBe('Ada');
+});
+
+it('leaves the string literals a page cast writes as written, beside a model another page aliases', function () {
+    app(Router::class)->get('/literal-cast/{post}/module', [LiteralCastController::class, 'module']);
+    app(Router::class)->get('/literal-cast/{post}/literal', [LiteralCastController::class, 'literal']);
+    $transformer = new RouteTransformer(LiteralCastController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+    $sent = inertiaProps(new LiteralCastController()->literal($post));
+
+    expect(array_column($transformer->actions, 'pageType', 'originalMethodName'))->toBe([
+        'module' => 'Inertia.SharedData & { author: User }',
+        'literal' => 'Inertia.SharedData & { author: ModelsUser, kind: \'User\' | \'Team\', morph: "App\\\\Models\\\\User" }',
+    ])->and($transformer->typeImports)->toBe([
+        '@js/types/ui' => ['User'],
+        '../../../../../../app/models' => ['User as ModelsUser'],
+    ])->and([$sent->author->name, $sent->kind, $sent->morph])->toBe(['Ada', 'User', 'App\\Models\\User'])
+        ->and(inertiaProps(new LiteralCastController()->module($post))->author->name)->toBe('Ada');
 });
 
 // A mocked analysis has no response to send, so this pins the namer alone.
