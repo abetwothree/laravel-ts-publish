@@ -122,9 +122,11 @@ reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` r
   a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix,
   and the keys a resource's response adds beside its body (below), which reach Inertia already JSON.
 - **The filtered reading**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
-  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `TernaryHandler`'s `?:` rule
-  applies only under `Inertia`, since `filter()` sends a resource around null as null; under `InertiaFiltered`
-  `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
+  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `Reading::filterReaches()` says
+  whether `filter()` reaches a value, which `ReadsNullablePayloads` asks before a resource around a nullable payload
+  takes that null: under `InertiaFiltered` in any body, a helper's or a service's included, outside Inertia only in a
+  `JsonResource` subject's own, and never inside a `map()` kept as a `Collection`, where a call's body reads
+  `Inertia` (`Reading::calledFrom()`). `TernaryHandler`'s `?:` rule applies only under `Inertia`.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its

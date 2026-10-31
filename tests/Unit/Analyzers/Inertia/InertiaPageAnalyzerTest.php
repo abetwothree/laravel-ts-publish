@@ -1253,6 +1253,22 @@ it('keeps the null a resolved resource sends for a nested resource around null',
         ->and([$guest->card->viewer, $member->card->viewer->data->name])->toBe([null, 'Ada']);
 });
 
+// The resource's filter() reaches what a service it calls returns, so the card built there around a guest is null too,
+// but never enters a map() kept as a Collection, whose cards Inertia sends as their responses.
+it('keeps the null a resolved resource sends for a nested resource a service builds around null', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $guest = inertiaProps(new ResolvedCardController()->helperViewer($post));
+    auth()->setUser($user);
+    $member = inertiaProps(new ResolvedCardController()->helperViewer($post));
+    $sent = '{ viewer: { data: UserCardResource } | null; authors: { data: UserCardResource }[] }';
+
+    expect(pageData(ResolvedCardController::class.'@helperViewer')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<HelperViewerCardResource, 'viewer' | 'authors'> & {$sent} }")
+        ->and([$guest->card->viewer, $member->card->viewer->data->name])->toBe([null, 'Ada'])
+        ->and([$guest->card->authors[0]->data->name, $member->card->authors[0]->data->name])->toBe(['Ada', 'Ada']);
+});
+
 it('keeps the null a spread resolved resource sends for a nested resource around null', function () {
     $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret'])->id]);
 

@@ -221,8 +221,8 @@ final class AnalysisScope
     public bool $reindexesNumericKeys = false;
 
     /**
-     * Whether JsonResource::filter() reaches the value being read, so a nested resource around null is sent as null.
-     * False while a map() body resolves whose result stays a Collection: filter() recurses into arrays only.
+     * False while a map() body resolves whose result stays a Collection, which JsonResource::filter() never enters, as
+     * it recurses into arrays only; Reading::filterReaches() adds whether a filter runs over the body at all.
      */
     public bool $filtersNestedResources = true;
 

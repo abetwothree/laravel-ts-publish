@@ -53,7 +53,7 @@ final readonly class CallSite
      */
     public function reading(): Reading
     {
-        return $this->engine->reading();
+        return $this->engine->reading()->calledFrom($this->scope);
     }
 
     /**

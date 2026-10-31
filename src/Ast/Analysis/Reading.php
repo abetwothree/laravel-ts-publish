@@ -50,4 +50,34 @@ enum Reading
 
         return is_a($runs->getName(), JsonResource::class, true) ? self::InertiaFiltered : $this;
     }
+
+    /**
+     * The reading the body a call runs takes from a value read in the scope: `filter()` never enters a map() kept as a
+     * Collection, so what a call returns there reaches Inertia unfiltered.
+     */
+    public function calledFrom(AnalysisScope $scope): self
+    {
+        return $this === self::InertiaFiltered && ! $this->filterReaches($scope) ? self::Inertia : $this;
+    }
+
+    /**
+     * Whether `JsonResource::filter()` reaches a value read in the scope, which sends a resource around null as null.
+     */
+    public function filterReaches(AnalysisScope $scope): bool
+    {
+        return $scope->filtersNestedResources && $this->filtersBodyOf($scope);
+    }
+
+    /**
+     * Whether `filter()` runs over what the scope's body returns: below a filtered Inertia read, and outside Inertia
+     * over a JsonResource subject's own; it enters arrays only, which AnalysisScope::$filtersNestedResources tracks.
+     */
+    public function filtersBodyOf(AnalysisScope $scope): bool
+    {
+        return match ($this) {
+            self::Encoded => $scope->subjectReflection->isSubclassOf(JsonResource::class),
+            self::Inertia => false,
+            self::InertiaFiltered => true,
+        };
+    }
 }

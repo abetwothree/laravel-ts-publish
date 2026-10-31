@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperViewerCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
@@ -41,6 +42,12 @@ class ResolvedCardController
     public function viewer(Post $post): Response
     {
         return Inertia::render('ResolvedCard/Viewer', ['card' => ViewerCardResource::make($post)->resolve()]);
+    }
+
+    /** Renders a post's card beside the signed-in user's a service builds, null for a guest. */
+    public function helperViewer(Post $post): Response
+    {
+        return Inertia::render('ResolvedCard/HelperViewer', ['card' => HelperViewerCardResource::make($post)->resolve()]);
     }
 
     /** Renders a post's card spread into the props, beside the signed-in user's, null for a guest. */

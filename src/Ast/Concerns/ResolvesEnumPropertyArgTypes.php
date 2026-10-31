@@ -118,8 +118,8 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm stays only where
-     * JsonResource::filter() reaches the wrap, as a resource wrap's does: a Collection sends a null payload as `[]`.
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm goes only inside a map()
+     * kept as a Collection, which filter() never enters, so a null payload there is sent as `[]`.
      *
      * @return ValueExpressionResult|null
      */
