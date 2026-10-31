@@ -85,11 +85,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $result = $this->resolveRead($expr, $scope, $engine);
 
         // Only a bare variable is the closure or prop it holds; a read through it, as `$items->map(…)`, is a value.
-        if ($result !== null && ! $expr instanceof Variable) {
-            unset($result['heldObject']);
-        }
-
-        return $result;
+        return $result === null || $expr instanceof Variable ? $result : ValueResult::withoutHeldObject($result);
     }
 
     /**

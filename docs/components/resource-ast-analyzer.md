@@ -91,15 +91,17 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   completely. A `??=` of a key the walk holds joins the value it keeps with the default, the key optional only where a
   value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. A placeholder, a closure and
   an Inertia prop object (a result's `heldObject`, which `MethodAnalysis::$heldObjectKeys` keeps for a literal's key)
-  are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; the default
-  joins only past a plain `null`, or where a path may leave the key unset, as a branch, a `switch` case or a keyless
-  `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal write's keys count as set. A written value that reads
-  the variable itself reads the keys the walk holds there (`readAgainstWalk()`), or, where the walk cannot spell them,
-  reads as the body's other reads do, which a page declines. A merge closure's body is seeded as `ClosureHandler` seeds
-  a closure's, so a local it assigns shadows the method's of its name. A closure's returns and a method's read as a
-  value share the walk through `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body
-  writes rather than reading its binding; a value read of a local built by keys shares it through `walkedLocal()`, and
-  an Inertia props local, read from its writes before the render call, through `variableAnalysis()`.
+  are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; a ternary,
+  `??` or `match` with only some such arms (`mayHoldObject`) keeps the null its objects resolve to, and joins the
+  default only past its plain arms' null; the default joins only past a plain `null`, or where a path may leave the key
+  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal
+  write's keys count as set. A written value that reads the variable itself reads the keys the walk holds there
+  (`readAgainstWalk()`), or, where the walk cannot spell them, reads as the body's other reads do, which a page
+  declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
+  method's of its name. A closure's returns and a method's read as a value share the walk through
+  `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
+  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local, read
+  from its writes before the render call, through `variableAnalysis()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and

@@ -72,6 +72,7 @@ use WeakMap;
  * @template TAnalysis of MethodAnalysis
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type HeldNulls from ExpressionHandler
  *
  * @phpstan-type UntypedKeyWrite = array{string, Expr}
  * @phpstan-type KeyPaths = array{unset: bool, object: bool, objectNull: bool, plainNull: bool}
@@ -1055,7 +1056,7 @@ trait ReadsReturnedVariables
                 $isConditional,
                 $heldType,
                 isset($unset[$prop['name']]),
-                isset($write->heldObjectKeys[$prop['name']]),
+                $write->heldObjectKeys[$prop['name']] ?? null,
                 $prop['type'],
             );
 
@@ -1105,14 +1106,6 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
-     */
-    private function mayBeNull(string $type): bool
-    {
-        return $type === 'unknown' || ValueResult::hasNullArm($type);
-    }
-
-    /**
      * What some path leaves a key holding in a record, or, for a key no write recorded, what its own type says.
      *
      * @param  array<string, KeyPaths>  $record
@@ -1121,7 +1114,7 @@ trait ReadsReturnedVariables
     private function pathsIn(array $record, string $key, string $type): array
     {
         return $record[$key]
-            ?? ['unset' => false, 'object' => false, 'objectNull' => false, 'plainNull' => $this->mayBeNull($type)];
+            ?? ['unset' => false, 'object' => false, 'objectNull' => false, 'plainNull' => ValueResult::mayBeNull($type)];
     }
 
     /**
@@ -1142,24 +1135,37 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * What a value leaves a key holding: a plain value, whose null `??=` replaces, or an object on some arm, whose null
+     * is what Inertia resolves it to, beside the plain arms' (ValueResult::heldNullsOf()).
+     *
+     * @param  HeldNulls|null  $held
+     * @return KeyPaths
+     */
+    private function valuePaths(?array $held, string $type): array
+    {
+        return [
+            'unset' => false,
+            'object' => $held !== null,
+            'objectNull' => $held['objectNull'] ?? false,
+            'plainNull' => $held === null ? ValueResult::mayBeNull($type) : $held['plainNull'],
+        ];
+    }
+
+    /**
      * Record what a write of a value leaves a key holding, beside what it held before where the write may not run.
      *
      * @param  string|null  $heldType  the type the key held before the write, null where it held none
+     * @param  HeldNulls|null  $held  ValueResult::heldNullsOf() of the value written
      */
     private function recordWrite(
         string $key,
         bool $isConditional,
         ?string $heldType,
         bool $unset,
-        bool $object,
+        ?array $held,
         string $type,
     ): void {
-        $paths = [
-            'unset' => $unset,
-            'object' => $object,
-            'objectNull' => $object && $this->mayBeNull($type),
-            'plainNull' => ! $object && $this->mayBeNull($type),
-        ];
+        $paths = [...$this->valuePaths($held, $type), 'unset' => $unset];
 
         if ($isConditional) {
             $before = $heldType === null ? self::UNSET_PATHS : $this->pathsIn($this->keyPaths, $key, $heldType);
@@ -1506,7 +1512,7 @@ trait ReadsReturnedVariables
         }
 
         $heldType = $existingIndex === null ? null : $into->properties[$existingIndex]['type'];
-        $this->recordWrite($keyName, $isConditional, $heldType, false, $result['heldObject'] ?? false, $result['type']);
+        $this->recordWrite($keyName, $isConditional, $heldType, false, ValueResult::heldNullsOf($result), $result['type']);
         $appendedIndex = count($into->properties);
 
         $into->addProperty($keyName, $result, $isConditional || $result['optional']);
@@ -1543,7 +1549,7 @@ trait ReadsReturnedVariables
         $paths = $this->pathsIn($this->keyPaths, $keyName, $held['type']);
         $leftOut = isset($this->optionalValueKeys[$keyName]);
         // PHP holds an object, never null, where Inertia later resolves it, so only a plain value's null runs `??=`.
-        $nullLands = $paths['object'] ? $paths['plainNull'] : $this->mayBeNull($held['type']);
+        $nullLands = $paths['object'] ? $paths['plainNull'] : ValueResult::mayBeNull($held['type']);
         $keptType = $paths['objectNull'] ? $held['type'] : ValueResult::stripNullArm($held['type']);
 
         if (! ($signature || $nullLands || ($held['optional'] && ($paths['unset'] || (! $leftOut && ! $paths['object']))))) {
@@ -1567,7 +1573,6 @@ trait ReadsReturnedVariables
             $into->properties,
         );
         $filled = clone $into;
-        $defaultObject = $default['heldObject'] ?? false;
         $this->writeKey($filled, $keyName, $default, false);
         $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
@@ -1596,12 +1601,12 @@ trait ReadsReturnedVariables
         );
 
         $into->replaceWith($joined);
-        $defaultNull = $this->mayBeNull($default['type']);
+        $filling = $this->valuePaths(ValueResult::heldNullsOf($default), $default['type']);
         $this->keyPaths[$keyName] = [
             'unset' => $isConditional && $paths['unset'],
-            'object' => $paths['object'] || $defaultObject,
-            'objectNull' => $paths['objectNull'] || ($defaultObject && $defaultNull),
-            'plainNull' => (! $defaultObject && $defaultNull) || ($isConditional && $paths['plainNull']),
+            'object' => $paths['object'] || $filling['object'],
+            'objectNull' => $paths['objectNull'] || $filling['objectNull'],
+            'plainNull' => $filling['plainNull'] || ($isConditional && $paths['plainNull']),
         ];
     }
 

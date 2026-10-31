@@ -21,6 +21,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type HeldNulls from ExpressionHandler
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -84,10 +85,11 @@ class MethodAnalysis
     public array $declaredTokenFqcns = [];
 
     /**
-     * Property name => true for each key addProperty() last gave a value PHP holds as an object (`heldObject`), which a
-     * returned variable's walk reads where the write lands. A merge or a join sets none, so its keys read as plain.
+     * Property name => the nulls of a value addProperty() last gave the key that PHP holds as an object on some arm
+     * (ValueResult::heldNullsOf()), which a returned variable's walk reads where the write lands. A merge or a join
+     * sets none, so its keys read as plain.
      *
-     * @var array<array-key, true>
+     * @var array<array-key, HeldNulls>
      */
     public array $heldObjectKeys = [];
 
@@ -164,10 +166,12 @@ class MethodAnalysis
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
 
-        if ($result['heldObject'] ?? false) {
-            $this->heldObjectKeys[$name] = true;
-        } else {
+        $held = ValueResult::heldNullsOf($result);
+
+        if ($held === null) {
             unset($this->heldObjectKeys[$name]);
+        } else {
+            $this->heldObjectKeys[$name] = $held;
         }
 
         $this->dispatchFqcnResults(

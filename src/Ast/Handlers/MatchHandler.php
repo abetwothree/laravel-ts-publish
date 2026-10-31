@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Match_;
@@ -20,7 +21,7 @@ use PhpParser\Node\Expr\Throw_;
  *
  * @internal
  */
-final class MatchHandler implements ExpressionHandler
+final class MatchHandler implements ExpressionHandler, KeepsHeldObjects
 {
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array

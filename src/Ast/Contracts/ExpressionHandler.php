@@ -17,6 +17,7 @@ use PhpParser\Node\Expr;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
  *
+ * @phpstan-type HeldNulls = array{objectNull: bool, plainNull: bool}
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
  *      optional: bool,
@@ -36,6 +37,7 @@ use PhpParser\Node\Expr;
  *      keepsKeys?: bool,
  *      absentReadsNull?: bool,
  *      heldObject?: bool,
+ *      mayHoldObject?: HeldNulls,
  *      resolvedFqcn?: class-string<JsonResource>
  * }
  *
@@ -44,7 +46,8 @@ use PhpParser\Node\Expr;
  * value is the keys that resource's `resolve()` returns, typed as Inertia sends them, so a spread takes its keys.
  *
  * `heldObject` says PHP holds the value as an object, a closure or an Inertia prop, never null until the caller
- * resolves it to the type, so a `??=` of it never runs (KeepsHeldObjects).
+ * resolves it to the type, so a `??=` of it never runs (KeepsHeldObjects); `mayHoldObject` says only some arms do, and
+ * whether an object arm may resolve to null and a plain arm may be null, which only the plain one `??=` replaces.
  *
  * @internal
  */

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -30,7 +31,7 @@ use PhpParser\Node\Name;
  *
  * @internal
  */
-final class TernaryHandler implements ExpressionHandler
+final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects
 {
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;

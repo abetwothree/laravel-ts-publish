@@ -247,6 +247,80 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceAlwaysNullable', $props);
     }
 
+    /** Renders a local whose key holds a closure on either arm of a ternary, which `??=` keeps. */
+    public function coalesceTernaryClosures(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $request->boolean('x') ? fn (): ?int => null : fn (): int => 1;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceTernaryClosures', $props);
+    }
+
+    /** Renders a local whose key holds a closure on one arm of a ternary and null on the other, which `??=` fills. */
+    public function coalesceTernaryClosureOrNull(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $request->boolean('x') ? fn (): ?int => null : null;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceTernaryClosureOrNull', $props);
+    }
+
+    /** Renders a local whose key holds a local holding a closure on one arm of a ternary and null on the other. */
+    public function coalesceLocalTernary(Request $request): Response
+    {
+        $f = $request->boolean('x') ? fn (): ?int => null : null;
+        $props = ['heading' => 'x'];
+        $props['a'] = $f;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceLocalTernary', $props);
+    }
+
+    /** Renders a local whose key holds a closure that never resolves to null on one arm and null on the other. */
+    public function coalesceTernaryIntClosureOrNull(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $request->boolean('x') ? fn (): int => 1 : null;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceTernaryIntClosureOrNull', $props);
+    }
+
+    /** Renders a local whose key holds a request field or, where it is missing, a closure, which `??=` may fill. */
+    public function coalesceFieldOrClosure(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $request->input('q') ?? fn (): ?int => null;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceFieldOrClosure', $props);
+    }
+
+    /** Renders a local whose key holds a closure on every arm of a `match`, which `??=` keeps. */
+    public function coalesceMatchClosures(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = match ($request->input('k')) {
+            'a' => fn (): ?int => null,
+            default => fn (): int => 1,
+        };
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceMatchClosures', $props);
+    }
+
+    /** Renders a local whose key holds true or, past `?:`, a closure resolving to null, which `??=` may fill. */
+    public function coalesceTrueOrClosure(Request $request): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $request->boolean('x') ?: fn (): ?int => null;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceTrueOrClosure', $props);
+    }
+
     /** Renders a local whose key a block may set, which a write reading the local itself fills otherwise. */
     public function coalesceSelfRead(Request $request): Response
     {

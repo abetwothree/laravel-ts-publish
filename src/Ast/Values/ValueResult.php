@@ -27,6 +27,7 @@ use ReflectionClass;
  * Shared building blocks for ExpressionHandler results.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
  *
@@ -223,7 +224,45 @@ final class ValueResult
      */
     public static function heldObject(array $result): array
     {
+        unset($result['mayHoldObject']);
+
         return [...$result, 'heldObject' => true];
+    }
+
+    /**
+     * Where PHP may hold the value as an object, whether an object arm may resolve to null and a plain arm may be null;
+     * null where no arm is such an object.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return HeldNulls|null
+     */
+    public static function heldNullsOf(array $result): ?array
+    {
+        return match (true) {
+            $result['heldObject'] ?? false => ['objectNull' => self::mayBeNull($result['type']), 'plainNull' => false],
+            default => $result['mayHoldObject'] ?? null,
+        };
+    }
+
+    /**
+     * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
+     */
+    public static function mayBeNull(string $type): bool
+    {
+        return $type === 'unknown' || self::hasNullArm($type);
+    }
+
+    /**
+     * The result without either held-object flag, as a value read from such an object is.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function withoutHeldObject(array $result): array
+    {
+        unset($result['heldObject'], $result['mayHoldObject']);
+
+        return $result;
     }
 
     /**
@@ -291,7 +330,7 @@ final class ValueResult
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it.
+     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms'.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -316,7 +355,7 @@ final class ValueResult
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
 
         if ($types === []) {
-            return [...self::unknown(), 'optional' => $optional];
+            return self::withArmObjects([...self::unknown(), 'optional' => $optional], $results);
         }
 
         $result = self::mergeUnion($types, $branchResults);
@@ -325,7 +364,9 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        return [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+
+        return self::withArmObjects($union, $results);
     }
 
     /**
@@ -498,6 +539,35 @@ final class ValueResult
     public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
+    }
+
+    /**
+     * A union flagged `heldObject` where every arm is an object PHP holds, and `mayHoldObject` where only some are.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    private static function withArmObjects(array $union, array $arms): array
+    {
+        $union = self::withoutHeldObject($union);
+        $nulls = ['objectNull' => false, 'plainNull' => false];
+        $someArm = false;
+
+        foreach ($arms as $arm) {
+            $held = self::heldNullsOf($arm);
+            $someArm = $someArm || $held !== null;
+            $nulls = [
+                'objectNull' => $nulls['objectNull'] || ($held['objectNull'] ?? false),
+                'plainNull' => $nulls['plainNull'] || ($held === null ? self::mayBeNull($arm['type']) : $held['plainNull']),
+            ];
+        }
+
+        return match (true) {
+            ! $someArm => $union,
+            array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false) => [...$union, 'heldObject' => true],
+            default => [...$union, 'mayHoldObject' => $nulls],
+        };
     }
 
     /**

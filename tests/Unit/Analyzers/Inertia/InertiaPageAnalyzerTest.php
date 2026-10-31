@@ -299,6 +299,48 @@ it('reads a props local through its writes', function (string $action, string $t
         [[]],
         [['heading' => 'x', 'a' => null]],
     ],
+    'a ??= over a closure on either arm of a ternary' => [
+        'coalesceTernaryClosures',
+        '{ heading: string, a: number | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 1]],
+    ],
+    'a ??= over a closure or null from a ternary' => [
+        'coalesceTernaryClosureOrNull',
+        '{ heading: string, a: string | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a ??= over a closure that never resolves to null or null from a ternary' => [
+        'coalesceTernaryIntClosureOrNull',
+        '{ heading: string, a: number | string }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a ??= over a local holding a closure or null from a ternary' => [
+        'coalesceLocalTernary',
+        '{ heading: string, a: string | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 'none']],
+    ],
+    'a ??= over a request field or a closure past ??' => [
+        'coalesceFieldOrClosure',
+        '{ heading: string, a: string | null }',
+        [['q' => 'w'], []],
+        [['heading' => 'x', 'a' => 'w'], ['heading' => 'x', 'a' => null]],
+    ],
+    'a ??= over a closure on every arm of a match' => [
+        'coalesceMatchClosures',
+        '{ heading: string, a: number | null }',
+        [['k' => 'a'], []],
+        [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 1]],
+    ],
+    'a ??= over true or a closure past ?:' => [
+        'coalesceTrueOrClosure',
+        '{ heading: string, a: boolean | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => true], ['heading' => 'x', 'a' => null]],
+    ],
     'a write reading the local itself' => [
         'coalesceSelfRead',
         '{ heading: string, a?: number | string }',
@@ -330,8 +372,8 @@ it('throws for the request the in-block props local is never assigned on', funct
     expect(fn () => new PropsLocalController()->inBlock(Request::create('/')))->toThrow(NotFoundHttpException::class);
 });
 
-// The props hold the lazy prop object or the closure, which is not null, so `??=` never lands its default.
-it('sends a lazy prop or callable a ??= never fills on the partial reload that asks for it', function (string $action, array $query, array $sent) {
+// The props hold the lazy prop or the closure, which is not null, so `??=` lands its default only past a plain null.
+it('sends what a ??= over a lazy prop or callable leaves on the partial reload that asks for it', function (string $action, array $query, array $sent) {
     $request = partialReload('PropsLocal/'.ucfirst($action), 'a');
     $request->query->add($query);
 
@@ -348,6 +390,20 @@ it('sends a lazy prop or callable a ??= never fills on the partial reload that a
     'a local closure, resolving to null' => ['coalesceClosureLocal', [], ['a' => null]],
     'a first-class callable, resolving to null' => ['coalesceFirstClassNullable', [], ['a' => null]],
     'an always prop, resolving to null' => ['coalesceAlwaysNullable', [], ['a' => null]],
+    'a ternary of closures, resolving to null' => ['coalesceTernaryClosures', ['x' => 1], ['a' => null]],
+    'a ternary of closures, resolving to a number' => ['coalesceTernaryClosures', [], ['a' => 1]],
+    'a ternary of a closure, resolving to null' => ['coalesceTernaryClosureOrNull', ['x' => 1], ['a' => null]],
+    'a ternary of null, filled' => ['coalesceTernaryClosureOrNull', [], ['a' => 'none']],
+    'a ternary of a closure, resolving to a number' => ['coalesceTernaryIntClosureOrNull', ['x' => 1], ['a' => 1]],
+    'a ternary of null beside that closure, filled' => ['coalesceTernaryIntClosureOrNull', [], ['a' => 'none']],
+    'a local ternary of a closure, resolving to null' => ['coalesceLocalTernary', ['x' => 1], ['a' => null]],
+    'a local ternary of null, filled' => ['coalesceLocalTernary', [], ['a' => 'none']],
+    'a request field past ??' => ['coalesceFieldOrClosure', ['q' => 'w'], ['a' => 'w']],
+    'a closure past ??, resolving to null' => ['coalesceFieldOrClosure', [], ['a' => null]],
+    'a match of closures, resolving to null' => ['coalesceMatchClosures', ['k' => 'a'], ['a' => null]],
+    'a match of closures, resolving to a number' => ['coalesceMatchClosures', [], ['a' => 1]],
+    'true past ?:' => ['coalesceTrueOrClosure', ['x' => 1], ['a' => true]],
+    'a closure past ?:, resolving to null' => ['coalesceTrueOrClosure', [], ['a' => null]],
 ]);
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,

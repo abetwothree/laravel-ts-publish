@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 
 /**
@@ -55,11 +56,7 @@ final class ExpressionDispatcher
             }
 
             // A value a handler reads from a held object, as `when()` calls a closure, is not that object itself.
-            if (! $handler instanceof KeepsHeldObjects) {
-                unset($result['heldObject']);
-            }
-
-            return $result;
+            return $handler instanceof KeepsHeldObjects ? $result : ValueResult::withoutHeldObject($result);
         }
 
         return null;
