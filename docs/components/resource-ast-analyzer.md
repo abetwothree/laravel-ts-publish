@@ -945,6 +945,12 @@ Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each 
 one. The nested key cannot defer to the transformer, because only flat property lists leave the handler's
 method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case with two array-shaped arms.
 
+On an Inertia page and in shared data, `RewritesEnumResourceProps` substitutes instead, because a wrapped collection
+there publishes its response, `{ data: AsEnum<typeof Status>[] }`. It respells every top-level member but the bare
+read's, and adds the wrap's own from `AnalysisComposer::enumResourceArms()` only where the union deduped both arms into
+that member. A ternary over two enums' wraps likewise has each member's own enum substituted, in branch order, where the
+resource rewrite replaces the whole member.
+
 Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
 members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which
 `EnumResource::collection()` forced, becomes `AsEnum<typeof Status>[]`. That fallback can substitute the bare token

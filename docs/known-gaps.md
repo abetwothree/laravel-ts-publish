@@ -199,18 +199,6 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
-### A multi-enum or mixed `EnumResource` ternary in an Inertia prop publishes the wrong enum shape
-
-With `enums.use_tolki_package` on, the default,
-`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` as a page prop or in
-`HandleInertiaRequests::share()` publishes `RoleType | StatusType`, though Inertia sends each arm's resource object.
-`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape. In shared data neither name
-is imported either, which is TS2304 twice in a consumer's build: `AnalysisImports` drops a multi-enum ternary's type
-imports, as the resource generator's own rewrite needs. A ternary of an `EnumResource` and a bare case of its enum,
-`$cond ? EnumResource::make(Status::Draft) : Status::Published`, publishes `AsEnum<typeof Status>` for both arms,
-though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
-them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
-
 ### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
 
 `'priority' => EnumResource::make($this->priority)->resolve()` publishes `AsEnum<typeof Priority>`, but the outer

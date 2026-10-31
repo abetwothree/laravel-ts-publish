@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEmbeddedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumUnions;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithFlaggedClassCastUnderShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportlessCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
@@ -61,6 +62,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\UnreadPar
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Inertia;
+use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Models\User;
 
@@ -504,15 +507,40 @@ test('the EnumResource rewrite is inert when the tolki package is disabled', fun
         ->and($result['valueImports'])->toBe([]);
 });
 
-test('a value import whose const name the props type never spells is dropped', function () {
-    // A two-enum ternary lands in multiEnumResourceFqcns, which the AsEnum rewrite does not key off, so
-    // the props type keeps both bare names. AnalysisImports still offers Role and Status as value
-    // imports; unfiltered they would be emitted unused, which a consumer's noUnusedLocals rejects.
+test('a two-enum ternary imports both consts and neither enum type it no longer spells', function () {
     $result = analyzeSharedDataFor(MiddlewareWithMultiEnumTernary::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ either: RoleType | StatusType }')
-        ->and($result['valueImports'])->toBe([]);
+        ->and($result['sharedPageProps'])->toBe('{ either: AsEnum<typeof Role> | AsEnum<typeof Status> }')
+        ->and($result['typeImports'])->toBe([])
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']]);
+});
+
+it('types each arm of a shared enum-resource ternary as Inertia sends it', function () {
+    [$picked, $other] = array_map(function (int $c): stdClass {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+        Inertia::share(new MiddlewareWithEnumUnions()->share($request));
+
+        return inertiaProps(Inertia::render('Shared', []), $request);
+    }, [1, 0]);
+    $result = analyzeSharedDataFor(MiddlewareWithEnumUnions::class);
+
+    expect($result['sharedPageProps'] ?? null)
+        ->toBe('{ either: AsEnum<typeof Role> | AsEnum<typeof Status>, mixed: AsEnum<typeof Status> | StatusType }')
+        ->and($result['typeImports'] ?? null)->toBe(['./workbench/app/enums' => ['StatusType']])
+        ->and($result['valueImports'] ?? null)->toBe(['./workbench/app/enums' => ['Role', 'Status']])
+        ->and([$picked->either->name, $picked->mixed->name, $other->either->name, $other->mixed])
+        ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
+});
+
+test('an enum-resource ternary publishes each bare enum type when the tolki package is disabled', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $result = analyzeSharedDataFor(MiddlewareWithEnumUnions::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe('{ either: RoleType | StatusType, mixed: StatusType }')
+        ->and($result['typeImports'] ?? null)->toBe(['./workbench/app/enums' => ['RoleType', 'StatusType']])
+        ->and($result['valueImports'] ?? null)->toBe([]);
 });
 
 test('an EnumResource on a framework-owned key is skipped rather than fataling', function () {

@@ -62,6 +62,37 @@ final class AnalysisComposer
     private array $propertyFqcnQueues = [];
 
     /**
+     * Each EnumResource property's arm shape, for the AsEnum rewrite here and on an Inertia page or in shared data.
+     *
+     * @param  array<array-key, string>  $types  property name => its type before the rewrite
+     * @return array<array-key, EnumResourceArm>
+     */
+    public static function enumResourceArms(MethodAnalysis $analysis, array $types): array
+    {
+        $arms = [];
+
+        foreach ($analysis->enumResources as $propName => $fqcn) {
+            if (! isset($types[$propName])) {
+                continue;
+            }
+
+            $type = $types[$propName];
+            // $type may already carry '| null', so the collection check must strip it first.
+            $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+            $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
+
+            $arms[$propName] = [
+                'fqcn' => $fqcn,
+                'nullable' => str_contains($type, 'null'),
+                'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
+                'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
+            ];
+        }
+
+        return $arms;
+    }
+
+    /**
      * Compose one analysis into properties, type imports and value imports that agree.
      *
      * $fromNamespacePath is the importing file's namespace path (e.g. 'workbench/app/events').
@@ -264,7 +295,9 @@ final class AnalysisComposer
             return;
         }
 
-        foreach ($this->enumResourceArms($analysis) as $propName => $arm) {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+
+        foreach (self::enumResourceArms($analysis, $types) as $propName => $arm) {
             $constName = $this->constImportAliases[$arm['fqcn']] ?? $this->enumConstMap[$arm['fqcn']];
             $typeName = $this->importAliases[$arm['fqcn']] ?? $this->enumFqcnMap[$arm['fqcn']];
 
@@ -335,36 +368,6 @@ final class AnalysisComposer
         }
 
         return implode(' | ', $rewritten);
-    }
-
-    /**
-     * Each EnumResource property's arm shape, for the rewrite above.
-     *
-     * @return array<array-key, EnumResourceArm>
-     */
-    private function enumResourceArms(MethodAnalysis $analysis): array
-    {
-        $arms = [];
-
-        foreach ($analysis->enumResources as $propName => $fqcn) {
-            if (! isset($this->properties[$propName], $this->enumFqcnMap[$fqcn])) {
-                continue;
-            }
-
-            $type = $this->properties[$propName]['type'];
-            // $type may already carry '| null', so the collection check must strip it first.
-            $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
-            $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
-
-            $arms[$propName] = [
-                'fqcn' => $fqcn,
-                'nullable' => str_contains($type, 'null'),
-                'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
-                'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
-            ];
-        }
-
-        return $arms;
     }
 
     /**

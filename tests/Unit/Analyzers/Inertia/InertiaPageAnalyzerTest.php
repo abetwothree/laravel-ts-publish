@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
@@ -36,8 +37,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTier
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -924,6 +927,38 @@ it('binds a spread helper\'s own cast to the module it imports from, not to the 
             '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
         ])
         ->and([$sent->owner->name, $sent->writer->name])->toBe(['Ada', 'Ada']);
+});
+
+it('types each arm of an enum-resource ternary as Inertia sends it', function () {
+    app(Router::class)->get('/enum-unions', [EnumUnionPropsController::class, 'show']);
+    [$picked, $other] = array_map(function (int $c): stdClass {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaProps(new EnumUnionPropsController()->show($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(EnumUnionPropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { either: AsEnum<typeof Role> | AsEnum<typeof Status>, mixed: AsEnum<typeof Status> | StatusType }')
+        ->and(new RouteTransformer(EnumUnionPropsController::class)->typeImports)->toBe([
+            '@tolki/ts' => ['AsEnum'],
+            '../../../../../../workbench/app/enums' => ['Role', 'Status', 'StatusType'],
+        ])
+        ->and([$picked->either->name, $picked->mixed->name, $other->either->name, $other->mixed])
+        ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
+});
+
+it('keeps the wrap key of each enum-resource collection arm of a ternary', function () {
+    [$picked, $other] = array_map(function (int $c): stdClass {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaProps(new EnumUnionPropsController()->collections($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(EnumUnionPropsController::class.'@collections')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'either: { data: AsEnum<typeof Role>[] } | { data: AsEnum<typeof Status>[] }, '
+        .'mixed: { data: AsEnum<typeof Status>[] } | StatusType }')
+        ->and([$picked->either->data[0]->name, $picked->mixed->data[0]->name, $other->either->data[0]->name, $other->mixed])
+        ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
 
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
