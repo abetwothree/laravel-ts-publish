@@ -197,6 +197,15 @@ it('inserts InertiaResourcePropHandler before ToResourceHandler and ModelFinderH
         ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
 });
 
+// A list without an insertion point would silently lose a page-prop handler, and the later tasks build on forInertia().
+it('throws when forInertia() is given a list without ToResourceHandler or StaticCallHandler', function (array $handlers, string $missing) {
+    expect(fn () => ResourceExpressionHandlers::forInertia($handlers))
+        ->toThrow(LogicException::class, "forInertia() inserts a page-prop handler before {$missing}, which the list lacks.");
+})->with([
+    'the model-getter list' => [fn (): array => ResourceExpressionHandlers::forModelClosures(), ToResourceHandler::class],
+    'a list without StaticCallHandler' => [fn (): array => [new ToResourceHandler], StaticCallHandler::class],
+]);
+
 // Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
 // the event warns.
 it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type, int $warnings) {

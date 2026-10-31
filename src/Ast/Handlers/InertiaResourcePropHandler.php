@@ -36,7 +36,6 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -44,7 +43,6 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use ReflectionClass;
-use ReflectionFunction;
 
 /**
  * A resource a controller hands to `Inertia::render()` or a middleware shares, at any depth of the props, is sent as
@@ -326,7 +324,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      */
     private function enumListResponse(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $list = $this->enumCollectionValue($this->collectedItems($payload), $scope, $engine);
+        // A resource collects `collect($items)` as it collects `$items`.
+        $list = $this->enumCollectionValue(CallArguments::collectArgument($payload) ?? $payload, $scope, $engine);
 
         return $list === null ? null : [...$list, 'type' => $this->response(AnonymousResourceCollection::class, $list['type'])];
     }
@@ -339,22 +338,6 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function unnamedEnumListResponse(): array
     {
         return [...ValueResult::unknown(), 'type' => $this->response(AnonymousResourceCollection::class, 'unknown[]')];
-    }
-
-    /**
-     * The items a `collect($items)` payload holds, which a resource collects as it collects the call; else the payload.
-     */
-    private function collectedItems(Expr $payload): Expr
-    {
-        if (! $payload instanceof FuncCall
-            || ! $payload->name instanceof Name
-            || $payload->name->getLast() !== 'collect'
-            || $payload->isFirstClassCallable()
-        ) {
-            return $payload;
-        }
-
-        return CallArguments::for($payload, new ReflectionFunction('collect'))->named('value')->value ?? $payload;
     }
 
     /**

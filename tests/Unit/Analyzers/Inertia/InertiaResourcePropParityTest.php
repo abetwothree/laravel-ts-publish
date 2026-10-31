@@ -78,7 +78,7 @@ test('enum cases given to toResourceCollection(EnumResource::class) publish the 
     'Collection::toResourceCollection() ships from a later Laravel 12 release.',
 );
 
-// The nested value would be EnumResource[], a type no run publishes, so no enum leaves the list's element unknown.
+// The nested EnumResource[] names a type no run publishes; with no enum named, the list's element stays unknown.
 test('an EnumResource collection over items no enum is named for publishes the data list Inertia sends', function () {
     $props = '{ statuses: { data: unknown[] } }';
     $page = pageData(ListedEnumResourceController::class.'@unnamed');

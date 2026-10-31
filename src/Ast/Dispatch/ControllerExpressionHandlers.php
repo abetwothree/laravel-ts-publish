@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 
 /**
- * The controller profile: the Inertia profile a page's props run, the one a share middleware's values run.
+ * The Inertia profile a page's props run, the one a share middleware's values run.
  *
  * @internal
  */

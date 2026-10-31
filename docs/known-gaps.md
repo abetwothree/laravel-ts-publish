@@ -1044,7 +1044,8 @@ registration order decides which one answers `$this->foo()`. `tests/Unit/Ast/Met
 every pair in both orders over a corpus of expressions. A pair that disagrees is pinned in `METHOD_CALL_PINNED`, and
 every other pair is proven inert against that corpus only. A pair can still disagree on a shape the corpus lacks, so
 read the pins as the divergences found so far, not all there are. Its Inertia half runs only the pairs with a handler
-the resource profile lacks, so every other pair is proven on the resource corpus alone, never on a page's scope.
+the resource profile lacks, so every other pair is proven on the resource corpus alone, never on a page's scope, and
+with the plain `FirstClassCallableHandler`, where the Inertia profile runs the `invoked: true` one.
 [The ordering inventory](./components/ast-engine.md#the-honest-ordering-inventory) lists them.
 
 ### The publish-speed gate is one-sided

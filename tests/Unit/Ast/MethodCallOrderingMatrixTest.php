@@ -62,6 +62,8 @@ const INERTIA_METHOD_CALL_PINNED = [
  * Whether $handler alone answers $expr non-null, isolated from any partner: its own recursion into $engine->resolve()
  * for an unrelated sub-expression must not count as claiming $expr. The engine shares the handler's scope, as in
  * production, or a handler that seeds a binding and then recurses could never claim anything.
+ *
+ * @param  Closure(): AnalysisScope  $newScope
  */
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr, Closure $newScope): bool
 {
@@ -307,8 +309,7 @@ function methodCallPairsOf(array $claimants): array
 }
 
 /**
- * Runs one pair over the corpus in both orders: a pinned pair must disagree and answer as its winner run first, and any
- * other pair must agree on every expression and claim at least one.
+ * Runs one pair over the corpus in both orders, against its pin or, unpinned, for agreement and a claim.
  *
  * @param  list<ExpressionHandler>  $claimants
  * @param  array<string, class-string<ExpressionHandler>>  $pins

@@ -71,9 +71,8 @@ winner changes published types, so treat it as a behavior change, not a refactor
   `Eloquent\Collection` accessor.
 
 `forInertia()` builds the [Inertia profile](#inertia-profile) over a list. `ResourceExpressionHandlers::forSubject()`
-gives a `JsonResource` subject `make()`, an Inertia middleware `forInertia(forNonResourceSubjects())`, since Inertia
-sends a shared value as it sends a page prop, and any other subject `forNonResourceSubjects()`.
-`ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
+gives a `JsonResource` subject `make()`, an Inertia middleware that profile and any other subject
+`forNonResourceSubjects()`. `ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -94,15 +93,21 @@ Its Inertia half does the same for each pair with a handler only the Inertia pro
 
 `ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs: a page prop, through
 `ControllerExpressionHandlers::make()`, and a share middleware's value, through `forSubject()`, both over
-`forNonResourceSubjects()`. It inserts `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource
-as the value a nested key flattens it to where Inertia sends its response, so a spelling the prop handler declines
-publishes on a page as in shared data. It inserts `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static
-call on a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to
-its element array, so placed later the two additions would be unreachable for those shapes. `InertiaResourcePropHandler`
-also types a JSON:API resource's single and collection props as their `@tolki/types` documents.
-`ControllerExpressionHandlersTest` pins that both callers build this profile, and its orderings. `forInertia()` also
-swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop, at any depth, so a first-class
-callable there types as the call it stands for.
+`forNonResourceSubjects()`, since Inertia sends a shared value as it sends a page prop. It inserts two handlers, and
+throws a `LogicException` for a list that lacks either insertion point:
+
+- `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource as the value a nested key flattens it
+  to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
+  It also precedes `StaticCallHandler` and `NewResourceHandler`, which type a single resource as a nested key's value
+  and a `ResourceCollection` as its element array.
+- `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never
+  declines one, so a query chain types as the paginator it returns.
+
+`InertiaResourcePropHandler` also types a JSON:API resource's single and collection props as their `@tolki/types`
+documents. `forInertia()` also swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop,
+at any depth, so a first-class callable there types as the call it stands for. `ControllerExpressionHandlersTest` pins
+that both callers build this profile, and each ordering above, the method-call claimants that leave `toResource()` and
+`toResourceCollection()` `unknown` included.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -158,12 +163,11 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
 The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
-disjoint method names on a `MethodCall`, and on a `StaticCall` disjoint classes, a model and an API resource, since both
-claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, and the prop handler before
-`NewResourceHandler`, `ToResourceHandler` and the method-call claimants that leave `toResource()` and
-`toResourceCollection()` `unknown`. The matrix's Inertia half runs each `MethodCall` pair either joins, over a page's
-model-less scope, and pins only the prop handler before `ToResourceHandler`.
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants, in the places
+[§ Inertia profile](#inertia-profile) gives. The two claim disjoint method names on a `MethodCall`, and on a
+`StaticCall` disjoint classes, a model and an API resource, since both claim `::make()`. The matrix's Inertia half runs
+each `MethodCall` pair either joins, over a page's model-less scope, and pins only the prop handler before
+`ToResourceHandler`.
 
 ## AnalysisScope
 

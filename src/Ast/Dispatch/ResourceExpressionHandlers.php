@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 use Illuminate\Http\Resources\Json\JsonResource;
+use LogicException;
 
 /**
  * Builds the ordered ExpressionHandler lists ExpressionDispatcher runs. Registration order is
@@ -112,6 +113,8 @@ final class ResourceExpressionHandlers
      *
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>
+     *
+     * @throws LogicException when the list lacks ToResourceHandler or StaticCallHandler, the insertion points
      */
     public static function forInertia(array $handlers): array
     {
@@ -144,6 +147,13 @@ final class ResourceExpressionHandlers
      */
     private static function withPagePropHandlers(array $handlers): array
     {
+        // Without its insertion point a page-prop handler would be dropped silently, and every value it types with it.
+        foreach ([ToResourceHandler::class, StaticCallHandler::class] as $anchor) {
+            if (! array_any($handlers, static fn (ExpressionHandler $handler): bool => $handler instanceof $anchor)) {
+                throw new LogicException(sprintf('forInertia() inserts a page-prop handler before %s, which the list lacks.', $anchor));
+            }
+        }
+
         $profile = [];
 
         foreach ($handlers as $handler) {

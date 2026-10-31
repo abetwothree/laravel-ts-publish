@@ -30,7 +30,7 @@ use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Warehouse;
 
-/** An analyzer over the controller profile with no backing model, as the page analyzer builds it. */
+/** An analyzer over the Inertia profile a page's props run, with no backing model, as the page analyzer builds it. */
 function controllerProfileAnalyzer(): ResourceAstAnalyzer
 {
     return new ResourceAstAnalyzer(
@@ -42,7 +42,7 @@ function controllerProfileAnalyzer(): ResourceAstAnalyzer
 }
 
 // Inertia sends a page prop as it sends a shared value, so a page and shared data run one profile.
-it('builds the controller profile and the shared-data middleware profile as the one Inertia profile', function () {
+it('gives a page and a shared-data middleware the one Inertia profile', function () {
     $inertia = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
 
     expect(ControllerExpressionHandlers::make())->toEqual($inertia)
