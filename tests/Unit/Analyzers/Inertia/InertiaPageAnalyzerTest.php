@@ -1375,6 +1375,25 @@ it('publishes the keys a collection\'s $with default and an additional() call ad
         ->and([$sent->paged->data[0]->name, $sent->paged->meta->n, $sent->paged->meta->total])->toBe(['Ada', 1, 1]);
 });
 
+// Laravel merges the added keys into the response once with array_merge_recursive(), so a key the response holds
+// already is sent as a list unless both values are arrays, whatever type the response publishes.
+it('merges a key added beside a collection\'s data with the one its response holds, wrapped or not', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $card = (object) ['id' => $user->id, 'name' => 'Ada'];
+    $wrapped = pageData(ResourceExtrasController::class.'@collisions')['pageType'];
+    $sent = inertiaProps(new ResourceExtrasController()->collisions());
+    JsonResource::withoutWrapping();
+    $bare = inertiaProps(new ResourceExtrasController()->collisions());
+
+    expect($wrapped)->toBe('Inertia.SharedData & { '
+        .'versioned: VersionedUserCardCollection & { version: unknown }, '
+        ."listed: Omit<AnonymousResourceCollection<UserCardResource>, 'data'> & { data: unknown } }")
+        ->and(pageData(ResourceExtrasController::class.'@collisions')['pageType'])->toBe('Inertia.SharedData & { '
+            .'versioned: { data: VersionedUserCardCollection; version: unknown }, listed: { data: unknown } }')
+        ->and([$sent->versioned->version, $sent->listed->data])->toEqual([['1.0', '2.0'], [$card, 1]])
+        ->and([$bare->versioned->version, $bare->listed->data])->toEqual([['1.0', '2.0'], [$card, 1]]);
+});
+
 it('imports the classes the keys added beside a resource prop\'s data name', function () {
     app(Router::class)->get('/resource-extras/{post}/classes', [ResourceExtrasController::class, 'classes']);
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

@@ -46,14 +46,6 @@ final readonly class ResponseExtras
     private function __construct(public ?array $object, public ?bool $sent) {}
 
     /**
-     * No key beside the body.
-     */
-    public static function none(): self
-    {
-        return new self(null, false);
-    }
-
-    /**
      * The keys a resource's `with()` returns, its `$with` default where JsonResource's own runs, as its own body reads.
      *
      * @param  class-string<JsonResource>  $resource
@@ -97,40 +89,43 @@ final readonly class ResponseExtras
     /**
      * These keys with a later source's after them, as `array_merge_recursive()` puts `additional()`'s after `with()`'s.
      */
-    public function beside(self $later): self
+    public function beside(?self $later): self
     {
+        if ($later === null) {
+            return $this;
+        }
+
         $object = match (true) {
             $this->object === null => $later->object,
             $later->object === null => $this->object,
             default => self::joined($this->object, $later->object),
         };
-
-        return new self($object, $this->sentBeside($later));
-    }
-
-    /**
-     * Whether a response carries a key from these or from another source.
-     */
-    public function sentBeside(?self $other): ?bool
-    {
-        $theirs = $other === null ? false : $other->sent;
-
-        return match (true) {
-            $this->sent === true || $theirs === true => true,
-            $this->sent === false && $theirs === false => false,
+        $sent = match (true) {
+            $this->sent === true || $later->sent === true => true,
+            $this->sent === false && $later->sent === false => false,
             default => null,
         };
+
+        return new self($object, $sent);
     }
 
     /**
-     * A response with these keys beside its body: merged into its object literal, else intersected with it.
+     * A response with these keys beside the body it holds under a key: merged into its literal, else intersected.
      *
      * @param  ValueExpressionResult  $response
      * @return ValueExpressionResult
      */
-    public function appliedTo(array $response): array
+    public function appliedTo(array $response, ?string $bodyKey): array
     {
-        return $this->object === null ? $response : self::joined($response, $this->object);
+        return $this->object === null ? $response : self::joined($response, $this->object, $bodyKey);
+    }
+
+    /**
+     * No key beside the body.
+     */
+    private static function none(): self
+    {
+        return new self(null, false);
     }
 
     /**
@@ -178,16 +173,17 @@ final readonly class ResponseExtras
      *
      * @param  ValueExpressionResult  $type
      * @param  ValueExpressionResult  $object  an object literal
+     * @param  string|null  $bodyKey  the key the type holds its body under, which a key beside it merges into
      * @return ValueExpressionResult
      */
-    private static function joined(array $type, array $object): array
+    private static function joined(array $type, array $object, ?string $bodyKey = null): array
     {
         $held = ValueResult::stripNullArm($type['type']);
         $mine = TsTypeShape::members($held);
         $theirs = TsTypeShape::members($object['type']) ?? [];
         $joined = $mine !== null && ! self::holdsSignature([...$mine, ...$theirs])
             ? self::merged($mine, $theirs)
-            : (count(TsTypeString::splitTopLevelUnion($held)) > 1 ? "({$held})" : $held).' & '.$object['type'];
+            : self::intersected($held, $theirs, $bodyKey);
 
         $result = [...$type, 'type' => ValueResult::hasNullArm($type['type']) ? ValueResult::withNullArm($joined) : $joined];
 
@@ -213,6 +209,29 @@ final readonly class ResponseExtras
     }
 
     /**
+     * A type no literal spells beside an object's members, intersected. The body's own key is sent merged with an added
+     * one, so it is `unknown` there, and the `Omit<>` keeps the type's own from narrowing it back.
+     *
+     * @param  ObjectMembers  $theirs
+     */
+    private static function intersected(string $held, array $theirs, ?string $bodyKey): string
+    {
+        $grouped = count(TsTypeString::splitTopLevelUnion($held)) > 1 ? "({$held})" : $held;
+        $clashes = $bodyKey !== null && array_any($theirs, static fn (array $member): bool => self::keyName($member[0]) === $bodyKey);
+
+        if (! $clashes) {
+            return $grouped.' & '.self::printed($theirs);
+        }
+
+        $members = array_map(
+            static fn (array $member): array => self::keyName($member[0]) === $bodyKey ? [$member[0], 'unknown'] : $member,
+            $theirs,
+        );
+
+        return "Omit<{$held}, '{$bodyKey}'> & ".self::printed($members);
+    }
+
+    /**
      * Two literals' members merged as `array_merge_recursive()` merges them, `unknown` where it may send a list.
      *
      * @param  ObjectMembers  $mine
@@ -223,7 +242,7 @@ final readonly class ResponseExtras
         $members = [];
 
         foreach ([...$mine, ...$theirs] as [$key, $value]) {
-            $name = trim(rtrim($key, '?'), '\'"');
+            $name = self::keyName($key);
             $earlier = $members[$name] ?? null;
 
             if ($earlier === null) {
@@ -243,7 +262,25 @@ final readonly class ResponseExtras
             ];
         }
 
+        return self::printed(array_values($members));
+    }
+
+    /**
+     * An object literal's members printed as the literal.
+     *
+     * @param  ObjectMembers  $members
+     */
+    private static function printed(array $members): string
+    {
         return '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1], $members)).' }';
+    }
+
+    /**
+     * The key a printed member names, without its quotes or optional marker.
+     */
+    private static function keyName(string $printed): string
+    {
+        return trim(rtrim($printed, '?'), '\'"');
     }
 
     /**

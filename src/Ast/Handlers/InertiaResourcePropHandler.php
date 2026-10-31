@@ -207,10 +207,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return null;
         }
 
-        $added = ResponseExtras::ofValue(resolve(AstEngine::class)->analyzeEncodedValue($data, $scope));
-        $result = $this->resolveBuilt($built, $scope, $engine, $added);
-
-        return $result === null ? null : $added->appliedTo($result);
+        return $this->resolveBuilt($built, $scope, $engine, ResponseExtras::ofValue(resolve(AstEngine::class)->analyzeEncodedValue($data, $scope)));
     }
 
     /**
@@ -414,17 +411,19 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         // The prop follows the collection's wrap, element and body, which no file the page records holds.
         DependencyRecorder::recordClass($className);
 
-        $with = ResponseExtras::withOf($className);
-        $sent = $with->sentBeside($added);
+        // Laravel merges with() and additional() into the response once, so both join it in one step.
+        $extras = ResponseExtras::withOf($className)->beside($added);
+        $bodyKey = ResourceWrapping::responseKey($className, true);
+        $sent = $extras->sent;
         $name = TsNaming::resourceTypeName($className);
         $kinds = $this->paginatorKinds($paginators);
 
         if ($kinds === []) {
-            return $with->appliedTo([
+            return $extras->appliedTo([
                 ...ValueResult::unknown(),
                 'type' => $this->response($className, $name, $className, extras: $sent),
                 'resourceFqcn' => $className,
-            ]);
+            ], $bodyKey);
         }
 
         $unpaginated = in_array(null, $paginators, true) ? [$this->response($className, $name, $className, extras: $sent)] : [];
@@ -440,21 +439,21 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
             $paginated = $this->paginatedResourceType(ResourceCollections::elementValue($element), $reflection, null, $kinds);
 
-            return $with->appliedTo($unpaginated === [] ? $paginated : [
+            return $extras->appliedTo($unpaginated === [] ? $paginated : [
                 ...$paginated,
                 'type' => $this->union([...$unpaginated, $paginated['type']]),
                 'embeddedResourceFqcns' => [$className],
-            ]);
+            ], $bodyKey);
         }
 
         $blocks = $this->paginationNames($kinds, 'blocks');
 
-        return $with->appliedTo([
+        return $extras->appliedTo([
             ...ValueResult::unknown(),
             'type' => $this->union([...$unpaginated, $this->beside($this->response($className, $name, $className, paginated: true), $blocks)]),
             'resourceFqcn' => $className,
             'customImports' => [TolkiTypes::MODULE => $blocks],
-        ]);
+        ], $bodyKey);
     }
 
     /**
@@ -500,12 +499,14 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
         }
 
-        return [
+        $result = [
             ...ValueResult::unknown(),
             'type' => $this->union($types),
             'resourceFqcn' => $className,
             ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => $imports]]),
         ];
+
+        return $added === null ? $result : $added->appliedTo($result, ResourceWrapping::responseKey(AnonymousResourceCollection::class, true));
     }
 
     /**
@@ -530,6 +531,13 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $types[] = $paginated['type'];
             $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
         }
+
+        // The named arm carries the added keys' classes already; each empty arm only spells them again.
+        $bodyKey = ResourceWrapping::responseKey($collection, true);
+        $types = $added === null ? $types : array_map(
+            static fn (string $type): string => $added->appliedTo([...ValueResult::unknown(), 'type' => $type], $bodyKey)['type'],
+            $types,
+        );
 
         return [
             ...$named,
@@ -615,13 +623,13 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return $added === null ? $this->jsonApiResult($resource, $document.$included['arguments'], [$document], $included) : null;
         }
 
-        $with = ResponseExtras::withOf($resource);
+        $extras = ResponseExtras::withOf($resource)->beside($added);
 
-        return $with->appliedTo([
+        return $extras->appliedTo([
             ...ValueResult::unknown(),
-            'type' => $this->response($resource, TsNaming::resourceTypeName($resource), $resource, extras: $with->sentBeside($added)),
+            'type' => $this->response($resource, TsNaming::resourceTypeName($resource), $resource, extras: $extras->sent),
             'resourceFqcn' => $resource,
-        ]);
+        ], ResourceWrapping::responseKey($resource, true));
     }
 
     /**

@@ -60,6 +60,15 @@ class ResourceExtrasController
         ]);
     }
 
+    /** Renders collections whose added key is one their `$with` default adds too, and the key their body sits under. */
+    public function collisions(): Response
+    {
+        return Inertia::render('ResourceExtras/Collisions', [
+            'versioned' => (new VersionedUserCardCollection(User::all()))->additional(['version' => '2.0']),
+            'listed' => UserCardResource::collection(User::all())->additional(['data' => 1]),
+        ]);
+    }
+
     /** Renders a collection whose `$with` default adds a key, and a paginated collection with a meta key added. */
     public function collections(): Response
     {
