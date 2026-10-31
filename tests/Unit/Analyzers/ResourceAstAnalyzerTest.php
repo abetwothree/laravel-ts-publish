@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphModelRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
@@ -7302,6 +7303,17 @@ test('a union holding an enum resource beside two same-named enums keeps the mer
             'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
             'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
         ]);
+});
+
+test('a short ternary that checks a resource it builds types as that resource alone', function () {
+    $sent = sentAsJson(new CheckedResourceElvisResource(null)->resolve(request()));
+
+    expect(resourceProps(CheckedResourceElvisResource::class))->toBe([
+        'made' => 'AsEnum<typeof Status>',
+        'collected' => 'AsEnum<typeof Status>[]',
+        'built' => 'AsEnum<typeof Status>',
+    ])->and([$sent->made->name, $sent->collected[1]->name, $sent->built->name])
+        ->toBe([Status::Draft->name, Status::Published->name, Status::Draft->name]);
 });
 
 // The body fallback flattens a helper's shape with no import, so the case types as the value it sends.

@@ -47,4 +47,12 @@ class EnumUnionPropsController
             },
         ]);
     }
+
+    /** Renders a short ternary whose checked operand is an enum resource, which PHP always reads as true. */
+    public function elvis(): Response
+    {
+        return Inertia::render('EnumUnions/Elvis', [
+            'status' => EnumResource::make(Status::Draft) ?: Status::Published,
+        ]);
+    }
 }

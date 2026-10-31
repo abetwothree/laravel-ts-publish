@@ -975,6 +975,12 @@ it('keeps a wrapped case beside an enum-resource collection and a bare case of i
         ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
 
+it('types a short ternary that checks an enum resource as that resource alone', function () {
+    expect(pageData(EnumUnionPropsController::class.'@elvis')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> }')
+        ->and(inertiaProps(new EnumUnionPropsController()->elvis())->status->name)->toBe(Status::Draft->name);
+});
+
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
     $sent = inertiaProps(new AliasedHelperController()->index());
     $shape = '{ tk: number; tn: string }';
