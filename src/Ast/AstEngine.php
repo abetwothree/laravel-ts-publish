@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
@@ -434,7 +435,7 @@ final class AstEngine
         // A generator returns a Generator, and a callable is the Closure object, never what calling it gives.
         if ($returns === []
             || $this->yields($stmts)
-            || array_any($returns, fn (Expr $returned): bool => $this->mayHoldCallable($returned, $scope))
+            || array_any($returns, fn (Expr $returned): bool => HeldCallables::mayHold($returned, $scope))
         ) {
             return null;
         }

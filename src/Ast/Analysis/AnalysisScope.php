@@ -841,10 +841,12 @@ final class AnalysisScope
     }
 
     /**
-     * The writes a read of a local sees: the one it holds, or each a branch join holds there; null where a parameter's
-     * binding may still hold, or a gap whose write assigns no value the scan reads.
+     * The writes a read of a local sees.
      *
-     * @return list<Expr>|null
+     * Its one write, or the values the gap it falls in holds, a block write's or a branch join's; null where a
+     * parameter's binding may still hold, or a gap's write assigns no value the scan reads.
+     *
+     * @return non-empty-list<Expr>|null
      */
     public function writesSeenBy(Variable $read): ?array
     {
@@ -857,10 +859,21 @@ final class AnalysisScope
         $gap = $this->gapAt($read);
 
         if ($gap !== null) {
-            return $gap[3] || $gap[2] === null ? null : $gap[2];
+            // A gap holds an empty list only beside the old binding.
+            return $gap[3] || $gap[2] === null || $gap[2] === [] ? null : $gap[2];
         }
 
         return isset($this->localVarBindings[$name]) ? [$this->localVarBindings[$name]] : null;
+    }
+
+    /**
+     * The one write a read of a local sees; null where it sees none, or a join of several.
+     */
+    public function soleWriteSeenBy(Variable $read): ?Expr
+    {
+        $writes = $this->writesSeenBy($read);
+
+        return $writes !== null && count($writes) === 1 ? $writes[0] : null;
     }
 
     /**

@@ -553,9 +553,10 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a variable holds before any `instanceof` proof: a morphTo parameter's targets, what an inline `@var`
-     * declares, inside a gap what its writes assigned joined with the old binding where that may still hold, the one
-     * write its read sees, or the binding its name came into the body with.
+     * What a variable holds before any `instanceof` proof.
+     *
+     * A morphTo parameter's targets, what an inline `@var` declares, inside a gap what its writes assigned joined with
+     * the old binding where that may still hold, the one write its read sees, or the binding its name came in with.
      */
     private function heldBy(Variable $variable, string $name, AnalysisScope $scope): ?ReceiverType
     {
@@ -576,7 +577,7 @@ final class ReceiverClassResolver
             return $this->fromGap($variable, $name, $gap, $scope);
         }
 
-        $write = $scope->writesSeenBy($variable)[0] ?? null;
+        $write = $this->unreshapedWrite($name, $scope, $scope->soleWriteSeenBy($variable));
 
         if ($write !== null) {
             return $this->fromBoundExpression($name, $write, $scope);
@@ -705,7 +706,8 @@ final class ReceiverClassResolver
         }
 
         // A parameter binding no class of its own reads the body's one write of it, as a value read does.
-        $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
+        $bound = $scope->closureParamExprBindings[$name]
+            ?? $this->unreshapedWrite($name, $scope, $scope->localVarBindings[$name] ?? null);
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }
@@ -716,7 +718,7 @@ final class ReceiverClassResolver
      */
     private function rekeyedBefore(string $name, Variable $read, AnalysisScope $scope): bool
     {
-        $written = $scope->localVarBindings[$name] ?? null;
+        $written = $this->unreshapedWrite($name, $scope, $scope->localVarBindings[$name] ?? null);
 
         return $written !== null
             && $read->getStartFilePos() > $written->getEndFilePos()
@@ -775,6 +777,14 @@ final class ReceiverClassResolver
         return $span === null
             ? $this->fromBoundExpression($name, $value, $scope)
             : $this->resolveDeclared($name, $span, $scope);
+    }
+
+    /**
+     * A local's write a receiver reads, none where a by-reference call keeps the value in only some form.
+     */
+    private function unreshapedWrite(string $name, AnalysisScope $scope, ?Expr $write): ?Expr
+    {
+        return isset($scope->byReferenceForms[$name]) ? null : $write;
     }
 
     /**

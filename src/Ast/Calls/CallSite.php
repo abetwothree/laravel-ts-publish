@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -146,6 +147,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return $this->reading() === Reading::Encoded && $this->mayHoldCallable($argument, $this->scope, $valueRead);
+        return $this->reading() === Reading::Encoded && HeldCallables::mayHold($argument, $this->scope, $valueRead);
     }
 }

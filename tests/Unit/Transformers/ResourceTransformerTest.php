@@ -3336,7 +3336,7 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
     });
 
-    test('publishes the AsEnum type for a local each branch of an if assigns an enum read', function () {
+    test('publishes the AsEnum type for a local each branch of an if assigns an enum read, or its block assigns', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $post = new Post;
         $post->forceFill(['status' => Status::Published]);
@@ -3344,9 +3344,14 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             new BlockAssignedEnumLocalResource($post)->resolve(Request::create('/', 'GET', $query)),
         ), true)['status']['value'];
 
-        expect(new ResourceTransformer(BlockAssignedEnumLocalResource::class)->properties['status']['type'])
-            ->toBe('AsEnum<typeof Status>')
-            ->and([$sent(['draft' => 1]), $sent([])])->toBe([0, 1]);
+        $properties = new ResourceTransformer(BlockAssignedEnumLocalResource::class)->properties;
+        $asked = json_decode((string) json_encode(
+            new BlockAssignedEnumLocalResource($post)->resolve(Request::create('/', 'GET', ['asked' => 1])),
+        ), true)['asked']['value'];
+
+        expect($properties['status']['type'])->toBe('AsEnum<typeof Status>')
+            ->and([$properties['asked']['type'], $properties['asked']['optional']])->toBe(['AsEnum<typeof Status>', true])
+            ->and([$sent(['draft' => 1]), $sent([]), $asked])->toBe([0, 1, 1]);
     });
 
     // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.

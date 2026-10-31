@@ -72,6 +72,18 @@ class PropsLocalController
         return Inertia::render('PropsLocal/PlusProp', ['merged' => $base + ['k' => 1]]);
     }
 
+    /**
+     * Renders a prop joining, by `+`, a parameter's write that reads the parameter with a literal.
+     *
+     * @param  array<string, mixed>  $opts
+     */
+    public function plusParamSelf(Request $request, array $opts = []): Response
+    {
+        $opts = ['a' => $opts['a'] ?? 1];
+
+        return Inertia::render('PropsLocal/PlusParamSelf', ['m' => $opts + ['k' => 1]]);
+    }
+
     /** Renders a local the action writes again after the render call. */
     public function late(): Response
     {

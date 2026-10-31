@@ -16,20 +16,16 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Plus;
-use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Expr\Yield_;
@@ -37,7 +33,6 @@ use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
-use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
@@ -70,7 +65,7 @@ use ReflectionClass;
  */
 trait InspectsAstNodes
 {
-    /** The most literals an `array_merge()` is re-expressed as, one per write each local argument's read may see. */
+    /** The most literals a `+` or an `array_merge()` is read as, one per write each local operand's read sees. */
     private const int MAX_SPELLED_LITERALS = 16;
 
     /**
@@ -283,32 +278,42 @@ trait InspectsAstNodes
     }
 
     /**
-     * The writes a read of a local sees, where their syntax alone spells its value: none where a by-reference call
-     * keeps it in only some form, or a write reads the local itself, which only a read of the value can follow. A read
-     * the source does not place takes every call's form.
+     * The writes a read of a local sees, where their syntax alone spells its value.
      *
-     * @return list<Expr>|null
+     * None where a by-reference call keeps the value in only some form, or a write reads what an earlier write left in
+     * the local, which only a read of the value can follow; a read the source does not place takes every call's form.
+     *
+     * @return non-empty-list<Expr>|null
      */
     protected function spelledWrites(Expr $read, AnalysisScope $scope): ?array
     {
-        if (! $read instanceof Variable || ! is_string($read->name)) {
+        if (! $read instanceof Variable) {
             return null;
         }
 
-        $name = $read->name;
-        $reshaped = $read->getStartFilePos() < 0 ? isset($scope->byReferenceForms[$name]) : $scope->formsAt($read) !== [];
-        $writes = $reshaped ? null : $scope->writesSeenBy($read);
-        $readsItself = $writes !== null && new NodeFinder()->findFirst(
-            $writes,
-            fn (Node $node): bool => $node instanceof Variable && $node->name === $name,
-        ) !== null;
+        $writes = $scope->writesSeenBy($read);
 
-        return $readsItself ? null : $writes;
+        return $writes !== null && $this->spellsItsValue($read, $writes, $scope) ? $writes : null;
     }
 
     /**
-     * Re-express an `array_merge(...)` call as the literals it may evaluate to, one for each write a local argument's
-     * read sees, or none when an argument hides keys that cannot be read statically.
+     * The one write a read of a local sees whose syntax alone spells its value, as spelledWrites() reads it.
+     */
+    protected function soleSpelledWrite(Expr $read, AnalysisScope $scope): ?Expr
+    {
+        if (! $read instanceof Variable) {
+            return null;
+        }
+
+        $write = $scope->soleWriteSeenBy($read);
+
+        return $write !== null && $this->spellsItsValue($read, [$write], $scope) ? $write : null;
+    }
+
+    /**
+     * The literals an `array_merge()` call may evaluate to, one for each write a local argument's read sees.
+     *
+     * None when an argument hides keys that cannot be read statically.
      *
      * @param  AnalysisScope  $scope  reads each local argument's writes, and resolves `self`, `static` and `parent`
      * @return list<Array_>
@@ -597,47 +602,6 @@ trait InspectsAstNodes
     }
 
     /**
-     * Whether a value may be a closure, an arrow function or, where counted, a first-class callable: as itself, an arm
-     * of `?:`, `??` or `match`, or the one write the scope binds a local to, which is how the engine reads that local.
-     *
-     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
-     */
-    protected function mayHoldCallable(
-        Expr $expr,
-        AnalysisScope $scope,
-        bool $firstClassCallables = true,
-        array $followed = [],
-    ): bool {
-        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
-            return true;
-        }
-
-        if ($expr instanceof CallLike) {
-            return $firstClassCallables && $expr->isFirstClassCallable();
-        }
-
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            $bound = $scope->localVarBindings[$expr->name] ?? null;
-
-            return $bound !== null
-                && ! isset($followed[$expr->name])
-                && $this->mayHoldCallable($bound, $scope, $firstClassCallables, [...$followed, $expr->name => true]);
-        }
-
-        $arms = match (true) {
-            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
-            $expr instanceof Coalesce => [$expr->left, $expr->right],
-            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
-            default => [],
-        };
-
-        return array_any(
-            $arms,
-            fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $firstClassCallables, $followed),
-        );
-    }
-
-    /**
      * Whether a body yields, so calling it returns a `Generator`, never the value it returns.
      *
      * @param  array<Stmt>  $stmts
@@ -645,6 +609,32 @@ trait InspectsAstNodes
     protected function yields(array $stmts): bool
     {
         return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Yield_ || $node instanceof YieldFrom);
+    }
+
+    /**
+     * Whether the writes a read of a local sees spell its value.
+     *
+     * No by-reference form holds at the read, and no write reads what an earlier write left in the local; a read inside
+     * a write may see a parameter's binding still holding there, or only that write itself, which has not run yet.
+     *
+     * @param  non-empty-list<Expr>  $writes
+     */
+    private function spellsItsValue(Variable $read, array $writes, AnalysisScope $scope): bool
+    {
+        $name = $read->name;
+
+        if (! is_string($name)) {
+            return false;
+        }
+
+        $reshaped = $read->getStartFilePos() < 0 ? isset($scope->byReferenceForms[$name]) : $scope->formsAt($read) !== [];
+
+        return ! $reshaped && array_all($writes, fn (Expr $write): bool => new NodeFinder()->findFirst(
+            $write,
+            fn (Node $node): bool => $node instanceof Variable && $node->name === $name
+                && ! ($scope->bindsName($name) && $scope->holdsBinding($node))
+                && $scope->writesSeenBy($node) !== [$write],
+        ) === null);
     }
 
     /**

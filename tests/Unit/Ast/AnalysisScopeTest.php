@@ -741,6 +741,8 @@ it('answers which writes a read of a local sees, and declines where a parameter\
     'a block write, read past a block that may not run' => ['if ($c) { $x = 1; } return $x;', [], null],
     'a write in a condition every branch replaces' => ['if ($x = $c) { $x = 1; } else { $x = 2; } return $x;', [], ['1', '2']],
     'a branch holding a closure, which a join leaves unbound' => ['if ($c) { $x = fn () => 1; } else { $x = 2; } return $x;', [], null],
+    'a branch copying a variable the seed cannot follow, which may hold a closure' => ['if ($c) { $x = $f; } else { $x = 2; } return $x;', [], null],
+    'a branch copying a model parameter, which holds none' => ['if ($c) { $x = $post; } else { $x = 2; } return $x;', ['post' => Post::class], ['$post', '2']],
     'a parameter whose binding holds' => ['return $x;', ['x' => Post::class], null],
     'a parameter whose binding a branch may keep' => ['if ($c) { $x = 1; } return $x;', ['x' => Post::class], null],
 ]);

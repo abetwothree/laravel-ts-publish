@@ -638,7 +638,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function literalLocal(Variable $read): ?Expr
     {
-        $bound = $this->soleSpelledWrite($read);
+        $bound = $this->soleSpelledWrite($read, $this->scope);
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
@@ -1909,19 +1909,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        $bound = $this->soleSpelledWrite($expr);
+        $bound = $this->soleSpelledWrite($expr, $this->scope);
 
         return $bound === null ? null : [$expr->name, $bound];
-    }
-
-    /**
-     * The one write a read of a local sees whose syntax spells its value; null where it sees none, or a join.
-     */
-    private function soleSpelledWrite(Variable $read): ?Expr
-    {
-        $writes = $this->spelledWrites($read, $this->scope);
-
-        return $writes !== null && count($writes) === 1 ? $writes[0] : null;
     }
 
     /**

@@ -30,7 +30,7 @@ use PhpParser\Node\Name;
  * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
  * channel, while a cast, an accessor or a declared type is read from its class.
  *
- * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `spelledWrites()`).
+ * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `soleSpelledWrite()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -69,8 +69,7 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                $writes = $this->spelledWrites($argExpr, $scope);
-                $local = $writes !== null && count($writes) === 1 ? $writes[0] : null;
+                $local = $this->soleSpelledWrite($argExpr, $scope);
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
                     return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));

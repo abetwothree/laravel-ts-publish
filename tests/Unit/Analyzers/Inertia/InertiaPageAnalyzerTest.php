@@ -215,6 +215,12 @@ it('reads a props local through its writes', function (string $action, string $t
         [['x' => 1], []],
         [['merged' => (object) ['a' => 1, 'k' => 1]], ['merged' => (object) ['a' => 2, 'k' => 1]]],
     ],
+    'plus over a parameter\'s write that reads it' => [
+        'plusParamSelf',
+        '{ m: { a: number; k: number } }',
+        [[]],
+        [['m' => (object) ['a' => 1, 'k' => 1]]],
+    ],
     'plus over a key the left side may lack' => [
         'plusOptional',
         '{ a: number | string }',

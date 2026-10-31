@@ -107,8 +107,9 @@ final class ParentCallChain
     }
 
     /**
-     * Whether a write a read of a local sees holds the keys a `parent::` call of the method returns; every write of a
-     * local the lookup leaves unbound, such as one built by `+=`, counts.
+     * Whether a write a read of a local sees holds the keys a `parent::` call of the method returns.
+     *
+     * Every write of a local the lookup leaves unbound, such as one built by `+=`, counts.
      *
      * @param  array<Stmt>  $stmts  the body, whose writes the local holds
      * @param  array<int, true>  $followed  the writes already followed, by object id
@@ -158,8 +159,9 @@ final class ParentCallChain
     }
 
     /**
-     * Every value the body writes to a local, by `=` or `+=`, in any order: what a local the lookup leaves unbound may
-     * hold.
+     * Every value the body writes to a local, by `=` or `+=`, in any order.
+     *
+     * What a local the lookup leaves unbound may hold.
      *
      * @param  array<Stmt>  $stmts
      * @return list<Expr>

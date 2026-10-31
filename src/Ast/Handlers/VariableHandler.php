@@ -252,9 +252,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A bare variable's value: inside a gap, the values its writes assigned, joined with the old binding where that may
-     * still hold; else the one write its read sees; else the binding its name came in with, a model as the subclass a
-     * guard proves it.
+     * A bare variable's value from what its read sees.
+     *
+     * Inside a gap, the values its writes assigned, joined with the old binding where that may still hold; else the one
+     * write its read sees; else the binding its name came in with, a model as the subclass a guard proves it.
      *
      * @return ValueExpressionResult|null
      */
@@ -266,7 +267,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return $this->joinedValue($variable, $name, $gap, $scope, $engine);
         }
 
-        $write = $scope->writesSeenBy($variable)[0] ?? null;
+        $write = $scope->soleWriteSeenBy($variable);
 
         if ($write !== null) {
             return $this->boundExpressionValue($name, $write, $scope, $engine);
@@ -357,8 +358,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A bare variable's value from the binding its name came into the body with, or, where that binds no value, from
-     * the body's one write of it, which a value read takes while a receiver keeps the class.
+     * A bare variable's value from the binding its name came into the body with.
+     *
+     * Where that binds no value, from the body's one write of it, which a value read takes while a receiver keeps the
+     * class.
      *
      * @return ValueExpressionResult|null
      */
@@ -695,8 +698,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Whether an unnamed receiver is read as a collection: a variable a model hint binds the element of, unless each
-     * write its read sees is an array literal, on which map() throws.
+     * Whether an unnamed receiver is read as a collection.
+     *
+     * A variable a model hint binds the element of, unless each write its read sees is an array literal, on which map()
+     * throws.
      *
      * @param  class-string<Model>|null  $declared
      */

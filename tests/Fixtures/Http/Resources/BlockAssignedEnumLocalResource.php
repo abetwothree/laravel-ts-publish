@@ -11,7 +11,8 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
 /**
- * Wraps a status in an EnumResource through a local each branch of an `if` assigns an enum read.
+ * Wraps a status in an EnumResource through a local each branch of an `if` assigns an enum read, and the status a
+ * request asks for through a local its block assigns.
  *
  * @mixin Post
  */
@@ -26,6 +27,12 @@ final class BlockAssignedEnumLocalResource extends JsonResource
             $status = Status::Draft;
         } else {
             $status = $this->status;
+        }
+
+        if ($request->has('asked')) {
+            $asked = Status::from($request->integer('asked'));
+
+            return ['status' => EnumResource::make($status), 'asked' => EnumResource::make($asked)];
         }
 
         return ['status' => EnumResource::make($status)];

@@ -48,9 +48,6 @@ final class BinaryOpHandler implements ExpressionHandler
     /** A value the engine cannot type, which PHP proves an array when the other operand is one. */
     private const string UNTYPED = 'untyped';
 
-    /** The most union literals a `+` is read as, one per write each local operand's read may see, before those join. */
-    private const int MAX_UNION_LITERALS = 16;
-
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -125,8 +122,9 @@ final class BinaryOpHandler implements ExpressionHandler
     }
 
     /**
-     * `+` as arithmetic, or, when an operand is an array, as PHP's array union, typed as the spread literal it equals:
-     * one literal for each write a local operand's read may see, joined.
+     * `+` as arithmetic, or, when an operand is an array, as PHP's array union, typed as the spread literal it equals.
+     *
+     * One literal for each write a local operand's read may see, joined.
      *
      * @return ValueExpressionResult
      */
@@ -150,9 +148,10 @@ final class BinaryOpHandler implements ExpressionHandler
     }
 
     /**
-     * A `+`'s kind, and the unions it may be, one for each write a local operand's read sees: each operand the union
-     * literal does not read from its syntax is spread as a value bound to its one resolution, so the literal neither
-     * resolves it again nor reads its arm by anything but the type it publishes.
+     * A `+`'s kind, and the unions it may be, one for each write a local operand's read sees.
+     *
+     * Each operand the union literal does not read from its syntax is spread as a value bound to its one resolution,
+     * so the literal neither resolves it again nor reads its arm by anything but the type it publishes.
      *
      * @return array{string, non-empty-list<BinaryOp\Plus>}
      */
@@ -167,7 +166,7 @@ final class BinaryOpHandler implements ExpressionHandler
         [$rightKind, $rights] = $this->boundSide($plus->right, $scope, $engine);
 
         // Past the cap a side that may be several literals is read as its one value instead.
-        if (count($lefts) * count($rights) > self::MAX_UNION_LITERALS) {
+        if (count($lefts) * count($rights) > self::MAX_SPELLED_LITERALS) {
             [$leftKind, $lefts] = count($lefts) === 1
                 ? [$leftKind, $lefts]
                 : $this->valueOperand($plus->left, $scope, $engine);
@@ -207,8 +206,9 @@ final class BinaryOpHandler implements ExpressionHandler
     }
 
     /**
-     * One operand's kind, and the expressions the union literal spreads for it: a literal, each literal write a local's
-     * read sees, or one value.
+     * One operand's kind, and the expressions the union literal spreads for it.
+     *
+     * A literal, each literal write a local's read sees, or one value.
      *
      * @return array{string, non-empty-list<Expr>}
      */
@@ -216,7 +216,7 @@ final class BinaryOpHandler implements ExpressionHandler
     {
         $writes = $operand instanceof Array_ ? [$operand] : $this->spelledWrites($operand, $scope);
 
-        if ($writes !== null && $writes !== [] && array_all($writes, fn (Expr $write): bool => $write instanceof Array_)) {
+        if ($writes !== null && array_all($writes, fn (Expr $write): bool => $write instanceof Array_)) {
             return [self::ARRAY, $writes];
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
@@ -30,18 +31,14 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\BinaryOp;
-use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\List_;
-use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\MatchArm;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Stmt\Block;
@@ -1066,9 +1063,11 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The values an `if` leaves in a local on every path past it: each branch's, `else` included, from its last
-     * statement writing the local, a `$x = …;` or such an `if`, and none from a branch that always leaves the function;
-     * null where a branch may keep what the local held. Each branch replaces what a condition wrote.
+     * The values an `if` leaves in a local on every path past it.
+     *
+     * Each branch's, `else` included, from its last statement writing the local, a `$x = …;` or such an `if`, and none
+     * from a branch that always leaves the function; null where a branch may keep what the local held, or a value may
+     * be a callable. Each branch replaces what a condition wrote.
      *
      * @param  NamedWrites  $held  the statement's writes of the local
      * @return non-empty-list<Expr>|null
@@ -1108,7 +1107,9 @@ trait CollectsLocalVarBindings
             };
 
             // A returned callable is the Closure object, which a read of the join would type as the call it makes.
-            if ($left === null || array_any($left, fn (Expr $value): bool => $this->mayBeCallable($value, $scope))) {
+            if ($left === null
+                || array_any($left, fn (Expr $value): bool => HeldCallables::mayHold($value, $scope, unboundMayHold: true))
+            ) {
                 return null;
             }
 
@@ -1116,37 +1117,6 @@ trait CollectsLocalVarBindings
         }
 
         return $values === [] ? null : $values;
-    }
-
-    /**
-     * Whether a written value may be a closure, an arrow function or a first-class callable by its syntax, as itself or
-     * an arm of `?:`, `??` or `match`; a variable may hold one unless it holds a model, a collection or a request, or
-     * its one top-level write holds none.
-     *
-     * @param  array<string, true>  $followed  the variables already followed, so a cycle of copies ends
-     */
-    private function mayBeCallable(Expr $value, AnalysisScope $scope, array $followed = []): bool
-    {
-        if ($value instanceof Variable) {
-            $name = is_string($value->name) ? $value->name : null;
-            $written = $name === null ? null : $scope->localVarBindings[$name] ?? null;
-
-            return $name === null || isset($followed[$name]) || (! isset($scope->varModelBindings[$name])
-                && ! isset($scope->varCollectionBindings[$name])
-                && ! isset($scope->requestVarNames[$name])
-                && ($written === null || $this->mayBeCallable($written, $scope, [...$followed, $name => true])));
-        }
-
-        $arms = match (true) {
-            $value instanceof Ternary => [$value->if ?? $value->cond, $value->else],
-            $value instanceof BinaryOp\Coalesce => [$value->left, $value->right],
-            $value instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $value->arms),
-            default => [],
-        };
-
-        return $value instanceof ClosureExpr || $value instanceof ArrowFunction
-            || ($value instanceof CallLike && $value->isFirstClassCallable())
-            || array_any($arms, fn (Expr $arm): bool => $this->mayBeCallable($arm, $scope, $followed));
     }
 
     /**
