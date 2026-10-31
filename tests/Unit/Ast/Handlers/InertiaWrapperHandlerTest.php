@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PropObjectResource;
+use Illuminate\Http\Request;
 use Inertia\AlwaysProp;
 use Inertia\DeferProp;
 use Inertia\MergeProp;
@@ -28,15 +30,23 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
-/** An engine that answers every request with one canned scalar result. */
-function inertiaWrapperEngine(): ExpressionEngine
+/**
+ * An engine that answers every request with one canned scalar result, or the one given, under the reading given.
+ *
+ * @param  array<string, mixed>|null  $answer
+ */
+function inertiaWrapperEngine(Reading $reading = Reading::Encoded, ?array $answer = null): ExpressionEngine
 {
-    return new class implements ExpressionEngine
+    return new class($reading, $answer) implements ExpressionEngine
     {
+        /** @param  array<string, mixed>|null  $answer */
+        public function __construct(private Reading $reading, private ?array $answer) {}
+
         public function resolve(Expr $expr): array
         {
-            return ['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model'];
+            return $this->answer ?? ['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model'];
         }
 
         public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
@@ -44,10 +54,10 @@ function inertiaWrapperEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Reads every value as `json_encode()` sends it. */
+        /** Reads every value as the test says. */
         public function reading(): Reading
         {
-            return Reading::Encoded;
+            return $this->reading;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -71,7 +81,7 @@ function inertiaWrapperScope(): AnalysisScope
 // chains ->defer(), and an OnceProp is dropped only once the client reports holding it.
 it('resolves the wrapped value and keeps its channels', function (string $method) {
     expect((new InertiaWrapperHandler)->resolve(inertiaWrapperCall('Inertia', $method), inertiaWrapperScope(), inertiaWrapperEngine()))
-        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model', 'heldObject' => true]);
+        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true]);
 })->with(['always', 'merge', 'deepMerge', 'scroll', 'once']);
 
 it('marks an IgnoreFirstLoad wrapper optional', function (string $method) {
@@ -83,8 +93,8 @@ it('marks an IgnoreFirstLoad wrapper optional', function (string $method) {
 it('reads a new of each prop class as its factory', function (string $class, bool $optional) {
     $expr = new New_(new Name($class), [new Arg(new String_('x'))]);
 
-    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), inertiaWrapperEngine()))
-        ->toBe(['type' => 'string', 'optional' => $optional, 'modelFqcn' => 'Some\Model', 'heldObject' => true]);
+    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), inertiaWrapperEngine(Reading::Inertia)))
+        ->toBe(['type' => 'string', 'optional' => $optional, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true]);
 })->with([
     [DeferProp::class, true],
     [OptionalProp::class, true],
@@ -97,11 +107,42 @@ it('reads a new of each prop class as its factory', function (string $class, boo
 
 it('declines a new of another class, of a class it cannot name, and with no value', function () {
     $scope = inertiaWrapperScope();
-    $engine = inertiaWrapperEngine();
+    $engine = inertiaWrapperEngine(Reading::Inertia);
 
     expect((new InertiaWrapperHandler)->resolve(new New_(new Name(InertiaResponse::class), [new Arg(new String_('x'))]), $scope, $engine))->toBeNull()
         ->and((new InertiaWrapperHandler)->resolve(new New_(new Variable('class'), [new Arg(new String_('x'))]), $scope, $engine))->toBeNull()
         ->and((new InertiaWrapperHandler)->resolve(new New_(new Name(OptionalProp::class)), $scope, $engine))->toBeNull();
+});
+
+// json_encode() sends a prop object as `{}`, which only the `unknown` the handlers after this one answer admits.
+it('declines a new of a prop class where json_encode() sends it', function () {
+    $expr = new New_(new Name(AlwaysProp::class), [new Arg(new String_('x'))]);
+
+    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), inertiaWrapperEngine()))->toBeNull();
+});
+
+// An API resource's own type reads its values as json_encode() sends them, and it sends a prop object as `{}`.
+it('leaves a new of a prop class in an API resource unknown', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(resourceProps(PropObjectResource::class))
+        ->toBe(['id' => 'number', 'always' => 'unknown', 'optional' => 'unknown', 'merged' => 'unknown'])
+        ->and(json_encode(sentAsJson(new PropObjectResource($post)->resolve(Request::create('/')))))
+        ->toBe('{"id":'.$post->id.',"always":{},"optional":{},"merged":{}}');
+});
+
+// Inertia calls the prop's callable and sends a callable that call returns as `{}`, which `unknown` alone admits; the
+// factory form keeps the type it has always read.
+it('reads a new of a prop whose callable returns a callable as unknown', function () {
+    $returnsCallable = ['type' => 'number | null', 'optional' => false, 'heldObject' => true, 'returnsCallable' => true];
+    $engine = inertiaWrapperEngine(Reading::Inertia, $returnsCallable);
+    $args = [new Arg(new ArrowFunction(['expr' => new Variable('f')]))];
+
+    expect((new InertiaWrapperHandler)->resolve(new New_(new Name(OptionalProp::class), $args), inertiaWrapperScope(), $engine))
+        ->toBe(['type' => 'unknown', 'optional' => true, 'heldObject' => true, 'heldProp' => true])
+        ->and((new InertiaWrapperHandler)->resolve(new StaticCall(new Name('Inertia'), 'optional', $args), inertiaWrapperScope(), $engine))
+        ->toBe(['type' => 'number | null', 'optional' => true, 'heldObject' => true, 'heldProp' => true]);
 });
 
 // shareOnce takes the value second, so claiming it would type the key string. It shares the prop
@@ -140,6 +181,7 @@ it('types a deferred closure over an Eloquent finder through the controller prof
         'optional' => true,
         'modelFqcn' => Post::class,
         'heldObject' => true,
+        'heldProp' => true,
     ]);
 });
 
@@ -182,7 +224,7 @@ it('reads the wrapped value by name when the group is written first', function (
     };
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $engine))
-        ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true]);
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true, 'heldProp' => true]);
 });
 
 // The constructor's own names map the arguments, so the callback is read wherever it is written.
@@ -195,5 +237,5 @@ it('reads a new prop\'s value by its constructor\'s parameter name', function ()
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', reading: Reading::Inertia);
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $analyzer))
-        ->toBe(['type' => 'Post[]', 'optional' => true, 'modelFqcn' => Post::class, 'heldObject' => true]);
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'modelFqcn' => Post::class, 'heldObject' => true, 'heldProp' => true]);
 });

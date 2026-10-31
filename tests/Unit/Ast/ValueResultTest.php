@@ -612,3 +612,22 @@ describe('ValueResult::unionResults() over an empty array beside a list', functi
         'an empty array nested in a shape' => [['{ a: never[] }', 'string[]'], '{ a: never[] } | string[]'],
     ]);
 });
+
+// Inertia resolves a prop object even where a callable it called returns it, and sends a callable there as `{}`.
+it('marks a held object\'s kind, and a callable that may return a callable', function () {
+    $closure = ValueResult::heldObject(['type' => 'number', 'optional' => false]);
+    $prop = ValueResult::heldObject(['type' => 'number', 'optional' => false], prop: true);
+    $returnsClosure = ValueResult::heldObject($closure);
+    $returnsProp = ValueResult::heldObject($prop);
+    $plain = ['type' => 'null', 'optional' => false];
+
+    expect($closure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
+        ->and($prop)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'heldProp' => true])
+        ->and($returnsClosure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'returnsCallable' => true])
+        ->and($returnsProp)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
+        ->and(ValueResult::unionResults([$prop, $prop]))->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'heldProp' => true])
+        ->and(ValueResult::unionResults([$prop, $closure]))->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
+        ->and(ValueResult::unionResults([$prop, $plain])['heldProp'] ?? null)->toBeTrue()
+        ->and(ValueResult::unionResults([$returnsClosure, $plain])['returnsCallable'] ?? null)->toBeTrue()
+        ->and(ValueResult::withoutHeldObject([...$returnsClosure, 'heldProp' => true]))->toBe(['type' => 'number', 'optional' => false]);
+});

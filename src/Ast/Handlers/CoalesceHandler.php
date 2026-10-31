@@ -38,8 +38,10 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
     {
         if ($expr instanceof BinaryOp\Coalesce) {
             $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
-            // An object is never null, so `??` returns it whole, and Inertia sends the null its call returns.
+            // An object is never null, so `??` returns it whole and Inertia sends the null its call returns. Inertia
+            // sends a callable a called closure returns as `{}`, which no type read here admits, so it reads as before.
             $held = $leftResult['type'] === 'unknown' || $engine->reading() === Reading::Encoded
+                || ($scope->readsCallableReturn && ! ($leftResult['heldProp'] ?? false))
                 ? null
                 : ValueResult::heldNullsOf($leftResult);
 

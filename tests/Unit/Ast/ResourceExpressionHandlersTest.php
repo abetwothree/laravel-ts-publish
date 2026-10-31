@@ -290,15 +290,18 @@ it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...
     $expr = new StaticCall(new Name('Inertia'), 'always', [new Arg(new String_('en'))]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true]);
 });
 
-// NewResourceHandler reads a `new` of a class that is no resource as `unknown`, so it would floor a prop object there.
-it('tries InertiaWrapperHandler before NewResourceHandler for new AlwaysProp(...)', function () {
+// NewResourceHandler reads a `new` of a class that is no resource as `unknown`, so it would floor a prop object Inertia
+// reads; json_encode() sends one as `{}`, so where it reads, the wrapper declines and that `unknown` stands.
+it('tries InertiaWrapperHandler before NewResourceHandler for new AlwaysProp(...) where Inertia reads it', function () {
     $expr = new New_(new Name(AlwaysProp::class), [new Arg(new String_('en'))]);
-    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $encoded = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $inertia = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, reading: Reading::Inertia);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
+    expect($inertia->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true])
+        ->and($encoded->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
 // Ordering pin #5: KnownFunctionCallHandler gates only the inner auth() call on isFirstClassCallable(),

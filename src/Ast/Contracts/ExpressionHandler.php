@@ -38,6 +38,8 @@ use PhpParser\Node\Expr;
  *      absentReadsNull?: bool,
  *      heldObject?: bool,
  *      mayHoldObject?: HeldNulls,
+ *      heldProp?: bool,
+ *      returnsCallable?: bool,
  *      resolvedFqcn?: class-string<JsonResource>
  * }
  *
@@ -48,6 +50,9 @@ use PhpParser\Node\Expr;
  * `heldObject` says PHP holds the value as an object, a closure or an Inertia prop, never null until the caller
  * resolves it to the type, so a `??=` of it never runs (KeepsHeldObjects); `mayHoldObject` says only some arms do, and
  * whether an object arm may resolve to null and a plain arm may be null, which only the plain one `??=` replaces.
+ *
+ * `heldProp` says every such object is an Inertia prop, which Inertia resolves even where a callable it called returned
+ * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
  *
  * @internal
  */

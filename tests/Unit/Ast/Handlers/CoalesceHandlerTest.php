@@ -381,6 +381,21 @@ it('replaces only the plain null of a left that may hold an object where Inertia
     'an object arm that never does' => [false, 'number | string'],
 ]);
 
+// Inertia sends a callable a called closure returns as `{}`, so there `??` reads as it always has; a prop object it
+// resolves past that call, so its null stays.
+it('keeps only a held prop whole in what a called closure returns', function (array $left, string $type) {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([[$leftExpr, $left], [$rightExpr, ['type' => 'string', 'optional' => false]]], Reading::Inertia);
+    $scope = coalesceHandlerTestScope();
+    $scope->readsCallableReturn = true;
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), $scope, $engine)['type'])->toBe($type);
+})->with([
+    'a held callable' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true], 'number | string'],
+    'a held prop' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true, 'heldProp' => true], 'number | null'],
+]);
+
 // json_encode() sends a closure as `{}`, which neither reading admits, so outside Inertia `??` reads as it always has.
 it('strips a held object\'s null where json_encode() sends it', function () {
     $leftExpr = new Variable('f');

@@ -70,6 +70,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         return ValueResult::heldObject($scope->within(function () use ($expr, $scope): void {
+            $scope->readsCallableReturn = true;
             // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
             $scope->releaseUnclaimedParameters($expr);
             // Before the body is seeded, so a write that replaces a typed parameter ends its binding.

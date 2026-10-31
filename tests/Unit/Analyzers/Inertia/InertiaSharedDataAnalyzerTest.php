@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Inherited
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCarriedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
@@ -822,4 +823,15 @@ test('a share() a trait supplies under an alias publishes the keys the trait met
 
     expect(sharedProps(AliasedShareMiddleware::class))->toBe(['traitKey' => 'number', 'traitName' => 'string'])
         ->and((array) inertiaProps(Inertia::render('Shared', []), $request))->toBe(['traitKey' => 1, 'traitName' => 'x']);
+});
+
+// Inertia calls the shared closure once and sends the callable it returns as `{}`, which `number` rejects, as at base:
+// a `??` there reads as it always has (the closure known gap).
+test('a share middleware reads ?? over a held callable a called closure returns as before', function () {
+    $request = Request::create('/');
+    Inertia::share(new MiddlewareWithCallableReturn()->share($request));
+    $sent = inertiaProps(Inertia::render('Shared', []), $request);
+
+    expect(sharedProps(MiddlewareWithCallableReturn::class))->toBe(['a' => 'number'])
+        ->and(json_encode($sent))->toBe('{"a":{}}');
 });

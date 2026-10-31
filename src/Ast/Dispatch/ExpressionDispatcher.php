@@ -49,7 +49,11 @@ final class ExpressionDispatcher
         ));
 
         foreach ($this->candidatesByClass[$nodeClass] as $handler) {
-            $result = $handler->resolve($expr, $scope, $engine);
+            // What a handler keeping no object reads, as an array's item or a call's argument, is no longer the value a
+            // closure returns, so Inertia calls a callable it holds.
+            $result = $scope->readsCallableReturn && ! $handler instanceof KeepsHeldObjects
+                ? $scope->apartFromReturn(fn (): ?array => $handler->resolve($expr, $scope, $engine))
+                : $handler->resolve($expr, $scope, $engine);
 
             if ($result === null) {
                 continue;

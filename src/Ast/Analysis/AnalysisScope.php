@@ -123,7 +123,8 @@ use ReflectionMethod;
  *      narrowedReads: list<NarrowedRead>,
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
- *      mapResultArrayed: bool
+ *      mapResultArrayed: bool,
+ *      readsCallableReturn: bool
  * }
  *
  * @internal
@@ -231,6 +232,12 @@ final class AnalysisScope
      * VariableHandler's values()/all() arm sets it for its receiver, and only VariableHandler's map arm reads it.
      */
     public bool $mapResultArrayed = false;
+
+    /**
+     * Whether the value read is what a closure returns, where Inertia, having called the closure, sends a callable as
+     * `{}`. ClosureHandler sets it for its body; the dispatcher clears it below a handler that keeps no held object.
+     */
+    public bool $readsCallableReturn = false;
 
     /**
      * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
@@ -900,6 +907,26 @@ final class AnalysisScope
     }
 
     /**
+     * Run a read away from a closure's returned value, as an array item or a prop's wrapped value is, then restore it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function apartFromReturn(Closure $read): mixed
+    {
+        $returned = $this->readsCallableReturn;
+        $this->readsCallableReturn = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->readsCallableReturn = $returned;
+        }
+    }
+
+    /**
      * Run a read with one gap of a name lifted, so a value a write inside it assigns reads the name as it was before.
      *
      * @template TRead
@@ -1559,6 +1586,7 @@ final class AnalysisScope
             'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
+            'readsCallableReturn' => $this->readsCallableReturn,
         ];
     }
 
@@ -1584,5 +1612,6 @@ final class AnalysisScope
         $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];
+        $this->readsCallableReturn = $state['readsCallableReturn'];
     }
 }

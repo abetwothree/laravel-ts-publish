@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
@@ -453,6 +454,36 @@ it('sends what a ??= over a lazy prop or callable leaves on the partial reload t
     'a match of closures, resolving to a number' => ['coalesceMatchClosures', [], ['a' => 1]],
     'true past ?:' => ['coalesceTrueOrClosure', ['x' => 1], ['a' => true]],
     'a closure past ?:, resolving to null' => ['coalesceTrueOrClosure', [], ['a' => null]],
+]);
+
+// Inertia calls a closure prop once: it sends a callable that call returns as `{}`, which only `unknown` admits, so
+// `??` there reads as it always has (the closure known gap), while a prop object it returns, or an array's callable,
+// Inertia resolves too. A `new` of a prop over such a closure keeps the `unknown` it always had.
+it('reads ?? over a held callable a called closure returns as before, and a held prop as Inertia resolves it', function (string $action, string $type, array $visits, array $reloads) {
+    $send = function (array $query, bool $reload) use ($action): string {
+        $request = $reload ? partialReload('CallableReturns/'.ucfirst($action), 'a') : Request::create('/');
+        $request->query->add($query);
+
+        return (string) json_encode(inertiaProps(new CallableReturnsController()->{$action}($request), $request));
+    };
+
+    expect(pageData(CallableReturnsController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and(array_map(fn (array $query): string => $send($query, false), [['x' => 1], []]))->toBe($visits)
+        ->and(array_map(fn (array $query): string => $send($query, true), [['x' => 1], []]))->toBe($reloads);
+})->with([
+    'an arrow function' => ['arrow', '{ a: number }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'a closure' => ['closure', '{ a: number }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'an always prop over one' => ['always', '{ a: number }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'an optional prop over one' => ['optional', '{ h: string, a?: number }', ['{"h":"x"}', '{"h":"x"}'], ['{"a":{}}', '{"a":{}}']],
+    'a local holding one' => ['local', '{ a: number }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'one over a local closure or null' => ['joined', '{ a: number }', ['{"a":5}', '{"a":5}'], ['{"a":5}', '{"a":5}']],
+    'one over a first-class callable' => ['firstClass', '{ a: string }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'a props local holding one' => ['propsLocal', '{ h: string, a: number }', ['{"h":"x","a":{}}', '{"h":"x","a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'one over a held prop' => ['heldProp', '{ a: number | null }', ['{"a":1}', '{"a":null}'], ['{"a":1}', '{"a":null}']],
+    'one returning an array' => ['inArray', '{ a: { k: number | null } }', ['{"a":{"k":1}}', '{"a":{"k":null}}'], ['{"a":{"k":1}}', '{"a":{"k":null}}']],
+    'a new always prop over one' => ['newAlways', '{ a: unknown }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
+    'a new optional prop over one' => ['newOptional', '{ h: string, a?: unknown }', ['{"h":"x"}', '{"h":"x"}'], ['{"a":{}}', '{"a":{}}']],
+    'a new always prop over one returning a closure' => ['newAlwaysClosure', '{ a: unknown }', ['{"a":{}}', '{"a":{}}'], ['{"a":{}}', '{"a":{}}']],
 ]);
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,

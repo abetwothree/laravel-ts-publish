@@ -32,7 +32,7 @@ These are the classes a change to the engine usually touches:
 | [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
-| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's held-object flags (`heldObject`, `mayHoldObject`) only from a `KeepsHeldObjects` handler |
+| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's held-object flags (`heldObject`, `mayHoldObject`, `heldProp`, `returnsCallable`) only from a `KeepsHeldObjects` handler; any other handler reads away from a closure's returned value (`AnalysisScope::$readsCallableReturn`) |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
 | [`ResourceExpressionHandlers`] | The ordered handler profiles |
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
@@ -171,7 +171,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
 | `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
-| `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown` | None |
+| `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first where Inertia reads the value: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown`. Under `Encoded` the wrapper declines, since `json_encode()` sends the prop object as `{}` | None |
 
 `OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, sits
 after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no pair.
@@ -792,7 +792,9 @@ spread helper's returns (`merge-branch-join`, naming the same for each walked, l
 it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
 returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
 exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
-arm's `null` is replaced. It unions both operands through `unionResults()`, which leaves an untyped one out.
+arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
+(`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. It unions both operands through
+`unionResults()`, which leaves an untyped one out.
 `applyConditionalDefault()` records a default only beside a value arm with a type.
 `ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's

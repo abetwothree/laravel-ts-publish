@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -108,6 +109,53 @@ it('caches an empty candidate list too, never re-scanning a node class no handle
 
     expect($handler->nodeClassesCallCount)->toBe(1)
         ->and($handler->resolveCallCount)->toBe(0);
+});
+
+// What a handler that keeps no held object reads, as an array's item, is no longer the value a closure returns.
+it('reads a handler that keeps no held object away from a closure\'s returned value, and puts it back', function () {
+    $scope = dispatcherTestScope();
+    $scope->readsCallableReturn = true;
+    $seen = [];
+    $record = function (string $name) use ($scope, &$seen): array {
+        $seen[$name] = $scope->readsCallableReturn;
+
+        return ['type' => 'string', 'optional' => false];
+    };
+    $plain = new class($record) implements ExpressionHandler
+    {
+        public function __construct(private Closure $record) {}
+
+        public function nodeClasses(): array
+        {
+            return [String_::class];
+        }
+
+        public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return ($this->record)('plain');
+        }
+    };
+    $keeping = new class($record) implements ExpressionHandler, KeepsHeldObjects
+    {
+        public function __construct(private Closure $record) {}
+
+        public function nodeClasses(): array
+        {
+            return [Int_::class];
+        }
+
+        public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return ($this->record)('keeping');
+        }
+    };
+    $dispatcher = new ExpressionDispatcher([$plain, $keeping]);
+
+    $dispatcher->dispatch(new String_('x'), $scope, dispatcherTestEngine());
+    $dispatcher->dispatch(new Int_(1), $scope, dispatcherTestEngine());
+
+    expect($seen)->toBe(['plain' => false, 'keeping' => true])
+        ->and($scope->readsCallableReturn)->toBeTrue();
 });
 
 /**

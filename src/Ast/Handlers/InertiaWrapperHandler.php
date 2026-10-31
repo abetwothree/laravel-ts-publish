@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -23,6 +24,8 @@ use ReflectionMethod;
  * props are always absent from the initial response; a deferred scroll or an already-loaded once is runtime state.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @phpstan-type PropFactory = array{name: string, class: string, method: string}
  *
  * @internal
  */
@@ -66,51 +69,61 @@ final class InertiaWrapperHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        $factory = $this->factory($expr);
+        // json_encode() sends a prop object as `{}`, which the `unknown` a `new` of one read as before admits.
+        $built = $expr instanceof New_;
+        $factory = $built && $engine->reading() === Reading::Encoded ? null : $this->factory($expr);
         $wrapped = $factory === null ? null : $this->wrapperArguments($expr, $factory)->at(0);
 
         if ($wrapped === null) {
             return null;
         }
 
-        $result = ValueResult::heldObject($engine->resolve($wrapped->value));
+        // Inertia resolves a prop's callable value, and sends a callable that call returns as `{}`.
+        $value = $scope->apartFromReturn(fn (): array => $engine->resolve($wrapped->value));
+        $value = $built && ($value['returnsCallable'] ?? false) ? ValueResult::unknown() : $value;
+        $result = ValueResult::heldObject($value, prop: true);
 
-        return in_array($factory, self::OPTIONAL_WRAPPERS, true) ? ValueResult::missable($result) : $result;
+        return in_array($factory['name'], self::OPTIONAL_WRAPPERS, true) ? ValueResult::missable($result) : $result;
     }
 
     /**
-     * The factory an `Inertia::` call names, or the one that returns the prop class a `new` builds.
+     * The factory an `Inertia::` call names, or the one that returns the prop class a `new` builds, with the method its
+     * arguments map against: the factory's own, or the class's constructor.
+     *
+     * @return PropFactory|null
      */
-    private function factory(StaticCall|New_ $expr): ?string
+    private function factory(StaticCall|New_ $expr): ?array
     {
         if (! $expr->class instanceof Name) {
             return null;
         }
 
         if ($expr instanceof New_) {
-            return self::PROP_CLASSES[$expr->class->toString()] ?? null;
+            $class = $expr->class->toString();
+
+            return isset(self::PROP_CLASSES[$class])
+                ? ['name' => self::PROP_CLASSES[$class], 'class' => $class, 'method' => '__construct']
+                : null;
         }
 
-        return $expr->class->getLast() === 'Inertia'
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), self::WRAPPERS, true)
-                ? $expr->name->toString()
-                : null;
+        $name = $expr->name instanceof Identifier ? $expr->name->toString() : null;
+
+        return $expr->class->getLast() === 'Inertia' && in_array($name, self::WRAPPERS, true)
+            ? ['name' => $name, 'class' => 'Inertia\\ResponseFactory', 'method' => $name]
+            : null;
     }
 
     /**
      * The wrapper's arguments mapped against Inertia's own factory or constructor signature. `lazy` (gone in v3) and an
      * app without the adapter fall back to positions only. The adapter is a dev dependency, so it is named
      * by string rather than imported — an import would declare a hard requirement this package lacks.
+     *
+     * @param  PropFactory  $factory
      */
-    private function wrapperArguments(StaticCall|New_ $expr, string $factory): CallArguments
+    private function wrapperArguments(StaticCall|New_ $expr, array $factory): CallArguments
     {
-        [$class, $method] = $expr instanceof New_ && $expr->class instanceof Name
-            ? [$expr->class->toString(), '__construct']
-            : ['Inertia\\ResponseFactory', $factory];
-
-        if (class_exists($class) && method_exists($class, $method)) {
-            return CallArguments::for($expr, new ReflectionMethod($class, $method));
+        if (class_exists($factory['class']) && method_exists($factory['class'], $factory['method'])) {
+            return CallArguments::for($expr, new ReflectionMethod($factory['class'], $factory['method']));
         }
 
         return CallArguments::fromNames($expr->getArgs(), []);

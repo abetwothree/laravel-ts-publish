@@ -484,7 +484,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
         'runtime', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
-        'narrowedReads', 'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
+        'narrowedReads', 'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(

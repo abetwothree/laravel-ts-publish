@@ -818,7 +818,9 @@ as `strlen(...)` is read by where it sits. A property's type is the same for eve
 constructor writes, as in `$this->stamp = now(...)`, publishes `Record<string, never>`, and `ts:publish` warns, even
 in a page prop `'stamp' => $this->stamp`, though Inertia calls it. A closure held in a local and passed to a helper,
 read as a value or spread, publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns
-`['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
+`['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Inertia calls a page prop's closure once, so a closure
+that closure returns is sent as `{}` too: `'a' => fn () => $f` publishes what `$f` returns, and `fn () => $f ?? 5`
+that less its `null`, beside `5`'s type. Type that key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 

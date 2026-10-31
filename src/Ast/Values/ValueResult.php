@@ -217,16 +217,23 @@ final class ValueResult
     }
 
     /**
-     * The result as an object PHP holds until its caller resolves it to the type, a closure or an Inertia prop.
+     * The result as an object PHP holds until its caller resolves it to the type: a callable, or with $prop an Inertia
+     * prop. A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled.
      *
      * @param  ValueExpressionResult  $result
      * @return ValueExpressionResult
      */
-    public static function heldObject(array $result): array
+    public static function heldObject(array $result, bool $prop = false): array
     {
-        unset($result['mayHoldObject']);
+        $returnsCallable = ! $prop && self::heldNullsOf($result) !== null && ! ($result['heldProp'] ?? false);
+        $result = self::withoutHeldObject($result);
 
-        return [...$result, 'heldObject' => true];
+        return [
+            ...$result,
+            'heldObject' => true,
+            ...($prop ? ['heldProp' => true] : []),
+            ...($returnsCallable ? ['returnsCallable' => true] : []),
+        ];
     }
 
     /**
@@ -260,7 +267,7 @@ final class ValueResult
      */
     public static function withoutHeldObject(array $result): array
     {
-        unset($result['heldObject'], $result['mayHoldObject']);
+        unset($result['heldObject'], $result['mayHoldObject'], $result['heldProp'], $result['returnsCallable']);
 
         return $result;
     }
@@ -542,7 +549,8 @@ final class ValueResult
     }
 
     /**
-     * A union flagged `heldObject` where every arm is an object PHP holds, and `mayHoldObject` where only some are.
+     * A union flagged `heldObject` where every arm is an object PHP holds, and `mayHoldObject` where only some are;
+     * `heldProp` where every such object is an Inertia prop, and `returnsCallable` where a callable's call may be one.
      *
      * @param  ValueExpressionResult  $union
      * @param  list<ValueExpressionResult>  $arms
@@ -553,21 +561,29 @@ final class ValueResult
         $union = self::withoutHeldObject($union);
         $nulls = ['objectNull' => false, 'plainNull' => false];
         $someArm = false;
+        $props = true;
+        $returnsCallable = false;
 
         foreach ($arms as $arm) {
             $held = self::heldNullsOf($arm);
             $someArm = $someArm || $held !== null;
+            $props = $props && ($held === null || ($arm['heldProp'] ?? false));
+            $returnsCallable = $returnsCallable || ($arm['returnsCallable'] ?? false);
             $nulls = [
                 'objectNull' => $nulls['objectNull'] || ($held['objectNull'] ?? false),
                 'plainNull' => $nulls['plainNull'] || ($held === null ? self::mayBeNull($arm['type']) : $held['plainNull']),
             ];
         }
 
-        return match (true) {
-            ! $someArm => $union,
-            array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false) => [...$union, 'heldObject' => true],
-            default => [...$union, 'mayHoldObject' => $nulls],
-        };
+        if (! $someArm) {
+            return $union;
+        }
+
+        $kinds = [...($props ? ['heldProp' => true] : []), ...($returnsCallable ? ['returnsCallable' => true] : [])];
+
+        return array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false)
+            ? [...$union, 'heldObject' => true, ...$kinds]
+            : [...$union, 'mayHoldObject' => $nulls, ...$kinds];
     }
 
     /**
