@@ -56,6 +56,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedEnumBesideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NestedParentShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\OptionalCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastChildMiddleware;
@@ -444,6 +445,22 @@ it('leaves a string literal spelling a model\'s name as written, beside the mode
             '@js/types/ui' => ['User'],
         ])
         ->and([$sent->doc->name, $sent->cast->name, $sent->ui->name])->toBe(['Ada', 'Ada', 'Ada']);
+});
+
+it('spells a wrapped enum\'s const after typeof beside the same-named model, where a cast imports that name', function () {
+    Inertia::share(new MiddlewareWithWrappedEnumBesideModel()->share(request()));
+    $shared = analyzeSharedDataFor(MiddlewareWithWrappedEnumBesideModel::class);
+    $sent = inertiaProps(Inertia::render('Shared', []));
+
+    expect($shared['sharedPageProps'] ?? null)
+        ->toBe('{ ui: Grade, grade: WorkbenchGrade, badge: AsEnum<typeof WorkbenchGrade2> }')
+        ->and($shared['typeImports'] ?? null)->toBe([
+            './workbench/app/models' => ['Grade as WorkbenchGrade'],
+            '@js/types/ui' => ['Grade'],
+        ])
+        ->and($shared['valueImports'] ?? null)->toBe(['./workbench/app/enums' => ['Grade as WorkbenchGrade2']])
+        ->and([$sent->ui->subject, $sent->grade->subject, $sent->badge->name, $sent->badge->value])
+        ->toBe(['Math', 'Math', 'Pass', 'pass']);
 });
 
 it('imports a class one shared-data cast displaced for another import-less cast that spells it', function () {

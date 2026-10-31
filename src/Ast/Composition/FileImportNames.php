@@ -76,8 +76,7 @@ final class FileImportNames
     }
 
     /**
-     * An object type printed from one analysis's keys as a file member: the text joined from the printed members after
-     * `$before`, beside the token queues of exactly that text.
+     * An object type joined from the members its printer printed, as a file member with the queues of that text.
      *
      * @param  list<PrintedMember>  $members  each key as its printer printed it, in print order
      * @param  list<string>  $brought  the names the file's custom imports bring, which no class of the analysis spells
@@ -92,8 +91,7 @@ final class FileImportNames
     }
 
     /**
-     * The token queues of the text `$before` and the printed members spell, a key's own text queuing null; the
-     * separators between them spell no token.
+     * The token queues of `$before` and the printed members' text, a key's own text queuing null.
      *
      * @param  list<PrintedMember>  $members  each key as its printer printed it, in print order
      * @param  list<string>  $brought  the names the file's custom imports bring, which no class of the analysis spells
@@ -293,8 +291,9 @@ final class FileImportNames
     }
 
     /**
-     * Each token of the names in the text, its offset, and whether the channel reads it: none inside a quoted literal
-     * or a generated index signature key, whose text is a value or a key, and no class token after `typeof`.
+     * Each token of the names in the text, its offset, and whether the channel reads it.
+     *
+     * A literal's or an index signature key's text is a value or a key, and the name after `typeof` is a const's.
      *
      * @param  'classes'|'consts'  $channel
      * @param  non-empty-list<string>  $names
@@ -322,8 +321,9 @@ final class FileImportNames
     }
 
     /**
-     * The type with its Nth read token respelled for the Nth entry: aliasPropertyType()'s per-name queue cannot skip a
-     * null.
+     * The type with its Nth read token respelled for the Nth entry.
+     *
+     * aliasPropertyType()'s per-name queue cannot skip a null.
      *
      * @param  TokenQueue  $queue
      * @param  'classes'|'consts'  $channel

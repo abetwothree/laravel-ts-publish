@@ -34,7 +34,7 @@ use Throwable;
  *
  * @phpstan-type ComposedTypes array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens: array<string, TokenFqcns>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, TokenFqcns>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
@@ -63,7 +63,8 @@ class ModelMetadataAnalyzer
             return $result;
         }
 
-        $file = $this->composeTypes($analysis, $method, $result, $declared['tokens'], $payloadKeys, $namespacePath);
+        // A subclass's parseDeclaredTypes() may return the shape from before docblock keys carried their tokens.
+        $file = $this->composeTypes($analysis, $method, $result, $declared['tokens'] ?? [], $payloadKeys, $namespacePath);
 
         return new ModelMetadataAnalysis(
             array_replace($result->types, $file['types']),
@@ -112,8 +113,7 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Fit each key a cast or the docblock retypes to its text, then respell every key whose text no cast import owns so
-     * same-named enums alias apart, and return those types with the imports they spell.
+     * Fit the keys a cast or the docblock retypes, then respell every key no cast import owns, beside its imports.
      *
      * @param  array<string, TokenFqcns>  $docblockTokens  each docblock key's class behind each token of its text
      * @param  list<string>  $payloadKeys
@@ -357,8 +357,9 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * The cast in force for each published key a helper's cast, provide()'s own #[TsCasts] or the docblock retypes:
-     * a docblock key names only the enums behind its tokens, since a companion imports no model.
+     * The cast in force for each published key a helper's cast, provide()'s #[TsCasts] or the docblock retypes.
+     *
+     * A docblock key names only the enums behind its tokens, since a companion imports no model.
      *
      * @param  array<string, TokenFqcns>  $docblockTokens
      * @param  array<string, string>  $published  each payload key's type

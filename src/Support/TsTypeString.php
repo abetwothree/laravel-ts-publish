@@ -43,8 +43,9 @@ class TsTypeString
     protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
     /**
-     * A quoted string literal or a generated index signature key, whose text is a value or a key and never a name. A
-     * template literal is matched only so a quote inside it opens no string; its own text is read as usual.
+     * A quoted string literal or a generated index signature key, whose text is a value or a key, never a name.
+     *
+     * A template literal is matched only so a quote inside it opens no string; its own text is read as usual.
      */
     protected const string LITERAL_PATTERN = '/('.IndexSignatureKey::PATTERN
         .'|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
@@ -206,8 +207,7 @@ class TsTypeString
     }
 
     /**
-     * The offsets each quoted string literal and generated index signature key of a type spans, from its first byte to
-     * the one after its last: no name is read inside them, as qualifyGlobalType() reads none there.
+     * The byte spans, end exclusive, of a type's quoted string literals and generated index signature keys.
      *
      * @return list<array{int, int}>
      */

@@ -199,8 +199,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Join the printed members into the props type, two same-named classes aliased apart as a resource's are, beside
-     * the imports it spells.
+     * Join the printed members into the props type, same-named classes aliased apart, beside the imports it spells.
      *
      * @param  list<PrintedMember>  $members
      * @param  TypesImportMap  $castImports  the imports of the casts in force
