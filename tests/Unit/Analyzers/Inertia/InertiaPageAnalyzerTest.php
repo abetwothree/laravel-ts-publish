@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ImportlessCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
@@ -37,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\DeclinedGuessMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
@@ -548,6 +550,16 @@ test('analyze() types toResourceCollection() as the response of the collection L
         .'explicit: JsonResourcePaginator<WarehouseResource>, unpaged: PostCollection }'
     );
 });
+
+// No oracle: over model items Laravel throws, as the guess wraps each model in the collection #[UseResource] names.
+it('publishes a declined collection guess on a page as shared data publishes it', function () {
+    expect(pageData(DeclinedGuessController::class.'@index')['pageType'])
+        ->toBe('Inertia.SharedData & { cogs: '.sharedProps(DeclinedGuessMiddleware::class)['cogs'].' }')
+        ->and(sharedProps(DeclinedGuessMiddleware::class)['cogs'])->toBe('InheritedBodyParentCollection[]');
+})->skip(
+    ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResource'),
+    'UseResource attribute requires Laravel 12.29+',
+);
 
 // Review Focus 2: the intersection is what Laravel sends only while the stub's own interface carries the `data` key.
 test('the stub collection over simplePaginate() publishes its data beside the simple pagination block', function () {

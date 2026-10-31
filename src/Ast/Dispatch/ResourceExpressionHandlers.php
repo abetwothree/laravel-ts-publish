@@ -61,8 +61,7 @@ final class ResourceExpressionHandlers
 
     /**
      * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
-     * An Inertia middleware's goes through invokingCallables() and takes the page-prop handlers, since Inertia calls
-     * every callable it shares and sends each shared value as it sends a page prop.
+     * An Inertia middleware's is forInertia()'s, since Inertia sends each shared value as it sends a page prop.
      *
      * @return list<ExpressionHandler>
      */
@@ -73,14 +72,14 @@ final class ResourceExpressionHandlers
         }
 
         return is_subclass_of($subjectClass, 'Inertia\\Middleware')
-            ? self::invokingCallables(self::withPagePropHandlers(self::forNonResourceSubjects()))
+            ? self::forInertia(self::forNonResourceSubjects())
             : self::forNonResourceSubjects();
     }
 
     /**
-     * make() minus ConditionalMethodHandler, same relative order: a broadcast event's, model metadata's, shared data's
-     * or a body-fallback method's profile. Only JsonResource::resolve() filters the MissingValue the `when*()` family
-     * returns, so elsewhere `$this->when()` is another method, while toResource() and a filter mean the same anywhere.
+     * make() minus ConditionalMethodHandler, same order: a broadcast event's, model metadata's, a body fallback's and
+     * the Inertia profile's base. Only JsonResource::resolve() drops the MissingValue `when*()` returns, so elsewhere
+     * `$this->when()` is another method, while toResource() and a filter mean the same anywhere.
      *
      * @return list<ExpressionHandler>
      */
@@ -89,22 +88,6 @@ final class ResourceExpressionHandlers
         return array_values(array_filter(
             self::handlers(),
             static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler,
-        ));
-    }
-
-    /**
-     * make() minus ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler, in the same order. Named for
-     * what it drops: its one production caller is ControllerExpressionHandlers::make().
-     *
-     * @return list<ExpressionHandler>
-     */
-    public static function withoutResourceHandlers(): array
-    {
-        return array_values(array_filter(
-            self::handlers(),
-            static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler
-                && ! $handler instanceof ToResourceHandler
-                && ! $handler instanceof RelationFilterHandler,
         ));
     }
 
@@ -125,12 +108,23 @@ final class ResourceExpressionHandlers
     }
 
     /**
+     * The Inertia profile over the given handlers, which every value a page or a share middleware sends runs.
+     *
+     * @param  list<ExpressionHandler>  $handlers
+     * @return list<ExpressionHandler>
+     */
+    public static function forInertia(array $handlers): array
+    {
+        return self::invokingCallables(self::withPagePropHandlers($handlers));
+    }
+
+    /**
      * The same handlers where the caller calls each callable value, as Inertia does with props and shared data.
      *
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>
      */
-    public static function invokingCallables(array $handlers): array
+    private static function invokingCallables(array $handlers): array
     {
         return array_map(
             static fn (ExpressionHandler $handler): ExpressionHandler => $handler instanceof FirstClassCallableHandler
@@ -141,9 +135,9 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The same handlers with the controller profile's two: InertiaResourcePropHandler before ToResourceHandler, the
-     * first that types a resource as the value a nested key flattens it to, and ModelFinderHandler before
-     * StaticCallHandler, whose last arm claims every static call, so a query chain types as the paginator it returns.
+     * The same handlers with the two only Inertia runs: InertiaResourcePropHandler before ToResourceHandler, the first
+     * that types a resource as the value a nested key flattens it to, and ModelFinderHandler before StaticCallHandler,
+     * whose last arm claims every static call, so a query chain types as the paginator it returns.
      *
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>

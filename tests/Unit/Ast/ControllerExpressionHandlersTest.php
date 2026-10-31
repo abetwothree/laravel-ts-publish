@@ -4,16 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
@@ -28,6 +24,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
@@ -44,31 +41,13 @@ function controllerProfileAnalyzer(): ResourceAstAnalyzer
     );
 }
 
-it('inserts both controller handlers immediately before StaticCallHandler and changes nothing else', function () {
-    $controller = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ControllerExpressionHandlers::make(),
-    );
+// Inertia sends a page prop as it sends a shared value, so a page and shared data run one profile.
+it('builds the controller profile and the shared-data middleware profile as the one Inertia profile', function () {
+    $inertia = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
 
-    $generic = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::withoutResourceHandlers(),
-    );
-
-    $expected = [];
-
-    foreach ($generic as $class) {
-        if ($class === StaticCallHandler::class) {
-            $expected[] = ModelFinderHandler::class;
-            $expected[] = InertiaResourcePropHandler::class;
-        }
-
-        $expected[] = $class;
-    }
-
-    expect($controller)->toBe($expected)
-        ->and($controller)->toHaveCount(27)
-        ->and($controller)->toContain(OffsetReadHandler::class);
+    expect(ControllerExpressionHandlers::make())->toEqual($inertia)
+        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, controllerProfileAnalyzer()))->toEqual($inertia)
+        ->and($inertia)->toHaveCount(29);
 });
 
 // Ordering pin: StaticCallHandler's last arm claims every StaticCall on a named class, so after it
@@ -122,8 +101,9 @@ it('tries InertiaResourcePropHandler before NewResourceHandler and StaticCallHan
         ->and(controllerProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
 });
 
-// The method-call claimants after it leave these calls `unknown`, where Inertia sends the response.
-it('tries InertiaResourcePropHandler before the receiver handlers for a toResource() or toResourceCollection() call', function () {
+// ToResourceHandler after it types these calls as a nested key's value, and the receiver handlers leave them `unknown`,
+// where Inertia sends the response.
+it('tries InertiaResourcePropHandler before ToResourceHandler and the receiver handlers for a toResource() or toResourceCollection() call', function () {
     $reflection = new ReflectionClass(InertiaController::class);
     $scope = new AnalysisScope($reflection);
     $scope->varModelBindings['warehouse'] = Warehouse::class;

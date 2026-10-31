@@ -5,40 +5,21 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 
 /**
- * The controller profile: the generic resource profile plus the two handlers that only make sense
- * where a value is a whole HTTP payload rather than a member of one.
+ * The controller profile: the Inertia profile a page's props run, the one a share middleware's values run.
  *
  * @internal
  */
 final class ControllerExpressionHandlers
 {
     /**
-     * Build the ordered controller handler chain.
-     *
-     * Both additions sit immediately before StaticCallHandler, whose final arm claims every
-     * StaticCall on a named class and never declines one — after it they would be unreachable.
-     * Inertia calls every callable prop before it encodes it, so the profile invokes first-class callables.
+     * Build the ordered handler chain an Inertia action's props run.
      *
      * @return list<ExpressionHandler>
      */
     public static function make(): array
     {
-        $handlers = [];
-
-        foreach (ResourceExpressionHandlers::invokingCallables(ResourceExpressionHandlers::withoutResourceHandlers()) as $handler) {
-            if ($handler instanceof StaticCallHandler) {
-                $handlers[] = new ModelFinderHandler;
-                $handlers[] = new InertiaResourcePropHandler;
-            }
-
-            $handlers[] = $handler;
-        }
-
-        return $handlers;
+        return ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
     }
 }

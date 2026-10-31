@@ -10,11 +10,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -28,9 +32,13 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
 
 /**
  * Every disagreeing unordered pair of MethodCall claimants, keyed by its two class basenames sorted
@@ -43,17 +51,51 @@ const METHOD_CALL_PINNED = [
 ];
 
 /**
+ * The Inertia profile's disagreeing pairs, keyed and named as in METHOD_CALL_PINNED. Its half runs only the pairs
+ * with a handler the resource profile lacks, since every other pair keeps the resource profile's order.
+ */
+const INERTIA_METHOD_CALL_PINNED = [
+    'InertiaResourcePropHandler|ToResourceHandler' => InertiaResourcePropHandler::class,
+];
+
+/**
  * Whether $handler alone answers $expr non-null, isolated from any partner: its own recursion into $engine->resolve()
  * for an unrelated sub-expression must not count as claiming $expr. The engine shares the handler's scope, as in
  * production, or a handler that seeds a binding and then recurses could never claim anything.
  */
-function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
+function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr, Closure $newScope): bool
 {
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $scope = $newScope();
     // ClosureHandler claims no MethodCall, so it joins no pair, but every map writer reads its callback through it.
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler, new ClosureHandler], $scope);
+    $engine = methodCallMatrixEngine($scope, [$handler, new ClosureHandler]);
 
     return $handler->resolve($expr, $scope, $engine) !== null;
+}
+
+/** A fresh scope of the resource half's subject, CommentResource over Comment. */
+function resourceMatrixScope(): AnalysisScope
+{
+    return new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+}
+
+/** A fresh scope of a model-less controller action holding a route-bound warehouse and post, as a page's does. */
+function inertiaMatrixScope(): AnalysisScope
+{
+    $scope = new AnalysisScope(new ReflectionClass(InertiaController::class));
+    $scope->varModelBindings['warehouse'] = Warehouse::class;
+    $scope->varModelBindings['post'] = Post::class;
+
+    return $scope;
+}
+
+/**
+ * An engine over the scope that runs only the given handlers.
+ *
+ * @param  list<ExpressionHandler>  $profile
+ */
+function methodCallMatrixEngine(AnalysisScope $scope, array $profile): ResourceAstAnalyzer
+{
+    return new ResourceAstAnalyzer($scope->subjectReflection, $scope->modelClass, handlerProfile: $profile, scope: $scope);
 }
 
 /** @return list<MethodCall> */
@@ -147,6 +189,33 @@ function methodCallCorpus(): array
     ];
 }
 
+/** @return list<MethodCall> the page props the Inertia profile's own handlers claim, and the calls beside them */
+function inertiaMethodCallCorpus(): array
+{
+    $query = fn (): StaticCall => new StaticCall(new Name(Post::class), 'query');
+    $paginated = fn (): MethodCall => new MethodCall($query(), 'paginate', [new Arg(new Int_(10))]);
+
+    return [
+        new MethodCall(new Variable('warehouse'), 'toResource'),
+        new MethodCall(new Variable('warehouse'), 'toResource', [new VariadicPlaceholder]),
+        new MethodCall(new Variable('warehouse'), 'toResource', [new Arg(new ClassConstFetch(new Name(WarehouseResource::class), 'class'))]),
+        new MethodCall(new Variable('post'), 'toResource'),
+        $paginated(),
+        new MethodCall($paginated(), 'toResourceCollection'),
+        new MethodCall($paginated(), 'toResourceCollection', [new VariadicPlaceholder]),
+        new MethodCall(new StaticCall(new Name(Post::class), 'all'), 'toResourceCollection'),
+        // #[UseResource] names a collection, so the page-prop handler declines the guess; ToResourceHandler types it.
+        new MethodCall(new StaticCall(new Name(Cog::class), 'all'), 'toResourceCollection'),
+        new MethodCall(new StaticCall(new Name(Post::class), 'where', [new Arg(new String_('id')), new Arg(new Int_(1))]), 'first'),
+        new MethodCall(new MethodCall($query(), 'latest'), 'get'),
+        new MethodCall($query(), 'count'),
+        new MethodCall($query(), 'exists'),
+        new MethodCall(new MethodCall(new Variable('post'), 'comments'), 'count'),
+        new MethodCall(new Variable('post'), 'fresh'),
+        new MethodCall(new FuncCall(new Name('auth')), 'user'),
+    ];
+}
+
 /** make() ignores the engine today; a throwing one keeps that true if it ever changes. */
 function inertEngine(): ExpressionEngine
 {
@@ -175,11 +244,28 @@ function inertEngine(): ExpressionEngine
     };
 }
 
-/** @return list<ExpressionHandler> the MethodCall claimants, in registration order */
+/** @return list<ExpressionHandler> the resource profile's MethodCall claimants, in registration order */
 function methodCallClaimants(): array
 {
+    return methodCallClaimantsOf(ResourceExpressionHandlers::make(inertEngine()));
+}
+
+/** @return list<ExpressionHandler> the Inertia profile's MethodCall claimants, in registration order */
+function inertiaMethodCallClaimants(): array
+{
+    return methodCallClaimantsOf(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects()));
+}
+
+/**
+ * The profile's MethodCall claimants, in its order.
+ *
+ * @param  list<ExpressionHandler>  $profile
+ * @return list<ExpressionHandler>
+ */
+function methodCallClaimantsOf(array $profile): array
+{
     return array_values(array_filter(
-        ResourceExpressionHandlers::make(inertEngine()),
+        $profile,
         fn (ExpressionHandler $h): bool => in_array(MethodCall::class, $h->nodeClasses(), true),
     ));
 }
@@ -187,7 +273,26 @@ function methodCallClaimants(): array
 /** @return array<string, array{0: string, 1: string}> unordered pairs, keyed for the dataset label */
 function methodCallClaimantPairs(): array
 {
-    $claimants = methodCallClaimants();
+    return methodCallPairsOf(methodCallClaimants());
+}
+
+/** @return array<string, array{0: string, 1: string}> the Inertia profile's pairs with a handler only it runs */
+function inertiaMethodCallClaimantPairs(): array
+{
+    return array_filter(
+        methodCallPairsOf(inertiaMethodCallClaimants()),
+        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, ModelFinderHandler::class]) !== [],
+    );
+}
+
+/**
+ * Every unordered pair of the claimants, the one listed first first.
+ *
+ * @param  list<ExpressionHandler>  $claimants
+ * @return array<string, array{0: string, 1: string}>
+ */
+function methodCallPairsOf(array $claimants): array
+{
     $pairs = [];
 
     foreach ($claimants as $i => $a) {
@@ -201,20 +306,28 @@ function methodCallClaimantPairs(): array
     return $pairs;
 }
 
-it('agrees in both orders, or is pinned in the documented direction', function (string $first, string $second) {
+/**
+ * Runs one pair over the corpus in both orders: a pinned pair must disagree and answer as its winner run first, and any
+ * other pair must agree on every expression and claim at least one.
+ *
+ * @param  list<ExpressionHandler>  $claimants
+ * @param  array<string, class-string<ExpressionHandler>>  $pins
+ * @param  list<MethodCall>  $corpus
+ * @param  Closure(): AnalysisScope  $newScope
+ */
+function expectMethodCallPairOrdering(string $first, string $second, array $claimants, array $pins, array $corpus, Closure $newScope): void
+{
     $byClass = fn (string $class): ExpressionHandler => array_values(array_filter(
-        methodCallClaimants(),
+        $claimants,
         fn (ExpressionHandler $h): bool => $h::class === $class,
     ))[0];
-    // $a is whichever of the pair handlers() CURRENTLY lists first — [$a, $b] therefore always
+    // $a is whichever of the pair the profile CURRENTLY lists first — [$a, $b] therefore always
     // reproduces the real production dispatch order for this pair, whatever that order is today.
     [$a, $b] = [$byClass($first), $byClass($second)];
 
-    $run = function (array $profile, MethodCall $expr): array {
-        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', $profile);
-
+    $run = function (array $profile, MethodCall $expr) use ($newScope): array {
         try {
-            return $analyzer->resolve($expr);
+            return methodCallMatrixEngine($newScope(), $profile)->resolve($expr);
         } catch (Throwable $e) {
             return ['type' => 'THROWS '.$e::class];
         }
@@ -223,10 +336,10 @@ it('agrees in both orders, or is pinned in the documented direction', function (
     $sortedBasenames = array_map(class_basename(...), [$first, $second]);
     sort($sortedBasenames);
     $pairKey = implode('|', $sortedBasenames);
-    $winner = METHOD_CALL_PINNED[$pairKey] ?? null;
+    $winner = $pins[$pairKey] ?? null;
     $disagreed = false;
 
-    foreach (methodCallCorpus() as $expr) {
+    foreach ($corpus as $expr) {
         $ab = $run([$a, $b], $expr);
         $ba = $run([$b, $a], $expr);
 
@@ -236,7 +349,7 @@ it('agrees in both orders, or is pinned in the documented direction', function (
                 ->not->toBeNull("Unpinned pair {$pairKey} disagrees on ".get_debug_type($expr).': '.json_encode([$ab, $ba]));
 
             // $ab is production's real answer (see [$a, $b] above); it must equal the pinned winner
-            // run first, not merely "some" disagreement was pinned — this is what catches handlers()
+            // run first, not merely "some" disagreement was pinned — this is what catches the profile
             // demoting the winner: after a reorder, $a silently becomes the loser instead.
             $winnerFirst = $winner === $a::class ? [$a, $b] : [$b, $a];
             expect($ab)->toBe($run($winnerFirst, $expr), "Pinned pair {$pairKey}: production order answered ".
@@ -250,9 +363,24 @@ it('agrees in both orders, or is pinned in the documented direction', function (
         // A disagreement here already failed inside the loop above. What's left to prove for an inert
         // pair is that the corpus wasn't simply silent for both handlers — see methodCallHandlerClaims().
         $claimed = array_any(
-            methodCallCorpus(),
-            fn (MethodCall $expr): bool => methodCallHandlerClaims($a, $expr) || methodCallHandlerClaims($b, $expr),
+            $corpus,
+            fn (MethodCall $expr): bool => methodCallHandlerClaims($a, $expr, $newScope) || methodCallHandlerClaims($b, $expr, $newScope),
         );
         expect($claimed)->toBeTrue("Pair {$pairKey} is vacuous — neither handler claimed any corpus expression");
     }
+}
+
+it('agrees in both orders, or is pinned in the documented direction', function (string $first, string $second) {
+    expectMethodCallPairOrdering($first, $second, methodCallClaimants(), METHOD_CALL_PINNED, methodCallCorpus(), resourceMatrixScope(...));
 })->with(methodCallClaimantPairs());
+
+it('agrees in both orders in the Inertia profile, or is pinned in the documented direction', function (string $first, string $second) {
+    expectMethodCallPairOrdering(
+        $first,
+        $second,
+        inertiaMethodCallClaimants(),
+        INERTIA_METHOD_CALL_PINNED,
+        inertiaMethodCallCorpus(),
+        inertiaMatrixScope(...),
+    );
+})->with(inertiaMethodCallClaimantPairs());

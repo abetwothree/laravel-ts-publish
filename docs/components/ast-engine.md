@@ -60,22 +60,20 @@ tests for a decline with `TsTypeString::isUnknownOnly()`, which ignores `null` a
 
 When more than one handler claims a node class, registration order decides which one answers. A reorder that changes the
 winner changes published types, so treat it as a behavior change, not a refactor.
-`ResourceExpressionHandlers::handlers()` is the one ordered list, and each profile filters it:
+`ResourceExpressionHandlers::handlers()` is the one ordered list, and three lists filter it:
 
 - **`make()`**: the resource profile, a `JsonResource` subject's.
 - **`forNonResourceSubjects()`**: drops `ConditionalMethodHandler` alone, for every other subject
-  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, shared data, model metadata or a DTO.
-- **`withoutResourceHandlers()`**: drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`.
-  Its one production caller is `ControllerExpressionHandlers::make()`.
-- **`forModelClosures()`**: drops only the first two, for `AstEngine::analyzeModelClosure()`. `RelationFilterHandler`
-  stays as the only handler that types a to-many relation's filter, a map proxy, a multi-model accessor's filter, or a
-  filter on a collection-cast column or an `Eloquent\Collection` accessor.
+  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, model metadata or a DTO.
+- **`forModelClosures()`**: drops `ConditionalMethodHandler` and `ToResourceHandler`, for
+  `AstEngine::analyzeModelClosure()`. `RelationFilterHandler` stays as the only handler that types a to-many relation's
+  filter, a map proxy, a multi-model accessor's filter, or a filter on a collection-cast column or an
+  `Eloquent\Collection` accessor.
 
-`ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
-`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. An Inertia
-middleware takes `forNonResourceSubjects()` through `invokingCallables()`, with `InertiaResourcePropHandler` before
-`ToResourceHandler` and `ModelFinderHandler` before `StaticCallHandler`, since Inertia calls every callable it shares
-and sends a shared value as it sends a page prop.
+`forInertia()` builds the [Inertia profile](#inertia-profile) over a list. `ResourceExpressionHandlers::forSubject()`
+gives a `JsonResource` subject `make()`, an Inertia middleware `forInertia(forNonResourceSubjects())`, since Inertia
+sends a shared value as it sends a page prop, and any other subject `forNonResourceSubjects()`.
+`ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -89,17 +87,22 @@ whose op table it shares. See [ResourceAstAnalyzer § Collection pipelines][coll
 `MethodCallOrderingMatrixTest` runs every pair of `MethodCall` claimants in both orders over a curated corpus. A pair in
 its `METHOD_CALL_PINNED` map must answer as `handlers()` orders it, and every other pair must agree. When a new
 expression shape makes an inert pair disagree, the matrix fails. Pin the pair in the direction `handlers()` lists it.
+Its Inertia half does the same for each pair with a handler only the Inertia profile runs, against
+`INERTIA_METHOD_CALL_PINNED`.
 
-### Controller profile
+### Inertia profile
 
-`ControllerExpressionHandlers::make()` inserts `ModelFinderHandler` and `InertiaResourcePropHandler` into
-`withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
-a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
-element array. Placed later, the two additions would be unreachable for those shapes. `InertiaResourcePropHandler` also
-types a JSON:API resource's single and collection props as their `@tolki/types` documents.
-`ControllerExpressionHandlersTest` pins the structure and the five orderings. `invokingCallables()` swaps in
-`FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop, at any depth, so a first-class callable
-there types as the call it stands for.
+`ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs: a page prop, through
+`ControllerExpressionHandlers::make()`, and a share middleware's value, through `forSubject()`, both over
+`forNonResourceSubjects()`. It inserts `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource
+as the value a nested key flattens it to where Inertia sends its response, so a spelling the prop handler declines
+publishes on a page as in shared data. It inserts `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static
+call on a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to
+its element array, so placed later the two additions would be unreachable for those shapes. `InertiaResourcePropHandler`
+also types a JSON:API resource's single and collection props as their `@tolki/types` documents.
+`ControllerExpressionHandlersTest` pins that both callers build this profile, and its orderings. `forInertia()` also
+swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop, at any depth, so a first-class
+callable there types as the call it stands for.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -129,7 +132,7 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 
 - **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler` and
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
-  on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
+  on `$this->resource` itself. On a model-less scope, as on a page, `RelationCollectionChainHandler`
   declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with
   `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`. The same arm declines a method
   `ReceiverMethodReturnResolver::typesByRule()` names, and one it would answer `unknown`, so `ReceiverMethodCallHandler`
@@ -154,12 +157,13 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 `VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`. It declines
 anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
-The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
+The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
 `InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
 disjoint method names on a `MethodCall`, and on a `StaticCall` disjoint classes, a model and an API resource, since both
-claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler before
-`NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()` `unknown`, and
-the matrix does not run these profiles.
+claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, and the prop handler before
+`NewResourceHandler`, `ToResourceHandler` and the method-call claimants that leave `toResource()` and
+`toResourceCollection()` `unknown`. The matrix's Inertia half runs each `MethodCall` pair either joins, over a page's
+model-less scope, and pins only the prop handler before `ToResourceHandler`.
 
 ## AnalysisScope
 
@@ -802,7 +806,7 @@ Each consumer enters the engine at the point that fits its subject:
 | --- | --- | --- |
 | `ResourceTransformer` | `ResourceAstAnalyzer::analyze()` on the resource profile | A resource's `toArray()` is that profile's own subject |
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
-| `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
+| `InertiaPageAnalyzer` | The Inertia profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |

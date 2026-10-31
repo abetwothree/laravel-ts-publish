@@ -103,7 +103,7 @@ function resourceExpressionHandlerOrder(): array
     ];
 }
 
-/** A throwaway engine: make()/withoutResourceHandlers() only construct handlers, they never resolve anything. */
+/** A throwaway engine: make() and forSubject() only construct handlers, they never resolve anything. */
 function resourceExpressionHandlersTestEngine(): ExpressionEngine
 {
     return new class implements ExpressionEngine
@@ -138,25 +138,6 @@ it('returns all 28 handlers in the documented dispatch order', function () {
     );
 
     expect($classes)->toBe(resourceExpressionHandlerOrder());
-});
-
-it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler from withoutResourceHandlers(), same relative order', function () {
-    $classes = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::withoutResourceHandlers(),
-    );
-
-    $expected = array_values(array_filter(
-        resourceExpressionHandlerOrder(),
-        fn (string $class): bool => ! in_array($class, [
-            ConditionalMethodHandler::class,
-            ToResourceHandler::class,
-            RelationFilterHandler::class,
-        ], true),
-    ));
-
-    expect($classes)->toHaveCount(25)
-        ->and($classes)->toBe($expected);
 });
 
 // A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
@@ -204,29 +185,16 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
     'a model' => [Comment::class, false],
 ]);
 
-// Inertia sends shared data as it sends page props: ToResourceHandler would type a shared resource as a nested key's
-// value, and without ModelFinderHandler no shared paginator is seen.
-it('gives a shared-data middleware the page-prop handlers, InertiaResourcePropHandler before ToResourceHandler', function () {
-    $classes = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, resourceExpressionHandlersTestEngine()),
-    );
+// ToResourceHandler would type a resource as a nested key's value, where Inertia sends its response, and
+// StaticCallHandler would claim a query chain before ModelFinderHandler typed the paginator it returns.
+it('inserts InertiaResourcePropHandler before ToResourceHandler and ModelFinderHandler before StaticCallHandler in forInertia()', function () {
+    $profile = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
+    $expected = array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class]));
+    array_splice($expected, (int) array_search(ToResourceHandler::class, $expected, true), 0, [InertiaResourcePropHandler::class]);
+    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [ModelFinderHandler::class]);
 
-    $expected = [];
-
-    foreach (array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])) as $class) {
-        if ($class === ToResourceHandler::class) {
-            $expected[] = InertiaResourcePropHandler::class;
-        }
-
-        if ($class === StaticCallHandler::class) {
-            $expected[] = ModelFinderHandler::class;
-        }
-
-        $expected[] = $class;
-    }
-
-    expect($classes)->toBe($expected);
+    expect(array_map(fn (ExpressionHandler $handler): string => $handler::class, $profile))->toBe($expected)
+        ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
 });
 
 // Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
