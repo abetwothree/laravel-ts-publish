@@ -63,7 +63,7 @@ function inertiaWrapperScope(): AnalysisScope
 // chains ->defer(), and an OnceProp is dropped only once the client reports holding it.
 it('resolves the wrapped value and keeps its channels', function (string $method) {
     expect((new InertiaWrapperHandler)->resolve(inertiaWrapperCall('Inertia', $method), inertiaWrapperScope(), inertiaWrapperEngine()))
-        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model']);
+        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model', 'heldObject' => true]);
 })->with(['always', 'merge', 'deepMerge', 'scroll', 'once']);
 
 it('marks an IgnoreFirstLoad wrapper optional', function (string $method) {
@@ -106,6 +106,7 @@ it('types a deferred closure over an Eloquent finder through the controller prof
         'type' => 'Post[]',
         'optional' => true,
         'modelFqcn' => Post::class,
+        'heldObject' => true,
     ]);
 });
 
@@ -148,5 +149,5 @@ it('reads the wrapped value by name when the group is written first', function (
     };
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $engine))
-        ->toBe(['type' => 'Post[]', 'optional' => true]);
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true]);
 });

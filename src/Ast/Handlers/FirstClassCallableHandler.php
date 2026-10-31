@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use PhpParser\Node\Arg;
@@ -26,7 +28,7 @@ use PhpParser\Node\Param;
  *
  * @internal
  */
-final class FirstClassCallableHandler implements ExpressionHandler
+final class FirstClassCallableHandler implements ExpressionHandler, KeepsHeldObjects
 {
     /** The parameter a callable called with one value holds it in, named as no source can spell a variable. */
     private const string PASSED_VALUE = 'passed value';
@@ -106,12 +108,12 @@ final class FirstClassCallableHandler implements ExpressionHandler
         }
 
         if ($this->invoked) {
-            return $engine->resolve(self::invokedCall($expr));
+            return ValueResult::heldObject($engine->resolve(self::invokedCall($expr)));
         }
 
         $this->warnOfUncalledCallable($expr, $scope);
 
-        return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
+        return ValueResult::heldObject(['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false]);
     }
 
     /**

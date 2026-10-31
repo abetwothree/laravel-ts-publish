@@ -227,7 +227,7 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     $expr = new MethodCall(new Variable('this'), 'when', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });
 
 // ReceiverMethodCallHandler also claims only()/except(), so the order of the two cannot decide this Pick<>, in either
@@ -287,7 +287,7 @@ it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...
     $expr = new StaticCall(new Name('Inertia'), 'always', [new Arg(new String_('en'))]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
 });
 
 // Ordering pin #5: KnownFunctionCallHandler gates only the inner auth() call on isFirstClassCallable(),
@@ -297,7 +297,7 @@ it('tries FirstClassCallableHandler before KnownFunctionCallHandler for auth()->
     $expr = new MethodCall(new FuncCall(new Name('auth')), 'user', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });
 
 // Ordering pin #6: ToResourceHandler matches on the method name alone and then calls getArgs(),
@@ -307,5 +307,5 @@ it('tries FirstClassCallableHandler before ToResourceHandler for $this->post->to
     $expr = new MethodCall(new PropertyFetch(new Variable('this'), 'post'), 'toResource', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });

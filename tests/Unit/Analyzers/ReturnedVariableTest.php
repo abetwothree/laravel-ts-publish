@@ -38,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceS
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceSwitchWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceUnsetWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenBranchSetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLoadedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenNullResource;
@@ -973,6 +974,10 @@ test('a ??= or a write reading the variable itself publishes what Laravel sends'
         [['c' => '1'], ['id' => 9, 'r' => 0]],
     ]],
     'a ??= beside a when() holding only null' => [ReturnedCoalesceWhenNullResource::class, 'id: number; w?: string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 'x']],
+    ]],
+    'a ??= beside a when() calling a closure that returns null' => [ReturnedCoalesceWhenClosureResource::class, 'id: number; w?: string', [
         [[], ['id' => 9]],
         [['c' => '1'], ['id' => 9, 'w' => 'x']],
     ]],

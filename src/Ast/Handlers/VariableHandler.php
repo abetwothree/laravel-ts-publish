@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
@@ -57,7 +58,7 @@ use ReflectionMethod;
  *
  * @internal
  */
-final class VariableHandler implements ExpressionHandler
+final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 {
     use AnalyzesPluckCalls;
     use BindsMapCallbacks;
@@ -80,6 +81,23 @@ final class VariableHandler implements ExpressionHandler
 
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->resolveRead($expr, $scope, $engine);
+
+        // Only a bare variable is the closure or prop it holds; a read through it, as `$items->map(…)`, is a value.
+        if ($result !== null && ! $expr instanceof Variable) {
+            unset($result['heldObject']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a variable, or a read rooted at one, through the scope's bindings.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveRead(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $peeled = $expr instanceof MethodCall ? $this->peeledValuesOrAll($expr, $scope, $engine) : null;
 

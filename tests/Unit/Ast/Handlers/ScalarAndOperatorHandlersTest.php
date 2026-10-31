@@ -123,7 +123,7 @@ final class SpyExpressionEngine implements ExpressionEngine
 it('resolves a first-class-callable call of each kind to the empty object json_encode() writes for a Closure', function (Expr $expr) {
     $result = new FirstClassCallableHandler()->resolve($expr, handlerTestScope(), throwingEngine());
 
-    expect($result)->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($result)->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 })->with([
     '$this->when(...)' => fn (): Expr => new MethodCall(new Variable('this'), 'when', [new VariadicPlaceholder]),
     'strlen(...)' => fn (): Expr => new FuncCall(new Name('strlen'), [new VariadicPlaceholder]),
@@ -157,7 +157,7 @@ it('resolves a first-class callable as the call it stands for where the caller i
     };
 
     expect(new FirstClassCallableHandler(invoked: true)->resolve($expr, handlerTestScope(), $engine))
-        ->toBe(['type' => 'string', 'optional' => false]);
+        ->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
 });
 
 it('turns only a first-class callable into the zero-argument call it stands for', function () {

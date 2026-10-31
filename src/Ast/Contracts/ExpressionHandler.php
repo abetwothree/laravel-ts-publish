@@ -35,12 +35,16 @@ use PhpParser\Node\Expr;
  *      directIsArray?: bool,
  *      keepsKeys?: bool,
  *      absentReadsNull?: bool,
+ *      heldObject?: bool,
  *      resolvedFqcn?: class-string<JsonResource>
  * }
  *
  * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
  * `…Type`, so test ValueResult::readsEnumType() before treating the enum's name as spelled. `resolvedFqcn` says the
  * value is the keys that resource's `resolve()` returns, typed as Inertia sends them, so a spread takes its keys.
+ *
+ * `heldObject` says PHP holds the value as an object, a closure or an Inertia prop, never null until the caller
+ * resolves it to the type, so a `??=` of it never runs (KeepsHeldObjects).
  *
  * @internal
  */

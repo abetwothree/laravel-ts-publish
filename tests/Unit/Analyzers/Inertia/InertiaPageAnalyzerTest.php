@@ -281,6 +281,24 @@ it('reads a props local through its writes', function (string $action, string $t
         [['x' => 1], []],
         [['heading' => 'x', 'a' => null], ['heading' => 'x', 'a' => 'none']],
     ],
+    'a ??= over a local holding a closure that may resolve to null' => [
+        'coalesceClosureLocal',
+        '{ heading: string, a: number | null }',
+        [['x' => 1], []],
+        [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => null]],
+    ],
+    'a ??= over a first-class callable resolving to null' => [
+        'coalesceFirstClassNullable',
+        '{ heading: string, a: string | null }',
+        [[]],
+        [['heading' => 'x', 'a' => null]],
+    ],
+    'a ??= over an always prop over a value that may be null' => [
+        'coalesceAlwaysNullable',
+        '{ heading: string, a: string | null }',
+        [[]],
+        [['heading' => 'x', 'a' => null]],
+    ],
     'a write reading the local itself' => [
         'coalesceSelfRead',
         '{ heading: string, a?: number | string }',
@@ -312,8 +330,8 @@ it('throws for the request the in-block props local is never assigned on', funct
     expect(fn () => new PropsLocalController()->inBlock(Request::create('/')))->toThrow(NotFoundHttpException::class);
 });
 
-// The props hold the lazy prop object, which is not null, so `??=` never lands its default on any request.
-it('sends a lazy prop a ??= never fills on the partial reload that asks for it', function (string $action, array $query, array $sent) {
+// The props hold the lazy prop object or the closure, which is not null, so `??=` never lands its default.
+it('sends a lazy prop or callable a ??= never fills on the partial reload that asks for it', function (string $action, array $query, array $sent) {
     $request = partialReload('PropsLocal/'.ucfirst($action), 'a');
     $request->query->add($query);
 
@@ -326,6 +344,10 @@ it('sends a lazy prop a ??= never fills on the partial reload that asks for it',
     'deferred, resolving to a number' => ['coalesceDeferNullable', ['x' => 1], ['a' => 1]],
     'deferred, resolving to null' => ['coalesceDeferNullable', [], ['a' => null]],
     'optional, only null' => ['coalesceOptionalOnlyNull', [], ['a' => null]],
+    'a local closure, resolving to a number' => ['coalesceClosureLocal', ['x' => 1], ['a' => 1]],
+    'a local closure, resolving to null' => ['coalesceClosureLocal', [], ['a' => null]],
+    'a first-class callable, resolving to null' => ['coalesceFirstClassNullable', [], ['a' => null]],
+    'an always prop, resolving to null' => ['coalesceAlwaysNullable', [], ['a' => null]],
 ]);
 
 // Each published type would reject a value the oracle shows: the left side of `+` may hold the right side's key unread,

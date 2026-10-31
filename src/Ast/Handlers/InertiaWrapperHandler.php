@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\StaticCall;
@@ -24,7 +25,7 @@ use ReflectionMethod;
  *
  * @internal
  */
-final class InertiaWrapperHandler implements ExpressionHandler
+final class InertiaWrapperHandler implements ExpressionHandler, KeepsHeldObjects
 {
     /**
      * Optional means `IgnoreFirstLoad`: unconditionally absent from the initial response. Conditional
@@ -40,15 +41,6 @@ final class InertiaWrapperHandler implements ExpressionHandler
      */
     private const WRAPPERS = ['defer', 'optional', 'lazy', 'always', 'merge', 'deepMerge', 'scroll', 'once'];
 
-    /**
-     * Whether an expression calls one of Inertia's prop factories, which build a prop object PHP holds until Inertia
-     * resolves it.
-     */
-    public static function isPropFactory(Expr $expr): bool
-    {
-        return self::factory($expr) !== null;
-    }
-
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -58,36 +50,24 @@ final class InertiaWrapperHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $factory = self::factory($expr);
-
-        if ($factory === null || ! $expr instanceof StaticCall || $expr->isFirstClassCallable()) {
+        if (! $expr instanceof StaticCall
+            || ! $expr->class instanceof Name
+            || $expr->class->getLast() !== 'Inertia'
+            || ! $expr->name instanceof Identifier
+            || ! in_array($expr->name->toString(), self::WRAPPERS, true)
+            || $expr->isFirstClassCallable()) {
             return null;
         }
 
-        $wrapped = $this->wrapperArguments($expr, $factory)->at(0);
+        $wrapped = $this->wrapperArguments($expr, $expr->name->toString())->at(0);
 
         if ($wrapped === null) {
             return null;
         }
 
-        $result = $engine->resolve($wrapped->value);
+        $result = ValueResult::heldObject($engine->resolve($wrapped->value));
 
-        return in_array($factory, self::OPTIONAL_WRAPPERS, true) ? ValueResult::missable($result) : $result;
-    }
-
-    /**
-     * The name of the Inertia prop factory an expression calls, or null for any other expression.
-     */
-    private static function factory(Expr $expr): ?string
-    {
-        if (! $expr instanceof StaticCall || ! $expr->class instanceof Name || $expr->class->getLast() !== 'Inertia'
-            || ! $expr->name instanceof Identifier) {
-            return null;
-        }
-
-        $name = $expr->name->toString();
-
-        return in_array($name, self::WRAPPERS, true) ? $name : null;
+        return in_array($expr->name->toString(), self::OPTIONAL_WRAPPERS, true) ? ValueResult::missable($result) : $result;
     }
 
     /**

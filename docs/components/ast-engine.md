@@ -32,7 +32,7 @@ These are the classes a change to the engine usually touches:
 | [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
-| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
+| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's `heldObject` flag only from a `KeepsHeldObjects` handler |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
 | [`ResourceExpressionHandlers`] | The ordered handler profiles |
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |

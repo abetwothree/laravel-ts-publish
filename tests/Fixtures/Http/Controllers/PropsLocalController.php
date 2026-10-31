@@ -217,6 +217,36 @@ class PropsLocalController
         return Inertia::render('PropsLocal/CoalesceClosureRepeated', $props);
     }
 
+    /** Renders a local whose key holds a local's closure that may resolve to null, which `??=` keeps. */
+    public function coalesceClosureLocal(Request $request): Response
+    {
+        $f = fn (): ?int => $request->boolean('x') ? 1 : null;
+        $props = ['heading' => 'x'];
+        $props['a'] = $f;
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceClosureLocal', $props);
+    }
+
+    /** Renders a local whose key holds a first-class callable resolving to null, which `??=` keeps. */
+    public function coalesceFirstClassNullable(): Response
+    {
+        $props = ['heading' => 'x'];
+        $props['a'] = $this->maybe(...);
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceFirstClassNullable', $props);
+    }
+
+    /** Renders a local whose key holds an always prop over a value that may be null, which `??=` keeps. */
+    public function coalesceAlwaysNullable(): Response
+    {
+        $props = ['heading' => 'x', 'a' => Inertia::always($this->maybe())];
+        $props['a'] ??= 'none';
+
+        return Inertia::render('PropsLocal/CoalesceAlwaysNullable', $props);
+    }
+
     /** Renders a local whose key a block may set, which a write reading the local itself fills otherwise. */
     public function coalesceSelfRead(Request $request): Response
     {
@@ -383,5 +413,11 @@ class PropsLocalController
             'card' => new UserCardResource($post->author),
             'extra' => UserCardResource::make($post->author)->additional(['meta' => 1]),
         ]);
+    }
+
+    /** A label that may be missing, which one action passes as a callable and another wraps in an always prop. */
+    private function maybe(): ?string
+    {
+        return null;
     }
 }

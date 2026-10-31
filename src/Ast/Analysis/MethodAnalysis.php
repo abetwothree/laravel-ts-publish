@@ -84,6 +84,14 @@ class MethodAnalysis
     public array $declaredTokenFqcns = [];
 
     /**
+     * Property name => true for each key addProperty() last gave a value PHP holds as an object (`heldObject`), which a
+     * returned variable's walk reads where the write lands. A merge or a join sets none, so its keys read as plain.
+     *
+     * @var array<array-key, true>
+     */
+    public array $heldObjectKeys = [];
+
+    /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
@@ -155,6 +163,12 @@ class MethodAnalysis
             'description' => $description,
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
+
+        if ($result['heldObject'] ?? false) {
+            $this->heldObjectKeys[$name] = true;
+        } else {
+            unset($this->heldObjectKeys[$name]);
+        }
 
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
@@ -281,6 +295,7 @@ class MethodAnalysis
         $this->casts = $source->casts;
         $this->carried = $source->carried;
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
+        $this->heldObjectKeys = $source->heldObjectKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }

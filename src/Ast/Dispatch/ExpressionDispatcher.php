@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use PhpParser\Node\Expr;
 
 /**
@@ -49,9 +50,16 @@ final class ExpressionDispatcher
         foreach ($this->candidatesByClass[$nodeClass] as $handler) {
             $result = $handler->resolve($expr, $scope, $engine);
 
-            if ($result !== null) {
-                return $result;
+            if ($result === null) {
+                continue;
             }
+
+            // A value a handler reads from a held object, as `when()` calls a closure, is not that object itself.
+            if (! $handler instanceof KeepsHeldObjects) {
+                unset($result['heldObject']);
+            }
+
+            return $result;
         }
 
         return null;

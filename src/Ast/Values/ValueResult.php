@@ -216,6 +216,17 @@ final class ValueResult
     }
 
     /**
+     * The result as an object PHP holds until its caller resolves it to the type, a closure or an Inertia prop.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function heldObject(array $result): array
+    {
+        return [...$result, 'heldObject' => true];
+    }
+
+    /**
      * The result as `??` or a short `?:` receives its checked operand: a field absent from the request reads `null`,
      * which the operator replaces, so only a placeholder that drops the key (a MissingValue) keeps it optional.
      *

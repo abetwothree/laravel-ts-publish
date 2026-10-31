@@ -56,6 +56,7 @@ const METHOD_CALL_PINNED = [
  * with a handler the resource profile lacks, since every other pair keeps the resource profile's order.
  */
 const INERTIA_METHOD_CALL_PINNED = [
+    'FirstClassCallableHandler|InertiaResourcePropHandler' => FirstClassCallableHandler::class,
     'InertiaResourcePropHandler|ToResourceHandler' => InertiaResourcePropHandler::class,
 ];
 

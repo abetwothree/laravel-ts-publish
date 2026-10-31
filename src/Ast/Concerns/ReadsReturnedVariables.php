@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -26,7 +25,6 @@ use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
-use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
@@ -106,7 +104,7 @@ trait ReadsReturnedVariables
 
     /**
      * What some path of the walk under way leaves each key holding, which decides whether a `??=` of it runs: no value,
-     * a plain value that may be null, or a closure or Inertia prop object (`holdsObject()`), which may resolve to null.
+     * a plain value that may be null, or a closure or Inertia prop object (`heldObject`), which may resolve to null.
      *
      * @var array<string, KeyPaths>
      */
@@ -521,7 +519,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $this->writeKey($into, $keyName, $result, $isConditional, $this->holdsObject($stmt->expr->expr));
+                $this->writeKey($into, $keyName, $result, $isConditional);
 
                 continue;
             }
@@ -1029,7 +1027,6 @@ trait ReadsReturnedVariables
     {
         $this->noteOptionalValues($write);
         $unset = $this->keysLeftUnset($value, $write);
-        $objects = $this->keysHoldingObjects($value);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
         $written = [];
@@ -1058,7 +1055,7 @@ trait ReadsReturnedVariables
                 $isConditional,
                 $heldType,
                 isset($unset[$prop['name']]),
-                isset($objects[$prop['name']]),
+                isset($write->heldObjectKeys[$prop['name']]),
                 $prop['type'],
             );
 
@@ -1105,38 +1102,6 @@ trait ReadsReturnedVariables
         }
 
         return $unset;
-    }
-
-    /**
-     * The keys an array literal writes a closure or an Inertia prop object to, its last item for a key deciding.
-     *
-     * @return array<string, true>
-     */
-    private function keysHoldingObjects(Expr $value): array
-    {
-        $objects = [];
-
-        foreach ($value instanceof Array_ ? $value->items : [] as $item) {
-            $key = $item->key === null ? null : $this->namedKey($item->key);
-
-            if ($key !== null && $this->holdsObject($item->value)) {
-                $objects[$key] = true;
-            } elseif ($key !== null) {
-                unset($objects[$key]);
-            }
-        }
-
-        return $objects;
-    }
-
-    /**
-     * Whether a value is a closure or an Inertia prop object, which PHP holds as an object that is not null until
-     * Inertia resolves it, though what it resolves to may be.
-     */
-    private function holdsObject(Expr $value): bool
-    {
-        return $value instanceof ClosureExpr || $value instanceof ArrowFunction
-            || InertiaWrapperHandler::isPropFactory($value);
     }
 
     /**
@@ -1521,15 +1486,9 @@ trait ReadsReturnedVariables
      * appends is folded back over the earlier one.
      *
      * @param  ValueExpressionResult  $result
-     * @param  bool  $object  whether the value written is a closure or an Inertia prop object (holdsObject())
      */
-    private function writeKey(
-        MethodAnalysis $into,
-        string $keyName,
-        array $result,
-        bool $isConditional,
-        bool $object = false,
-    ): void {
+    private function writeKey(MethodAnalysis $into, string $keyName, array $result, bool $isConditional): void
+    {
         $existingIndex = null;
 
         foreach ($into->properties as $index => $existing) {
@@ -1547,7 +1506,7 @@ trait ReadsReturnedVariables
         }
 
         $heldType = $existingIndex === null ? null : $into->properties[$existingIndex]['type'];
-        $this->recordWrite($keyName, $isConditional, $heldType, false, $object, $result['type']);
+        $this->recordWrite($keyName, $isConditional, $heldType, false, $result['heldObject'] ?? false, $result['type']);
         $appendedIndex = count($into->properties);
 
         $into->addProperty($keyName, $result, $isConditional || $result['optional']);
@@ -1608,8 +1567,8 @@ trait ReadsReturnedVariables
             $into->properties,
         );
         $filled = clone $into;
-        $defaultObject = $this->holdsObject($value);
-        $this->writeKey($filled, $keyName, $default, false, $defaultObject);
+        $defaultObject = $default['heldObject'] ?? false;
+        $this->writeKey($filled, $keyName, $default, false);
         $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
 
