@@ -17,8 +17,12 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
 
 /**
  * An Inertia UI Table, `PostTable::make()->defaultSort('-id')` or `new PostTable`, which Inertia sends as its
@@ -50,8 +54,17 @@ final class InertiaTableHandler implements ExpressionHandler
         $table = resolve(CallChainWalker::class)->resolveRootClass($expr, self::TABLE_BASE, allowNew: true);
         $model = $table === null ? null : $this->tableModel($table);
 
-        if ($model === null) {
+        if ($table === null || $model === null) {
             return null;
+        }
+
+        $leaving = $this->callLeavingTable($expr, $table);
+
+        if ($leaving !== null) {
+            // The table's query() is a query on its model, so a chain past it reads as `Post::query()` with that chain.
+            return $leaving instanceof MethodCall && $this->callsQuery($leaving)
+                ? $engine->resolve($this->onModelQuery($expr, $leaving, $model))
+                : null;
         }
 
         return [
@@ -60,6 +73,93 @@ final class InertiaTableHandler implements ExpressionHandler
             'modelFqcn' => $model,
             'customImports' => [$this->tablePackage() => [self::TABLE_TYPE]],
         ];
+    }
+
+    /**
+     * The call nearest the root where the chain stops returning the table, as `->query()` in `->query()->count()`; null
+     * where every call returns it, so the chain's value is the table.
+     *
+     * @param  class-string  $table
+     */
+    private function callLeavingTable(Expr $expr, string $table): MethodCall|StaticCall|null
+    {
+        $leaving = null;
+
+        while ($expr instanceof MethodCall || $expr instanceof StaticCall) {
+            if (! $expr->name instanceof Identifier || ! $this->returnsTable($table, $expr->name->toString())) {
+                $leaving = $expr;
+            }
+
+            $expr = $expr instanceof MethodCall ? $expr->var : null;
+        }
+
+        return $leaving;
+    }
+
+    /**
+     * Whether a call is the table's own argument-less `query()`.
+     */
+    private function callsQuery(MethodCall $call): bool
+    {
+        return $call->name instanceof Identifier
+            && strtolower($call->name->toString()) === 'query'
+            && ! $call->isFirstClassCallable()
+            && $call->getArgs() === [];
+    }
+
+    /**
+     * The chain with the table's `query()` call replaced by the model's own.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function onModelQuery(Expr $expr, MethodCall $query, string $model): Expr
+    {
+        if ($expr === $query) {
+            return new StaticCall(new FullyQualified($model), 'query', [], $query->getAttributes());
+        }
+
+        if (! $expr instanceof MethodCall) {
+            return $expr;
+        }
+
+        $receiver = $this->onModelQuery($expr->var, $query, $model);
+
+        return new MethodCall($receiver, $expr->name, $expr->args, $expr->getAttributes());
+    }
+
+    /**
+     * Whether a method of the table declares it returns the table: `static`, `self` or a table class, natively or, with
+     * no native type, by `@return`, which also takes `$this`.
+     *
+     * @param  class-string  $table
+     */
+    private function returnsTable(string $table, string $method): bool
+    {
+        if (! method_exists($table, $method)) {
+            return false;
+        }
+
+        $reflection = new ReflectionMethod($table, $method);
+        $type = $reflection->getReturnType();
+
+        if ($type !== null) {
+            return $type instanceof ReflectionNamedType && ! $type->allowsNull() && $this->namesTable($type->getName());
+        }
+
+        if (preg_match('/@return\s+(\S+)/', (string) $reflection->getDocComment(), $match) !== 1) {
+            return false;
+        }
+
+        return $match[1] === '$this' || $this->namesTable($match[1]);
+    }
+
+    /**
+     * Whether a return type's name is the table itself or a table class.
+     */
+    private function namesTable(string $name): bool
+    {
+        return in_array(strtolower($name), ['static', 'self'], true)
+            || is_a(ltrim($name, '\\'), self::TABLE_BASE, true);
     }
 
     /**

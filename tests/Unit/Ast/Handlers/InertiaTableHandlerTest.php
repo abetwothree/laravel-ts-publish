@@ -11,13 +11,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTraitTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\ModellessTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTableCount;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Routing\Router;
+use Inertia\Inertia;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
-// No test here has an oracle: the stubbed table package throws in toArray(), which Inertia calls to send a table.
+// Only a value no table reaches has an oracle: the stubbed table package throws in toArray(), which Inertia calls to
+// send a table.
 
 it('types a table prop beside the render call\'s other props, under the action\'s casts', function () {
     app(Router::class)->get('/tables/beside', [InertiaTableBesidePropsController::class, 'index']);
@@ -50,6 +55,37 @@ it('restates a table key over a resolved resource\'s own type', function () {
 
 it('types a table a middleware shares', function () {
     expect(sharedProps(MiddlewareWithTable::class))->toBe(['posts' => 'TableResource<Post>', 'count' => 'number']);
+});
+
+// `->query()->count()` returns the number of the table's query, not the table, so it reads as that call does.
+it('types a chain past the table as its last call, in a literal, a local, shared data and a resolved body', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $user->id]);
+    $counted = inertiaProps(new InertiaTableBesidePropsController()->counted());
+    $resolved = inertiaProps(new InertiaTableBesidePropsController()->countedResolved($post));
+    Inertia::share(new MiddlewareWithTableCount()->share(request()));
+    $shared = inertiaProps(Inertia::render('Shared', []));
+
+    expect(pageData(InertiaTableBesidePropsController::class.'@counted')['pageType'])
+        ->toBe('Inertia.SharedData & { n: number, held: number }')
+        ->and(pageData(InertiaTableBesidePropsController::class.'@countedResolved')['pageType'])
+        ->toBe('Inertia.SharedData & { card: PostTableCountResource }')
+        ->and(sharedProps(MiddlewareWithTableCount::class))->toBe(['n' => 'number'])
+        ->and([$counted->n, $counted->held, $resolved->card->n, $shared->n])->toBe([2, 2, 2, 2]);
+});
+
+// The table's query() is a query on its model, so a chain past it reads as the same chain on `Post::query()`.
+it('types a chain past the table\'s query() as that chain on the model\'s query()', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $user->id]);
+    $sent = inertiaProps(new InertiaTableBesidePropsController()->queried());
+
+    expect(pageData(InertiaTableBesidePropsController::class.'@queried')['pageType'])
+        ->toBe('Inertia.SharedData & { rows: Post[], first: Post | null }')
+        ->and(array_column($sent->rows, 'title'))->toBe(['First', 'Second'])
+        ->and($sent->first->title)->toBe('Second');
 });
 
 it('detects direct Inertia UI Table props without calling toArray', function () {
@@ -132,4 +168,6 @@ it('declines a table naming no model, a chain on no table, and a receiver it can
     'a new of one' => ['new \\'.ModellessTable::class],
     'a model query' => ['\\'.Post::class.'::query()->latest()'],
     'a receiver' => ['$tables->defaultSort("-id")'],
+    'a chain past a call that is not query()' => ['\\'.PostQueryTable::class.'::make()->toArray()'],
+    'a static root that is not the table\'s' => ['\\'.PostQueryTable::class.'::undeclared()->defaultSort("-id")'],
 ]);
