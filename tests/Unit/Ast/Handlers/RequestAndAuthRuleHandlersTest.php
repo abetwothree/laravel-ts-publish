@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
@@ -62,16 +63,10 @@ function requestRuleEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Reads nothing Inertia sends. */
-        public function readsInertiaProps(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
-        }
-
-        /** Reads nothing a JsonResource filters for Inertia. */
-        public function readsFilteredValues(): bool
-        {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis

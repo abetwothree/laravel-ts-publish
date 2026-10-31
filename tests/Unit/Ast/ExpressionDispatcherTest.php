@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
@@ -38,16 +39,10 @@ function dispatcherTestEngine(): ExpressionEngine
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }
 
-        /** Reads nothing Inertia sends. */
-        public function readsInertiaProps(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
-        }
-
-        /** Reads nothing a JsonResource filters for Inertia. */
-        public function readsFilteredValues(): bool
-        {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis

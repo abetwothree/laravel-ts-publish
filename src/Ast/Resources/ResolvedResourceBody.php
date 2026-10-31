@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
@@ -52,8 +53,9 @@ final class ResolvedResourceBody
         DependencyRecorder::recordClass($resource);
 
         $engine = resolve(AstEngine::class);
-        $sent = $this->resolved($engine->analyzeMethod($resource, inertiaProps: true), $resource);
-        $restated = $this->restatedKeys($this->resolved($engine->analyzeMethod($resource), $resource), $sent, $resource);
+        $sent = $this->resolved($engine->analyzeMethod($resource, reading: Reading::InertiaFiltered), $resource);
+        $own = $this->resolved($engine->analyzeMethod($resource, reading: Reading::Encoded), $resource);
+        $restated = $this->restatedKeys($own, $sent, $resource);
 
         if ($restated === []) {
             return null;

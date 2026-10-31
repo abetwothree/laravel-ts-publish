@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
@@ -112,7 +113,7 @@ class InertiaSharedDataAnalyzer
      */
     protected function buildResult(string $middlewareClass): array
     {
-        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share', inertiaProps: true);
+        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share', reading: Reading::Inertia);
         $keys = array_column($analysis->properties, 'name');
 
         // Each location decides alone, so share() outranks the class whatever the spelling; a loser imports nothing.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -84,22 +85,13 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
-        $inertiaProps = $site?->readsInertiaProps() ?? false;
-        $filtered = $site?->readsFilteredValues() ?? false;
+        $reading = $site?->reading() ?? Reading::Encoded;
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime?->memoKey($class) ?? '').AstEngine::readingKey($inertiaProps, $filtered),
-            function () use ($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered): ?array {
-                $result = $this->reflectOrReadBody(
-                    $class,
-                    $methodName,
-                    $passed,
-                    $backing,
-                    $runtime,
-                    $inertiaProps,
-                    $filtered,
-                );
+                .($runtime?->memoKey($class) ?? '').$reading->memoKey(),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $reading): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -156,8 +148,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
-        bool $inertiaProps,
-        bool $filtered,
+        Reading $reading,
     ): ?array {
         $reflected = $this->reflected($class, $methodName);
 
@@ -165,9 +156,9 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $inertiaProps, $filtered)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading)
             ?? $this->declaredOverVagueList(
-                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered),
+                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $reading),
                 $reflected,
             )
             ?? $reflected;
@@ -221,8 +212,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
-        bool $inertiaProps,
-        bool $filtered,
+        Reading $reading,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -251,8 +241,7 @@ final class MethodReturnTypeResolver
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
-                inertiaProps: $inertiaProps,
-                filtered: $filtered,
+                reading: $reading,
             );
         } finally {
             $memo->leave($key);
@@ -314,8 +303,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
-        bool $inertiaProps,
-        bool $filtered,
+        Reading $reading,
     ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -328,7 +316,7 @@ final class MethodReturnTypeResolver
 
         try {
             return resolve(AstEngine::class)
-                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $inertiaProps, $filtered);
+                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading);
         } finally {
             $memo->leave($key);
         }

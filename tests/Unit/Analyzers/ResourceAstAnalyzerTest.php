@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -7338,15 +7339,15 @@ test('a short ternary over a resource it builds keeps both arms in an API resour
 // each helper that body reads, keeps the null filter() sends, as the resource's own reading does.
 test('a short ternary keeps both arms in a resource body Inertia reads', function () {
     $keys = array_flip(['built', 'tryFrom', 'helperTryFrom', 'helperInst', 'mwTryFrom']);
-    $read = fn (bool $inertiaProps): array => array_intersect_key(array_column(
-        resolve(AstEngine::class)->analyzeMethod(CheckedResourceElvisResource::class, inertiaProps: $inertiaProps)->properties,
+    $read = fn (Reading $reading): array => array_intersect_key(array_column(
+        resolve(AstEngine::class)->analyzeMethod(CheckedResourceElvisResource::class, reading: $reading)->properties,
         'type',
         'name',
     ), $keys);
     $empty = sentAsJson(new CheckedResourceElvisResource(null)->resolve(Request::create('/')));
 
-    expect($read(true))->toBe(array_fill_keys(array_keys($keys), 'StatusType | null'))
-        ->and($read(true))->toBe($read(false))
+    expect($read(Reading::Inertia))->toBe(array_fill_keys(array_keys($keys), 'StatusType | null'))
+        ->and($read(Reading::Inertia))->toBe($read(Reading::Encoded))
         ->and([$empty->tryFrom, $empty->helperTryFrom, $empty->helperInst, $empty->mwTryFrom])->toBe([null, null, null, null]);
 });
 

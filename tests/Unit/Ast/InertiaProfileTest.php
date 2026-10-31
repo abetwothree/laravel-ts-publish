@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
@@ -32,7 +33,7 @@ use Workbench\App\Models\Warehouse;
 /** An analyzer reading what Inertia sends, with no backing model, as the page analyzer builds it. */
 function inertiaProfileAnalyzer(): ResourceAstAnalyzer
 {
-    return new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', inertiaProps: true);
+    return new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', reading: Reading::Inertia);
 }
 
 // Inertia sends a page prop as it sends a shared value, so a page and shared data run one profile; the flag decides
@@ -41,14 +42,22 @@ it('gives a page and a shared-data middleware the one Inertia profile, and only 
     $engine = inertiaProfileAnalyzer();
     $inertia = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
 
-    expect(ResourceExpressionHandlers::forSubject(InertiaController::class, $engine, inertiaProps: true))->toEqual($inertia)
-        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, $engine, inertiaProps: true))->toEqual($inertia)
+    expect(ResourceExpressionHandlers::forSubject(InertiaController::class, $engine, reading: Reading::Inertia))->toEqual($inertia)
+        ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, $engine, reading: Reading::Inertia))->toEqual($inertia)
         ->and(ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, $engine))
         ->toEqual(ResourceExpressionHandlers::forNonResourceSubjects())
-        ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, inertiaProps: true))
+        ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, reading: Reading::Inertia))
         ->toEqual(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::make($engine)))
         ->and($inertia)->toHaveCount(29);
 });
+
+// An Inertia reading's CallSite binds a callable as called, which only the profile the reading builds reads as called.
+it('takes an injected profile or an Inertia reading, never both', function (Reading $reading) {
+    $profile = ResourceExpressionHandlers::forNonResourceSubjects();
+
+    expect(fn () => new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', $profile, reading: $reading))
+        ->toThrow(LogicException::class, 'An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
+})->with([Reading::Inertia, Reading::InertiaFiltered]);
 
 // Ordering pin: StaticCallHandler's last arm claims every StaticCall on a named class, so after it
 // ModelFinderHandler is unreachable and `Post::find(1)` reflects as an ordinary static method.
@@ -107,7 +116,7 @@ it('tries InertiaResourcePropHandler before ToResourceHandler and the receiver h
     $reflection = new ReflectionClass(InertiaController::class);
     $scope = new AnalysisScope($reflection);
     $scope->varModelBindings['warehouse'] = Warehouse::class;
-    $analyzer = new ResourceAstAnalyzer($reflection, null, 'dashboard', scope: $scope, inertiaProps: true);
+    $analyzer = new ResourceAstAnalyzer($reflection, null, 'dashboard', scope: $scope, reading: Reading::Inertia);
     $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
 
     expect($analyzer->resolve(new MethodCall(new Variable('warehouse'), 'toResource'))['type'])->toBe('{ data: WarehouseResource }')
@@ -145,7 +154,7 @@ it('types a first-class-callable prop as the call it stands for', function () {
 it('RelationCollectionChainHandler and ReceiverMethodCallHandler agree on a call on a held receiver', function (string $php, string $type) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
     $subject = new ReflectionClass(PostReceiverController::class);
-    $engine = new ResourceAstAnalyzer($subject, null, '__construct', inertiaProps: true);
+    $engine = new ResourceAstAnalyzer($subject, null, '__construct', reading: Reading::Inertia);
 
     $chain = new RelationCollectionChainHandler()->resolve($expr, new AnalysisScope($subject), $engine);
     $receiver = new ReceiverMethodCallHandler()->resolve($expr, new AnalysisScope($subject), $engine);

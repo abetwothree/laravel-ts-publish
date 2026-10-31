@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
@@ -63,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use LogicException;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -143,9 +145,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
     private readonly bool $ownsScope;
 
-    /** Whether a JsonResource's filter() runs over the values Inertia sends from this body; false outside Inertia. */
-    private readonly bool $filtered;
-
     /** @var array<string, true> the runtime class's methods whose reads enclose this one, so a read of one re-enters */
     private array $methodsOnStack = [];
 
@@ -162,7 +161,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *
      * @param  ReflectionClass<T>  $resourceReflection  templated because ReflectionClass is invariant
      * @param  class-string<Model>|null  $modelClass
-     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile
+     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile; encoded reading only
      * @param  AnalysisScope|null  $scope  a scope AstEngine::bindingsFor() seeded; it gains only the collection facts
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
@@ -172,9 +171,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                                      scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
-     * @param  bool  $inertiaProps  whether Inertia sends the values read, which runs the subject's profile through
-     *                              ResourceExpressionHandlers::forInertia() and every body it reads the same way
-     * @param  bool  $filtered  whether a JsonResource's filter() runs over those values; only read with $inertiaProps
+     * @param  Reading  $reading  how the values read reach the client: an Inertia reading runs the subject's profile
+     *                            through ResourceExpressionHandlers::forInertia(), and every body it reads the same way
+     *
+     * @throws LogicException for a $handlerProfile under an Inertia reading, whose CallSite binds a callable as called
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -187,10 +187,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         private readonly array $passed = [],
         ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
-        private readonly bool $inertiaProps = false,
-        bool $filtered = false,
+        private readonly Reading $reading = Reading::Encoded,
     ) {
-        $this->filtered = $inertiaProps && $filtered;
+        if ($handlerProfile !== null && $reading !== Reading::Encoded) {
+            throw new LogicException('An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
+        }
+
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
             $this->modelClass,
@@ -367,19 +369,32 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether Inertia sends the values this analyzer reads, as a page's props, shared data and every body they reach.
+     * How the values this analyzer reads reach the client.
      */
-    public function readsInertiaProps(): bool
+    public function reading(): Reading
     {
-        return $this->inertiaProps;
+        return $this->reading;
     }
 
     /**
-     * Whether a JsonResource's filter() runs over the values Inertia sends from this body.
+     * A reader of this analyzer's body as `json_encode()` sends its values: the same scope, method and call read, under
+     * the encoded reading and with the subject's own profile.
      */
-    public function readsFilteredValues(): bool
+    public function encodedReader(): self
     {
-        return $this->filtered;
+        $analyzer = new self(
+            $this->scope->subjectReflection,
+            $this->scope->modelClass,
+            $this->methodName,
+            scope: $this->scope,
+            context: $this->context,
+            passed: $this->passed,
+            readsCall: $this->readsCall,
+        );
+        $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
+        $analyzer->methodsOnStack = $this->methodsOnStack;
+
+        return $analyzer;
     }
 
     /**
@@ -706,7 +721,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         $subject = $this->scope->subjectReflection->getName();
 
-        return $this->handlerProfile ?? ResourceExpressionHandlers::forSubject($subject, $this, $this->inertiaProps);
+        return $this->handlerProfile ?? ResourceExpressionHandlers::forSubject($subject, $this, $this->reading);
     }
 
     /**
@@ -1684,7 +1699,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        // A resolved resource's restated keys flatten as the resource does, which a flagged read restates the same way.
+        // A resolved resource's restated keys flatten as the resource does, which an Inertia reading restates alike.
         if (isset($arm['result']['resolvedFqcn'])) {
             return $this->analyzeResourceSpreadArm($arm['result']['resolvedFqcn']);
         }
@@ -1743,8 +1758,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $resourceFqcn,
             'toArray',
             runtime: $this->scope->builtRuntime($resourceFqcn),
-            inertiaProps: $this->inertiaProps,
-            filtered: $this->filtered,
+            reading: $this->reading,
         );
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
@@ -2044,8 +2058,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
             runtime: $this->scope->runtime,
-            inertiaProps: $this->inertiaProps,
-            filtered: $this->filtered,
+            reading: $this->reading,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];

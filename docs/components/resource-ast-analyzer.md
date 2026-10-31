@@ -944,11 +944,10 @@ A mixed ternary wraps the enum in one arm and reads it directly in the other, as
 `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
 mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand builds a
 resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is always
-true, so `TernaryHandler` types it as that operand alone where the operand types, the engine reads a value Inertia
-sends (`ExpressionEngine::readsInertiaProps()`), a page's props, the shared data or a body they read, and no
-`JsonResource::filter()` reaches it (`readsFilteredValues()`). Anywhere else, an API resource, a helper it reads, or a
-resource body Inertia reads through `resolve()`, both arms stay, since filter() sends a resource around null as null;
-they stay too beside an operand the engine cannot type.
+true, so `TernaryHandler` types it as that operand alone where the operand types and the engine reads under
+`Reading::Inertia`: a page's props, the shared data or a body they read, which no `JsonResource::filter()` reaches.
+Anywhere else, an API resource, a helper it reads, or a resource body Inertia reads through `resolve()`, both arms
+stay, since filter() sends a resource around null as null; they stay too beside an operand the engine cannot type.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
 `rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested

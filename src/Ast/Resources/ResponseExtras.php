@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
@@ -68,7 +69,7 @@ final readonly class ResponseExtras
             }
         }
 
-        return self::ofAnalysis(resolve(AstEngine::class)->analyzeMethod($resource, 'with'));
+        return self::ofAnalysis(resolve(AstEngine::class)->analyzeMethod($resource, 'with', reading: Reading::Encoded));
     }
 
     /**

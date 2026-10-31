@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
@@ -135,8 +136,7 @@ final class TernaryHandler implements ExpressionHandler
     private function resourceOperand(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr->if !== null
-            || ! $engine->readsInertiaProps()
-            || $engine->readsFilteredValues()
+            || $engine->reading() !== Reading::Inertia
             || ! $this->buildsResource($expr->cond, $scope)
         ) {
             return null;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ArrayMergeHandler;
@@ -49,6 +50,16 @@ use LogicException;
 final class ResourceExpressionHandlers
 {
     /**
+     * Each handler only Inertia runs, under the handler it goes before. InertiaResourcePropHandler precedes
+     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to; ModelFinderHandler
+     * precedes StaticCallHandler, whose last arm claims every static call, so a query chain types as its paginator.
+     */
+    private const array INERTIA_HANDLERS = [
+        ToResourceHandler::class => InertiaResourcePropHandler::class,
+        StaticCallHandler::class => ModelFinderHandler::class,
+    ];
+
+    /**
      * The full resource profile, a JsonResource subject's, in the dispatch order derived from the guard order of the
      * single if/else chain these handlers replaced. $engine mirrors the `make($this)` call site; unused today,
      * kept for a future handler that needs the engine at construction.
@@ -65,11 +76,11 @@ final class ResourceExpressionHandlers
      *
      * @return list<ExpressionHandler>
      */
-    public static function forSubject(string $subjectClass, ExpressionEngine $engine, bool $inertiaProps = false): array
+    public static function forSubject(string $subjectClass, ExpressionEngine $engine, Reading $reading = Reading::Encoded): array
     {
         $own = is_a($subjectClass, JsonResource::class, true) ? self::make($engine) : self::forNonResourceSubjects();
 
-        return $inertiaProps ? self::forInertia($own) : $own;
+        return $reading === Reading::Encoded ? $own : self::forInertia($own);
     }
 
     /**
@@ -109,7 +120,7 @@ final class ResourceExpressionHandlers
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>
      *
-     * @throws LogicException when the list lacks ToResourceHandler or StaticCallHandler, the insertion points
+     * @throws LogicException when the list lacks a handler INERTIA_HANDLERS inserts one before
      */
     public static function forInertia(array $handlers): array
     {
@@ -133,9 +144,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The same handlers with the two only Inertia runs: InertiaResourcePropHandler before ToResourceHandler, the first
-     * that types a resource as the value a nested key flattens it to, and ModelFinderHandler before StaticCallHandler,
-     * whose last arm claims every static call, so a query chain types as the paginator it returns.
+     * The same handlers with each one only Inertia runs inserted before its anchor, as INERTIA_HANDLERS pairs them.
      *
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>
@@ -143,7 +152,7 @@ final class ResourceExpressionHandlers
     private static function withPagePropHandlers(array $handlers): array
     {
         // Without its insertion point a page-prop handler would be dropped silently, and every value it types with it.
-        foreach ([ToResourceHandler::class, StaticCallHandler::class] as $anchor) {
+        foreach (array_keys(self::INERTIA_HANDLERS) as $anchor) {
             if (! array_any($handlers, static fn (ExpressionHandler $handler): bool => $handler instanceof $anchor)) {
                 throw new LogicException(sprintf('forInertia() inserts a page-prop handler before %s, which the list lacks.', $anchor));
             }
@@ -152,12 +161,10 @@ final class ResourceExpressionHandlers
         $profile = [];
 
         foreach ($handlers as $handler) {
-            if ($handler instanceof ToResourceHandler) {
-                $profile[] = new InertiaResourcePropHandler;
-            }
-
-            if ($handler instanceof StaticCallHandler) {
-                $profile[] = new ModelFinderHandler;
+            foreach (self::INERTIA_HANDLERS as $anchor => $inserted) {
+                if ($handler instanceof $anchor) {
+                    $profile[] = new $inserted;
+                }
             }
 
             $profile[] = $handler;

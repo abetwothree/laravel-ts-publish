@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
@@ -116,19 +117,21 @@ test('a resource spread twice inside another analysis is analyzed once', functio
         ->and($lookups['own:'.PostBadgeResource::class.'::toArray'] ?? 0)->toBe(1);
 });
 
-// Inertia calls a callable a body returns, which json_encode() writes as `{}`, so the readings never share an answer.
-test('a body read for Inertia and the same body read for anything else are each analyzed once, apart', function () use ($countLookups) {
+// Inertia calls a callable a body returns, which json_encode() writes as `{}`, and filter() sends a resource around
+// null as null, so the readings never share an answer.
+test('a body is analyzed once per reading, apart', function () use ($countLookups) {
     $lookups = $countLookups();
     $engine = resolve(AstEngine::class);
+    $readings = [...Reading::cases(), ...Reading::cases()];
 
     $types = array_map(
-        fn (bool $inertiaProps): ?string => $engine
-            ->analyzeMethod(HelperCallablePropsController::class, 'meta', inertiaProps: $inertiaProps)->properties[0]['type'] ?? null,
-        [false, true, false, true],
+        fn (Reading $reading): ?string => $engine
+            ->analyzeMethod(HelperCallablePropsController::class, 'meta', reading: $reading)->properties[0]['type'] ?? null,
+        $readings,
     );
 
-    expect($types)->toBe(['Record<string, never>', 'string', 'Record<string, never>', 'string'])
-        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(2);
+    expect($types)->toBe(['Record<string, never>', 'string', 'string', 'Record<string, never>', 'string', 'string'])
+        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(3);
 });
 
 test('an accessor body is analyzed once per model, attribute and import mode', function () use ($countLookups) {

@@ -108,21 +108,23 @@ at any depth, so a first-class callable there types as the call it stands for. `
 a share middleware build this profile, and each ordering above, the method-call claimants that leave `toResource()` and
 `toResourceCollection()` `unknown` included.
 
-The `inertiaProps` flag on `analyzeMethod()`, `analyzeMethodValue()` and `ResourceAstAnalyzer`, not the class that
-declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` reports it.
+The [`Reading`] a body is read under, not the class that declares it, picks this profile: `Encoded` (as
+`json_encode()` sends it, the default), `Inertia`, or `InertiaFiltered` (Inertia's, once a `JsonResource::filter()`
+ran). `analyzeMethod()`, `analyzeMethodValue()` and `ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()`
+reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses an injected profile beside one.
 
 - **Who sets it**: `InertiaPageAnalyzer`, on a page's analyzer and on the collaborator method a page's props come
-  from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`.
-- **Who passes it on**: every body read below a flagged one: a helper `MethodReturnTypeResolver` reads through the
-  caller's `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
+  from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`, each `Reading::Inertia`.
+- **Who passes it on**: every body read below one: a helper `MethodReturnTypeResolver` reads through the caller's
+  `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
   middleware's helper an API resource reads runs the resource's reading.
-- **Who does not**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`), a
-  property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix,
+- **Who reads `Encoded`**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`),
+  a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix,
   and the keys a resource's response adds beside its body (below), which reach Inertia already JSON.
-- **The filtered fact**: `ExpressionEngine::readsFilteredValues()` is set where a flagged read enters a
-  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and kept below it. `TernaryHandler`'s `?:` rule applies
-  only where Inertia reads the value and no filter reaches it, since `filter()` sends a resource around null as null;
-  under it `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
+- **The filtered reading**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
+  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `TernaryHandler`'s `?:` rule
+  applies only under `Inertia`, since `filter()` sends a resource around null as null; under `InertiaFiltered`
+  `InertiaResourcePropHandler` types a resource around a nullable payload with that null.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
@@ -132,12 +134,12 @@ declares a body, picks this profile; `ExpressionEngine::readsInertiaProps()` rep
   `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), joined in one step, as Laravel merges
   them once: merged into a `{ data: R }` literal, else intersected, with the key the body sits under `unknown` beside
   an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
-  of the other is `unknown`. `with()` is the class's own reading; `additional()`'s argument is read in the caller's
-  scope without the profile (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
+  of the other is `unknown`. `with()` is the class's own reading; `additional()`'s argument is read by the caller's
+  analyzer under `Encoded` (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
   Inertia sends once it decodes the response. Once one is sent, a body with no live wrap key nests under `data`
   (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource` collection declines `additional()`.
 
-The flag and the filtered fact join the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
+The reading joins the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -382,7 +384,7 @@ keeps `| null`, as a `transform()` callback's does. An argument holding narrower
 interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A call binds
 nothing for an argument that may hold a closure, whose value hangs on whether the method calls it: the closure itself,
 an arm of `?:`, `??` or `match`, or a local the caller's scope binds to one (`InspectsAstNodes::mayHoldCallable()`).
-Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::readsInertiaProps()`), binds it. A
+Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::reading()`), binds it. A
 value read binds nothing for a first-class callable either; a spread binds it to the `Closure` it creates, which Laravel
 sends as `{}`.
 
@@ -674,7 +676,7 @@ which decides whether `__call()` runs, and adds the runtime class, whose macros 
 that only assumes its runtime class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never
 shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
 cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
-A body read for Inertia adds `AstEngine::readingKey()`'s `@inertia` to its `analysis:` and `method-return:` keys, and
+A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:` and `method-return:` keys, and
 `@filtered` after it under a resource's filter, so a helper read for a page never shares the answer a read for anything
 else gets ([Inertia profile](#inertia-profile)).
 
@@ -889,6 +891,7 @@ These pages cover the engine's neighbors:
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
+[`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
@@ -207,7 +208,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return null;
         }
 
-        return $this->resolveBuilt($built, $scope, $engine, ResponseExtras::ofValue(resolve(AstEngine::class)->analyzeEncodedValue($data, $scope)));
+        return $this->resolveBuilt($built, $scope, $engine, ResponseExtras::ofValue(resolve(AstEngine::class)->analyzeEncodedValue($data, $engine)));
     }
 
     /**
@@ -598,7 +599,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         $result = [...$instance, 'optional' => $this->payloadIsConditional($call, $className)];
-        $type = $engine->readsFilteredValues()
+        $type = $engine->reading() === Reading::InertiaFiltered
             ? $this->filteredType($call, $className, $result['type'], $scope, $engine)
             : $result['type'];
 

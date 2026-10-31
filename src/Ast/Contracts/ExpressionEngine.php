@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use ReflectionClass;
@@ -43,12 +44,7 @@ interface ExpressionEngine
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
 
     /**
-     * Whether Inertia sends the values read, calling each callable among them: props, shared data, a body they read.
+     * How the values read reach the client: as `json_encode()` sends them, or as Inertia does, filtered or not.
      */
-    public function readsInertiaProps(): bool;
-
-    /**
-     * Whether a JsonResource's filter() runs over the values Inertia sends, as over a resource's toArray() read whole.
-     */
-    public function readsFilteredValues(): bool;
+    public function reading(): Reading;
 }

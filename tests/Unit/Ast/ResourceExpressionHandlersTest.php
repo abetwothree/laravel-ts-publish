@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
@@ -118,16 +119,10 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called while merely constructing handlers');
         }
 
-        /** Reads nothing Inertia sends. */
-        public function readsInertiaProps(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
-        }
-
-        /** Reads nothing a JsonResource filters for Inertia. */
-        public function readsFilteredValues(): bool
-        {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -214,15 +209,15 @@ it('throws when forInertia() is given a list without ToResourceHandler or Static
 
 // Inertia calls each callable it sends, while anything else is encoded as it stands, so only a read for Inertia types
 // the call; a share middleware's body read for an API resource is one of the latter.
-it('types a first-class callable as its call only where Inertia reads it', function (string $subject, bool $inertiaProps, string $type, int $warnings) {
+it('types a first-class callable as its call only where Inertia reads it', function (string $subject, Reading $reading, string $type, int $warnings) {
     $now = new FuncCall(new Name('now'), [new VariadicPlaceholder]);
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, inertiaProps: $inertiaProps)->resolve($now)['type'])->toBe($type)
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, reading: $reading)->resolve($now)['type'])->toBe($type)
         ->and(AnalysisWarnings::all())->toHaveCount($warnings);
 })->with([
-    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, true, 'string', 0],
-    'a shared-data middleware read for anything else' => [HandleInertiaRequests::class, false, 'Record<string, never>', 1],
-    'a broadcast event' => [PayloadDiffersEvent::class, false, 'Record<string, never>', 1],
+    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, Reading::Inertia, 'string', 0],
+    'a shared-data middleware read for anything else' => [HandleInertiaRequests::class, Reading::Encoded, 'Record<string, never>', 1],
+    'a broadcast event' => [PayloadDiffersEvent::class, Reading::Encoded, 'Record<string, never>', 1],
 ]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —

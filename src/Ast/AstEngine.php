@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
@@ -36,7 +37,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other nine methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other eight methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -46,16 +47,6 @@ final class AstEngine
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
-
-    /**
-     * The memo key suffix of a body read Inertia sends, `@inertia`, then `@filtered` under a resource's filter().
-     *
-     * @internal
-     */
-    public static function readingKey(bool $inertiaProps, bool $filtered): string
-    {
-        return $inertiaProps ? '@inertia'.($filtered ? '@filtered' : '') : '';
-    }
 
     /**
      * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
@@ -70,8 +61,7 @@ final class AstEngine
      *                           resource's toArray() is its body, never the resource object it publishes
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
-     * @param  bool  $inertiaProps  true when Inertia sends what the body returns, as a page's props or shared data
-     * @param  bool  $filtered  true when a JsonResource's filter() runs over it there, as over a resource's toArray()
+     * @param  Reading  $reading  how the caller's values reach the client; the body enters it by Reading::entering()
      *
      * @internal
      */
@@ -83,8 +73,7 @@ final class AstEngine
         array $passed = [],
         bool $readsCall = false,
         ?RuntimeClass $runtime = null,
-        bool $inertiaProps = false,
-        bool $filtered = false,
+        Reading $reading = Reading::Encoded,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
         $runs = $runtime->class ?? $reflection;
@@ -94,11 +83,11 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($runs);
         }
 
-        $filtered = $inertiaProps && ($filtered || self::readsFilteredBody($runs, $method, $readsCall));
+        $reading = $reading->entering($runs, $method, $readsCall);
 
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
             .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')
-            .self::readingKey($inertiaProps, $filtered);
+            .$reading->memoKey();
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
@@ -111,8 +100,7 @@ final class AstEngine
                 $passed,
                 $readsCall,
                 $runtime,
-                $inertiaProps,
-                $filtered,
+                $reading,
             ),
         );
 
@@ -127,8 +115,7 @@ final class AstEngine
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
-     * @param  bool  $inertiaProps  true when Inertia sends what the method returns
-     * @param  bool  $filtered  true when a JsonResource's filter() runs over it there
+     * @param  Reading  $reading  how the caller's values reach the client; a call read for its value runs no filter
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -139,8 +126,7 @@ final class AstEngine
         array $passed = [],
         ?string $backing = null,
         ?RuntimeClass $runtime = null,
-        bool $inertiaProps = false,
-        bool $filtered = false,
+        Reading $reading = Reading::Encoded,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -148,15 +134,7 @@ final class AstEngine
             return null;
         }
 
-        [$analyzer, $scope] = $this->valueReader(
-            $context,
-            $method,
-            $passed,
-            $backing,
-            $runtime,
-            $inertiaProps,
-            $filtered,
-        );
+        [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime, $reading);
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }
@@ -189,15 +167,16 @@ final class AstEngine
     }
 
     /**
-     * What `json_encode()` sends for an expression of a body Inertia reads, read with the scope subject's own profile.
+     * What `json_encode()` sends for an expression of the body an engine reads for Inertia: read by that body's own
+     * analyzer under the encoded reading, so its method and the call it reads stay as they are.
      *
      * @return ValueExpressionResult
      *
      * @internal
      */
-    public function analyzeEncodedValue(Expr $expr, AnalysisScope $scope): array
+    public function analyzeEncodedValue(Expr $expr, ExpressionEngine $engine): array
     {
-        return new ResourceAstAnalyzer($scope->subjectReflection, $scope->modelClass, scope: $scope)->resolve($expr);
+        return ($engine instanceof ResourceAstAnalyzer ? $engine->encodedReader() : $engine)->resolve($expr);
     }
 
     /**
@@ -392,16 +371,6 @@ final class AstEngine
     }
 
     /**
-     * Whether a read enters the body resolve() filters: an API resource's toArray() read whole, not called as a value.
-     *
-     * @param  ReflectionClass<object>  $runs
-     */
-    private static function readsFilteredBody(ReflectionClass $runs, string $method, bool $readsCall): bool
-    {
-        return ! $readsCall && $method === 'toArray' && is_a($runs->getName(), JsonResource::class, true);
-    }
-
-    /**
      * Enter a closure's own scope as its body runs: its declared parameters, its body's locals, and for a closure only
      * what it imports, as the enclosing scope held it there; an arrow function reads every enclosing variable.
      */
@@ -429,8 +398,7 @@ final class AstEngine
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
-        bool $inertiaProps = false,
-        bool $filtered = false,
+        Reading $reading = Reading::Encoded,
     ): array {
         $runs = $runtime->class ?? $context->reflection;
         $modelClass = match (true) {
@@ -447,8 +415,7 @@ final class AstEngine
             scope: $scope,
             context: $context,
             runtime: $runtime,
-            inertiaProps: $inertiaProps,
-            filtered: $filtered,
+            reading: $reading,
         );
 
         return [$analyzer, $scope];
@@ -505,8 +472,7 @@ final class AstEngine
         array $passed,
         bool $readsCall,
         ?RuntimeClass $runtime,
-        bool $inertiaProps,
-        bool $filtered,
+        Reading $reading,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -525,8 +491,7 @@ final class AstEngine
                 passed: $passed,
                 runtime: $runtime,
                 readsCall: $readsCall,
-                inertiaProps: $inertiaProps,
-                filtered: $filtered,
+                reading: $reading,
             );
 
             return $analyzer->analyze();

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
@@ -444,7 +445,7 @@ final class StaticCallHandler implements ExpressionHandler
         // Only Inertia walks the keys resolve() returns, and only a plain resource's: a collection's own body stays a
         // known gap, and a JSON:API resource object's attributes arrive as a stdClass Inertia's PropsResolver does not
         // walk, so json_encode() sends the resources in them bare.
-        if (! $engine->readsInertiaProps()
+        if ($engine->reading() === Reading::Encoded
             || $resource === null
             || ! is_a($resource, JsonResource::class, true)
             || is_a($resource, ResourceCollection::class, true)

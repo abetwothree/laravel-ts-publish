@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
@@ -194,7 +195,7 @@ class InertiaPageAnalyzer
             null,
             $context->method->name->toString(),
             scope: $scope,
-            inertiaProps: true,
+            reading: Reading::Inertia,
         );
     }
 
@@ -348,7 +349,7 @@ class InertiaPageAnalyzer
             $propertyClass,
             $propsArg->name->toString(),
             runtime: RuntimeClass::injected(new ReflectionClass($propertyClass)),
-            inertiaProps: true,
+            reading: Reading::Inertia,
         ));
 
         return $analysis;

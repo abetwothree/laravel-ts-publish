@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -48,19 +49,11 @@ final readonly class CallSite
     }
 
     /**
-     * Whether Inertia sends what the caller reads, so the body the call runs is read as Inertia sends its value.
+     * How what the caller reads reaches the client, and so what the call returns there, which the body it runs takes.
      */
-    public function readsInertiaProps(): bool
+    public function reading(): Reading
     {
-        return $this->engine->readsInertiaProps();
-    }
-
-    /**
-     * Whether a JsonResource's filter() runs over what the caller reads, and so over what the call returns there.
-     */
-    public function readsFilteredValues(): bool
-    {
-        return $this->engine->readsFilteredValues();
+        return $this->engine->reading();
     }
 
     /**
@@ -153,6 +146,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->readsInertiaProps() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
+        return $this->reading() === Reading::Encoded && $this->mayHoldCallable($argument, $this->scope, $valueRead);
     }
 }

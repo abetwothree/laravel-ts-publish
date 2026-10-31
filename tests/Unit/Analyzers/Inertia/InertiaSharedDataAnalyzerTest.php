@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -792,14 +793,14 @@ test('a parent share() nested under a key adds no top-level cast key', function 
 
 // Read as the shared-data analyzer reads it, for Inertia; read for anything else the callable stays the Closure.
 test('the engine leaves a parent share()\'s casts to the shared-data analyzer too', function () {
-    $types = fn (bool $inertiaProps): array => array_column(
-        resolve(AstEngine::class)->analyzeMethod(OptionalCastChildMiddleware::class, 'share', inertiaProps: $inertiaProps)->properties,
+    $types = fn (Reading $reading): array => array_column(
+        resolve(AstEngine::class)->analyzeMethod(OptionalCastChildMiddleware::class, 'share', reading: $reading)->properties,
         'type',
         'name',
     );
 
-    expect($types(true))->toBe(['filters' => 'null', 'app' => 'string', 'stamp' => 'string', 'child' => 'number'])
-        ->and($types(false)['stamp'])->toBe('Record<string, never>');
+    expect($types(Reading::Inertia))->toBe(['filters' => 'null', 'app' => 'string', 'stamp' => 'string', 'child' => 'number'])
+        ->and($types(Reading::Encoded)['stamp'])->toBe('Record<string, never>');
 });
 
 // Read here as Inertia sends shared data; an API resource reading the same helper keeps both arms.
