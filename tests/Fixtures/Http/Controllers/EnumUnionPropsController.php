@@ -55,4 +55,13 @@ class EnumUnionPropsController
             'status' => EnumResource::make(Status::Draft) ?: Status::Published,
         ]);
     }
+
+    /** Renders short ternaries over an enum resource of a request enum, a payload the engine cannot type. */
+    public function untypedElvis(Request $request): Response
+    {
+        return Inertia::render('EnumUnions/UntypedElvis', [
+            'orNull' => EnumResource::make($request->enum('s', Status::class)) ?: null,
+            'orCase' => EnumResource::make($request->enum('s', Status::class)) ?: Status::Published,
+        ]);
+    }
 }

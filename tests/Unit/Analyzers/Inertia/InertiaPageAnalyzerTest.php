@@ -981,6 +981,20 @@ it('types a short ternary that checks an enum resource as that resource alone', 
         ->and(inertiaProps(new EnumUnionPropsController()->elvis())->status->name)->toBe(Status::Draft->name);
 });
 
+// The engine cannot type `$request->enum()`, so that arm drops as any untypable union arm does (see the known gaps).
+it('keeps a short ternary\'s other arm where the enum resource it checks cannot be typed', function () {
+    [$picked, $absent] = array_map(function (array $query): stdClass {
+        $request = Request::create('/', 'GET', $query);
+
+        return inertiaProps(new EnumUnionPropsController()->untypedElvis($request), $request);
+    }, [['s' => 1], []]);
+
+    expect(pageData(EnumUnionPropsController::class.'@untypedElvis')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { orNull: null, orCase: StatusType }')
+        ->and([$picked->orNull->name, $picked->orCase->name, $absent->orNull, $absent->orCase])
+        ->toBe([Status::Published->name, Status::Published->name, [], []]);
+});
+
 it('reads a props helper a trait supplies under an alias, called or spread, as under its own name', function () {
     $sent = inertiaProps(new AliasedHelperController()->index());
     $shape = '{ tk: number; tn: string }';

@@ -7305,15 +7305,22 @@ test('a union holding an enum resource beside two same-named enums keeps the mer
         ]);
 });
 
-test('a short ternary that checks a resource it builds types as that resource alone', function () {
-    $sent = sentAsJson(new CheckedResourceElvisResource(null)->resolve(request()));
+// JsonResource::filter() sends a resource around null as null, so a short ternary over one keeps both arms here.
+test('a short ternary over a resource it builds keeps both arms in an API resource', function () {
+    $user = (new User)->forceFill(['id' => 7, 'name' => 'Ada', 'email' => 'ada@example.com']);
+    $filled = Request::create('/', 'GET', ['s' => 1]);
+    $filled->merge(['u' => $user]);
+    $full = sentAsJson(new CheckedResourceElvisResource(null)->resolve($filled));
+    $empty = sentAsJson(new CheckedResourceElvisResource(null)->resolve(Request::create('/')));
 
     expect(resourceProps(CheckedResourceElvisResource::class))->toBe([
-        'made' => 'AsEnum<typeof Status>',
-        'collected' => 'AsEnum<typeof Status>[]',
-        'built' => 'AsEnum<typeof Status>',
-    ])->and([$sent->made->name, $sent->collected[1]->name, $sent->built->name])
-        ->toBe([Status::Draft->name, Status::Published->name, Status::Draft->name]);
+        'made' => 'AsEnum<typeof Status> | StatusType',
+        'built' => 'AsEnum<typeof Status> | null',
+        'tryFrom' => 'AsEnum<typeof Status> | null',
+        'user' => 'UserResource | null',
+    ])->and([$full->made->name, $full->built->name, $full->tryFrom->name, $full->user->name])
+        ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->name, 'Ada'])
+        ->and([$empty->tryFrom, $empty->user])->toBe([null, null]);
 });
 
 // The body fallback flattens a helper's shape with no import, so the case types as the value it sends.

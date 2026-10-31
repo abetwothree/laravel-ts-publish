@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -62,9 +63,10 @@ final class TernaryHandler implements ExpressionHandler
      */
     private function analyzeTernary(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        // An object is always true, so a short ternary over a resource it builds never reaches its other arm.
-        if ($expr->if === null && $this->buildsResource($expr->cond, $scope)) {
-            return ValueResult::checkedOperand($engine->resolve($expr->cond));
+        $operand = $this->resourceOperand($expr, $scope, $engine);
+
+        if ($operand !== null) {
+            return ValueResult::checkedOperand($operand);
         }
 
         $arms = [$expr->if ?? $expr->cond, $expr->else];
@@ -120,6 +122,29 @@ final class TernaryHandler implements ExpressionHandler
         $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
 
         return ValueResult::withEnumArmShapes($union, $results);
+    }
+
+    /**
+     * The checked operand of a short ternary that builds an API resource, where it types and no filter() reaches it.
+     *
+     * An object is always true, so the other arm never runs; but JsonResource::filter() sends a resource around null as
+     * null, and an operand the engine cannot type leaves the other arm as the union's only reading.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resourceOperand(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $filtered = $scope->filtersNestedResources && $scope->subjectReflection->isSubclassOf(JsonResource::class);
+
+        if ($expr->if !== null || $filtered || ! $this->buildsResource($expr->cond, $scope)) {
+            return null;
+        }
+
+        $operand = $engine->resolve($expr->cond);
+
+        return array_diff(TsTypeString::splitTopLevelUnion($operand['type']), ['unknown', 'null', 'never[]']) === []
+            ? null
+            : $operand;
     }
 
     /**
