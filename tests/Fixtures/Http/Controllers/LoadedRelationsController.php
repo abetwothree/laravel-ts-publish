@@ -153,6 +153,17 @@ class LoadedRelationsController
         ]);
     }
 
+    /** Renders loadMissing() after the post is fetched again, with relations or without, and after one is set null. */
+    public function refetched(Post $post): Response
+    {
+        return Inertia::render('Loaded/Refetched', [
+            'freshWith' => $post->fresh('author:id')?->loadMissing('author'),
+            'freshArray' => $post->fresh(['author:id'])?->loadMissing('author'),
+            'freshPlain' => $post->fresh()?->loadMissing('author'),
+            'setRelationNull' => $post->setRelation('author', null)->loadMissing('author'),
+        ]);
+    }
+
     /** Renders a handover with its relations to two models of one name loaded. */
     public function sameNamed(Handover $handover): Response
     {

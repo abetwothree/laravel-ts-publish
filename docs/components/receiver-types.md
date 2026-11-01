@@ -314,9 +314,10 @@ template `TValue|null`. Each rule answers only on the receiver it names:
   is left out: a closure that may change the columns (a `select()`, a scope, a builder macro), a `morphTo` under
   columns or a child, one a `makeHidden()`, `setHidden()` or `setVisible()` earlier in the chain keeps out of
   `toArray()`, and for `loadMissing()` one the model's `$with` or an eager load earlier in the chain loads narrowed. A
-  non-literal argument, or none left, keeps the model's own type; so does a chain step it cannot read: a callback, a
-  model's own method, an unread visibility list, and for `loadMissing()` a scope, a macro, a custom builder's method or
-  an unread eager load. The members ride only the call's own value.
+  non-literal argument, or none left, keeps the model's own type. The chain before the call is read only through
+  `LoadedRelations::READS_THROUGH`, a `where…()` and a bare `fresh()`, each on the model, its query or its collection
+  and answered by no code of the application's own, through a scope for `load()`, and up to the signed-in user; any
+  other step keeps the model's own type. The members ride only the call's own value.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty

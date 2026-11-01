@@ -2541,6 +2541,16 @@ it('keeps the model\'s type where a chain step narrows or hides what load() and 
         ->and([property_exists($sent->hiddenFirst, 'author'), $sent->hiddenFirst->comments[0]->content])->toBe([false, 'alpha']);
 });
 
+// fresh() with relations eager loads as with() does, and setRelation() sets one: only a bare fresh() reads through.
+it('reads loadMissing() only past a fresh() that loads nothing, and keeps the model\'s type after setRelation()', function () {
+    $sent = inertiaProps(new LoadedRelationsController()->refetched(seedLoadedPost()));
+
+    expect(pageData(LoadedRelationsController::class.'@refetched')['pageType'])->toBe('Inertia.SharedData & { '
+        .'freshWith: Post | null, freshArray: Post | null, freshPlain: Post & { author: User } | null, setRelationNull: Post }')
+        ->and([array_keys((array) $sent->freshWith->author), array_keys((array) $sent->freshArray->author)])->toBe([['id'], ['id']])
+        ->and([$sent->freshPlain->author->name, $sent->setRelationNull->author])->toBe(['Ada', null]);
+});
+
 it('aliases the same-named models two loaded relations name', function () {
     app(Router::class)->get('/loaded/{handover}', [LoadedRelationsController::class, 'sameNamed']);
     $sender = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\LoadedRelations;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LoadedRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArrayShapedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EagerColumnsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedAuthorPost;
@@ -12,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
@@ -21,17 +25,20 @@ use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
 /**
- * What `$model->load(...)`, written as PHP, adds to a model of the given class.
+ * What `$model->load(...)`, written as PHP that names Post and ScopedAuthorPost by their short names, adds to a model.
  *
  * @param  class-string<Model>  $model
  * @return array{type: string, models: list<class-string>}|null
  */
 function loadedMembers(string $model, string $call, bool $unsaved = false): ?array
 {
-    $expr = runtimeClassCall($call);
+    $statements = new AstParser()->parseSource('<?php use '.Post::class.'; use '.ScopedAuthorPost::class.'; '.$call.';');
+    $statement = end($statements);
+    assert($statement instanceof Expression);
+    $expr = $statement->expr;
     assert($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall);
 
-    return new LoadedRelations()->members($model, $expr, $unsaved);
+    return new LoadedRelations()->members($model, $expr, new AnalysisScope(new ReflectionClass(LoadedRelationsController::class), $model), $unsaved);
 }
 
 it('reads each argument spelling Laravel reads', function (string $call, string $type, array $models) {
@@ -258,6 +265,26 @@ it('keeps the model\'s type where loadMissing() follows a chain step it cannot r
     'withWhereHas()' => [Post::class, 'Post::withWhereHas("author:id")->first()?->loadMissing("author")', null],
     'a scope' => [ScopedAuthorPost::class, 'ScopedAuthorPost::query()->withSlimAuthor()->first()?->loadMissing("author")', null],
     'the framework\'s own steps' => [Post::class, 'Post::query()->latest()->whereKey(1)->first()?->loadMissing("author")', '{ author: User }'],
+]);
+
+// Only the steps known to leave relations alone are read through; every other one may load, set or hide one unseen.
+it('reads a load\'s chain only through the steps it lists', function (string $call, ?string $type) {
+    expect(loadedMembers(Post::class, $call)['type'] ?? null)->toBe($type);
+})->with([
+    'a bare fresh()' => ['Post::query()->firstOrFail()->fresh()?->loadMissing("author")', '{ author: User }'],
+    'fresh() with a relation' => ['$post->fresh("author:id")?->loadMissing("author")', null],
+    'fresh() with a list' => ['$post->fresh(["author:id"])?->loadMissing("author")', null],
+    'setRelation()' => ['$post->setRelation("author", null)->loadMissing("author")', null],
+    'refresh()' => ['$post->refresh()->loadMissing("author")', null],
+    'withoutRelations()' => ['$post->withoutRelations()->loadMissing("author")', null],
+    'append() before load()' => ['$post->append("excerpt")->load("author")', null],
+    'a collection step before load()' => ['Post::all()->sortBy("id")->load("author")', null],
+    'a fetch on what the analysis cannot name' => ['$service->first()->loadMissing("author")', null],
+    'filters, orders and fetches' => [
+        'Post::query()->where("id", 1)->orWhereNull("title")->oldest()->take(1)->firstOrFail()->loadMissing("author")',
+        '{ author: User }',
+    ],
+    'a collection\'s fetch' => ['Post::all()->first()?->loadMissing("author")', '{ author: User }'],
 ]);
 
 it('sends what a scope in the chain eager loaded to loadMissing(), and leaves out what a chain step hides', function () {

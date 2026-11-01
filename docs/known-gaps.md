@@ -531,16 +531,17 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 statement (`$post->load('author'); return ['post' => $post]`), a step past the call (`->load('author')->first()`) and
 `$this->comments->load('user')` in an API resource publish the model or list alone; under the default split model
 template `post.author` then does not compile. A relation no type here admits is left out too: one a closure may narrow
-(a call other than a filter, an order or a nested load, or a scope), and a `morphTo` under columns or a child. The calls
-earlier in the call's own chain are read: an eager load that picked columns, a `makeHidden()` or `setVisible()`, and a
-step this cannot see through (a callback, a scope, the application's own method) all keep the relation out. What happens
-on another line, through a variable, in a global scope or in a route-binding override is not seen: `loadMissing()` then
-keeps a relation already loaded with fewer columns, or a hidden relation is never written, so the member is typed while
-its keys may be missing, or it may be `null` or absent, at runtime. `load()` changes the model it runs on, so where two
-props load one relation of the same model differently, both send the last load, and the other prop's typed member can be
-missing keys or `null` the same way. A loaded member meets a key the model's interface already declares: under the full
-template `Post & { author: User | null }` reads as the interface's `author: User`, and a relation named like a column
-reads as `string & Category`.
+(a call other than a filter, an order or a nested load, or a scope), and a `morphTo` under columns or a child. Only a
+chain of steps known to leave relations alone is read: filters, orders and fetches on the model, its query or its
+collection, a bare `fresh()` and the signed-in user, besides the eager loads, `makeHidden()` and `setVisible()` it
+reads; after any other step, such as a callback, `fresh('author:id')`, `setRelation()` or the application's own method,
+the model keeps its own type. What happens on another line, through a variable, in a global scope or in a route-binding
+override is not seen: `loadMissing()` then keeps a relation already loaded with fewer columns, or a hidden relation is
+never written, so the member is typed while its keys may be missing, or it may be `null` or absent, at runtime. `load()`
+changes the model it runs on, so where two props load one relation of the same model differently, both send the last
+load, and the other prop's typed member can be missing keys or `null` the same way. A loaded member meets a key the
+model's interface already declares: under the full template `Post & { author: User | null }` reads as the interface's
+`author: User`, and a relation named like a column reads as `string & Category`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
 ### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list

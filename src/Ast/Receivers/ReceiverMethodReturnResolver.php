@@ -340,7 +340,7 @@ final class ReceiverMethodReturnResolver
             is_a($class, Model::class, true) && $this->runsModelMethod($class, $methodName) => $class,
             default => null,
         };
-        $members = $model === null ? null : resolve(LoadedRelations::class)->members($model, $call, $receiver->unsaved);
+        $members = $model === null ? null : resolve(LoadedRelations::class)->members($model, $call, $scope, $receiver->unsaved);
 
         if ($model === null || $members === null) {
             return null;

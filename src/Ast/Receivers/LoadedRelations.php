@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -67,11 +70,18 @@ final class LoadedRelations
     /** The calls, lowercased, that load the relations their argument names as `load()` reads it. */
     private const array EAGER_LOADS = ['with', 'withonly', 'load', 'loadmissing'];
 
-    /** The calls, lowercased, that eager load relations in a way a loadMissing() after them cannot read. */
-    private const array UNREAD_EAGER_LOADS = ['withwherehas', 'withwhererelation', 'seteagerloads'];
+    /**
+     * The calls, lowercased, a chain reads through besides each `where…()`: Eloquent\Builder's and Query\Builder's own
+     * steps that only filter, order or limit rows, the query, and the fetches that hand back the rows they find.
+     */
+    private const array READS_THROUGH = [
+        'orderby', 'orderbydesc', 'orderbyraw', 'latest', 'oldest', 'reorder', 'reorderdesc', 'inrandomorder', 'limit',
+        'take', 'skip', 'offset', 'forpage', 'has', 'orhas', 'doesnthave', 'ordoesnthave', 'withtrashed', 'onlytrashed',
+        'withouttrashed', 'query', 'first', 'firstorfail', 'firstwhere', 'find', 'findorfail', 'sole', 'get', 'all',
+    ];
 
-    /** The calls, lowercased, that run a callback of the application's own on a model, its collection or its query. */
-    private const array CALLBACKS = ['when', 'unless', 'tap', 'pipe', 'each', 'transform', 'map'];
+    /** The classes a step is read through on: the model, its query or a relation, or a collection of models. */
+    private const array QUERY_CLASSES = [Model::class, Builder::class, Relation::class, EloquentCollection::class];
 
     /** The calls, lowercased, that keep the names they are given out of toArray(). */
     private const array HIDES = ['makehidden', 'makehiddenif', 'mergehidden', 'sethidden'];
@@ -91,11 +101,11 @@ final class LoadedRelations
      * @param  bool  $unsaved  no row may back the model yet, so it may hold no key a to-one relation is matched by
      * @return LoadedMembers|null
      */
-    public function members(string $model, MethodCall|NullsafeMethodCall $call, bool $unsaved = false): ?array
+    public function members(string $model, MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, bool $unsaved = false): ?array
     {
         $paths = $this->relationPaths($call);
         $missing = $call->name instanceof Identifier && $call->name->toLowerString() === 'loadmissing';
-        $chain = $this->chainBefore($call->var, $model, $missing);
+        $chain = $this->chainBefore($call->var, $model, $missing, $scope);
 
         if ($paths === null || $chain === null) {
             return null;
@@ -154,39 +164,40 @@ final class LoadedRelations
     /**
      * What the calls earlier in a load's chain did to the model, or null where one may have done anything.
      *
-     * `kept` lists the paths an eager load picked columns or a constraint for, which a loadMissing() keeps as loaded;
-     * `hidden` the names a visibility call keeps out of toArray(), and `shown` each list a visible list limits it to.
+     * Only steps known to load, hide or leave relations alone are read: an eager load, a visibility call, a step
+     * readsThrough() admits, and the signed-in user; `kept`, `hidden` and `shown` are read as members() says.
      *
      * @param  class-string<Model>  $model
      * @return ChainRead|null
      */
-    private function chainBefore(Expr $receiver, string $model, bool $missing): ?array
+    private function chainBefore(Expr $receiver, string $model, bool $missing, AnalysisScope $scope): ?array
     {
         $read = ['kept' => [], 'hidden' => [], 'shown' => []];
 
         while ($receiver instanceof MethodCall || $receiver instanceof NullsafeMethodCall || $receiver instanceof StaticCall) {
-            if (! $receiver->name instanceof Identifier) {
+            if (! $receiver->name instanceof Identifier || $receiver->isFirstClassCallable()) {
                 return null;
             }
 
-            $call = $receiver->name->toString();
-            $name = strtolower($call);
-            // A scope runs on the query, which can hide nothing, but may eager load what a loadMissing() then keeps.
-            $unread = in_array($name, self::CALLBACKS, true) || ($missing
-                ? in_array($name, self::UNREAD_EAGER_LOADS, true) || $this->runsUserCode($model, $call)
-                : $this->declaresOwn($model, $call) && QueryForwarding::namedScope($model, $call) === null);
-            $names = in_array($name, self::HIDES, true) || in_array($name, self::SHOWS_ONLY, true)
-                ? $this->literalNames($receiver, $name === 'makehiddenif' ? 1 : 0)
-                : [];
-            $paths = $missing && in_array($name, self::EAGER_LOADS, true) ? $this->relationPaths($receiver) : [];
+            $name = $receiver->name->toLowerString();
 
-            if ($unread || $names === null || $paths === null) {
+            // Whatever reached the signed-in user is another request's work, as a variable's value is.
+            if ($name === 'user' && $this->holdsModels($receiver, $scope)) {
+                break;
+            }
+
+            $visibility = in_array($name, self::HIDES, true) || in_array($name, self::SHOWS_ONLY, true);
+            $eager = in_array($name, self::EAGER_LOADS, true);
+            $names = $visibility ? $this->literalNames($receiver, $name === 'makehiddenif' ? 1 : 0) : [];
+            $paths = $eager && $missing ? $this->relationPaths($receiver) : [];
+
+            if ($names === null || $paths === null || (! $visibility && ! $eager && ! $this->readsThrough($receiver, $model, $missing, $scope))) {
                 return null;
             }
 
             if (in_array($name, self::HIDES, true)) {
                 array_push($read['hidden'], ...$names);
-            } elseif ($names !== []) {
+            } elseif ($visibility) {
                 $read['shown'][] = $names;
             }
 
@@ -200,6 +211,40 @@ final class LoadedRelations
         }
 
         return $read;
+    }
+
+    /**
+     * Whether a chain reads through a step: one READS_THROUGH lists, a `where…()` or a bare `fresh()`, on the model,
+     * its query or its collection, that no code of the application's own answers.
+     *
+     * A scope runs on the query, which can hide nothing, so a load() reads through it; it may eager load, which a
+     * loadMissing() would then keep, so a loadMissing() does not.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function readsThrough(MethodCall|NullsafeMethodCall|StaticCall $step, string $model, bool $missing, AnalysisScope $scope): bool
+    {
+        $call = $step->name instanceof Identifier ? $step->name->toString() : '';
+        $name = strtolower($call);
+        $listed = match (true) {
+            ! $missing && QueryForwarding::namedScope($model, $call) !== null => true,
+            $name === 'fresh' => $step->getArgs() === [],
+            default => (in_array($name, self::READS_THROUGH, true) || $this->filtersByWhere($call)) && ! $this->runsUserCode($model, $call),
+        };
+        $receivers = resolve(ReceiverClassResolver::class);
+        $on = $step instanceof StaticCall ? $receivers->resolveStaticReceiver($step, $scope) : $receivers->resolve($step->var, $scope);
+
+        return $listed && $on !== null && $on->within(self::QUERY_CLASSES);
+    }
+
+    /**
+     * Whether a call holds only models, as `auth()->user()` and `$request->user()` hand back the signed-in user.
+     */
+    private function holdsModels(MethodCall|NullsafeMethodCall|StaticCall $call, AnalysisScope $scope): bool
+    {
+        $held = resolve(ReceiverClassResolver::class)->resolve($call, $scope);
+
+        return $held !== null && $held->models() === $held->classes;
     }
 
     /**
