@@ -6,6 +6,9 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostPages;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
+use Illuminate\Pagination\AbstractPaginator;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Http\Resources\PostResource;
@@ -56,10 +59,47 @@ class PaginatorSourcesController
         ]);
     }
 
+    /** Renders collections over helpers whose declared class decides a paginator kind or leaves it open. */
+    public function declared(): Response
+    {
+        return Inertia::render('Paginators/Declared', [
+            'contract' => PostResource::collection($this->anyPage()),
+            'abstract' => PostResource::collection($this->abstractPage()),
+            'either' => PostResource::collection($this->pageOrAll()),
+            'fragment' => Post::query()->paginate()->fragment(),
+        ]);
+    }
+
     /**
      * A length-aware page of posts.
      */
     private function page(): LengthAwarePaginator
+    {
+        return Post::query()->paginate();
+    }
+
+    /**
+     * A page of posts as the contract either paginator kind implements, from a call the engine cannot read.
+     */
+    private function anyPage(): Paginator
+    {
+        return call_user_func([$this->pages, 'simplePage']);
+    }
+
+    /**
+     * A page of posts as the base class either paginator kind extends, from a call the engine cannot read.
+     */
+    private function abstractPage(): AbstractPaginator
+    {
+        return call_user_func([Post::query(), 'paginate']);
+    }
+
+    /**
+     * A page of posts, declared as either a page or a collection.
+     *
+     * @return LengthAwarePaginator<int, Post>|Collection<int, Post>
+     */
+    private function pageOrAll(): LengthAwarePaginator|Collection
     {
         return Post::query()->paginate();
     }

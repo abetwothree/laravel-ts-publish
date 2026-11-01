@@ -2688,3 +2688,15 @@ it('publishes no key a merge() or mergeWhen() in a with() would merge', function
             'extra' => 1,
         ]);
 });
+
+// A declared class the paginator kinds share leaves the kind to the type, and a declared union outranks the body.
+it('reads a paginator\'s kind from a declared class only where the class decides it', function () {
+    paginatedPost();
+    $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->declared());
+
+    expect(pageData(PaginatorSourcesController::class.'@declared')['pageType'])->toBe('Inertia.SharedData & { '
+        .'contract: AnonymousResourceCollection<PostResource>, abstract: AnonymousResourceCollection<PostResource>, '
+        .'either: AnonymousResourceCollection<PostResource> | JsonResourcePaginator<PostResource>, fragment: unknown }')
+        ->and([$sent->contract, $sent->abstract, $sent->either])->each->toHaveProperties(['data', 'links', 'meta'])
+        ->and($sent->fragment)->toBeNull();
+});

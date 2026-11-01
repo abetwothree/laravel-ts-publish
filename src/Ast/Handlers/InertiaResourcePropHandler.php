@@ -25,14 +25,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
-use Illuminate\Contracts\Pagination\CursorPaginator as CursorPaginatorContract;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Pagination\CursorPaginator;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -62,12 +57,6 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
-
-    /** The classes whose instances are each one paginator kind, by the `@tolki/types` name TolkiTypes::MAP gives it. */
-    private const array PAGINATOR_KINDS = [LengthAwarePaginatorContract::class, CursorPaginatorContract::class, Paginator::class];
-
-    /** The paginators Laravel builds, which a class one of them extends or implements may hold. */
-    private const array PAGINATORS = [LengthAwarePaginator::class, Paginator::class, CursorPaginator::class];
 
     /**
      * Builds each response from the spelling this handler reads.
@@ -489,9 +478,10 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $paginators = [];
 
         foreach ($held->classes as $class) {
-            $paginator = array_find(self::PAGINATOR_KINDS, static fn (string $paginator): bool => is_a($class, $paginator, true));
+            $paginator = array_find(PaginatorSteps::KINDS, static fn (string $paginator): bool => is_a($class, $paginator, true));
 
-            if ($paginator === null && array_any(self::PAGINATORS, static fn (string $built): bool => is_a($built, $class, true))) {
+            // A class a built paginator extends or implements may hold one of either kind, or none.
+            if ($paginator === null && array_any(PaginatorSteps::BUILT, static fn (string $built): bool => is_a($built, $class, true))) {
                 return null;
             }
 

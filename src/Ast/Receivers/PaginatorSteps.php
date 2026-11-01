@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
+use Illuminate\Contracts\Pagination\CursorPaginator as CursorPaginatorContract;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
+use Illuminate\Pagination\CursorPaginator;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -12,14 +17,24 @@ use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 
 /**
- * What a paginator's own step hands back: the same paginator, its kind and items kept, as a setter such as
- * `withQueryString()` does, or the same paginator over the items `through()` maps. ModelFinderHandler and
- * InertiaResourcePropHandler read a paginator's steps here, so a page prop and a collection over one agree.
+ * The paginators Laravel builds and what a paginator's own step hands back: the same paginator, its kind and items
+ * kept, as a setter such as `withQueryString()` does, or the same paginator over the items `through()` maps.
+ * ModelFinderHandler and InertiaResourcePropHandler read a paginator's classes and steps here.
  *
  * @internal
  */
 final class PaginatorSteps
 {
+    /** The paginator each paginating terminal of a query builds. */
+    public const array BUILT = [
+        'paginate' => LengthAwarePaginator::class,
+        'simplePaginate' => Paginator::class,
+        'cursorPaginate' => CursorPaginator::class,
+    ];
+
+    /** The classes whose instances are each one paginator kind, by the `@tolki/types` name TolkiTypes::MAP gives it. */
+    public const array KINDS = [LengthAwarePaginatorContract::class, CursorPaginatorContract::class, Paginator::class];
+
     /** The paginator methods that hand back the same paginator over the same items. */
     private const array SAME_PAGE = [
         'appends', 'withQueryString', 'withPath', 'setPath', 'onEachSide', 'setPageName', 'setCursorName',

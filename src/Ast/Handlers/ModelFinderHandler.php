@@ -78,13 +78,6 @@ final class ModelFinderHandler implements ExpressionHandler
 
     private const MANY = ['all', 'get', 'cursor', 'findMany'];
 
-    /** Terminal => the paginator FQCN whose `@tolki/types` name wraps the model. */
-    private const PAGINATORS = [
-        'paginate' => 'Illuminate\\Pagination\\LengthAwarePaginator',
-        'simplePaginate' => 'Illuminate\\Pagination\\Paginator',
-        'cursorPaginate' => 'Illuminate\\Pagination\\CursorPaginator',
-    ];
-
     private const SCALARS = ['count' => 'number', 'exists' => 'boolean'];
 
     /** Terminals reading one column of each row the query finds. */
@@ -306,7 +299,7 @@ final class ModelFinderHandler implements ExpressionHandler
 
         return match (true) {
             isset(self::SCALARS[$terminal]) => ['result' => ['type' => self::SCALARS[$terminal], 'optional' => false], 'element' => null],
-            isset(self::PAGINATORS[$terminal]) => [
+            isset(PaginatorSteps::BUILT[$terminal]) => [
                 'result' => $this->paginatorOver($terminal, $row),
                 'element' => null,
                 'page' => ['terminal' => $terminal, 'item' => $row, 'model' => null],
@@ -533,7 +526,7 @@ final class ModelFinderHandler implements ExpressionHandler
         return in_array($terminal, self::SINGLE, true)
             || in_array($terminal, self::MANY, true)
             || in_array($terminal, self::COLUMNS, true)
-            || isset(self::PAGINATORS[$terminal])
+            || isset(PaginatorSteps::BUILT[$terminal])
             || isset(self::SCALARS[$terminal]);
     }
 
@@ -556,7 +549,7 @@ final class ModelFinderHandler implements ExpressionHandler
         $basename = class_basename($modelFqcn);
         $model = [...ValueResult::unknown(), 'type' => $basename, 'modelFqcn' => $modelFqcn];
 
-        if (isset(self::PAGINATORS[$terminal])) {
+        if (isset(PaginatorSteps::BUILT[$terminal])) {
             return [
                 'result' => $this->paginatorOver($terminal, $model),
                 'element' => null,
@@ -586,7 +579,7 @@ final class ModelFinderHandler implements ExpressionHandler
      */
     private function paginatorOver(string $terminal, array $item): array
     {
-        $tolkiName = TolkiTypes::MAP[self::PAGINATORS[$terminal]];
+        $tolkiName = TolkiTypes::MAP[PaginatorSteps::BUILT[$terminal]];
         $imports = $item['customImports'] ?? [];
         $imports[TolkiTypes::MODULE] = array_values(array_unique([...$imports[TolkiTypes::MODULE] ?? [], $tolkiName]));
 

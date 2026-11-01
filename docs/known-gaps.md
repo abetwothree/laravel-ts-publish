@@ -705,7 +705,7 @@ a terminal every such chain was once typed by. A few shapes publish `unknown`:
 
 Type the prop with `#[TsCasts]`.
 
-### A paginator the engine cannot name publishes no pagination, and one passed bare its items only from a model's query
+### A paginator the engine cannot name publishes no pagination, and a bare paginator publishes its items only from a model's query
 
 A resource collection prop or shared value reads its paginator's kind from the class its payload holds: a query chain,
 a builder variable's `paginate()`, or a helper's or service's declared return type or readable body. Over a payload
@@ -714,8 +714,8 @@ contract, which either kind implements, `PostResource::collection(…)` publishe
 `AnonymousResourceCollection<PostResource>`, though Laravel sends `links` and `meta` too. A page prop or shared value
 holding a paginator bare publishes its items only from a query chain rooted at a model or a body that returns one: from
 a query builder variable, `$query->paginate()` publishes `unknown`, and past a setter such as `->withQueryString()`
-`{ onEachSide: number }`. Declare the method's return type, build the paginator in the props, or type the prop with
-`#[TsCasts]`.
+`{ onEachSide: number }`, as `Post::query()->paginate()->setCollection(…)` does, since the collection it is given may
+hold anything. Declare the method's return type, build the paginator in the props, or type the prop with `#[TsCasts]`.
 
 ### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
