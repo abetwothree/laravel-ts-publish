@@ -286,6 +286,25 @@ class TopLevelKeysController
         return Inertia::render('TopLevelKeys/OpenedAndSerializedHeads', $props);
     }
 
+    /** Renders a local written dotted keys on some requests under a resource, a model and an array, each maybe null. */
+    public function nullableHeads(Request $request, User $user): Response
+    {
+        $held = $request->boolean('k');
+        $props = [
+            'card' => $held ? UserCardResource::make($user) : null,
+            'model' => $held ? $user : null,
+            'array' => $held ? ['a' => 1] : null,
+        ];
+
+        if ($request->boolean('c')) {
+            $props['card.x'] = 1;
+            $props['model.x'] = 1;
+            $props['array.x'] = 1;
+        }
+
+        return Inertia::render('TopLevelKeys/NullableHeads', $props);
+    }
+
     /** Renders a dotted key under a resource that a `+` joins it to. */
     public function plusClosedHead(User $user): Response
     {

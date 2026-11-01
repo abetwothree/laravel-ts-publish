@@ -641,7 +641,7 @@ it('reads the value a held callable returns apart from the callable', function (
 });
 
 // Inertia resolves a prop object even where a callable it called returns it, and sends a callable there as `{}`; it
-// replaces either object, and a union of them, before a dotted key writes under it.
+// replaces either object, and a union of them or of one and null, before a dotted key writes under it.
 it('marks a held object\'s kind, and a callable that may return a callable', function () {
     $closure = ValueResult::heldObject(['type' => 'number', 'optional' => false]);
     $prop = ValueResult::heldObject(['type' => 'number', 'optional' => false], prop: true);
@@ -656,7 +656,9 @@ it('marks a held object\'s kind, and a callable that may return a callable', fun
         ->and(ValueResult::unionResults([$prop, $prop]))
         ->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => 'number', 'heldObject' => true, 'heldProp' => true])
         ->and(ValueResult::unionResults([$prop, $returnsProp])['closedToDottedKeys'] ?? null)->toBe('number')
-        ->and(ValueResult::unionResults([$prop, $plain])['closedToDottedKeys'] ?? null)->toBeNull()
+        ->and(ValueResult::unionResults([$prop, $plain])['closedToDottedKeys'] ?? null)->toBe('number | null')
+        ->and(ValueResult::unionResults([$prop, ['type' => 'string', 'optional' => false]])['closedToDottedKeys'] ?? null)->toBeNull()
+        ->and(ValueResult::unionResults([$plain, $plain])['closedToDottedKeys'] ?? null)->toBeNull()
         ->and(ValueResult::unionResults([$prop, $closure]))->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
         ->and(ValueResult::unionResults([$prop, $plain])['heldProp'] ?? null)->toBeTrue()
         ->and(ValueResult::unionResults([$returnsClosure, $plain])['returnsCallable'] ?? null)->toBeTrue()

@@ -351,7 +351,7 @@ final class DottedTopLevelKeys
                 : [...self::text('Record<string, unknown> & '), ...$this->wrapped($written)['pieces']],
             $one !== null && $object !== null && $object !== []
                 && ! array_any($object, static fn (array $entry): bool => str_starts_with($entry[0], '[')) => $this->intoObject(
-                    $base, $one, $object, $children, $nullable,
+                    $base, $one, $object, $children, $nullable, $absent ? array_values(array_diff($arms, $solid)) : [],
                 ),
             $element !== null => $this->intoList($base, $element, $written, $nullable, $absent),
             default => $this->besideOther($base, $written, $absent),
@@ -406,14 +406,15 @@ final class DottedTopLevelKeys
      * The writes into an object literal.
      *
      * Its text with each new key appended, else without each key a write replaces or enters, the entered one read from
-     * it; a value that may be absent or null leaves only the writes.
+     * it; a value that may be absent or null leaves only the writes, and its null stays where every write may not run.
      *
      * @param  Base  $base
      * @param  list<array{string, string}>  $object  the object literal's members, each as it prints
      * @param  list<string>  $children
+     * @param  list<string>  $untouched  the `null` or `undefined` arms of a value no write may reach
      * @return list<TypePiece>
      */
-    private function intoObject(array $base, string $arm, array $object, array $children, bool $nullable): array
+    private function intoObject(array $base, string $arm, array $object, array $children, bool $nullable, array $untouched): array
     {
         $held = [];
 
@@ -474,9 +475,11 @@ final class DottedTopLevelKeys
             ],
         };
 
-        return $nullable || $base['optional']
-            ? [...$pieces, ...self::text(' | '), ...$this->wrapped($this->members($children))['pieces']]
-            : $pieces;
+        return [
+            ...$pieces,
+            ...($nullable || $base['optional'] ? [...self::text(' | '), ...$this->wrapped($this->members($children))['pieces']] : []),
+            ...($untouched === [] ? [] : self::text(' | '.implode(' | ', $untouched))),
+        ];
     }
 
     /**

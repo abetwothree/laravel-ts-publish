@@ -425,7 +425,7 @@ final class ValueResult
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
      * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
-     * and it is closed to dotted keys where every arm is.
+     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -448,7 +448,8 @@ final class ValueResult
 
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
-        $closed = $results !== [] && array_all($results, self::closedToDottedKeys(...));
+        $closed = array_any($results, self::closedToDottedKeys(...))
+            && array_all($results, fn (array $inner): bool => $inner['type'] === 'null' || self::closedToDottedKeys($inner));
 
         if ($types === []) {
             $unknown = [...self::unknown(), 'optional' => $optional];

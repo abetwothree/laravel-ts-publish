@@ -77,6 +77,10 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
         ['a' => '{ id: number } | null', 'a.b' => 'string'],
         ['a' => '{ id: number; b: string } | { b: string }'],
     ],
+    'into an object that may be null the write may leave alone' => [
+        ['a' => '{ id: number } | null', 'a.b' => 'string?'],
+        ['a' => '{ id: number; b?: string } | { b?: string } | null'],
+    ],
     'over a scalar' => [['a' => 'string', 'a.b' => 'number'], ['a' => '{ b: number }']],
     'over a scalar the write may leave alone' => [['a' => 'string', 'a.b' => 'number?'], ['a' => '{ b?: number } | string']],
     'over an empty array' => [['a' => 'never[]', 'a.b' => 'number'], ['a' => '{ b: number }']],

@@ -2148,6 +2148,26 @@ it('writes the dotted keys a local may hold into a list of resources, and over a
         ->and($sent(0))->toBe(['listed' => [$card], 'collected' => [$card], 'queried' => [$card], 'amount' => ['amount' => 5], 'made' => ['amount' => 6]]);
 });
 
+// A head no dotted key writes under keeps its own value, null included.
+it('keeps a head\'s null where the dotted keys a local may hold under it are not written', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = function (int $c, int $k) use ($user): array {
+        $request = Request::create('/', 'GET', ['c' => $c, 'k' => $k]);
+
+        return json_decode(inertiaPropsJson(new TopLevelKeysController()->nullableHeads($request, $user), $request), true);
+    };
+
+    expect(pageData(TopLevelKeysController::class.'@nullableHeads')['pageType'])->toBe('Inertia.SharedData & { '
+        .'card: { x?: number } | { data: UserCardResource } | null, '
+        .'model: ((User | null) & { x?: number }) | { x?: number } | User | null, '
+        .'array: { a: number; x?: number } | { x?: number } | null }')
+        ->and([$sent(1, 1)['card'], $sent(1, 1)['model']['x'], $sent(1, 1)['array']])->toBe([['x' => 1], 1, ['a' => 1, 'x' => 1]])
+        ->and($sent(1, 0))->toBe(['card' => ['x' => 1], 'model' => ['x' => 1], 'array' => ['x' => 1]])
+        ->and([$sent(0, 1)['card'], $sent(0, 1)['model']['name'], $sent(0, 1)['array']])
+        ->toBe([['data' => ['id' => $user->id, 'name' => 'Ada']], 'Ada', ['a' => 1]])
+        ->and($sent(0, 0))->toBe(['card' => null, 'model' => null, 'array' => null]);
+});
+
 // TypeScript checks every key a signature covers against it (TS2411), a key the unpack nests included.
 it('widens a signature that covers a dotted key\'s head with the head\'s type', function () {
     expect(pageData(TopLevelKeysController::class.'@signatureHead')['pageType'])
