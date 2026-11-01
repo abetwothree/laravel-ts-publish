@@ -8,14 +8,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
@@ -27,12 +31,11 @@ use ReflectionProperty;
 use Throwable;
 
 /**
- * The relations a `load()` or `loadMissing()` call adds to what a model serializes, from its literal argument read as
- * Eloquent\Builder::prepareNestedWithRelationships() reads it: names, lists, dotted paths, nested arrays, closures and
- * `:col,col` lists.
+ * The relations a `load()` or `loadMissing()` call adds to what a model serializes, read off its literal argument.
  *
- * Each member is typed as the relation's read publishes it, under the key toArray() writes; one whose payload no type
- * here admits is left out, so its key goes unclaimed.
+ * The argument is read as Eloquent\Builder::prepareNestedWithRelationships() reads it: names, lists, dotted paths,
+ * nested arrays, closures and `:col,col` lists. Each member is typed as the relation's read publishes it, under the key
+ * toArray() writes; one whose payload no type here admits is left out, so its key goes unclaimed.
  *
  * @phpstan-type Constraint = list<string>|ClosureExpr|ArrowFunction|false|null
  * @phpstan-type RelationPaths = array<string, list<Constraint>>
@@ -58,23 +61,32 @@ final class LoadedRelations
         'withoutTrashed', 'having', 'orHaving', 'havingRaw', 'orHavingRaw', 'havingBetween',
     ];
 
+    /** The calls, lowercased, that load the relations their argument names as `load()` reads it. */
+    private const array EAGER_LOADS = ['with', 'withonly', 'load', 'loadmissing'];
+
     /** The Model methods that write a loaded relation into the array Inertia and json_encode() send. */
     private const array SERIALIZERS = ['toArray', 'jsonSerialize', 'relationsToArray', 'getArrayableRelations', 'getArrayableItems'];
 
     /**
-     * The `{ key: Type; … }` object a `load()` or `loadMissing()` call on a model adds, with the models its tokens
-     * name in order; null where the argument is not a literal, Laravel throws on it, or it adds no member this types.
+     * The `{ key: Type; … }` object a `load()` or `loadMissing()` call adds to a model, and the models it names.
+     *
+     * Null where the argument is not a literal, Laravel throws on it, or it adds no member this types.
      *
      * @param  class-string<Model>  $model
-     * @param  bool  $unsaved  no row may back the model yet, so a to-one relation may load as null
+     * @param  bool  $unsaved  no row may back the model yet, so it may hold no key a to-one relation is matched by
      * @return LoadedMembers|null
      */
     public function members(string $model, MethodCall|NullsafeMethodCall $call, bool $unsaved = false): ?array
     {
         $paths = $this->relationPaths($call);
         $missing = $call->name instanceof Identifier && $call->name->toLowerString() === 'loadmissing';
+        $kept = $missing ? $this->loadedBefore($call->var) : [];
 
-        return $paths === null ? null : $this->membersOf($model, $this->tree($paths), $unsaved, $missing ? [] : null);
+        if ($paths === null || $kept === null) {
+            return null;
+        }
+
+        return $this->membersOf($model, $this->tree($paths), $unsaved ? [] : null, $missing ? $kept : null);
     }
 
     /**
@@ -82,7 +94,7 @@ final class LoadedRelations
      *
      * @return RelationPaths|null
      */
-    private function relationPaths(MethodCall|NullsafeMethodCall $call): ?array
+    private function relationPaths(MethodCall|NullsafeMethodCall|StaticCall $call): ?array
     {
         if ($call->isFirstClassCallable()) {
             return null;
@@ -118,8 +130,42 @@ final class LoadedRelations
     }
 
     /**
-     * Read one literal array of relations under a path prefix into the paths, as Laravel does: a string key over an
-     * array nests, a string under an int key is a name, and a string key over anything else constrains that name.
+     * The relation paths that calls earlier in a loadMissing()'s chain load with a constraint, which it keeps.
+     *
+     * Null where such a call's argument cannot be read, so what it loaded is not known.
+     *
+     * @return list<string>|null
+     */
+    private function loadedBefore(Expr $receiver): ?array
+    {
+        $kept = [];
+
+        while ($receiver instanceof MethodCall || $receiver instanceof NullsafeMethodCall || $receiver instanceof StaticCall) {
+            if ($receiver->name instanceof Identifier && in_array($receiver->name->toLowerString(), self::EAGER_LOADS, true)) {
+                $paths = $this->relationPaths($receiver);
+
+                if ($paths === null) {
+                    return null;
+                }
+
+                foreach ($paths as $path => $constraints) {
+                    if (array_any($constraints, fn (mixed $constraint): bool => $constraint !== null)) {
+                        $kept[] = $path;
+                    }
+                }
+            }
+
+            $receiver = $receiver instanceof StaticCall ? null : $receiver->var;
+        }
+
+        return $kept;
+    }
+
+    /**
+     * Read one literal array of relations under a path prefix into the paths, as Laravel reads it.
+     *
+     * A string key over an array nests, a string under an int key is a name, and a string key over anything else
+     * constrains that name.
      *
      * @param  RelationPaths  $paths
      */
@@ -209,8 +255,9 @@ final class LoadedRelations
     }
 
     /**
-     * The paths as a tree of relation names, each with its constraints and the relations loaded under it; a parent a
-     * dotted path implies loads with none, as Builder::addNestedWiths() adds it.
+     * The paths as a tree of relation names, each with its constraints and the relations loaded under it.
+     *
+     * A parent a dotted path implies loads with no constraint, as Builder::addNestedWiths() adds it.
      *
      * @param  RelationPaths  $paths
      * @return RelationTree
@@ -239,15 +286,17 @@ final class LoadedRelations
     }
 
     /**
-     * The members a model's loaded relations add, in the order the call names them; null where none can be typed or
-     * the model writes them in a serializer of its own.
+     * The members a model's loaded relations add, in the order the call names them.
+     *
+     * Null where none can be typed, or the model writes them in a serializer of its own.
      *
      * @param  class-string<Model>  $model
      * @param  RelationTree  $nodes
+     * @param  list<string>|null  $held  the columns the model holds, as a column list selected them; null for every one
      * @param  list<string>|null  $kept  for a loadMissing(), the paths under the model `$with` may have narrowed
      * @return LoadedMembers|null
      */
-    private function membersOf(string $model, array $nodes, bool $unsaved, ?array $kept): ?array
+    private function membersOf(string $model, array $nodes, ?array $held, ?array $kept): ?array
     {
         $resolver = resolve(ModelAttributeResolver::class);
         $instance = $resolver->getInstance($model);
@@ -263,7 +312,7 @@ final class LoadedRelations
 
         foreach ($nodes as $name => $node) {
             $key = $resolver->sentRelationKey($instance, $name);
-            $member = $key === null || in_array($name, $kept ?? [], true) ? null : $this->member($instance, $name, $node, $unsaved, $kept);
+            $member = $key === null || in_array($name, $kept ?? [], true) ? null : $this->member($instance, $name, $node, $held, $kept);
 
             if ($member === null) {
                 continue;
@@ -280,13 +329,13 @@ final class LoadedRelations
      * One loaded relation's value as Laravel sends it; null where it is never sent or nothing here admits it.
      *
      * @param  array{constraints: list<Constraint>, children: array<string, mixed>}  $node
+     * @param  list<string>|null  $held
      * @param  list<string>|null  $kept
      * @return LoadedMembers|null
      */
-    private function member(Model $instance, string $name, array $node, bool $unsaved, ?array $kept): ?array
+    private function member(Model $instance, string $name, array $node, ?array $held, ?array $kept): ?array
     {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $relation = $resolver->resolveRelation($instance::class, $name);
+        $relation = resolve(ModelAttributeResolver::class)->resolveRelation($instance::class, $name);
         $constraint = $this->constraintOf($node['constraints']);
 
         if ($relation['type'] === 'unknown' || $constraint === false) {
@@ -295,10 +344,11 @@ final class LoadedRelations
 
         /** @var RelationTree $children */
         $children = $node['children'];
+        $toMany = str_ends_with($relation['type'], '[]');
 
         // A morphTo loads its targets' relations and columns per target, which one shape here cannot follow.
         if ($relation['morphFqcns'] !== []) {
-            $type = $unsaved ? ValueResult::withNullArm($relation['type']) : $relation['type'];
+            $type = $this->matches($instance, $name, $held, null) ? $relation['type'] : ValueResult::withNullArm($relation['type']);
 
             return $constraint === null && $children === [] ? ['type' => $type, 'models' => $relation['morphFqcns']] : null;
         }
@@ -309,30 +359,23 @@ final class LoadedRelations
             return null;
         }
 
-        $toMany = str_ends_with($relation['type'], '[]');
-        $nullable = ValueResult::hasNullArm($relation['type']) || (! $toMany && $unsaved);
-        $element = class_basename($related);
+        $selected = is_array($constraint) && $constraint !== ['*'] ? $constraint : null;
+        $calls = $constraint instanceof ClosureExpr || $constraint instanceof ArrowFunction ? $this->closureCalls($constraint, $related) : [];
+        $element = $selected === null ? class_basename($related) : $this->pickedColumns($related, $selected);
 
-        if (is_array($constraint)) {
-            $every = $constraint === ['*'];
-            $picked = $every ? $element : $this->pickedColumns($related, $constraint);
-
-            if ($picked === null) {
-                return null;
-            }
-
-            $element = $picked;
-            $nullable = $nullable || (! $toMany && ! $every && ! $this->matchesWith($instance, $name, $constraint));
-        } elseif ($constraint !== null) {
-            $nullable = $nullable || (! $toMany && ! $this->keepsRows($constraint));
+        if ($calls === null || $element === null) {
+            return null;
         }
+
+        $nullable = ValueResult::hasNullArm($relation['type'])
+            || (! $toMany && (! $this->matches($instance, $name, $held, $selected) || ! $this->keepsRows($calls)));
 
         $models = [$related];
         $under = $kept === null ? null : array_values(array_filter(array_map(
             fn (string $path): ?string => str_starts_with($path, "{$name}.") ? substr($path, strlen($name) + 1) : null,
             $kept,
         )));
-        $nested = $children === [] ? null : $this->membersOf($related, $children, false, $under);
+        $nested = $children === [] ? null : $this->membersOf($related, $children, $selected, $under);
 
         if ($nested !== null) {
             $element = "{$element} & {$nested['type']}";
@@ -349,8 +392,9 @@ final class LoadedRelations
     }
 
     /**
-     * What constrains one relation: nothing, its column list, or its closure; false where the call writes several
-     * constraints for it or one this cannot read, such as a variable.
+     * What constrains one relation: nothing, its column list, its closure, or false where this cannot read it.
+     *
+     * Several constraints written for one relation, or one other than a closure, such as a variable, count as unread.
      *
      * @param  list<Constraint>  $constraints
      * @return list<string>|ClosureExpr|ArrowFunction|false|null
@@ -361,79 +405,91 @@ final class LoadedRelations
 
         return match (true) {
             $written === [] => null,
-            count($written) > 1, $written[0] === false => false,
-            $written[0] instanceof ClosureExpr || $written[0] instanceof ArrowFunction => $this->readsClosure($written[0]) ? $written[0] : false,
+            count($written) > 1 => false,
             default => $written[0],
         };
     }
 
     /**
-     * `Pick<Related, …>` over the columns a list selects, where each is a column the related model publishes.
+     * `Pick<Related, …>` over the columns a list selects that toArray() writes, each one a column the model publishes.
+     *
+     * A column `$hidden` lists, or `$visible` leaves out, is loaded but never sent, so the Pick leaves it out too.
      *
      * @param  class-string<Model>  $related
      * @param  list<string>  $columns
      */
     private function pickedColumns(string $related, array $columns): ?string
     {
-        foreach ($columns as $column) {
-            if (preg_match('/^\w+$/', $column) !== 1) {
-                return null;
-            }
+        $resolver = resolve(ModelAttributeResolver::class);
+        $instance = $resolver->getInstance($related);
+
+        if ($instance === null || array_any($columns, fn (string $column): bool => preg_match('/^\w+$/', $column) !== 1)) {
+            return null;
         }
 
-        return $this->relationFilterModelReference($related, array_values(array_unique($columns)), true);
+        $sent = array_values(array_filter(array_unique($columns), fn (string $column): bool => $resolver->writesName($instance, $column)));
+
+        return $this->relationFilterModelReference($related, $sent, true);
     }
 
     /**
-     * Whether a to-one relation still matches its row with only the given columns selected: the key Laravel matches
-     * the row by is among them, else the relation loads as null.
+     * Whether a to-one relation still finds its row, or loads as null.
      *
-     * @param  list<string>  $columns
+     * Laravel matches the row by a key on each side: the parent's must be among the columns it holds, and the related
+     * model's among those a column list selects.
+     *
+     * @param  list<string>|null  $held
+     * @param  list<string>|null  $selected
      */
-    private function matchesWith(Model $instance, string $name, array $columns): bool
+    private function matches(Model $instance, string $name, ?array $held, ?array $selected): bool
     {
+        if ($held === null && $selected === null) {
+            return true;
+        }
+
         try {
             $relation = $instance->{$name}();
         } catch (Throwable) {
             return false;
         }
 
-        $key = match (true) {
-            $relation instanceof BelongsTo => $relation->getOwnerKeyName(),
-            $relation instanceof HasOneOrMany => $relation->getForeignKeyName(),
-            default => null,
+        [$parentKeys, $relatedKey] = match (true) {
+            $relation instanceof MorphTo => [[$relation->getForeignKeyName(), $relation->getMorphType()], null],
+            $relation instanceof BelongsTo => [[$relation->getForeignKeyName()], $relation->getOwnerKeyName()],
+            $relation instanceof HasOneOrMany => [[$relation->getLocalKeyName()], $relation->getForeignKeyName()],
+            default => [null, null],
         };
 
-        return $key !== null && in_array($key, $columns, true);
-    }
-
-    /**
-     * Whether a closure constraint is a chain of calls on its builder alone, each of them one this reads.
-     */
-    private function readsClosure(ClosureExpr|ArrowFunction $closure): bool
-    {
-        return $this->closureCalls($closure) !== null;
+        return $parentKeys !== null
+            && ($held === null || array_diff($parentKeys, $held) === [])
+            && ($selected === null || ($relatedKey !== null && in_array($relatedKey, $selected, true)));
     }
 
     /**
      * Whether every call a closure constraint makes keeps each related row it would load.
+     *
+     * @param  list<string>  $calls
      */
-    private function keepsRows(ClosureExpr|ArrowFunction $closure): bool
+    private function keepsRows(array $calls): bool
     {
-        return array_all($this->closureCalls($closure) ?? [], fn (string $call): bool => in_array($call, self::KEEPS_ROWS, true));
+        return array_all($calls, fn (string $call): bool => in_array($call, self::KEEPS_ROWS, true));
     }
 
     /**
-     * The calls a closure constraint chains on its builder parameter, as its statements or arrow body; null where it
-     * does anything else, or calls a method that may change the columns, such as `select()` or a scope.
+     * The calls a closure constraint chains on its builder parameter, null where it may do anything else.
      *
+     * Its statements or arrow body must each be a chain of such calls, each one that keeps or filters rows; a call the
+     * related model's scope or a builder macro answers instead, such as a `scopeWhereSlim()`, may change the columns.
+     *
+     * @param  class-string<Model>  $related
      * @return list<string>|null
      */
-    private function closureCalls(ClosureExpr|ArrowFunction $closure): ?array
+    private function closureCalls(ClosureExpr|ArrowFunction $closure, string $related): ?array
     {
         $builder = $closure->params[0]->var ?? null;
+        $instance = resolve(ModelAttributeResolver::class)->getInstance($related);
 
-        if (! $builder instanceof Variable || ! is_string($builder->name)) {
+        if (! $builder instanceof Variable || ! is_string($builder->name) || $instance === null) {
             return null;
         }
 
@@ -461,7 +517,9 @@ final class LoadedRelations
         }
 
         foreach ($calls as $call) {
-            if (! in_array($call, self::KEEPS_ROWS, true) && ! in_array($call, self::FILTERS_ROWS, true) && ! $this->filtersByWhere($call)) {
+            $read = in_array($call, self::KEEPS_ROWS, true) || in_array($call, self::FILTERS_ROWS, true) || $this->filtersByWhere($call);
+
+            if (! $read || $this->runsUserCode($instance, $call)) {
                 return null;
             }
         }
@@ -478,8 +536,17 @@ final class LoadedRelations
     }
 
     /**
-     * The relation paths a model's `$with` loads with columns or a constraint, which a loadMissing() then keeps as they
-     * are; a nested list or a constraint counts its whole path.
+     * Whether a call the Eloquent builder does not declare runs a builder macro or a scope, as its __call() does.
+     */
+    private function runsUserCode(Model $instance, string $call): bool
+    {
+        return ! method_exists(Builder::class, $call) && (Builder::hasGlobalMacro($call) || $instance->hasNamedScope($call));
+    }
+
+    /**
+     * The relation paths a model's `$with` loads with columns or a constraint, which a loadMissing() keeps as they are.
+     *
+     * A nested list or a constraint counts its whole path.
      *
      * @return list<string>
      */

@@ -665,12 +665,22 @@ class ModelAttributeResolver
     }
 
     /**
-     * The key toArray() writes a loaded relation under, by delegatedRelationKeys()'s rule; null where `$visible` leaves
-     * it out or `$hidden` lists it, whatever `exclude_hidden` publishes, since toArray() then writes no key at all.
+     * The key toArray() writes a loaded relation under, or null where it writes none.
+     *
+     * The key follows delegatedRelationKeys()'s rule; `$visible` and `$hidden` decide whether it is written, whatever
+     * `exclude_hidden` publishes.
      */
     public function sentRelationKey(Model $instance, string $relationName): ?string
     {
-        return self::isArrayable($instance, $relationName) ? self::relationKey($instance, $relationName) : null;
+        return $this->writesName($instance, $relationName) ? self::relationKey($instance, $relationName) : null;
+    }
+
+    /**
+     * Whether toArray() writes an attribute or relation of this name past `$visible` and `$hidden`.
+     */
+    public function writesName(Model $instance, string $name): bool
+    {
+        return self::isArrayable($instance, $name);
     }
 
     /**

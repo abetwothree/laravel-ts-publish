@@ -529,12 +529,17 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 
 `$post->load('author')` publishes `Post & { author: User }` as its own value only. A model read after a `load()`
 statement (`$post->load('author'); return ['post' => $post]`), a step past the call (`->load('author')->first()`) and
-`$this->comments->load('user')` in an API resource publish the model or list alone, so `post.author` does not compile.
-A relation no type here admits is left out too: one a closure may narrow (a call other than a filter, an order or a
-nested load), and a `morphTo` under columns or a child. `loadMissing()` keeps what is already loaded, and only a
-`$with` that picked columns is read: after an earlier `load()`, a query's `with()` or a global scope, a member may claim
-columns that load left out, as when two props load one relation of the same model differently and the last load is the
-one sent. [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
+`$this->comments->load('user')` in an API resource publish the model or list alone; under the default split model
+template `post.author` then does not compile. A relation no type here admits is left out too: one a closure may narrow
+(a call other than a filter, an order or a nested load, or a scope), and a `morphTo` under columns or a child.
+`loadMissing()` keeps a relation already loaded, and only a `$with`, or an eager load earlier in the same chain, that
+picked columns is read, so after a `load()` on another line, a query fetched into a variable with `with()`, or a global
+scope, the member is typed while its keys may be missing, or it may be `null`, at runtime. `load()` changes the model it
+runs on, so where two props load one relation of the same model differently, both send the last load, and the other
+prop's typed member can be missing keys or `null` the same way. A loaded member meets a key the model's interface
+already declares: under the full template `Post & { author: User | null }` reads as the interface's `author: User`, and
+a relation named like a column reads as `string & Category`.
+[Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
 ### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list
 

@@ -304,15 +304,17 @@ template `TValue|null`. Each rule answers only on the receiver it names:
   gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
   keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
   `except(null)` keeps a `keyed` collection's keys (`CollectionSteps::eloquentKeyedAfter()`).
-- **`load()`, `loadMissing()`**: on a concrete model, or an `Eloquent\Collection` with `elementModel` set, that runs
-  Laravel's own, the model intersected with the members `LoadedRelations` reads off the literal argument, as Laravel's
-  eager-load parser does: `Post & { author: User }`, or `(Post & { author: User })[]`. Each member is keyed as
-  `toArray()` writes it, by `ModelAttributeResolver::sentRelationKey()`, and typed as the relation's read publishes it,
-  nested under a dotted path. A column list is a `Pick<>`, and a to-one relation adds `| null` where a closure may
-  filter its row out, its column list leaves out the key Laravel matches the row by, or no row backs the model. A
-  member whose payload no type admits is left out: a closure that may change the columns, a `morphTo` under columns
-  or a child, a relation the model's `$with` loads narrowed for `loadMissing()`. A non-literal argument, or none left,
-  keeps the model's own type. The members ride only the call's own value, not a step after it.
+- **`load()`, `loadMissing()`**: in any case PHP calls them by, on a concrete model, or an `Eloquent\Collection` with
+  `elementModel` set, that runs Laravel's own, the model intersected with the members `LoadedRelations` reads off the
+  literal argument, as Laravel's eager-load parser does: `Post & { author: User }`, or `(Post & { author: User })[]`.
+  Each member is keyed as `toArray()` writes it, by `ModelAttributeResolver::sentRelationKey()`, and typed as the
+  relation's read publishes it, nested under a dotted path. A column list is a `Pick<>` of the columns `toArray()`
+  writes. A to-one relation adds `| null` where a closure may filter its row out, or a side holds no key Laravel
+  matches the row by: its own column list, its parent's, or a model no row backs. A member whose payload no type admits
+  is left out: a closure that may change the columns (a `select()`, a scope, a builder macro), a `morphTo` under
+  columns or a child, and for `loadMissing()` a relation the model's `$with` or an eager load earlier in the call's
+  chain loads narrowed. A non-literal argument, or none left, keeps the model's own type; so does a `loadMissing()`
+  after an eager load in its chain whose argument is not a literal. The members ride only the call's own value.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty

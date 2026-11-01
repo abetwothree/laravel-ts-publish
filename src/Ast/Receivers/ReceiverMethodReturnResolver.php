@@ -59,8 +59,8 @@ final class ReceiverMethodReturnResolver
 
     private const array ITEMS_SUBSET = ['only', 'except'];
 
-    /** The methods that load relations onto a model, or each model of an Eloquent collection, and hand it back. */
-    private const array LOADS = ['load', 'loadMissing'];
+    /** The methods, lowercased as PHP matches them, that load relations onto a model or each model of a collection. */
+    private const array LOADS = ['load', 'loadmissing'];
 
     /**
      * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
@@ -222,7 +222,7 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a rule types a model method from the model's class alone, such as getKey(), toArray() or all().
+     * Whether a rule types a model method from the model's class, such as getKey(), toArray(), all() or load().
      *
      * A handler that reflects a model method directly, as VariableHandler does for a model a variable holds, leaves
      * such a call to these rules.
@@ -233,7 +233,7 @@ final class ReceiverMethodReturnResolver
     {
         DependencyRecorder::recordClass($class);
 
-        return $this->modelRule($class, $methodName) !== null;
+        return $this->modelRule($class, $methodName) !== null || ($this->loads($methodName) && $this->runsModelMethod($class, $methodName));
     }
 
     /**
@@ -260,7 +260,7 @@ final class ReceiverMethodReturnResolver
             return $this->publishedModelOrNull($receiver->relatedModel);
         }
 
-        $loaded = in_array($methodName, self::LOADS, true) ? $this->loadedRelations($receiver, $class, $methodName, $scope, $call) : null;
+        $loaded = $this->loads($methodName) ? $this->loadedRelations($receiver, $class, $methodName, $scope, $call) : null;
 
         if ($loaded !== null) {
             return $loaded;
@@ -313,9 +313,10 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * A `load()` or `loadMissing()` that runs Laravel's own: the model intersected with the relations the call adds,
-     * `Post & { author: User }`, or a list of such models on an Eloquent collection; null where the call adds none
-     * this types, so the model's own type stands.
+     * A `load()` or `loadMissing()` that runs Laravel's own, as the model intersected with the relations it adds.
+     *
+     * `Post & { author: User }`, or a list of such models on an Eloquent collection; null where the call adds none this
+     * types, so the model's own type stands.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
@@ -357,7 +358,15 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() names the same set.
+     * Whether a method name is `load()` or `loadMissing()`, in any case PHP calls it by.
+     */
+    private function loads(string $methodName): bool
+    {
+        return in_array(strtolower($methodName), self::LOADS, true);
+    }
+
+    /**
+     * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() also names these.
      *
      * @param  class-string  $class
      * @return (Closure(ReceiverType): (ValueExpressionResult|null))|null

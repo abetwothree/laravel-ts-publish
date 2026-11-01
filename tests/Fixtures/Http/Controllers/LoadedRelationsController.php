@@ -119,6 +119,30 @@ class LoadedRelationsController
         ]);
     }
 
+    /** Renders the post's comments loaded with columns that leave out the key each comment's user is matched by. */
+    public function pickedParent(Post $post): Response
+    {
+        return Inertia::render('Loaded/PickedParent', ['loaded' => $post->load('comments:id,post_id,content', 'comments.user')]);
+    }
+
+    /** Renders the post's comments loaded with columns that keep the key each comment's user is matched by. */
+    public function pickedParentKey(Post $post): Response
+    {
+        return Inertia::render('Loaded/PickedParentKey', ['loaded' => $post->load(['comments:id,post_id,user_id,content' => ['user']])]);
+    }
+
+    /** Renders the post with its author loaded with a column the author hides. */
+    public function hiddenColumn(Post $post): Response
+    {
+        return Inertia::render('Loaded/HiddenColumn', ['loaded' => $post->load('author:id,password')]);
+    }
+
+    /** Renders the post with a relation loaded through `loadMissing()` spelled in lowercase, which PHP calls alike. */
+    public function lowercased(Post $post): Response
+    {
+        return Inertia::render('Loaded/Lowercased', ['loaded' => $post->loadmissing('author')]);
+    }
+
     /** Renders a handover with its relations to two models of one name loaded. */
     public function sameNamed(Handover $handover): Response
     {

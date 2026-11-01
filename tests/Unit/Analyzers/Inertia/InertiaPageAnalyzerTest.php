@@ -2484,6 +2484,26 @@ it('publishes the relations load() and loadMissing() add', function (string $act
         fn (stdClass $loaded) => [array_keys((array) $loaded->author), $loaded->author->posts[0]->title],
         [['id', 'name', 'posts'], 'First'],
     ],
+    // Without the comment's `user_id`, BelongsTo matches no user, so each comment's `user` is sent as null.
+    'a to-one under columns that leave out its key' => [
+        'pickedParent',
+        "{ loaded: Post & { comments: (Pick<Comment, 'id' | 'post_id' | 'content'> & { user: User | null })[] } }",
+        fn (stdClass $loaded) => [$loaded->comments[0]->content, $loaded->comments[0]->user],
+        ['alpha', null],
+    ],
+    'a to-one under columns that keep its key' => [
+        'pickedParentKey',
+        "{ loaded: Post & { comments: (Pick<Comment, 'id' | 'post_id' | 'user_id' | 'content'> & { user: User })[] } }",
+        fn (stdClass $loaded) => $loaded->comments[0]->user->name,
+        'Ada',
+    ],
+    'a column the related model hides' => [
+        'hiddenColumn',
+        "{ loaded: Post & { author: Pick<User, 'id'> } }",
+        fn (stdClass $loaded) => array_keys((array) $loaded->author),
+        ['id'],
+    ],
+    'loadMissing() in lowercase' => ['lowercased', '{ loaded: Post & { author: User } }', fn (stdClass $loaded) => $loaded->author->name, 'Ada'],
 ]);
 
 // A key held in a local is not read, and loadCount() keeps the model's own type; both admit the keys they add.

@@ -1494,22 +1494,27 @@ describe('getKey()', function () {
     });
 
     // VariableHandler declines every method typesByRule() names, so a rule ruleFor() gains reaches a variable unedited.
+    // A load() is asked with a call that loads one of the model's relations, which its rule reads.
     test('typesByRule() names exactly the methods ruleFor() answers', function (string $class, array $named) {
         $rules = resolve(ReceiverMethodReturnResolver::class);
         $ruleFor = new ReflectionMethod($rules, 'ruleFor');
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), $class);
         $methods = get_class_methods($class);
+        $relation = resolve(ModelAttributeResolver::class)->getRelations($class)?->first()['name'] ?? 'none';
+        $callOf = fn (string $method): ?Expr => in_array($method, ['load', 'loadMissing'], true)
+            ? receiverHandlerExpr('$model->'.$method.'("'.$relation.'")')
+            : null;
 
         $typed = array_values(array_filter($methods, fn (string $method): bool => $rules->typesByRule($class, $method)));
         $answered = array_values(array_filter(
             $methods,
-            fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, null) !== null,
+            fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, $callOf($method)) !== null,
         ));
 
         expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except');
     })->with([
-        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding']],
-        'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding']],
+        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing']],
+        'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding', 'load']],
         'one identified by another column' => [EmailIdentifierUser::class, ['getKey', 'getAuthIdentifier']],
         'an abstract model' => [CallPathAbstractModel::class, ['getKey']],
     ]);
