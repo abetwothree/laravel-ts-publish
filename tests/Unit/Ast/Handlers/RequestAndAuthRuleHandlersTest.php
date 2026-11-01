@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideMo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Analyzers\FormRequest\BrandedFormRequestRulesAnalyzer;
@@ -462,6 +463,30 @@ it('declines a guard() or request()->user() naming a guard, and guard() on a cla
         ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user', $admin)))->toBeNull()
         ->and($resolve(new MethodCall(new FuncCall(new Name('request'), [new Arg(new String_('key'))]), 'user')))->toBeNull()
         ->and($resolve(new MethodCall(new StaticCall(new Name('Foo\\Auth'), 'guard'), 'user')))->toBeNull();
+});
+
+// A route's guard middleware may make a guard over another model the default, so only the spellings base read keep it.
+it('keeps base\'s auth()->user(), Auth::user() and $request->user() where another guard names another model', function () {
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+    config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $user = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect($resolve(new MethodCall(new FuncCall(new Name('auth')), 'user')))->toBe($user)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'user'), requestRuleScope(), requestRuleEngine()))->toBe($user)
+        ->and((new KnownMethodRuleHandler)->resolve(new MethodCall(new Variable('request'), 'user'), requestRuleScope(), requestRuleEngine()))
+        ->toBe($user)
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new StaticCall(new Name(Auth::class), 'guard'), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new MethodCall(new FuncCall(new Name('auth')), 'guard'), 'id')))->toBeNull();
+});
+
+it('reads the auth methods by name in any case, as PHP calls them', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+
+    expect($resolve(new MethodCall(new FuncCall(new Name('auth')), 'User')))
+        ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
+        ->and($resolve(new MethodCall(new FuncCall(new Name('auth')), 'ID')))->toBe(['type' => 'number | null', 'optional' => false]);
 });
 
 it('types config() with a literal key from the live configuration value', function (string $key, mixed $value, string $type) {

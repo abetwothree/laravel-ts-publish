@@ -1014,10 +1014,10 @@ final class ReceiverClassResolver
             return $loaded;
         }
 
-        $user = $method === 'user' && $this->holdsOnlyRequests($receiver) ? $this->signedInUser($shortCircuits) : null;
+        $authModel = $method === 'user' && $this->holdsOnlyRequests($receiver) ? resolve(AuthUserResolver::class)->model() : null;
 
-        if ($user !== null) {
-            return $user;
+        if ($authModel !== null) {
+            return ReceiverType::of($authModel, $shortCircuits);
         }
 
         $element = $this->collectedElement($call, $method, $receiver);
@@ -1274,11 +1274,11 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The default guard's user, held by `$request->user()` and each spelling readsSignedInUser() admits.
+     * The default guard's user, for a call readsSignedInUser() admits, where no guard names another model.
      */
     private function signedInUser(bool $shortCircuits): ?ReceiverType
     {
-        $model = resolve(AuthUserResolver::class)->model();
+        $model = resolve(AuthUserResolver::class)->soleModel();
 
         return $model === null ? null : ReceiverType::of($model, $shortCircuits);
     }

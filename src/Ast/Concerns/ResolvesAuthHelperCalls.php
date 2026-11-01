@@ -36,6 +36,8 @@ trait ResolvesAuthHelperCalls
      */
     protected function authMethodResult(string $method, ?string $model): ?array
     {
+        $method = strtolower($method);
+
         if ($model === null) {
             return null;
         }
@@ -56,8 +58,7 @@ trait ResolvesAuthHelperCalls
     }
 
     /**
-     * Whether a call reads the default guard's user: `user()` on `auth()`, `auth()->guard()` or `Auth::guard()`,
-     * `Auth::user()`, or `request()->user()` naming no guard. AuthUserResolver reads only the default guard.
+     * Whether a call reads the default guard's user: `user()` on it, `Auth::user()` or `request()->user()`.
      */
     protected function readsSignedInUser(MethodCall|NullsafeMethodCall|StaticCall $call): bool
     {

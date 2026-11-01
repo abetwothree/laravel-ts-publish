@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Builders\PublishedPostBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OverriddenBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
@@ -238,6 +239,18 @@ describe('ReceiverClassResolver::resolve()', function () {
             '\\Illuminate\\Support\\Facades\\Config::guard()->user()',
             '\\Foo\\Auth::user()',
         ]))->each->toBeNull();
+    });
+
+    test('only $request->user() holds the default guard\'s user where another guard names another model', function () {
+        config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+        config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+        $scope = postScope();
+        $scope->requestVarNames['request'] = Request::class;
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), $scope)?->classes;
+
+        expect($holds('$request->user()'))->toBe([User::class])
+            ->and(array_map($holds, ['auth()->user()', '\\Illuminate\\Support\\Facades\\Auth::user()', 'request()->user()', 'auth()->guard()->user()']))
+            ->each->toBeNull();
     });
 
     test('the signed-in user holds nothing where the default guard\'s provider names no Eloquent model', function () {

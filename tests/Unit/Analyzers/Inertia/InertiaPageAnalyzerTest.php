@@ -45,6 +45,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCast
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignedInViewerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
@@ -2280,4 +2281,36 @@ it('reads the signed-in user alike in shared data and in an API resource', funct
         ->and([$shared->helper, $shared->facade, $shared->request, $shared->user->name])->toBe(['Ada', 'ada@example.com', 'Ada', 'Ada'])
         ->and((array) sentAsJson(new SignedInViewerResource($post)->resolve(request())))
         ->toBe(['id' => $post->id, 'helper' => 'Ada', 'facade' => 'ada@example.com', 'request' => 'Ada']);
+});
+
+/** Sign a user of the given model in on an `admin` guard over it, made the default as `auth:admin` makes it. */
+function signInThroughRouteGuard(string $model): stdClass
+{
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'admins']);
+    config()->set('auth.providers.admins', ['driver' => 'eloquent', 'model' => $model]);
+    $type = pageData(SignedInUserController::class.'@routeGuard')['pageType'];
+    Auth::guard('admin')->setUser($model::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']));
+    Auth::shouldUse('admin');
+    app()->instance('request', Request::create('/'));
+
+    return (object) ['type' => $type, 'sent' => inertiaProps(new SignedInUserController()->routeGuard())];
+}
+
+// A route's `auth:admin` middleware makes the admin guard the default, so its model's user is the one sent.
+it('declines the signed-in user where another guard names another model, which a route may sign in', function () {
+    $page = signInThroughRouteGuard(NameLengthMember::class);
+
+    expect($page->type)
+        ->toBe('Inertia.SharedData & { helper: unknown, facade: unknown, request: unknown, guard: unknown, user: unknown }')
+        ->and([$page->sent->helper, $page->sent->facade, $page->sent->request, $page->sent->guard, $page->sent->user->name])
+        ->toBe([3, 3, 3, 3, 3]);
+});
+
+it('reads the signed-in user where every guard names the one model', function () {
+    $page = signInThroughRouteGuard(User::class);
+
+    expect($page->type)->toBe('Inertia.SharedData & { '
+        .'helper: string | null, facade: string | null, request: string | null, guard: string | null, user: User | null }')
+        ->and([$page->sent->helper, $page->sent->facade, $page->sent->request, $page->sent->guard, $page->sent->user->name])
+        ->toBe(['Ada', 'Ada', 'Ada', 'Ada', 'Ada']);
 });

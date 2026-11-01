@@ -208,6 +208,16 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
+### With two user models, the signed-in user publishes `unknown` past `auth()`, `Auth` and `request()`
+
+`auth()->user()?->name`, `Auth::user()?->email`, `request()->user()?->name`, a bare `request()->user()`, and `user()` or
+`id()` on `Auth::guard()` or `auth()->guard()` take the default guard's model only while every configured guard's
+provider names that one Eloquent model. A route's `auth:admin` middleware makes the admin guard the default for that
+request, so where another guard names another model either user may be sent, and these stay `unknown` until a
+guard-aware reader lands. `$request->user()`, the bare `auth()->user()` and `Auth::user()`, `auth()->id()` and
+`Auth::id()` keep the default guard's model, so behind such a route they publish that model's type. A named guard,
+`auth('admin')` or `Auth::guard('admin')`, publishes `unknown`. Type the key with `#[TsCasts]`.
+
 ### Some unions of `EnumResource` arms publish the wrong enum shape
 
 With `enums.use_tolki_package` on, the default, each of these misses what Laravel sends, in an API resource as on an

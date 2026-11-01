@@ -113,13 +113,16 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        $method = match (true) {
-            $this->isDefaultGuard($expr->var) => $expr->name->toString(),
-            $this->readsSignedInUser($expr) => 'user',
+        $users = resolve(AuthUserResolver::class);
+
+        // `auth()->user()` keeps the default guard's model it always read; the newer spellings take it only while it is
+        // the one model a guard names, as a route's guard middleware may sign in any guard's.
+        return match (true) {
+            $this->callsWithoutArguments($expr->var, 'auth') => $this->authMethodResult($expr->name->toString(), $users->model()),
+            $this->isDefaultGuard($expr->var) => $this->authMethodResult($expr->name->toString(), $users->soleModel()),
+            $this->readsSignedInUser($expr) => $this->authMethodResult('user', $users->soleModel()),
             default => null,
         };
-
-        return $method === null ? null : $this->authMethodResult($method, resolve(AuthUserResolver::class)->model());
     }
 
     /**

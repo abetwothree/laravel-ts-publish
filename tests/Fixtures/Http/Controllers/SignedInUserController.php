@@ -40,4 +40,16 @@ class SignedInUserController
             'namedRequest' => request()->user('admin')?->name,
         ]);
     }
+
+    /** Renders the user through the spellings that read whichever guard a route's guard middleware made the default. */
+    public function routeGuard(): Response
+    {
+        return Inertia::render('SignedIn/RouteGuard', [
+            'helper' => auth()->user()?->name,
+            'facade' => Auth::user()?->name,
+            'request' => request()->user()?->name,
+            'guard' => Auth::guard()->user()?->name,
+            'user' => request()->user(),
+        ]);
+    }
 }
