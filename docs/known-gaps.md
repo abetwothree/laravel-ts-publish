@@ -569,8 +569,8 @@ but a member whose nullable `role` is null sends `[]`: `JsonResource::filter()` 
 only inside arrays, and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap
 itself. End the chain with `->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends. On
 an Inertia page and in shared data, a resolved resource's body included, the same map publishes
-`(AsEnum<typeof Role> | never[])[]`. A resource a response's `with()` or `additional()` key holds publishes its own type
-there, so the map in its body keeps `AsEnum<typeof Role>[]` on a page too.
+`(AsEnum<typeof Role> | never[])[]`. A resource a response's `with()` or `additional()` key holds sends its body, which
+publishes as the resource's own interface, with that interface's gaps, such as the kept map.
 
 ### An API resource wrapping a relation the engine cannot type publishes it without `| null`
 

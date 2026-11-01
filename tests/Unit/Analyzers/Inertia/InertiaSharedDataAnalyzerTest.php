@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithLosingSpellingImport;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMergingWith;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
@@ -881,4 +882,20 @@ test('a share middleware reads ?? over a held callable a called closure returns 
 
     expect(sharedProps(MiddlewareWithCallableReturn::class))->toBe(['a' => 'number'])
         ->and(json_encode($sent))->toBe('{"a":{}}');
+});
+
+// A shared resource's `with()` is sent unfiltered as on a page, so its MergeValues merge no key there either.
+test('a share middleware publishes no key a merge() in a shared resource\'s with() would merge', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
+    $request = Request::create('/');
+    Inertia::flushShared();
+    Inertia::share(new MiddlewareWithMergingWith()->share($request));
+    $sent = json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true);
+
+    expect(sharedProps(MiddlewareWithMergingWith::class))
+        ->toBe(['withMerge' => '{ data: MergingWithResource; a: number; listed: unknown[] }'])
+        ->and($sent['withMerge'])->toBe([
+            'data' => ['id' => $post->id], 'a' => 1, 0 => [], 1 => ['data' => ['m' => 3]], 'listed' => [['data' => ['n' => 4]]],
+        ]);
 });

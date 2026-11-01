@@ -2667,3 +2667,24 @@ it('publishes a resource a with() key holds as its own type', function () {
             'kept' => [[]],
         ]);
 });
+
+// Nothing filters a response's `with()` keys, so a MergeValue there is sent whole, under a positional key.
+it('publishes no key a merge() or mergeWhen() in a with() would merge', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $sent = fn (string $query): array => json_decode((string) json_encode(
+        inertiaProps(new ResourceExtrasController()->merged($post), Request::create('/'.$query)),
+    ), true);
+
+    expect(pageData(ResourceExtrasController::class.'@merged')['pageType'])->toBe('Inertia.SharedData & { '
+        .'merge: { data: MergingWithResource; a: number; listed: unknown[] }, '
+        .'mergeAdded: { data: MergingWithResource; a: number; listed: unknown[]; extra: number } }')
+        ->and($sent('?shown=1')['merge'])->toBe([
+            'data' => ['id' => $post->id], 'a' => 1, 0 => ['data' => ['b' => 2]], 1 => ['data' => ['m' => 3]],
+            'listed' => [['data' => ['n' => 4]]],
+        ])
+        ->and($sent('')['mergeAdded'])->toBe([
+            'data' => ['id' => $post->id], 'a' => 1, 0 => [], 1 => ['data' => ['m' => 3]], 'listed' => [['data' => ['n' => 4]]],
+            'extra' => 1,
+        ]);
+});

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldResourceWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LooseWithResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergingWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VersionedUserCardCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WithMetaResource;
@@ -103,5 +104,14 @@ class ResourceExtrasController
     public function held(Post $post): Response
     {
         return Inertia::render('ResourceExtras/Held', ['card' => HeldResourceWithResource::make($post)]);
+    }
+
+    /** Renders a post whose `with()` holds `merge()` values, alone and beside an `additional()` key. */
+    public function merged(Post $post): Response
+    {
+        return Inertia::render('ResourceExtras/Merged', [
+            'merge' => MergingWithResource::make($post),
+            'mergeAdded' => MergingWithResource::make($post)->additional(['extra' => 1]),
+        ]);
     }
 }

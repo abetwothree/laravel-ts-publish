@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -267,7 +268,8 @@ final class InlineArrayHandler implements ExpressionHandler
             return ['type' => 'never[]', 'optional' => false];
         }
 
-        $list = $this->holdsMergeCall($array) ? null : new ValueResolver()->resolveListLiteral($array, $scope, $engine);
+        $merges = $engine->reading() !== Reading::EncodedUnfiltered && $this->holdsMergeCall($array);
+        $list = $merges ? null : new ValueResolver()->resolveListLiteral($array, $scope, $engine);
 
         if ($list !== null) {
             return $list;
@@ -282,7 +284,7 @@ final class InlineArrayHandler implements ExpressionHandler
 
     /**
      * Whether a keyless item is a `$this->merge()`, `mergeWhen()` or `mergeUnless()` call, whose keys an API resource
-     * merges into the array instead of listing the call's value.
+     * merges into the array instead of listing the call's value; where no `filter()` runs, the value is listed.
      */
     private function holdsMergeCall(Array_ $array): bool
     {
