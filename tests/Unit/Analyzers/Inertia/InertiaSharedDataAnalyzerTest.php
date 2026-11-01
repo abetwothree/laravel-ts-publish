@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDottedKeys;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEmbeddedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
@@ -653,6 +654,15 @@ test('a top-level int key of shared data publishes on the key Laravel renumbers 
             'subject' => MiddlewareWithNumericBodyKey::class,
             'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of shared data; use a string key.',
         ]]);
+});
+
+// PropsResolver::resolve() unpacks shared data's dotted keys with the page's, writing each into its path by Arr::set().
+test('a dotted key of shared data publishes nested, as Inertia unpacks it', function () {
+    Inertia::share(new MiddlewareWithDottedKeys()->share(request()));
+
+    expect(analyzeSharedDataFor(MiddlewareWithDottedKeys::class)['sharedPageProps'] ?? null)
+        ->toBe('{ auth: { user: string }, "1": { "5": string } }')
+        ->and(inertiaPropsJson(Inertia::render('Shared', [])))->toBe('{"auth":{"user":"x"},"1":{"5":"y"}}');
 });
 
 test('share()\'s spelling of a signature outranks the class\'s exact name', function () {

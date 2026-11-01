@@ -171,13 +171,16 @@ transformed is never registered.
 ### `FileImportNames`
 
 The page and shared-data analyzers print each type from an analysis the file does not keep. Each printer,
-`buildMembersWithOverrides()`, returns the members it prints (a key's text, its type's text and the analysis key it
-came from), and `FileImportNames::objectMember()` joins the type from exactly those members beside their token queues,
-so no queue is rebuilt beside the printer. A page hands its type over with `InertiaPageData`'s `pageQueues` and
-`pageConstQueues`, one per page type. For an analyzer that returns none, `RouteTransformer` builds them from
-`classFqcns` and `enumConstFqcns` with `FileImportNames::typeQueues()`, so each token still takes its class. A
-`@tolki/types` class is imported from that module unaliased, and its name is reserved as a custom import's is. A page
-reserves the names its own branch's imports bring, so the order of an action's component branches decides nothing.
+`buildMembersWithOverrides()`, returns the members it prints (a key's text, its type's text and the analysis key it came
+from), and `FileImportNames::objectMember()` joins the type from exactly those members beside their token queues, so no
+queue is rebuilt beside the printer. A dotted key Inertia unpacks prints inside its head's member, which carries the
+pieces of its text, each with the analysis key whose type it prints
+([`DottedTopLevelKeys`](../../src/Support/DottedTopLevelKeys.php)), so each token still takes its own key's class. A
+page hands its type over with `InertiaPageData`'s `pageQueues` and `pageConstQueues`, one per page type. For an analyzer
+that returns none, `RouteTransformer` builds them from `classFqcns` and `enumConstFqcns` with
+`FileImportNames::typeQueues()`, so each token still takes its class. A `@tolki/types` class is imported from that
+module unaliased, and its name is reserved as a custom import's is. A page reserves the names its own branch's imports
+bring, so the order of an action's component branches decides nothing.
 
 A metadata companion is the same call with one member per key whose text no cast import owns, after
 `CastChannels::fit()` over its casts and docblock keys, so same-named enums alias as in any file. The names its

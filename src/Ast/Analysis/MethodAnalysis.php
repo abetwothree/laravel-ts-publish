@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -524,6 +525,34 @@ class MethodAnalysis
         }
 
         $this->properties = $kept;
+    }
+
+    /**
+     * Rename properties, with every import channel, cast and held-object entry kept under their names, at once.
+     *
+     * @param  array<array-key, string>  $names  each name => its new name; a name it lacks keeps its own
+     */
+    public function renameKeys(array $names): void
+    {
+        foreach ($this->properties as &$property) {
+            $property['name'] = $names[$property['name']] ?? $property['name'];
+        }
+
+        unset($property);
+
+        $this->enumResources = TopLevelRenumbering::rekey($this->enumResources, $names);
+        $this->nestedResources = TopLevelRenumbering::rekey($this->nestedResources, $names);
+        $this->directEnumFqcns = TopLevelRenumbering::rekey($this->directEnumFqcns, $names);
+        $this->modelFqcns = TopLevelRenumbering::rekey($this->modelFqcns, $names);
+        $this->inlineEnumFqcns = TopLevelRenumbering::rekey($this->inlineEnumFqcns, $names);
+        $this->inlineModelFqcns = TopLevelRenumbering::rekey($this->inlineModelFqcns, $names);
+        $this->inlineResourceFqcns = TopLevelRenumbering::rekey($this->inlineResourceFqcns, $names);
+        $this->multiEnumResourceFqcns = TopLevelRenumbering::rekey($this->multiEnumResourceFqcns, $names);
+        $this->inlineEnumResourceFqcns = TopLevelRenumbering::rekey($this->inlineEnumResourceFqcns, $names);
+        $this->enumResourceArmShapes = TopLevelRenumbering::rekey($this->enumResourceArmShapes, $names);
+        $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
+        $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
+        $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
     }
 
     /**

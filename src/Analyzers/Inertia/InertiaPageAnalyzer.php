@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
@@ -32,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -73,10 +75,14 @@ use Throwable;
 class InertiaPageAnalyzer
 {
     use InspectsAstNodes;
+    use PrintsTopLevelMembers;
     use RewritesEnumResourceProps;
 
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
+
+    /** Cap on the int keys a props array may lack before a later one, each doubling the arrays renumbered apart. */
+    private const MAX_SHIFTING_KEYS = 4;
 
     /** TypeScript's own generic heads, which a rendered type spells without naming any PHP class. */
     private const UTILITY_TYPES = ['Record', 'Omit', 'Pick', 'Partial', 'Required', 'Readonly', 'Exclude', 'Extract', 'NonNullable'];
@@ -185,7 +191,7 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Group the action's render calls by component name, one analysis per call.
+     * Group the action's render calls by component name, one analysis per props array a call may send.
      *
      * @return array<string, list<ResourceAnalysis>>
      */
@@ -201,53 +207,60 @@ class InertiaPageAnalyzer
                 continue;
             }
 
-            $branches[$call->nameArg->value][] = $this->analyzeProps($call->propsArg, $context, $analyzer, $scope);
+            $branches[$call->nameArg->value] = [
+                ...$branches[$call->nameArg->value] ?? [],
+                ...$this->analyzeProps($call->propsArg, $context, $analyzer, $scope),
+            ];
         }
 
         return $branches;
     }
 
     /**
-     * Analyze one render call's props argument into properties and FQCN channels.
+     * Analyze one render call's props argument into each props array it may send, with properties and FQCN channels.
+     *
+     * @return non-empty-list<ResourceAnalysis>
      */
     protected function analyzeProps(
         ?Expr $propsArg,
         MethodContext $context,
         ResourceAstAnalyzer $analyzer,
         AnalysisScope $scope,
-    ): ResourceAnalysis {
+    ): array {
         if ($propsArg === null) {
-            return new ResourceAnalysis;
+            return [new ResourceAnalysis];
         }
 
         return $this->readProps($propsArg, $context, $analyzer, $scope)
-            ?? $this->analyzeDelegatedProps($propsArg, $context);
+            ?? [$this->analyzeDelegatedProps($propsArg, $context)];
     }
 
     /**
-     * The props an argument holds: its literals, a local walked from its writes before the render call, or a `+`.
+     * Each props array an argument may hold: one per literal, else a local walked before the render call, or a `+`.
+     *
+     * @return non-empty-list<ResourceAnalysis>|null
      */
     protected function readProps(
         Expr $propsArg,
         MethodContext $context,
         ResourceAstAnalyzer $analyzer,
         AnalysisScope $scope,
-    ): ?ResourceAnalysis {
+    ): ?array {
         $literals = $this->propsArrayLiterals($propsArg, $scope);
 
         if ($literals !== []) {
             // This literal IS the render call's whole props shape, not an array embedded inside it —
             // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
-            $analyses = array_map(
+            return array_map(
                 fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
                 $literals,
             );
-
-            return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
         }
 
         if ($propsArg instanceof Variable) {
-            return $analyzer->variableAnalysis($propsArg, $context->method->stmts ?? []);
+            $walked = $analyzer->variableAnalysis($propsArg, $context->method->stmts ?? []);
+
+            return $walked === null ? null : [$walked];
         }
 
         if (! $propsArg instanceof Plus) {
@@ -255,7 +268,7 @@ class InertiaPageAnalyzer
         }
 
         $unread = UnreadSpreads::count();
-        $left = $this->readProps($propsArg->left, $context, $analyzer, $scope);
+        $left = $this->oneProps($this->readProps($propsArg->left, $context, $analyzer, $scope), $analyzer);
 
         // `+` keeps each key its left side holds, so a key the left may hold unread, or a signature may stand for, may
         // take the right's place.
@@ -264,9 +277,9 @@ class InertiaPageAnalyzer
             return null;
         }
 
-        $right = $this->readProps($propsArg->right, $context, $analyzer, $scope);
+        $right = $this->oneProps($this->readProps($propsArg->right, $context, $analyzer, $scope), $analyzer);
 
-        return $right === null ? null : $this->plusProps($left, $right, $analyzer);
+        return $right === null ? null : [$this->plusProps($left, $right, $analyzer)];
     }
 
     /**
@@ -398,12 +411,18 @@ class InertiaPageAnalyzer
         $externalImports = [];
 
         foreach ($branches as $analyses) {
+            [$analyses, $sent] = $this->renumberEach($analyses, $subject);
             $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
             $keys = array_column($analysis->properties, 'name');
-            $targets = JsEmitter::castTargets(array_keys($overrides), $keys);
-            JsEmitter::warnAmbiguousCasts($subject, array_keys($overrides), $keys);
-            $casts = JsEmitter::retargetCasts($overrides, $targets);
-            $paths = JsEmitter::retargetCasts($importPaths, $targets);
+            $castKeys = $this->castKeysAsSent(array_keys($overrides), $sent, $keys, $subject);
+            $sentOverrides = TopLevelRenumbering::rekey(array_intersect_key($overrides, $castKeys), $castKeys);
+            $targets = JsEmitter::castTargets(array_keys($sentOverrides), $keys);
+            JsEmitter::warnAmbiguousCasts($subject, array_keys($sentOverrides), $keys);
+            $casts = JsEmitter::retargetCasts($sentOverrides, $targets);
+            $paths = JsEmitter::retargetCasts(
+                TopLevelRenumbering::rekey(array_intersect_key($importPaths, $castKeys), $castKeys),
+                $targets,
+            );
             $castImports = [];
 
             // A losing spelling's import goes with its type.
@@ -424,7 +443,10 @@ class InertiaPageAnalyzer
             $members = $this->buildMembersWithOverrides(
                 $props,
                 $casts,
-                JsEmitter::retargetCasts($optionalOverrides, $targets),
+                JsEmitter::retargetCasts(
+                    TopLevelRenumbering::rekey(array_intersect_key($optionalOverrides, $castKeys), $castKeys),
+                    $targets,
+                ),
                 $this->renumberTopLevel($props, $casts, $subject),
             );
 
@@ -483,6 +505,7 @@ class InertiaPageAnalyzer
 
     /**
      * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
+     * Each props array is renumbered before this, so it moves only a key the action's casts add.
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $casts
@@ -497,7 +520,7 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Print each prop as an object type's member, a TsCasts override in its place, on the key Laravel sends it on.
+     * Print each prop as an object type's member, a TsCasts override in its place, where Inertia sends its key.
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $overrides
@@ -519,20 +542,8 @@ class InertiaPageAnalyzer
             $casts[$key] = JsEmitter::signatureSafeMember((string) $key, $type, $optional);
         }
 
-        $members = [];
-
         // A cast keeps its prop's place, and one no prop has goes after them.
-        foreach (array_replace($props, $casts) as $name => $entry) {
-            $key = $renumbered[$name] ?? (string) $name;
-            $members[] = [
-                'key' => JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
-                    .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': '),
-                'type' => $entry['type'],
-                'source' => $name,
-            ];
-        }
-
-        return $members;
+        return $this->printTopLevel(array_replace($props, $casts), $renumbered);
     }
 
     /**
@@ -637,6 +648,136 @@ class InertiaPageAnalyzer
     }
 
     /**
+     * Each props array with its int keys renumbered as Laravel sends them, beside the names each sent key holds.
+     *
+     * Laravel's top-level `array_merge()` renumbers each array's int keys from 0; each key it moves warns.
+     *
+     * @param  list<ResourceAnalysis>  $analyses
+     * @return array{list<ResourceAnalysis>, array<array-key, list<string>>}
+     */
+    private function renumberEach(array $analyses, string $subject): array
+    {
+        $renumberedAnalyses = [];
+        $sent = [];
+
+        foreach (array_merge(...array_map($this->presenceArms(...), $analyses)) as $analysis) {
+            $names = array_values(array_unique(array_map(strval(...), array_column($analysis->properties, 'name'))));
+            $renumbered = TopLevelRenumbering::renumber($names);
+            TopLevelRenumbering::warnRenumbered($subject, 'a page', $renumbered);
+
+            foreach ($renumbered as $name => $key) {
+                $sent[$key] = array_values(array_unique([...$sent[$key] ?? [], (string) $name]));
+            }
+
+            if (array_any($renumbered, static fn (string $key, int|string $name): bool => $key !== (string) $name)) {
+                $analysis = clone $analysis;
+                $analysis->renameKeys($renumbered);
+            }
+
+            $renumberedAnalyses[] = $analysis;
+        }
+
+        return [$renumberedAnalyses, $sent];
+    }
+
+    /**
+     * The props array once per set of the int keys it may lack before a later int key, up to a cap.
+     *
+     * Such a key moves every later one down; a key Inertia leaves out after the merge, as a deferred prop, does not.
+     *
+     * @return non-empty-list<ResourceAnalysis>
+     */
+    private function presenceArms(ResourceAnalysis $analysis): array
+    {
+        $optional = [];
+
+        foreach ($analysis->properties as $property) {
+            if (PhpArrayKey::storedInt($property['name']) !== null) {
+                $optional[$property['name']] = $property['optional'] && ! isset($analysis->heldObjectKeys[$property['name']]);
+            }
+        }
+
+        $shifting = array_map(strval(...), array_keys(array_filter(array_slice($optional, 0, -1, true))));
+
+        if ($shifting === [] || count($shifting) > self::MAX_SHIFTING_KEYS) {
+            return [$analysis];
+        }
+
+        $arms = [];
+
+        for ($mask = 0; $mask < 2 ** count($shifting); $mask++) {
+            $absent = array_values(array_filter($shifting, static fn (int $at): bool => ($mask >> $at & 1) === 1, ARRAY_FILTER_USE_KEY));
+            $arm = clone $analysis;
+            $arm->properties = [];
+
+            foreach ($analysis->properties as $property) {
+                if (! in_array($property['name'], $absent, true)) {
+                    $arm->properties[] = in_array($property['name'], $shifting, true) ? [...$property, 'optional' => false] : $property;
+                }
+            }
+
+            foreach ($absent as $name) {
+                $arm->forgetChannels($name);
+            }
+
+            $arms[] = $arm;
+        }
+
+        return $arms;
+    }
+
+    /**
+     * The key each action cast publishes on, as Laravel renumbers the int keys of the props arrays.
+     *
+     * A cast on a number another props array sends another key on retypes none, and warns; an int key none holds goes
+     * after theirs.
+     *
+     * @param  list<array-key>  $castKeys
+     * @param  array<array-key, list<string>>  $sent  each key Laravel sends => the names the props arrays hold there
+     * @param  list<string>  $keys  the props' keys as Laravel sends them
+     * @return array<array-key, string> each cast key kept => the key it publishes on
+     */
+    private function castKeysAsSent(array $castKeys, array $sent, array $keys, string $subject): array
+    {
+        $next = count(array_filter(
+            array_unique($keys),
+            static fn (string $key): bool => PhpArrayKey::storedInt($key) !== null,
+        ));
+        $sentOn = [];
+
+        foreach ($sent as $key => $names) {
+            foreach ($names as $name) {
+                $sentOn[$name] ??= (string) $key;
+            }
+        }
+
+        $kept = [];
+
+        foreach ($castKeys as $castKey) {
+            $name = (string) $castKey;
+            $key = $sentOn[$name] ?? null;
+
+            if ($key !== null && $sent[$key] !== [$name]) {
+                AnalysisWarnings::addOnce($subject, sprintf(
+                    'The #[TsCasts] key "%s" retypes none: Laravel renumbers it to "%s", which another props array sends '
+                    .'another key on; use a string key.',
+                    $name,
+                    $key,
+                ));
+            } elseif ($key !== null) {
+                $kept[$name] = $key;
+            } elseif (PhpArrayKey::storedInt($name) !== null) {
+                $kept[$name] = (string) $next++;
+                TopLevelRenumbering::warnRenumbered($subject, 'a page', [$name => $kept[$name]]);
+            } else {
+                $kept[$name] = $name;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
      * The cast in force for each key: a props helper's own method cast, under the action's cast with its import path.
      *
      * @param  array<array-key, string>  $casts  the action's casts, by the key each retypes
@@ -668,6 +809,20 @@ class InertiaPageAnalyzer
                 $item->value->setAttribute(InertiaTableHandler::TYPED_AS_TABLE, true);
             }
         }
+    }
+
+    /**
+     * The props arrays an operand of `+` may hold as one analysis, or null where it holds none the reader reads.
+     *
+     * @param  non-empty-list<ResourceAnalysis>|null  $alternatives
+     */
+    private function oneProps(?array $alternatives, ResourceAstAnalyzer $analyzer): ?ResourceAnalysis
+    {
+        return match (true) {
+            $alternatives === null => null,
+            count($alternatives) === 1 => $alternatives[0],
+            default => $analyzer->mergeReturnBranches($alternatives),
+        };
     }
 
     /**

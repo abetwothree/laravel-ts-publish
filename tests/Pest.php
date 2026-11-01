@@ -186,6 +186,17 @@ function inertiaProps(InertiaResponse $page, ?Request $request = null): stdClass
 }
 
 /**
+ * The JSON of the props Inertia sends for a page on a first visit, which is a list where every top-level key is an int.
+ */
+function inertiaPropsJson(InertiaResponse $page, ?Request $request = null): string
+{
+    $request ??= Request::create('/');
+    $request->headers->set('X-Inertia', 'true');
+
+    return (string) json_encode(json_decode((string) $page->toResponse($request)->getContent(), false)->props);
+}
+
+/**
  * A fresh request bound as the app's, resolving the given user for `request()->user()` and `$request->user()`.
  */
 function bindRequestUser(Authenticatable $user): Request

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
@@ -48,6 +49,7 @@ use ReflectionClass;
  */
 class InertiaSharedDataAnalyzer
 {
+    use PrintsTopLevelMembers;
     use RewritesEnumResourceProps;
 
     /**
@@ -315,7 +317,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Print each prop as an object type's member, an override in its place, on the key Laravel sends it on.
+     * Print each prop as an object type's member, an override in its place, where Inertia sends its key.
      *
      * @param  SharedPropMap  $props  the AST-inferred props
      * @param  SharedPropMap  $overrides  normalized type overrides keyed by property name
@@ -324,20 +326,8 @@ class InertiaSharedDataAnalyzer
      */
     protected function buildMembersWithOverrides(array $props, array $overrides, array $renumbered = []): array
     {
-        $members = [];
-
         // An override keeps its prop's place, and one no prop has goes after them.
-        foreach (array_replace($props, $overrides) as $name => $entry) {
-            $key = $renumbered[$name] ?? (string) $name;
-            $members[] = [
-                'key' => JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
-                    .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': '),
-                'type' => $entry['type'],
-                'source' => $name,
-            ];
-        }
-
-        return $members;
+        return $this->printTopLevel(array_replace($props, $overrides), $renumbered);
     }
 
     /**

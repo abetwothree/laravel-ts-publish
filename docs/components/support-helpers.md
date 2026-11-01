@@ -28,6 +28,9 @@ The helpers and the test that pins them live in these files:
 - [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
   `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
   payload. Static and `@internal`.
+- [`Support\DottedTopLevelKeys`](../../src/Support/DottedTopLevelKeys.php): the object Inertia sends once it writes
+  each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
+  key each prints. Static and `@internal`.
 - [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
@@ -66,6 +69,7 @@ Ask what the helper's input domain is, not what calls it:
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| What object does Inertia send once it unpacks these top-level dotted keys? | `DottedTopLevelKeys` |
 | What is one import map, path => names, made of these? | `ImportMaps` |
 | Which name does this import, or this import map, bind in the file? | `ImportMaps::localName()`, `localNames()` |
 | Which imports of this map does this type spell? | `ImportMaps::spelledIn()` |

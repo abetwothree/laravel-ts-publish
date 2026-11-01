@@ -61,7 +61,9 @@ A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merg
 merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method
 cast does. At the top level of an Inertia page, shared data or an event payload, Laravel's own `array_merge()`
 renumbers int keys from 0, so a numeric cast key there publishes on the key Laravel renumbers it to, with a warning
-([`TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php)).
+([`TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php)). A page renumbers each props array it may send
+apart, so a page cast whose key lands on a number another props array fills from another key retypes none, and warns.
+A dotted cast key retypes the key as written; the key then nests where Inertia unpacks it.
 
 ## A cast is final for its key
 

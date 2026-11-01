@@ -896,6 +896,27 @@ Where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) the payload is
 on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int while the app's middleware merges
 `parent::share()`, which always adds `errors`. Use a string key.
 
+### A page prop that names a shared-data key publishes both types intersected
+
+A route file publishes each page as `Inertia.SharedData & { … }`, so a page key named like a shared-data key keeps both
+types, though Inertia merges the page's props over shared data: a page's `'auth' => 'x'` publishes `auth` as shared
+data's type and `string` at once. A dotted page key under a shared-data key, `'auth.name'`, is right only while the
+shared value is an array Inertia writes into. Name page keys apart from shared-data keys.
+
+### A dotted key under a key that holds an object publishes the object's keys beside its own
+
+`['post' => new PostResource($post), 'post.extra' => 1]` publishes `post: { data: PostResource; extra: number }`,
+though Inertia replaces any value it does not find as an array, an API resource or an Inertia prop object such as
+`Inertia::always([…])` included, and sends `{ extra: 1 }`. A key holding an array, a model or a collection is written
+into as published. Write the dotted key under a key of its own.
+
+### A props local with more than four int keys it may lack before another numbers each as if it were written
+
+Laravel renumbers a page's int keys from 0, so a key the local may not hold moves every later int key down. Up to four
+such keys publish each number a key can land on; past four, each key keeps the one it has when every key is written:
+`{ "0"?: string, …, "5": string }`, though Laravel sends the last key on `"0"` when the others are absent. Use string
+keys.
+
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the

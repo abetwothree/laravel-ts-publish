@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
@@ -70,6 +71,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         ClassTokenQueue::class,
         ClassTypeOverride::class,
         ComposedClassTypes::class,
+        DottedTopLevelKeys::class,
         ImportMaps::class,
         IndexSignatureKey::class,
         PhpArrayKey::class,

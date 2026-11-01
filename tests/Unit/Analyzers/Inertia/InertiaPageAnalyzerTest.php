@@ -34,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
@@ -1818,4 +1819,133 @@ it('imports the classes the keys added beside a resource prop\'s data name', fun
             '../resources' => ['UserCardResource'],
         ])
         ->and([$sent->card->data->name, $sent->card->post->title, $sent->card->status])->toBe(['Ada', 'First', Status::Draft->value]);
+});
+
+// ─── Top-level keys as Inertia sends them ─────────────────────────
+
+// PropsResolver::resolve() array_merge()s each props array over shared data, renumbering its int keys from 0, then
+// unpackDotProps() writes each top-level dotted key into its path with Arr::set(), after every other key.
+it('publishes top-level keys as Inertia sends them', function (string $action, string $type, array $sent) {
+    expect(pageData(TopLevelKeysController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type);
+
+    foreach ($sent as $c => $json) {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        expect(inertiaPropsJson(new TopLevelKeysController()->{$action}($request), $request))->toBe($json);
+    }
+})->with([
+    'dotted' => ['dotted', '{ auth: { user: string }, "1": { "5": string } }', [0 => '{"auth":{"user":"x"},"1":{"5":"y"}}']],
+    'into an existing key' => ['intoExisting', '{ auth: { id: number; name: string } }', [0 => '{"auth":{"id":1,"name":"x"}}']],
+    'existing key after' => ['existingAfter', '{ auth: { id: number; name: string } }', [0 => '{"auth":{"id":1,"name":"x"}}']],
+    'over a scalar' => ['overScalar', '{ a: { b: number } }', [0 => '{"a":{"b":1}}']],
+    'int keys per literal' => ['ternary', '{ "0": string, x?: number }', [1 => '["a"]', 0 => '{"x":1,"0":"b"}']],
+]);
+
+it('renumbers the int keys of each props array a component may send apart, warning for each', function (string $action) {
+    $sent = array_map(function (int $c) use ($action): string {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaPropsJson(new TopLevelKeysController()->{$action}($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(TopLevelKeysController::class.'@'.$action)['pageType'])
+        ->toBe('Inertia.SharedData & { "0": string, x?: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "7" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+            'The key "8" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ])
+        ->and($sent)->toBe(['["a"]', '{"x":1,"0":"b"}']);
+})->with(['ternary', 'twoRenders']);
+
+it('lays a cast on a dotted key by its dotted name, then nests it', function () {
+    expect(pageData(TopLevelKeysController::class.'@castDotted')['pageType'])
+        ->toBe('Inertia.SharedData & { plain: number, auth: { user: "fixed" } }')
+        ->and(inertiaPropsJson(new TopLevelKeysController()->castDotted()))->toBe('{"plain":1,"auth":{"user":"fixed"}}');
+});
+
+it('nests a dotted key and renumbers an int key a props local is written', function () {
+    expect(pageData(TopLevelKeysController::class.'@walked')['pageType'])
+        ->toBe('Inertia.SharedData & { plain: number, "0": string, auth: { user: string } }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "7" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ])
+        ->and(inertiaPropsJson(new TopLevelKeysController()->walked()))->toBe('{"plain":1,"0":"y","auth":{"user":"x"}}');
+});
+
+it('nests a key of three segments and keys with an empty segment as Arr::set() writes them', function () {
+    expect(pageData(TopLevelKeysController::class.'@segments')['pageType'])
+        ->toBe('Inertia.SharedData & { a: { b: { c: number } }, d: { "": { e: number } }, "": { f: number }, g: { "": number } }')
+        ->and(inertiaPropsJson(new TopLevelKeysController()->segments()))
+        ->toBe('{"a":{"b":{"c":1}},"d":{"":{"e":2}},"":{"f":3},"g":{"":4}}');
+});
+
+it('keeps a dotted key only one props array holds optional inside the head it writes into', function () {
+    $sent = array_map(function (int $c): string {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaPropsJson(new TopLevelKeysController()->optionalDotted($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(TopLevelKeysController::class.'@optionalDotted')['pageType'])
+        ->toBe('Inertia.SharedData & { auth: { id: number; name?: string } }')
+        ->and($sent)->toBe(['{"auth":{"id":1,"name":"x"}}', '{"auth":{"id":2}}']);
+});
+
+it('binds each same-named enum token under a dotted head to its own class', function () {
+    app(Router::class)->get('/top-level/same-named', [TopLevelKeysController::class, 'sameNamedNested']);
+    $transformer = new RouteTransformer(TopLevelKeysController::class);
+
+    expect($transformer->actions[0]['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { a: WorkbenchStatusType, pair: { a: WorkbenchStatusType; b: CrmStatusType } }')
+        ->and($transformer->typeImports)->toBe([
+            '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+            '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+        ])
+        ->and(inertiaPropsJson(new TopLevelKeysController()->sameNamedNested()))->toBe('{"a":0,"pair":{"a":0,"b":"lead"}}');
+});
+
+it('sends an int key a props local or a `+` may lack on each number a key before it leaves', function (string $action, string $type) {
+    $sent = array_map(function (int $c) use ($action): string {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaPropsJson(new TopLevelKeysController()->{$action}($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(TopLevelKeysController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and($sent)->toBe([
+            'walkedIntKeys' => ['{"x":1,"0":"a"}', '{"x":1,"0":5}'],
+            'plusIntKeys' => ['["a","b"]', '["z","b"]'],
+        ][$action]);
+})->with([
+    'a local written one of two' => ['walkedIntKeys', '{ x: number, "0"?: string | number, "1"?: number }'],
+    'a `+` after one of two' => ['plusIntKeys', '{ "0": string, "1"?: string, "2"?: string }'],
+]);
+
+// PropsResolver::resolve() leaves an optional prop out after the merge has numbered it.
+it('keeps the number of an int key after an optional prop Inertia leaves out', function () {
+    expect(pageData(TopLevelKeysController::class.'@optionalIntKey')['pageType'])
+        ->toBe('Inertia.SharedData & { "0"?: string, "1": string }')
+        ->and(inertiaPropsJson(new TopLevelKeysController()->optionalIntKey()))->toBe('{"1":"b"}');
+});
+
+it('drops a cast on an int key another props array sends another key on, with a warning', function () {
+    $sent = array_map(function (int $c): string {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaPropsJson(new TopLevelKeysController()->castSharedNumber($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(TopLevelKeysController::class.'@castSharedNumber')['pageType'])
+        ->toBe('Inertia.SharedData & { "0": string, x?: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toContain(
+            'The #[TsCasts] key "8" retypes none: Laravel renumbers it to "0", which another props array sends another key '
+            .'on; use a string key.',
+        )
+        ->and($sent)->toBe(['["a"]', '{"x":1,"0":"b"}']);
+});
+
+// Each int key a local may lack before a later one doubles the arrays renumbered apart, so past four it is read once.
+it('numbers the int keys of a local past the cap on the keys it may lack as if each were written', function () {
+    expect(pageData(TopLevelKeysController::class.'@manyIntKeys')['pageType'])
+        ->toBe('Inertia.SharedData & { "0"?: string, "1"?: string, "2"?: string, "3"?: string, "4"?: string, "5": string }');
 });

@@ -29,7 +29,8 @@ use Closure;
  * @phpstan-type TokenQueues = array{classes: TokenQueue, consts: TokenQueue}
  * @phpstan-type PageQueues = array{classes: list<TokenQueue>, consts: list<TokenQueue>}
  * @phpstan-type FileMember = array{type: string, classes: TokenQueue, consts: TokenQueue}
- * @phpstan-type PrintedMember = array{key: string, type: string, source: array-key}
+ * @phpstan-type MemberPiece = array{text: string, source: array-key|null}
+ * @phpstan-type PrintedMember = array{key: string, type: string, source: array-key, pieces?: list<MemberPiece>}
  * @phpstan-type ComposedFile = array{types: list<string>, typeImports: TypesImportMap, valueImports: TypesImportMap}
  * @phpstan-type Piece = array{
  *     text: string,
@@ -103,16 +104,26 @@ final class FileImportNames
         $pieces = $before === '' ? [] : [$untyped($before)];
 
         foreach ($members as $member) {
-            $source = (string) $member['source'];
-            $declared = $analysis->declaredTokenFqcns[$source] ?? null;
             $pieces[] = $untyped($member['key']);
-            $pieces[] = [
-                'text' => $member['type'],
-                'typed' => true,
-                'classes' => $analysis->tokenFqcns($source),
-                'consts' => $analysis->wrappedEnumFqcns($source),
-                ...($declared === null ? [] : ['declared' => $declared]),
-            ];
+
+            // A member several keys print reads each key's own classes in its own text.
+            foreach ($member['pieces'] ?? [['text' => $member['type'], 'source' => $member['source']]] as $piece) {
+                if ($piece['source'] === null) {
+                    $pieces[] = $untyped($piece['text']);
+
+                    continue;
+                }
+
+                $source = (string) $piece['source'];
+                $declared = $analysis->declaredTokenFqcns[$source] ?? null;
+                $pieces[] = [
+                    'text' => $piece['text'],
+                    'typed' => true,
+                    'classes' => $analysis->tokenFqcns($source),
+                    'consts' => $analysis->wrappedEnumFqcns($source),
+                    ...($declared === null ? [] : ['declared' => $declared]),
+                ];
+            }
         }
 
         // A class a cast displaced is carried off every channel, but another key's text may still spell it.
