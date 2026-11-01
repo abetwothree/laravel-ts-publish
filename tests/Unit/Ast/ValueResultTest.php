@@ -483,6 +483,14 @@ describe('ValueResult::withEnumArmShapes()', function () {
             true,
             true,
         ],
+        'a wrap around null sent as an empty list, beside a nullable direct read' => [
+            [
+                ['type' => 'StatusType | never[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            false,
+            false,
+        ],
         'wraps that agree, and an arm holding no enum' => [
             [
                 ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],

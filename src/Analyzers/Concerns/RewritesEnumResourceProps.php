@@ -100,7 +100,7 @@ trait RewritesEnumResourceProps
     }
 
     /**
-     * The type of a prop whose branches wrap different enums, each non-null member's own enum spelled as its wrap.
+     * The type of a prop whose branches wrap different enums, each filled member's own enum spelled as its wrap.
      *
      * @param  list<class-string>  $fqcns  each branch's enum, in branch order
      */
@@ -110,7 +110,7 @@ trait RewritesEnumResourceProps
         $index = 0;
 
         foreach (TsTypeString::splitTopLevelUnion($type) as $member) {
-            $fqcn = $member === 'null' ? null : ($fqcns[$index++] ?? null);
+            $fqcn = in_array($member, ValueResult::EMPTY_ARMS, true) ? null : ($fqcns[$index++] ?? null);
             $members[] = $fqcn === null ? $member : self::wrapEnum($member, $fqcn);
         }
 

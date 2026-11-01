@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceT
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\NullableEnumResourceController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PropsLocalController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedApiCardController;
@@ -1253,6 +1254,60 @@ it('types the route-bound reads #86 lists, as Inertia sends them', function () {
         ->and($sent = inertiaProps(new RouteBoundReadsController()->show($post)))
         ->and([$sent->status->name, $sent->authorPosts, $sent->comments, $sent->fresh->id])
         ->toBe([$post->status->name, 1, 1, $post->id]);
+});
+
+// No JsonResource::filter() runs over a page prop, so Inertia sends the wrap around null as the `[]` resolve() returns.
+it('admits the empty list Inertia sends for an EnumResource over a null enum', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $hidden = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $shown = Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $author->id, 'visibility' => Visibility::Public])->fresh();
+
+    expect(pageData(NullableEnumResourceController::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { visibility: AsEnum<typeof Visibility> | never[] }')
+        ->and(inertiaProps(new NullableEnumResourceController()->show($hidden))->visibility)->toBe([])
+        ->and(inertiaProps(new NullableEnumResourceController()->show($shown))->visibility->name)->toBe(Visibility::Public->name);
+});
+
+// filter() sends a resolved body's own wrap around null as null, but never enters a map() kept as a Collection.
+it('admits the empty list a resolved body sends for an EnumResource over a null enum in a map kept as a Collection', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $hidden = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $shown = Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $author->id, 'visibility' => Visibility::Public])->fresh();
+    $card = fn (Post $post): array => json_decode((string) json_encode(inertiaProps(new NullableEnumResourceController()->resolved($post))->card), true);
+
+    expect(pageData(NullableEnumResourceController::class.'@resolved')['pageType'])
+        ->toBe('Inertia.SharedData & { card: Omit<PostVisibilitiesResource, \'visibilities\'> & '
+            .'{ visibilities: (AsEnum<typeof Visibility> | never[])[] } }')
+        ->and($card($hidden))->toBe(['visibility' => null, 'visibilities' => [[]]])
+        ->and([$card($shown)['visibility']['name'], $card($shown)['visibilities'][0]['name']])
+        ->toBe([Visibility::Public->name, Visibility::Public->name]);
+});
+
+// The `[]` a wrap around null sends is no list, and holds none of the enums a union's wraps take in turn.
+it('keeps the empty list of an EnumResource over a null enum beside a bare read of it and beside another wrap', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $hidden = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $shown = Post::create([
+        'title' => 'Second', 'content' => 'Body', 'user_id' => $author->id,
+        'priority' => Priority::High, 'visibility' => Visibility::Public,
+    ])->fresh();
+    $sent = fn (string $action, Post $post, array $query): array => json_decode((string) json_encode(inertiaProps(
+        new NullableEnumResourceController()->{$action}(Request::create('/', 'GET', $query), $post),
+    )), true);
+    $names = fn (array $props): array => array_map(fn (mixed $value): mixed => $value['name'] ?? $value, $props);
+
+    expect(pageData(NullableEnumResourceController::class.'@ternaries')['pageType'])
+        ->toBe('Inertia.SharedData & { mixed: AsEnum<typeof Priority> | PriorityType | never[] | null, '
+            .'nested: AsEnum<typeof Priority> | PriorityType | never[] | null, '
+            .'either: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> }')
+        ->and(pageData(NullableEnumResourceController::class.'@branches')['pageType'])
+        ->toBe('Inertia.SharedData & { either: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> }')
+        ->and($names($sent('ternaries', $hidden, ['c' => '1', 'd' => '1'])))->toBe(['mixed' => [], 'nested' => [], 'either' => []])
+        ->and($names($sent('ternaries', $hidden, ['c' => '0'])))->toBe(['mixed' => null, 'nested' => null, 'either' => 'Draft'])
+        ->and($names($sent('ternaries', $shown, ['c' => '1', 'd' => '1'])))->toBe(['mixed' => 'High', 'nested' => 'High', 'either' => 'Public'])
+        ->and($names($sent('ternaries', $shown, ['c' => '1', 'd' => '0'])))->toBe(['mixed' => 'High', 'nested' => 2, 'either' => 'Public'])
+        ->and([$names($sent('branches', $hidden, ['c' => '1'])), $names($sent('branches', $shown, ['c' => '0']))])
+        ->toBe([['either' => []], ['either' => 'Draft']]);
 });
 
 // A page runs RelationFilterHandler, as shared data does, so a `map` proxy's filter types as the rows it keeps.

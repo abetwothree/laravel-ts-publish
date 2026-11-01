@@ -627,9 +627,10 @@ unless the guessed one's response is the plain list under the same wrap key.
 lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
-publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
-`import type`. `toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items,
-the argument of a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
+publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, with `| never[]` for the `[]` a null enum
+sends where no `filter()` runs; the route file imports the const with `import type`.
+`toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items, the argument of
+a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
 its nested value, `EnumResource[]`, names a type no run publishes. Over a paginator, a collection's own body sits
 beside the pagination blocks of the payload's kind, and an anonymous or flat one is that kind's paginator response,
 such as `JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per

@@ -391,6 +391,11 @@ it('lists the enums the branches wrap a key in only where each wraps it, none re
         ->and(isset($merged->enumResources['s']))->toBe($listed === null);
 })->with([
     'another enum' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | null', ['App\\Status', 'App\\Priority']],
+    'another enum beside the empty list a wrap around null sends' => [
+        ['enumResources' => ['s' => 'App\\Priority']],
+        'StatusType | never[] | PriorityType',
+        ['App\\Status', 'App\\Priority'],
+    ],
     'another enum also read bare' => [
         ['enumResources' => ['s' => 'App\\Priority'], 'directEnumFqcns' => ['s' => 'App\\Priority']],
         'StatusType | PriorityType',

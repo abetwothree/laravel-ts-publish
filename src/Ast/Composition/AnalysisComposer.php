@@ -77,8 +77,7 @@ final class AnalysisComposer
             }
 
             $type = $types[$propName];
-            // $type may already carry '| null', so the collection check must strip it first.
-            $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+            $isCollection = str_ends_with(implode(' | ', ValueResult::filledArms($type)), '[]');
             $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
 
             $arms[$propName] = [

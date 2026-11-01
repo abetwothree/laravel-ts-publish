@@ -42,6 +42,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelNamedLiterals;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNullableEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
@@ -74,7 +75,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Inertia;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 afterEach(function () {
@@ -834,6 +837,25 @@ test('a share middleware types the short ternary its own helper returns over an 
 
     expect(sharedProps(MiddlewareWithWrapHelpers::class))->toBe(['status' => 'AsEnum<typeof Status>'])
         ->and([$picked['status']['name'], $absent['status']])->toBe([Status::Published->name, []]);
+});
+
+// No JsonResource::filter() runs over shared data, so Inertia sends the wrap around null as the `[]` resolve() returns.
+test('a share middleware admits the empty list Inertia sends for an EnumResource over a null enum', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
+    $sent = function (): mixed {
+        $request = Request::create('/');
+        Inertia::flushShared();
+        Inertia::share(new MiddlewareWithNullableEnumResource()->share($request));
+
+        return inertiaProps(Inertia::render('Shared', []), $request)->visibility;
+    };
+    $hidden = $sent();
+    $post->update(['visibility' => Visibility::Public]);
+
+    expect(sharedProps(MiddlewareWithNullableEnumResource::class))->toBe(['visibility' => 'AsEnum<typeof Visibility> | never[]'])
+        ->and($hidden)->toBe([])
+        ->and($sent()->name)->toBe(Visibility::Public->name);
 });
 
 test('a share() a trait supplies under an alias publishes the keys the trait method returns', function () {

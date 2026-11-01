@@ -11,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -709,7 +708,7 @@ class MethodAnalysis
             }
 
             $wrapped = $this->wrappedEnums($property['name'], $branches);
-            $tokens = array_diff(TsTypeString::splitTopLevelUnion($property['type']), ['null']);
+            $tokens = ValueResult::filledArms($property['type']);
 
             if ($wrapped === null || count($wrapped) < 2 || count($tokens) !== count($wrapped)) {
                 continue;

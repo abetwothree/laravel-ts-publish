@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -118,8 +119,9 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm is dropped only inside a
-     * map() kept as a Collection, which filter() never enters, so a null payload there is sent as `[]`.
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. A null payload no filter() reaches is
+     * sent as the `[]` resolve() returns: Inertia's reading spells that arm `never[]`, while the encoded one keeps its
+     * null outside a map() kept as a Collection and drops it inside.
      *
      * @return ValueExpressionResult|null
      */
@@ -127,10 +129,17 @@ trait ResolvesEnumPropertyArgTypes
     {
         $result = $this->resolveEnumFromPropertyArg($payload, $scope)
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
+        $reading = $engine->reading();
 
-        return $result === null || $scope->filtersNestedResources
-            ? $result
-            : [...$result, 'type' => ValueResult::stripNullArm($result['type'])];
+        if ($result === null || ! ValueResult::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
+            return $result;
+        }
+
+        return match (true) {
+            $reading !== Reading::Encoded => [...$result, 'type' => ValueResult::stripNullArm($result['type']).' | never[]'],
+            $scope->filtersNestedResources => $result,
+            default => [...$result, 'type' => ValueResult::stripNullArm($result['type'])],
+        };
     }
 
     /**

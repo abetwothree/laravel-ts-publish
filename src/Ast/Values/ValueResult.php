@@ -43,6 +43,9 @@ use ReflectionClass;
  */
 final class ValueResult
 {
+    /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
+    public const array EMPTY_ARMS = ['null', 'never[]'];
+
     /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
     private static array $enumNames = [];
 
@@ -84,6 +87,16 @@ final class ValueResult
         ));
 
         return $members === [] ? 'unknown' : implode(' | ', $members);
+    }
+
+    /**
+     * A type's top-level members but its empty ones, which an arm's shape and its enum are read past.
+     *
+     * @return list<string>
+     */
+    public static function filledArms(string $type): array
+    {
+        return array_values(array_diff(TsTypeString::splitTopLevelUnion($type), self::EMPTY_ARMS));
     }
 
     /**
@@ -408,7 +421,7 @@ final class ValueResult
                 return $union;
             }
 
-            $isList = str_ends_with(rtrim(str_replace('| null', '', $arm['type'])), '[]');
+            $isList = str_ends_with(implode(' | ', self::filledArms($arm['type'])), '[]');
 
             if ($wraps) {
                 $wrapIsList[] = $isList;

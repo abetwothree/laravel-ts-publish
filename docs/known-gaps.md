@@ -544,10 +544,12 @@ relation a name no attribute takes.
 
 ### An `EnumResource` map kept as a `Collection` publishes no arm for the `[]` a null enum sends
 
-`$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`, but a member whose
-nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null` only inside arrays,
-and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap itself. End the chain with
-`->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends.
+In an API resource, `$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`,
+but a member whose nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null`
+only inside arrays, and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap
+itself. End the chain with `->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends. On
+an Inertia page and in shared data, a resolved resource's body included, the same map publishes
+`(AsEnum<typeof Role> | never[])[]`.
 
 ### An API resource wrapping a relation the engine cannot type publishes it without `| null`
 

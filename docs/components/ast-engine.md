@@ -145,7 +145,10 @@ reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` r
   whether `filter()` reaches a value, which `ReadsNullablePayloads` asks before a resource around a nullable payload
   takes that null: under `InertiaFiltered` in any body, a helper's or a service's included, outside Inertia only in a
   `JsonResource` subject's own, and never inside a `map()` kept as a `Collection`, where a call's body reads
-  `Inertia` (`Reading::calledFrom()`). `TernaryHandler`'s `?:` rule applies only under `Inertia`.
+  `Inertia` (`Reading::calledFrom()`). An `EnumResource` wrap it does not reach under either Inertia reading sends a
+  null payload as `[]`, its `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`), which
+  `ValueResult::filledArms()` reads past where a union's enum arms are counted. `TernaryHandler`'s `?:` rule applies
+  only under `Inertia`.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
