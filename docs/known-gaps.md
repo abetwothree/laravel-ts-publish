@@ -711,9 +711,9 @@ A resource collection prop or shared value reads its paginator's kind from the c
 a builder variable's `paginate()`, or a helper's or service's declared return type or readable body. Over a payload
 none of these names, such as an untyped method whose body the engine cannot read, or one declared as the `Paginator`
 contract, which either kind implements, `PostResource::collection(…)` publishes
-`AnonymousResourceCollection<PostResource>`, though Laravel sends `links` and `meta` too. A paginator passed bare
-publishes its items only from a query chain rooted at a model or a body that returns one: from a query builder
-variable, `$query->paginate()` publishes `unknown`, and past a setter such as `->withQueryString()`
+`AnonymousResourceCollection<PostResource>`, though Laravel sends `links` and `meta` too. A page prop or shared value
+holding a paginator bare publishes its items only from a query chain rooted at a model or a body that returns one: from
+a query builder variable, `$query->paginate()` publishes `unknown`, and past a setter such as `->withQueryString()`
 `{ onEachSide: number }`. Declare the method's return type, build the paginator in the props, or type the prop with
 `#[TsCasts]`.
 
