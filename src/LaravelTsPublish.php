@@ -81,6 +81,7 @@ use UnitEnum;
  *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
  *    keepsKeys?: bool,
+ *    closedToDottedKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeTypeInfo = array{
@@ -102,7 +103,8 @@ use UnitEnum;
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
  *
  * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
- * never enters, so its numeric keys are never re-indexed.
+ * never enters, so its numeric keys are never re-indexed. `closedToDottedKeys`, when true, says that object is a
+ * `JsonSerializable` Inertia does not open, so a dotted key under it replaces it.
  *
  * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
  * file exports behind it, or null where an override spells that name: a reader that carries no class ignores it.
@@ -392,7 +394,13 @@ class LaravelTsPublish
             $shapeType = $shape['type'] ?? $this->stringableArrayJsonType($phpType);
 
             if ($shapeType !== null) {
-                return [...$result, 'type' => $shapeType, 'customImports' => $shape['customImports'] ?? [], 'keepsKeys' => true];
+                return [
+                    ...$result,
+                    'type' => $shapeType,
+                    'customImports' => $shape['customImports'] ?? [],
+                    'keepsKeys' => true,
+                    'closedToDottedKeys' => true,
+                ];
             }
         }
 

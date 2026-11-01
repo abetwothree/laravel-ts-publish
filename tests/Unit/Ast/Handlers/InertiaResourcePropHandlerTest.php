@@ -78,7 +78,7 @@ function inertiaResourcePropResult(Expr $expr, ?AnalysisScope $scope = null): ?a
 
     // Inertia never opens a response for a dotted key, so every one carries the mark the tests below take as read.
     if ($result !== null) {
-        expect($result['closedToDottedKeys'] ?? null)->toBeTrue();
+        expect($result['closedToDottedKeys'] ?? null)->toBe($result['type']);
         unset($result['closedToDottedKeys']);
     }
 

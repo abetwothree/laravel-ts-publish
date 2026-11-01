@@ -621,6 +621,16 @@ describe('ValueResult::unionResults() over an empty array beside a list', functi
     ]);
 });
 
+// A list or Collection built from a value Inertia replaces is one it opens, so the mark holds only for its own type.
+it('reads a value as closed to dotted keys only while its type is the one it was marked for', function () {
+    $card = ValueResult::closeToDottedKeys(['type' => '{ data: R }', 'optional' => false]);
+
+    expect(ValueResult::closedToDottedKeys($card))->toBeTrue()
+        ->and(ValueResult::closedToDottedKeys([...$card, 'type' => '{ data: R } | null']))->toBeTrue()
+        ->and(ValueResult::closedToDottedKeys([...$card, 'type' => '{ data: R }[]']))->toBeFalse()
+        ->and(ValueResult::closedToDottedKeys(['type' => '{ data: R }', 'optional' => false]))->toBeFalse();
+});
+
 // Inertia resolves a prop object even where a callable it called returns it, and sends a callable there as `{}`; it
 // replaces either object, and a union of them, before a dotted key writes under it.
 it('marks a held object\'s kind, and a callable that may return a callable', function () {
@@ -631,12 +641,12 @@ it('marks a held object\'s kind, and a callable that may return a callable', fun
     $plain = ['type' => 'null', 'optional' => false];
 
     expect($closure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
-        ->and($prop)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true])
+        ->and($prop)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => 'number'])
         ->and($returnsClosure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'returnsCallable' => true])
-        ->and($returnsProp)->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => true, 'heldObject' => true])
+        ->and($returnsProp)->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => 'number', 'heldObject' => true])
         ->and(ValueResult::unionResults([$prop, $prop]))
-        ->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => true, 'heldObject' => true, 'heldProp' => true])
-        ->and(ValueResult::unionResults([$prop, $returnsProp])['closedToDottedKeys'] ?? null)->toBeTrue()
+        ->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => 'number', 'heldObject' => true, 'heldProp' => true])
+        ->and(ValueResult::unionResults([$prop, $returnsProp])['closedToDottedKeys'] ?? null)->toBe('number')
         ->and(ValueResult::unionResults([$prop, $plain])['closedToDottedKeys'] ?? null)->toBeNull()
         ->and(ValueResult::unionResults([$prop, $closure]))->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
         ->and(ValueResult::unionResults([$prop, $plain])['heldProp'] ?? null)->toBeTrue()

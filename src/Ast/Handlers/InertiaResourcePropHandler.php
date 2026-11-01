@@ -74,7 +74,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $result = $this->resolveBuilt($expr, $scope, $engine);
 
-        return $result === null ? null : [...$result, 'closedToDottedKeys' => true];
+        return $result === null ? null : ValueResult::closeToDottedKeys($result);
     }
 
     /**

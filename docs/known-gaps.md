@@ -971,8 +971,10 @@ page keys apart from shared-data keys.
 
 `['post' => ['card' => new PostResource($post)], 'post.card.extra' => 1]` publishes `card` as its response with
 `extra: number` beside it, though Inertia replaces a value it does not find as an array, an API resource or an Inertia
-prop object such as `Inertia::always([…])` included, and sends `{ card: { extra: 1 } }`. Such an object a top-level key
-holds publishes as replaced. Write the dotted key under a key of its own.
+prop object such as `Inertia::always([…])` included, and sends `{ card: { extra: 1 } }`. A top-level key publishes as
+replaced where it holds an API resource, an Inertia prop object, a `JsonSerializable` object, any other object a `new`
+builds there, or a callable returning one; another object only its declared class types is written into as published.
+Write the dotted key under a key of its own.
 
 ### A props local whose branches write its int keys in different orders numbers them in the first branch's order
 

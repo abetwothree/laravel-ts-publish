@@ -40,7 +40,7 @@ use PhpParser\Node\Expr;
  *      mayHoldObject?: HeldNulls,
  *      heldProp?: bool,
  *      returnsCallable?: bool,
- *      closedToDottedKeys?: bool,
+ *      closedToDottedKeys?: string,
  *      resolvedFqcn?: class-string<JsonResource>
  * }
  *
@@ -55,8 +55,12 @@ use PhpParser\Node\Expr;
  * `heldProp` says every such object is an Inertia prop, which Inertia resolves even where a callable it called returned
  * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
  *
- * `closedToDottedKeys` says Inertia replaces the value with `[]` before a dotted key writes under it, never opening it
- * as an array: an API resource it sends as a response, an Inertia prop object, or a callable returning either.
+ * `closedToDottedKeys` holds the type of a value Inertia replaces with `[]` before a dotted key writes under it, never
+ * opening it as an array: an API resource, an Inertia prop object, a `JsonSerializable` object, any other object a
+ * `new` builds, or a callable returning one.
+ *
+ * A list or collection built from such a value has another type, so ValueResult::closedToDottedKeys() reads the mark
+ * only while the type, its null arm aside, is the one it was set for.
  *
  * @internal
  */

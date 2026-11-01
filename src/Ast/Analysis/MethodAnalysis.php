@@ -104,7 +104,7 @@ class MethodAnalysis
 
     /**
      * Property name => true where the value addProperty() last gave the key is an object Inertia replaces before a
-     * dotted key writes under it (its `closedToDottedKeys` flag). A merge takes the source's; a join keeps a key
+     * dotted key writes under it (ValueResult::closedToDottedKeys()). A merge takes the source's; a join keeps a key
      * every branch holding it closes. A fact of the value, so forgetChannels(), which a cast also runs, keeps it.
      *
      * @var array<array-key, true>
@@ -198,7 +198,7 @@ class MethodAnalysis
             unset($this->leftOutValues[$name]);
         }
 
-        if ($result['closedToDottedKeys'] ?? false) {
+        if (ValueResult::closedToDottedKeys($result)) {
             $this->closedToDottedKeys[$name] = true;
         } else {
             unset($this->closedToDottedKeys[$name]);

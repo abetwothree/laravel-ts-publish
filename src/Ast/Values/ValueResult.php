@@ -254,7 +254,7 @@ final class ValueResult
         return [
             ...$result,
             'heldObject' => true,
-            ...($prop ? ['heldProp' => true, 'closedToDottedKeys' => true] : []),
+            ...($prop ? ['heldProp' => true, 'closedToDottedKeys' => $result['type']] : []),
             ...($returnsCallable ? ['returnsCallable' => true] : []),
         ];
     }
@@ -296,6 +296,29 @@ final class ValueResult
         return isset($result['mayHoldObject']) && $result['type'] !== 'unknown'
             ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]], countMembers: true)
             : $result;
+    }
+
+    /**
+     * The result marked as a value Inertia replaces before a dotted key writes under it, for as long as its type holds.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function closeToDottedKeys(array $result): array
+    {
+        return [...$result, 'closedToDottedKeys' => $result['type']];
+    }
+
+    /**
+     * Whether Inertia replaces the value before a dotted key writes under it: marked so for this type, null aside.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function closedToDottedKeys(array $result): bool
+    {
+        $closed = $result['closedToDottedKeys'] ?? null;
+
+        return $closed !== null && self::stripNullArm($closed) === self::stripNullArm($result['type']);
     }
 
     /**
@@ -408,12 +431,12 @@ final class ValueResult
 
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
-        $closed = $results !== [] && array_all($results, fn (array $inner): bool => $inner['closedToDottedKeys'] ?? false)
-            ? ['closedToDottedKeys' => true]
-            : [];
+        $closed = $results !== [] && array_all($results, self::closedToDottedKeys(...));
 
         if ($types === []) {
-            return self::withArmObjects([...self::unknown(), 'optional' => $optional, ...$closed], $results);
+            $unknown = [...self::unknown(), 'optional' => $optional];
+
+            return self::withArmObjects($closed ? self::closeToDottedKeys($unknown) : $unknown, $results);
         }
 
         $result = self::mergeUnion($types, $branchResults);
@@ -422,9 +445,9 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional, ...$closed];
+        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
 
-        return self::withArmObjects($union, $results);
+        return self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
     }
 
     /**

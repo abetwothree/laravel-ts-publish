@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AmountValue;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -258,6 +259,31 @@ class TopLevelKeysController
         }
 
         return Inertia::render('TopLevelKeys/WalkedClosedHeads', $props);
+    }
+
+    /**
+     * Renders a local written dotted keys on some requests under lists and collections of resources, which Inertia
+     * opens, and under `JsonSerializable` objects built directly or by a factory, which it replaces.
+     */
+    public function openedAndSerializedHeads(Request $request, User $user): Response
+    {
+        $props = [
+            'listed' => [UserCardResource::make($user)],
+            'collected' => collect([$user])->map(fn (User $each) => UserCardResource::make($each)),
+            'queried' => User::query()->get()->map(fn (User $each) => UserCardResource::make($each)),
+            'amount' => new AmountValue(5),
+            'made' => AmountValue::of(6),
+        ];
+
+        if ($request->boolean('c')) {
+            $props['listed.extra'] = 1;
+            $props['collected.extra'] = 1;
+            $props['queried.extra'] = 1;
+            $props['amount.extra'] = 1;
+            $props['made.extra'] = 1;
+        }
+
+        return Inertia::render('TopLevelKeys/OpenedAndSerializedHeads', $props);
     }
 
     /** Renders a dotted key under a resource that a `+` joins it to. */

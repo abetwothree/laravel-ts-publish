@@ -2124,6 +2124,30 @@ it('writes the dotted keys a local may hold over a resource or an Inertia prop o
         ->toBe([$card = ['data' => ['id' => $user->id, 'name' => 'Ada']], ['a' => 1], ['h' => 1], $card, 'Ada']);
 });
 
+// A list or Collection is an array or an Arrayable, which Inertia opens; a JsonSerializable object is neither.
+it('writes the dotted keys a local may hold into a list of resources, and over a JsonSerializable object', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = function (int $c) use ($user): array {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return json_decode(inertiaPropsJson(new TopLevelKeysController()->openedAndSerializedHeads($request, $user), $request), true);
+    };
+    $list = 'Record<number, { data: UserCardResource }> & { extra?: number } | { data: UserCardResource }[]';
+    $card = ['data' => ['id' => $user->id, 'name' => 'Ada']];
+
+    expect(pageData(TopLevelKeysController::class.'@openedAndSerializedHeads')['pageType'])->toBe('Inertia.SharedData & { '
+        ."listed: {$list}, collected: {$list}, queried: {$list}, "
+        .'amount: { extra?: number } | { amount: number }, made: { extra?: number } | { amount: number } }')
+        ->and($sent(1))->toBe([
+            'listed' => [$card, 'extra' => 1],
+            'collected' => [$card, 'extra' => 1],
+            'queried' => [$card, 'extra' => 1],
+            'amount' => ['extra' => 1],
+            'made' => ['extra' => 1],
+        ])
+        ->and($sent(0))->toBe(['listed' => [$card], 'collected' => [$card], 'queried' => [$card], 'amount' => ['amount' => 5], 'made' => ['amount' => 6]]);
+});
+
 // TypeScript checks every key a signature covers against it (TS2411), a key the unpack nests included.
 it('widens a signature that covers a dotted key\'s head with the head\'s type', function () {
     expect(pageData(TopLevelKeysController::class.'@signatureHead')['pageType'])
