@@ -652,16 +652,19 @@ methods, not a collection pipeline on it, and not a member of the API resource `
 ### An Inertia prop past a query step that provably leaves the query publishes no root-model guess
 
 An Inertia prop or shared value types a query chain rooted at a model from what each step hands on. A scope, macro or
-custom builder method whose body the package cannot read, or that hands the query on in one branch only, still reads
-as the root model's query before a terminal, as every such chain once read. A few shapes still publish `unknown`:
+custom builder method whose body the package cannot read, a local macro a global scope adds, or a step that hands the
+query on in one branch only, still reads as the root model's query before a terminal every such chain was once typed
+by. A few shapes publish `unknown`:
 
 - a step after `find($id)` of a key no literal spells, such as `Post::find($id)->comments()->get()`, since the call
   returns a model or a list by the value Laravel is given;
 - a scope or macro whose branches return queries of two different models, since either may be sent;
+- `pluck()`, `value()`, `cursor()` or `findMany()` past a step the package cannot read, since the step may hand on
+  another model's query, whose columns differ;
 - a query a branched scope or macro hands on sent with no terminal, such as `Post::query()->latestOrTally(false)`,
   since its other branch sends a count;
 - a property read through a step whose hand-back the package cannot prove, such as
-  `Post::query()->viaHelper()->first()?->title`, as before.
+  `Post::query()->withArchived()->first()?->title` for a local macro, as before.
 
 Type the prop with `#[TsCasts]`.
 

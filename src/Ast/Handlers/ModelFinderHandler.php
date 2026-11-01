@@ -46,7 +46,8 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type ChainRead array{result: ValueExpressionResult, element: ValueExpressionResult|null, maybeOne?: bool}
+ * @phpstan-type ChainElement ValueExpressionResult|null
+ * @phpstan-type ChainRead array{result: ValueExpressionResult, element: ChainElement, maybeOne?: bool, keyed?: bool}
  *
  * @internal
  */
@@ -98,6 +99,12 @@ final class ModelFinderHandler implements ExpressionHandler
         'first' => 'nullableElement', 'last' => 'nullableElement', 'firstWhere' => 'nullableElement',
         'sole' => 'element', 'firstOrFail' => 'element', 'find' => 'nullableElement',
         'get' => 'nullableElement', 'all' => 'list', 'values' => 'list', 'count' => 'count', 'pluck' => 'column',
+    ];
+
+    /** The terminals and list steps every chain rooted at a model was typed by before its steps were read. */
+    private const BASE_TERMINALS = [
+        'find', 'first', 'firstWhere', 'sole', 'firstOrFail', 'findOrFail', 'firstOrCreate', 'firstOrNew', 'create', 'make',
+        'updateOrCreate', 'all', 'get', 'paginate', 'simplePaginate', 'cursorPaginate', 'count', 'exists',
     ];
 
     /** The list steps a model answers alike through a new query of itself, where the read may be one model. */
@@ -211,12 +218,7 @@ final class ModelFinderHandler implements ExpressionHandler
      */
     private function queryTerminal(MethodCall $call, string $terminal, AnalysisScope $scope): ?array
     {
-        $receivers = resolve(ReceiverClassResolver::class);
-
-        // A user-defined step no body proves or disproves keeps the reading every model-rooted chain had before.
-        $receiver = $this->isTerminal($terminal)
-            ? $receivers->resolve($call->var, $scope) ?? $receivers->resolvePresumingSteps($call->var, $scope)
-            : null;
+        $receiver = $this->isTerminal($terminal) ? $this->receiverFor($call->var, $terminal, $scope) : null;
 
         if ($receiver === null) {
             return null;
@@ -234,6 +236,39 @@ final class ModelFinderHandler implements ExpressionHandler
         }
 
         return ['result' => [...$read['result'], 'type' => ValueResult::withNullArm($read['result']['type'])], 'element' => null];
+    }
+
+    /**
+     * The receiver a terminal or list step runs on, read strictly, else through presumed user-defined steps.
+     *
+     * The presumed read is only for a step every model-rooted chain was once typed by, which keeps that reading where
+     * no body proves or disproves a step.
+     */
+    private function receiverFor(Expr $receiver, string $step, AnalysisScope $scope): ?ReceiverType
+    {
+        $receivers = resolve(ReceiverClassResolver::class);
+
+        return $receivers->resolve($receiver, $scope)
+            ?? (in_array($step, self::BASE_TERMINALS, true) ? $receivers->resolvePresumingSteps($receiver, $scope) : null);
+    }
+
+    /**
+     * A list of models a receiver holds that no terminal here built, as a model's own method returning `get()` does.
+     *
+     * @return ChainRead|null
+     */
+    private function heldList(Expr $receiver, string $step, AnalysisScope $scope): ?array
+    {
+        $held = $this->receiverFor($receiver, $step, $scope);
+        $model = $held?->elementModel;
+
+        if ($held === null || $model === null || $held->collectedItems || ! $held->within([Enumerable::class])) {
+            return null;
+        }
+
+        $element = [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model];
+
+        return ['result' => [...$element, 'type' => $element['type'].'[]'], 'element' => $element, 'keyed' => $held->keyed];
     }
 
     /**
@@ -404,7 +439,7 @@ final class ModelFinderHandler implements ExpressionHandler
     private function listStep(MethodCall $call, string $step, AnalysisScope $scope): ?array
     {
         $kind = self::LIST_STEPS[$step] ?? null;
-        $inner = $kind === null ? null : $this->read($call->var, $scope);
+        $inner = $kind === null ? null : $this->read($call->var, $scope) ?? $this->heldList($call->var, $step, $scope);
         $element = $inner['element'] ?? null;
 
         if ($kind === null || $inner === null || $element === null || ! $this->takesStepArguments($call, $step, $element)) {
@@ -414,6 +449,11 @@ final class ModelFinderHandler implements ExpressionHandler
         if (($inner['maybeOne'] ?? false)
             && (! in_array($step, self::ONE_OR_LIST_STEPS, true) || method_exists($element['modelFqcn'] ?? Model::class, $step))
         ) {
+            return null;
+        }
+
+        // A keyed list is sent as an object, which a step handing the list on keeps.
+        if (($inner['keyed'] ?? false) && ($kind === 'list' || $kind === 'column') && $step !== 'values') {
             return null;
         }
 

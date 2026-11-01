@@ -118,6 +118,12 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a step past a find() a variable keys, which a model answers alike' => ['\\Workbench\\App\\Models\\Post::find($ids)->first()', 'Post | null'],
     'a scope whose hand-back is unproven' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ScopedPost::newestVia()->get()', 'ScopedPost[]'],
     'a base-query step on a relation' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->comments()->whereIn("id", [1])->get()', 'Comment[]'],
+    'a call only a local macro could answer, which Laravel otherwise throws on' => ['\\Workbench\\App\\Models\\Post::query()->notAQueryMethod()->get()', 'Post[]'],
+    'a list a model\'s own untyped method returns' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::popular()->first()', 'ListingPost | null'],
+    'a list a model\'s own method declares as a bare collection' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::popularTyped()->all()', 'ListingPost[]'],
+    'a column of a list a model\'s own method returns' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::popular()->pluck("title")', 'string[]'],
+    'a model a model\'s own untyped method returns' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::newest()->count()', 'number'],
+    'a keyed list\'s element' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->first()', 'Post | null'],
 ]);
 
 it('types a column a query plucks or reads as the model reads it', function (string $php, string $type) {
@@ -148,7 +154,6 @@ it('declines a chain past a step it cannot follow', function (string $php) {
     expect(modelFinderType($php))->toBeNull();
 })->with([
     'a when() whose callback returns a count' => ['\\Workbench\\App\\Models\\Post::query()->when(true, fn ($q) => $q->count())->get()'],
-    'a call no query runs' => ['\\Workbench\\App\\Models\\Post::query()->notAQueryMethod()->get()'],
     'a find() of a key no literal spells' => ['\\Workbench\\App\\Models\\Post::find($id)->comments()->get()'],
     'a collection step it does not list' => ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->map(fn ($id) => $id)->first()'],
     'a pluck keyed by a second column' => ['\\Workbench\\App\\Models\\Post::query()->pluck("title", "id")->first()'],
@@ -158,6 +163,8 @@ it('declines a chain past a step it cannot follow', function (string $php) {
     'a step past a find() a variable keys, which a model answers otherwise' => ['\\Workbench\\App\\Models\\Post::find($ids)->all()'],
     'a step past a build a variable counts, which a model answers otherwise' => ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()->last()'],
     'a step past a scope that provably returns a count' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ScopedPost::tallied()->get()'],
+    'a column past an unread step, whose query may be another model\'s' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::commentsVia()->pluck("content")'],
+    'a keyed list handed on' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->all()'],
 ]);
 
 // R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list; a count no

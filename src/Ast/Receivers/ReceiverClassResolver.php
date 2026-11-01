@@ -1613,10 +1613,11 @@ final class ReceiverClassResolver
             try {
                 $scope = QueryForwarding::namedScope($queried, $method);
 
+                // A local macro, as a global scope's extend() adds one, may answer a name nothing else does.
                 return match (true) {
                     $scope !== null => $this->scopeQuery($scope, $query),
                     Builder::hasGlobalMacro($method) => $this->macroQuery(Builder::getGlobalMacro($method), $query),
-                    default => null,
+                    default => $this->unproven($query),
                 };
             } finally {
                 $memo->leave($key);
@@ -1766,7 +1767,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a returned value is, arm by arm: a query of one model, false where provably no query, null where unread.
+     * What a returned value is, arm by arm: what the resolver names, false where provably no object, null where unread.
      *
      * @param  Closure(): ?AnalysisScope  $scope  the bindings the body reads, built only where a value needs them
      * @return list<ReceiverType|false|null>
@@ -1790,38 +1791,38 @@ final class ReceiverClassResolver
         if ($held !== null) {
             return [$held->relatedModel !== null && count($held->classes) === 1 && $held->within([Builder::class])
                 ? new ReceiverType($held->classes, relatedModel: $held->relatedModel)
-                : false];
+                : $held];
         }
 
         return [$this->isNoQuery($returned, $holder, $query) ? false : null];
     }
 
     /**
-     * The query the values a body returns join to: the one query every arm hands on.
+     * What the values a body returns join to: the one query, model or collection every arm names.
      *
-     * Where some arm is unread or provably no query, only presumed steps name the query an arm hands on, or the given
-     * one: a call after such a step throws on an arm that is no object, so only the query arm can be sent past it.
+     * Where some arm is unread or provably no object, only presumed steps name what an arm names, or the given query:
+     * a call after such a step throws on an arm that is no object, so only the other arm can be sent past it.
      *
      * @param  list<ReceiverType|false|null>  $kinds
      */
     private function joinedQuery(array $kinds, ReceiverType $query): ?ReceiverType
     {
-        $queries = array_values(array_filter($kinds, fn (ReceiverType|false|null $kind): bool => $kind instanceof ReceiverType));
-        $first = $queries[0] ?? null;
+        $named = array_values(array_filter($kinds, fn (ReceiverType|false|null $kind): bool => $kind instanceof ReceiverType));
+        $first = $named[0] ?? null;
 
         if ($kinds === []) {
             return $query;
         }
 
-        if ($first !== null && ! array_all($queries, fn (ReceiverType $one): bool => $this->isSameQuery($one, $first))) {
+        if ($first !== null && ! array_all($named, fn (ReceiverType $one): bool => $this->isSameReceiver($one, $first))) {
             return null;
         }
 
-        if (count($queries) === count($kinds)) {
+        if (count($named) === count($kinds)) {
             return $first;
         }
 
-        // Every arm provably no query: the step hands no query on.
+        // Every arm provably no object: the step hands nothing on a call can follow.
         if ($first === null && ! in_array(null, $kinds, true)) {
             return null;
         }
@@ -1927,6 +1928,14 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Whether two receivers hold the same classes over the same model and element.
+     */
+    private function isSameReceiver(ReceiverType $one, ReceiverType $other): bool
+    {
+        return $one->classes === $other->classes && $one->relatedModel === $other->relatedModel && $one->elementModel === $other->elementModel;
+    }
+
+    /**
      * Whether a receiver is the very query another is: the same builder class over the same model.
      */
     private function isSameQuery(?ReceiverType $held, ReceiverType $query): bool
@@ -1971,6 +1980,10 @@ final class ReceiverClassResolver
             if ($declared !== null && $this->listsTemplate($declared, 'static')) {
                 return new ReceiverType($classes, elementModel: $class);
             }
+
+            $listed = $this->modelMethodReturn($class, $method);
+
+            return $listed !== null && $listed->classes === $classes && $listed->elementModel !== null ? $listed : $this->typeOf($classes);
         }
 
         if (($classes !== null && $classes !== [Builder::class]) || ! is_a($class, Model::class, true)) {
@@ -1983,15 +1996,17 @@ final class ReceiverClassResolver
             return new ReceiverType([QueryForwarding::builderClass($class)], relatedModel: $class);
         }
 
-        return $this->modelMethodQuery($class, $method) ?? $this->typeOf($classes);
+        $read = $this->modelMethodReturn($class, $method);
+
+        return $read !== null && ($classes === null || $read->within($classes)) ? $read : $this->typeOf($classes);
     }
 
     /**
-     * The query of one model a model's own method, untyped or declared as `Builder`, returns, read from its body.
+     * What a model's own method, untyped or declared as a bare `Builder` or collection, returns, read from its body.
      *
      * @param  class-string<Model>  $model
      */
-    private function modelMethodQuery(string $model, string $method): ?ReceiverType
+    private function modelMethodReturn(string $model, string $method): ?ReceiverType
     {
         $declaring = new ReflectionMethod($model, $method)->getDeclaringClass()->getName();
 

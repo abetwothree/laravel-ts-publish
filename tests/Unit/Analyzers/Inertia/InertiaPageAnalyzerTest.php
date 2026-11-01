@@ -2070,6 +2070,53 @@ it('keeps the root model\'s reading past a user-defined step whose hand-back is 
         ->and([$sent->viaHelper[0]->title, $sent->branched[0]->title, $sent->branchedBare])->toBe(['First', 'First', 1]);
 });
 
+// A model's own method that lists posts or finds one hands that on, so a terminal or list step past it reads it.
+it('types a terminal past a model\'s own method that returns a list or a model', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->ownMethods());
+
+    expect(pageData(EloquentStaticsController::class.'@ownMethods')['pageType'])->toBe('Inertia.SharedData & { '
+        .'popularFirst: ListingPost | null, popularCount: number, popularAll: ListingPost[], typedFirst: ListingPost | null, '
+        .'documentedFirst: ListingPost | null, newestCount: number, siblingsFirst: ListingPost | null, rowsViaFirst: ListingPost | null }')
+        ->and([$sent->popularFirst->title, $sent->popularCount, $sent->popularAll[0]->title, $sent->typedFirst->title])
+        ->toBe(['First', 1, 'First', 'First'])
+        ->and([$sent->documentedFirst->title, $sent->newestCount, $sent->siblingsFirst->title, $sent->rowsViaFirst->title])
+        ->toBe(['First', 1, 'First', 'First']);
+});
+
+// A step the engine cannot read is presumed to hand the query on only for terminals every model-rooted chain was typed
+// by; a column the step's real query reads may be another model's, as the integer content sent here is.
+it('leaves a column past an unread step unknown', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->opaqueColumns());
+
+    expect(pageData(EloquentStaticsController::class.'@opaqueColumns')['pageType'])
+        ->toBe('Inertia.SharedData & { contents: unknown, content: unknown }')
+        ->and([$sent->contents, $sent->content])->toBe([[0], 0]);
+});
+
+// Builder::__call() runs a local macro a global scope's extend() adds before it would throw, so such a call, and one a
+// builder a constructor picks answers, keeps the root model's reading.
+it('keeps the root model\'s reading past a call a local macro or a runtime builder answers', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->localMacros());
+
+    expect(pageData(EloquentStaticsController::class.'@localMacros')['pageType'])->toBe('Inertia.SharedData & { '
+        .'archived: ArchivingPost[], archivedFirst: ArchivingPost | null, constructed: ConstructedBuilderPost[] }')
+        ->and([$sent->archived[0]->title, $sent->archivedFirst->title, $sent->constructed[0]->title])->toBe(['First', 'First', 'First']);
+});
+
+it('types a chain past a custom builder\'s typed methods, a relation\'s scope and a relation\'s base-query step', function () {
+    $post = eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->customSteps());
+
+    expect(pageData(EloquentStaticsController::class.'@customSteps')['pageType'])->toBe('Inertia.SharedData & { '
+        .'published: BuiltPost[], withContent: BuiltPost | null, scopedComments: ScopedComment[], listedComments: Comment[] }')
+        ->and([$sent->published[0]->title, $sent->withContent->title, $sent->scopedComments[0]->content])
+        ->toBe(['First', 'First', 'alpha'])
+        ->and($sent->listedComments[0]->post_id)->toBe($post->id);
+});
+
 // A base query's rows are plain objects of the selected columns, which no model casts, in each paginator alike.
 it('types a base query\'s paginator over its rows', function () {
     eloquentStaticsPost();

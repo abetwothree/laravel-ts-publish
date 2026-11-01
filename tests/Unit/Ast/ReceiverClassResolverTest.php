@@ -11,10 +11,12 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributedBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Builders\PublishedPostBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OverriddenBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
@@ -372,6 +374,31 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolvePresumingSteps($unproven, postScope()))->toEqual($query)
             ->and($resolver->resolvePresumingSteps($tallied, postScope()))->toBeNull()
             ->and($resolver->resolve($unproven, postScope()))->toBeNull();
+    });
+
+    // A model's own method with no declared return, or one declaring a bare collection, hands on what its body returns.
+    test('a model\'s own method names the list or model its body returns', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $listing = '\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost';
+
+        expect($resolver->resolve(receiverExpr($listing.'::popular()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::popularTyped()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::newest()'), postScope()))->toEqual(ReceiverType::of(ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::rowsVia()'), postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps(receiverExpr($listing.'::rowsVia()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class));
+    });
+
+    // Builder::__call() runs a local macro, as a global scope's extend() adds, before it would throw.
+    test('a call nothing but a local macro could answer is presumed to hand the query back', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $archived = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost::withArchived()');
+
+        expect($resolver->resolve($archived, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($archived, postScope()))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: ArchivingPost::class));
     });
 
     test('a static a model declares keeps reading as its declaration', function () {

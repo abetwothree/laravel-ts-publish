@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\QueriedIdCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConstructedBuilderPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SearchedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowingPost;
@@ -63,6 +67,51 @@ class EloquentStaticsController
             'viaHelper' => ScopedPost::newestVia()->get(),
             'branched' => Post::query()->latestOrTally(true)->get(),
             'branchedBare' => Post::query()->latestOrTally(false),
+        ]);
+    }
+
+    /** Renders terminals and list steps past a model's own methods that list posts or find one. */
+    public function ownMethods(): Response
+    {
+        return Inertia::render('Eloquent/OwnMethods', [
+            'popularFirst' => ListingPost::popular()->first(),
+            'popularCount' => ListingPost::popular()->count(),
+            'popularAll' => ListingPost::popular()->all(),
+            'typedFirst' => ListingPost::popularTyped()->first(),
+            'documentedFirst' => ListingPost::popularDoc()->first(),
+            'newestCount' => ListingPost::newest()->count(),
+            'siblingsFirst' => ListingPost::query()->firstOrFail()->siblings()->first(),
+            'rowsViaFirst' => ListingPost::rowsVia()->first(),
+        ]);
+    }
+
+    /** Renders column terminals past a scope that hands on another model's query through a service. */
+    public function opaqueColumns(): Response
+    {
+        return Inertia::render('Eloquent/OpaqueColumns', [
+            'contents' => ListingPost::commentsVia()->pluck('content'),
+            'content' => ListingPost::commentsVia()->value('content'),
+        ]);
+    }
+
+    /** Renders a call a global scope's local macro answers, and a method of a builder a constructor picks. */
+    public function localMacros(): Response
+    {
+        return Inertia::render('Eloquent/LocalMacros', [
+            'archived' => ArchivingPost::withArchived()->get(),
+            'archivedFirst' => ArchivingPost::query()->withArchived()->first(),
+            'constructed' => ConstructedBuilderPost::query()->published()->get(),
+        ]);
+    }
+
+    /** Renders a custom builder's typed methods, a relation's scope and a relation's base-query step. */
+    public function customSteps(): Response
+    {
+        return Inertia::render('Eloquent/CustomSteps', [
+            'published' => BuiltPost::published()->get(),
+            'withContent' => BuiltPost::query()->withContent()->first(),
+            'scopedComments' => ScopedPost::query()->firstOrFail()->scopedComments()->alpha()->get(),
+            'listedComments' => Post::query()->firstOrFail()->comments()->whereIn('id', [1])->get(),
         ]);
     }
 

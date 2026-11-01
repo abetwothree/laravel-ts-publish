@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
@@ -20,6 +21,16 @@ class ScopedPost extends Post
     public static function newest(): ?self
     {
         return static::query()->latest()->first();
+    }
+
+    /**
+     * The post's comments, whose model carries a scope.
+     *
+     * @return HasMany<ScopedComment, $this>
+     */
+    public function scopedComments(): HasMany
+    {
+        return $this->hasMany(ScopedComment::class, 'post_id');
     }
 
     /**
