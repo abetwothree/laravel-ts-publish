@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /** Inertia actions whose top-level props hold dotted keys Inertia unpacks, and int keys renumbered per props array. */
@@ -220,6 +222,64 @@ class TopLevelKeysController
     public function opaque(): mixed
     {
         return 'v';
+    }
+
+    /** Renders dotted keys under a resource and an Inertia prop object, which Inertia replaces rather than opens. */
+    public function closedHeads(User $user): Response
+    {
+        return Inertia::render('TopLevelKeys/ClosedHeads', [
+            'card' => UserCardResource::make($user),
+            'card.can' => true,
+            'always' => Inertia::always(['a' => 1]),
+            'always.b' => 2,
+        ]);
+    }
+
+    /**
+     * Renders a local written dotted keys on some requests under a resource, an Inertia prop object, a closure
+     * returning one, either of two resources, and a model.
+     */
+    public function walkedClosedHeads(Request $request, User $user): Response
+    {
+        $props = [
+            'card' => UserCardResource::make($user),
+            'always' => Inertia::always(['a' => 1]),
+            'held' => fn () => Inertia::always(['h' => 1]),
+            'either' => $request->boolean('c') ? UserCardResource::make($user) : new UserCardResource($user),
+            'model' => $user,
+        ];
+
+        if ($request->boolean('c')) {
+            $props['card.can'] = true;
+            $props['always.b'] = 2;
+            $props['held.can'] = true;
+            $props['either.can'] = true;
+            $props['model.can'] = true;
+        }
+
+        return Inertia::render('TopLevelKeys/WalkedClosedHeads', $props);
+    }
+
+    /** Renders a dotted key under a resource that a `+` joins it to. */
+    public function plusClosedHead(User $user): Response
+    {
+        return Inertia::render('TopLevelKeys/PlusClosedHead', ['card' => UserCardResource::make($user)] + ['card.can' => true]);
+    }
+
+    /** Casts a resource a dotted key is written under, which Inertia still replaces. */
+    #[TsCasts(['card' => '{ data: { id: number } }'])]
+    public function castClosedHead(User $user): Response
+    {
+        return Inertia::render('TopLevelKeys/CastClosedHead', ['card' => UserCardResource::make($user), 'card.can' => true]);
+    }
+
+    /** Renders a dotted key under a resource another dotted key holds. */
+    public function dottedClosedHead(User $user): Response
+    {
+        return Inertia::render('TopLevelKeys/DottedClosedHead', [
+            'card.extra' => UserCardResource::make($user),
+            'card.extra.more' => 1,
+        ]);
     }
 
     /** Renders two same-named enums under one dotted head, beside one of them at the top level. */

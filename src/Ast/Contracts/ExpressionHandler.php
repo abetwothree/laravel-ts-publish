@@ -40,6 +40,7 @@ use PhpParser\Node\Expr;
  *      mayHoldObject?: HeldNulls,
  *      heldProp?: bool,
  *      returnsCallable?: bool,
+ *      closedToDottedKeys?: bool,
  *      resolvedFqcn?: class-string<JsonResource>
  * }
  *
@@ -53,6 +54,9 @@ use PhpParser\Node\Expr;
  *
  * `heldProp` says every such object is an Inertia prop, which Inertia resolves even where a callable it called returned
  * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
+ *
+ * `closedToDottedKeys` says Inertia replaces the value with `[]` before a dotted key writes under it, never opening it
+ * as an array: an API resource it sends as a response, an Inertia prop object, or a callable returning either.
  *
  * @internal
  */

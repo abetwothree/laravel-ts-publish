@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
@@ -32,6 +33,7 @@ use ReflectionClass;
  * @phpstan-import-type PrintedMember from FileImportNames
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type SentEntry from DottedTopLevelKeys
  *
  * @phpstan-type TsCastsParseResult = array{
  *     overrides: array<string, string>,
@@ -44,7 +46,7 @@ use ReflectionClass;
  *     typeImports: TypesImportMap,
  *     valueImports: TypesImportMap,
  * }
- * @phpstan-type OverrideEntry = array{type: string, optional: bool}
+ * @phpstan-type OverrideEntry = SentEntry
  * @phpstan-type SharedPropMap = array<array-key, OverrideEntry>
  */
 class InertiaSharedDataAnalyzer
@@ -182,7 +184,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Flatten the analysis into a prop map, later declarations of a key winning.
+     * Flatten the analysis into a prop map, later declarations of a key winning; one a dotted key replaces is `closed`.
      *
      * @return SharedPropMap
      */
@@ -191,7 +193,11 @@ class InertiaSharedDataAnalyzer
         $props = [];
 
         foreach ($analysis->properties as $property) {
-            $props[$property['name']] = ['type' => $property['type'], 'optional' => $property['optional']];
+            $props[$property['name']] = [
+                'type' => $property['type'],
+                'optional' => $property['optional'],
+                ...(isset($analysis->closedToDottedKeys[$property['name']]) ? ['closed' => true] : []),
+            ];
         }
 
         foreach (self::FRAMEWORK_OWNED_PROPS as $name) {
@@ -327,7 +333,7 @@ class InertiaSharedDataAnalyzer
     protected function buildMembersWithOverrides(array $props, array $overrides, array $renumbered = []): array
     {
         // An override keeps its prop's place, and one no prop has goes after them.
-        return $this->printTopLevel(array_replace($props, $overrides), $renumbered);
+        return $this->printTopLevel($props, $overrides, $renumbered);
     }
 
     /**

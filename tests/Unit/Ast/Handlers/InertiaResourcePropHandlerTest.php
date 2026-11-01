@@ -70,11 +70,19 @@ function inertiaResourcePropResult(Expr $expr, ?AnalysisScope $scope = null): ?a
     $reflection = new ReflectionClass(InertiaController::class);
     $scope ??= new AnalysisScope($reflection);
 
-    return new InertiaResourcePropHandler()->resolve(
+    $result = new InertiaResourcePropHandler()->resolve(
         $expr,
         $scope,
         new ResourceAstAnalyzer($reflection, null, 'dashboard', scope: $scope, reading: Reading::Inertia),
     );
+
+    // Inertia never opens a response for a dotted key, so every one carries the mark the tests below take as read.
+    if ($result !== null) {
+        expect($result['closedToDottedKeys'] ?? null)->toBeTrue();
+        unset($result['closedToDottedKeys']);
+    }
+
+    return $result;
 }
 
 afterEach(function () {

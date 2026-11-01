@@ -2092,6 +2092,38 @@ it('keeps the value an optional dotted key replaces beside its own', function ()
         ->and($sent)->toBe(['{"a":{"b":{"y":1}}}', '{"a":{"b":{"c":1}}}']);
 });
 
+// ensurePathIsTraversable() opens only an array, a Closure or an Arrayable, so Arr::set() replaces a resource or an
+// Inertia prop object under a dotted key with `[]`, as it replaces a scalar.
+it('writes a dotted key over a resource or an Inertia prop object it is written under', function (string $action, string $type, string $sent) {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+
+    expect(pageData(TopLevelKeysController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and(inertiaPropsJson(new TopLevelKeysController()->{$action}($user)))->toBe($sent);
+})->with([
+    'a literal' => ['closedHeads', '{ card: { can: boolean }, always: { b: number } }', '{"card":{"can":true},"always":{"b":2}}'],
+    'a `+`' => ['plusClosedHead', '{ card: { can: boolean } }', '{"card":{"can":true}}'],
+    'a dotted head' => ['dottedClosedHead', '{ card: { extra: { more: number } } }', '{"card":{"extra":{"more":1}}}'],
+    'under a cast' => ['castClosedHead', '{ card: { can: boolean } }', '{"card":{"can":true}}'],
+]);
+
+it('writes the dotted keys a local may hold over a resource or an Inertia prop object, held or not, and into a model', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = function (int $c) use ($user): array {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return json_decode(inertiaPropsJson(new TopLevelKeysController()->walkedClosedHeads($request, $user), $request), true);
+    };
+
+    expect(pageData(TopLevelKeysController::class.'@walkedClosedHeads')['pageType'])->toBe('Inertia.SharedData & { '
+        .'card: { can?: boolean } | { data: UserCardResource }, always: { b?: number } | { a: number }, '
+        .'held: { can?: boolean } | { h: number }, either: { can?: boolean } | { data: UserCardResource }, '
+        .'model: (User & { can?: boolean }) | { can?: boolean } | User }')
+        ->and([$sent(1)['card'], $sent(1)['always'], $sent(1)['held'], $sent(1)['either'], $sent(1)['model']['can']])
+        ->toBe([['can' => true], ['b' => 2], ['can' => true], ['can' => true], true])
+        ->and([$sent(0)['card'], $sent(0)['always'], $sent(0)['held'], $sent(0)['either'], $sent(0)['model']['name']])
+        ->toBe([$card = ['data' => ['id' => $user->id, 'name' => 'Ada']], ['a' => 1], ['h' => 1], $card, 'Ada']);
+});
+
 // TypeScript checks every key a signature covers against it (TS2411), a key the unpack nests included.
 it('widens a signature that covers a dotted key\'s head with the head\'s type', function () {
     expect(pageData(TopLevelKeysController::class.'@signatureHead')['pageType'])

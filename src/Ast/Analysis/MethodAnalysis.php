@@ -103,6 +103,15 @@ class MethodAnalysis
     public array $leftOutValues = [];
 
     /**
+     * Property name => true where the value addProperty() last gave the key is an object Inertia replaces before a
+     * dotted key writes under it (its `closedToDottedKeys` flag). A merge takes the source's; a join keeps a key
+     * every branch holding it closes. A fact of the value, so forgetChannels(), which a cast also runs, keeps it.
+     *
+     * @var array<array-key, true>
+     */
+    public array $closedToDottedKeys = [];
+
+    /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
@@ -189,6 +198,12 @@ class MethodAnalysis
             unset($this->leftOutValues[$name]);
         }
 
+        if ($result['closedToDottedKeys'] ?? false) {
+            $this->closedToDottedKeys[$name] = true;
+        } else {
+            unset($this->closedToDottedKeys[$name]);
+        }
+
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
             $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
@@ -241,9 +256,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key it
-     * sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType() consumes
-     * each as a positional queue. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
+     * `properties` appends; the single-value class maps, `casts` and `closedToDottedKeys` replace-merge, the source
+     * winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as aliasPropertyType()
+     * reads them by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
@@ -263,10 +278,13 @@ class MethodAnalysis
             if (! isset($source->casts[$property['name']])) {
                 unset($this->casts[$property['name']]);
             }
+
+            unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
+        $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
@@ -317,6 +335,7 @@ class MethodAnalysis
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
         $this->heldObjectKeys = $source->heldObjectKeys;
         $this->leftOutValues = $source->leftOutValues;
+        $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -571,6 +590,7 @@ class MethodAnalysis
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
+        $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
     }
 
     /**

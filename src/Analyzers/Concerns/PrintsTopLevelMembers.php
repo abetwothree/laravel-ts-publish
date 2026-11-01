@@ -13,24 +13,27 @@ use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
  * renumbers it to, and each dotted key written into its path.
  *
  * @phpstan-import-type PrintedMember from FileImportNames
+ * @phpstan-import-type SentEntry from DottedTopLevelKeys
  */
 trait PrintsTopLevelMembers
 {
     /**
      * Print each top-level prop as an object type's member, on the key Laravel sends it on, a dotted key nested.
      *
-     * @param  array<array-key, array{type: string, optional: bool}>  $entries  each prop, a cast in its place, by name
+     * @param  array<array-key, SentEntry>  $props  each prop by name
+     * @param  array<array-key, SentEntry>  $casts  each cast by the name it retypes, laid in its prop's place
      * @param  array<array-key, string>  $renumbered  the key Laravel sends each prop on, by its name
      * @return list<PrintedMember>
      */
-    private function printTopLevel(array $entries, array $renumbered): array
+    private function printTopLevel(array $props, array $casts, array $renumbered): array
     {
         $sent = [];
         $sources = [];
 
-        foreach ($entries as $name => $entry) {
+        foreach (array_replace($props, $casts) as $name => $entry) {
             $key = $renumbered[$name] ?? (string) $name;
-            $sent[$key] = $entry;
+            // A cast retypes the value, which Inertia still replaces before a dotted key writes under it.
+            $sent[$key] = isset($casts[$name], $props[$name]['closed']) ? [...$entry, 'closed' => true] : $entry;
             $sources[$key] = $name;
         }
 

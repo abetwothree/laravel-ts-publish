@@ -240,7 +240,8 @@ final class ValueResult
     /**
      * The result as an object PHP holds until its caller resolves it: a callable, or with $prop an Inertia prop.
      *
-     * A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled.
+     * A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled. A prop,
+     * and a callable returning one, is closed to dotted keys: Inertia replaces it rather than opening it.
      *
      * @param  ValueExpressionResult  $result
      * @return ValueExpressionResult
@@ -253,7 +254,7 @@ final class ValueResult
         return [
             ...$result,
             'heldObject' => true,
-            ...($prop ? ['heldProp' => true] : []),
+            ...($prop ? ['heldProp' => true, 'closedToDottedKeys' => true] : []),
             ...($returnsCallable ? ['returnsCallable' => true] : []),
         ];
     }
@@ -360,7 +361,8 @@ final class ValueResult
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms'.
+     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
+     * and it is closed to dotted keys where every arm is.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -383,9 +385,12 @@ final class ValueResult
 
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
+        $closed = $results !== [] && array_all($results, fn (array $inner): bool => $inner['closedToDottedKeys'] ?? false)
+            ? ['closedToDottedKeys' => true]
+            : [];
 
         if ($types === []) {
-            return self::withArmObjects([...self::unknown(), 'optional' => $optional], $results);
+            return self::withArmObjects([...self::unknown(), 'optional' => $optional, ...$closed], $results);
         }
 
         $result = self::mergeUnion($types, $branchResults);
@@ -394,7 +399,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional, ...$closed];
 
         return self::withArmObjects($union, $results);
     }

@@ -148,6 +148,20 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
     ],
 ]);
 
+// Inertia replaces a resource or a prop object under a dotted key with `[]`, as it replaces a scalar.
+it('writes a dotted key over a closed value, kept only where every write may be left out', function () {
+    $closed = ['type' => '{ data: R }', 'optional' => false, 'closed' => true];
+    $print = static fn (array $props): array => array_map(
+        static fn (array $entry): string => $entry['type'].($entry['optional'] ? '?' : ''),
+        DottedTopLevelKeys::nest($props),
+    );
+
+    expect($print(['a' => $closed, 'a.b' => topLevelEntry('number')]))->toBe(['a' => '{ b: number }'])
+        ->and($print(['a' => $closed, 'a.b' => topLevelEntry('number?')]))->toBe(['a' => '{ b?: number } | { data: R }'])
+        ->and($print(['a.x' => $closed, 'a.x.b' => topLevelEntry('number')]))->toBe(['a' => '{ x: { b: number } }'])
+        ->and($print(['a' => [...$closed, 'type' => 'unknown'], 'a.b' => topLevelEntry('number')]))->toBe(['a' => '{ b: number }']);
+});
+
 it('prints a signature a head widens from its own text and the head\'s', function () {
     $nested = DottedTopLevelKeys::nest(['[key: string]' => topLevelEntry('Post'), 'a.b' => topLevelEntry('User')]);
 

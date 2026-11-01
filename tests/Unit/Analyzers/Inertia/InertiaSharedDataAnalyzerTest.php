@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCarriedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClosedDottedHeads;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
@@ -676,6 +677,26 @@ test('a signature of shared data that covers a dotted key\'s head takes the head
     expect(analyzeSharedDataFor(MiddlewareWithDottedSignatureHead::class)['sharedPageProps'] ?? null)
         ->toBe('{ [key: `${string}_tag`]: string | undefined | { b: number }, x_tag: { b: number } }')
         ->and(inertiaPropsJson(Inertia::render('Shared', [])))->toBe('{"east_tag":"v","west_tag":"v","x_tag":{"b":1}}');
+});
+
+// ensurePathIsTraversable() opens only an array, a Closure or an Arrayable, so Arr::set() replaces the rest with `[]`.
+test('a dotted key of shared data writes over a resource or an Inertia prop object it is written under', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = function (int $c) use ($user): string {
+        $request = bindRequestUser($user);
+        $request->query->set('c', (string) $c);
+        Inertia::flushShared();
+        Inertia::share(new MiddlewareWithClosedDottedHeads()->share($request));
+
+        return inertiaPropsJson(Inertia::render('Shared', []));
+    };
+
+    expect(analyzeSharedDataFor(MiddlewareWithClosedDottedHeads::class)['sharedPageProps'] ?? null)
+        ->toBe('{ card: { can?: boolean } | { data: UserCardResource }, always: { b?: number } | { a: number } }')
+        ->and([$sent(1), $sent(0)])->toBe([
+            '{"card":{"can":true},"always":{"b":2}}',
+            '{"card":{"data":{"id":'.$user->id.',"name":"Ada"}},"always":{"a":1}}',
+        ]);
 });
 
 test('share()\'s spelling of a signature outranks the class\'s exact name', function () {

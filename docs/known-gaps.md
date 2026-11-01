@@ -967,12 +967,12 @@ and writes into, or over, the page's value: shared `'auth.name'` beside a page's
 `{ auth: { name: … } }`. A shared-data index signature that covers a page key's head intersects the same way. Name
 page keys apart from shared-data keys.
 
-### A dotted key under a key that holds an object publishes the object's keys beside its own
+### A dotted key under an object an array holds publishes the object's keys beside its own
 
-`['post' => new PostResource($post), 'post.extra' => 1]` publishes `post: { data: PostResource; extra: number }`,
-though Inertia replaces any value it does not find as an array, an API resource or an Inertia prop object such as
-`Inertia::always([…])` included, and sends `{ extra: 1 }`. A key holding an array, a model or a collection is written
-into as published. Write the dotted key under a key of its own.
+`['post' => ['card' => new PostResource($post)], 'post.card.extra' => 1]` publishes `card` as its response with
+`extra: number` beside it, though Inertia replaces a value it does not find as an array, an API resource or an Inertia
+prop object such as `Inertia::always([…])` included, and sends `{ card: { extra: 1 } }`. Such an object a top-level key
+holds publishes as replaced. Write the dotted key under a key of its own.
 
 ### A props local whose branches write its int keys in different orders numbers them in the first branch's order
 

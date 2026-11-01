@@ -434,9 +434,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $flatTypeAlias = null;
         $flatTypeAliasFqcn = null;
 
+        /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
+        $closed = [];
+
         foreach ($analyses as $analysis) {
             foreach ($analysis->properties as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
+                $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
             }
 
             $channels->merge($analysis);
@@ -510,6 +514,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->readsCompletely = $channels->readsCompletely;
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->leftOutValues = $channels->leftOutValues;
+        $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
         $merged->queueSplitClasses($analyses);
 
         return $merged;

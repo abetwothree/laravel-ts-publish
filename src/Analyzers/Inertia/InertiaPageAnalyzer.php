@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
@@ -59,6 +60,7 @@ use Throwable;
  * @phpstan-import-type TokenQueue from FileImportNames
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type PrintedMember from FileImportNames
+ * @phpstan-import-type SentEntry from DottedTopLevelKeys
  *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
@@ -69,7 +71,7 @@ use Throwable;
  *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
- * @phpstan-type PagePropEntry = array{type: string, optional: bool}
+ * @phpstan-type PagePropEntry = SentEntry
  * @phpstan-type PagePropMap = array<array-key, PagePropEntry>
  */
 class InertiaPageAnalyzer
@@ -460,7 +462,7 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Flatten the analysis into a prop map, later declarations of a key winning.
+     * Flatten the analysis into a prop map, later declarations of a key winning; one a dotted key replaces is `closed`.
      *
      * @return PagePropMap
      */
@@ -469,7 +471,11 @@ class InertiaPageAnalyzer
         $props = [];
 
         foreach ($analysis->properties as $property) {
-            $props[$property['name']] = ['type' => $property['type'], 'optional' => $property['optional']];
+            $props[$property['name']] = [
+                'type' => $property['type'],
+                'optional' => $property['optional'],
+                ...(isset($analysis->closedToDottedKeys[$property['name']]) ? ['closed' => true] : []),
+            ];
         }
 
         return $props;
@@ -516,7 +522,7 @@ class InertiaPageAnalyzer
         }
 
         // A cast keeps its prop's place, and one no prop has goes after them.
-        return $this->printTopLevel(array_replace($props, $casts), $renumbered);
+        return $this->printTopLevel($props, $casts, $renumbered);
     }
 
     /**

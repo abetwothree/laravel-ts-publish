@@ -290,7 +290,7 @@ it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...
     $expr = new StaticCall(new Name('Inertia'), 'always', [new Arg(new String_('en'))]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 });
 
 // NewResourceHandler reads a `new` of a class that is no resource as `unknown`, so it would floor a prop object Inertia
@@ -300,7 +300,7 @@ it('tries InertiaWrapperHandler before NewResourceHandler for new AlwaysProp(...
     $encoded = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
     $inertia = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, reading: Reading::Inertia);
 
-    expect($inertia->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true])
+    expect($inertia->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true])
         ->and($encoded->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 

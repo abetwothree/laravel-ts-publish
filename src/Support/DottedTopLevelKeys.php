@@ -12,9 +12,10 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
  *
  * Each key it writes prints from pieces, so a class token is read with the classes of the key whose type it prints.
  *
+ * @phpstan-type SentEntry = array{type: string, optional: bool, closed?: bool}
  * @phpstan-type TypePiece = array{text: string, from: array-key|null}
- * @phpstan-type TopLevelEntry = array{type: string, optional: bool, pieces?: list<TypePiece>}
- * @phpstan-type Base = array{pieces: list<TypePiece>, text: string, optional: bool, direct: bool}
+ * @phpstan-type TopLevelEntry = array{type: string, optional: bool, closed?: bool, pieces?: list<TypePiece>}
+ * @phpstan-type Base = array{pieces: list<TypePiece>, text: string, optional: bool, direct: bool, closed: bool}
  * @phpstan-type Node = array{parent: ?string, segment: string, leaf: array-key|null, base: Base|null, or: ?string}
  * @phpstan-type Printed = array{pieces: list<TypePiece>, optional: bool}
  *
@@ -35,14 +36,15 @@ final class DottedTopLevelKeys
     private int $replaced = 0;
 
     /**
-     * @param  array<array-key, array{type: string, optional: bool}>  $props
+     * @param  array<array-key, SentEntry>  $props
      */
     private function __construct(private readonly array $props) {}
 
     /**
      * Write each dotted key into its path as Inertia unpacks it.
      *
-     * @param  array<array-key, array{type: string, optional: bool}>  $props  each top-level key as Laravel sends it
+     * @param  array<array-key, SentEntry>  $props  each top-level key as Laravel sends it, `closed` where its value is
+     *                                              an object Inertia replaces rather than opens
      * @return array<array-key, TopLevelEntry> a key the writes reach carries the pieces of its type, each naming the
      *                                         input key whose type it prints, or null for the text between them
      */
@@ -249,6 +251,7 @@ final class DottedTopLevelKeys
                     'text' => $entry['type'],
                     'optional' => $entry['optional'],
                     'direct' => true,
+                    'closed' => $entry['closed'] ?? false,
                 ]];
             }
 
@@ -337,13 +340,15 @@ final class DottedTopLevelKeys
         $absent = $written['optional'];
 
         $pieces = match (true) {
+            // Inertia replaces a resource or a prop object as it does a scalar, so only the writes are sent.
+            $base['closed']
+                || array_all($solid, static fn (string $arm): bool => TsTypeShape::isScalar($arm) || in_array($arm, self::EMPTY, true)) => [
+                    ...$this->wrapped($written)['pieces'],
+                    ...($absent ? [...self::text(' | '), ...$base['pieces']] : []),
+                ],
             in_array('unknown', $solid, true) => $absent
                 ? $base['pieces']
                 : [...self::text('Record<string, unknown> & '), ...$this->wrapped($written)['pieces']],
-            array_all($solid, static fn (string $arm): bool => TsTypeShape::isScalar($arm) || in_array($arm, self::EMPTY, true)) => [
-                ...$this->wrapped($written)['pieces'],
-                ...($absent ? [...self::text(' | '), ...$base['pieces']] : []),
-            ],
             $one !== null && $object !== null && $object !== []
                 && ! array_any($object, static fn (array $entry): bool => str_starts_with($entry[0], '[')) => $this->intoObject(
                     $base, $one, $object, $children, $nullable,
@@ -437,6 +442,7 @@ final class DottedTopLevelKeys
                 'text' => $held[$segment]['text'],
                 'optional' => $held[$segment]['optional'],
                 'direct' => false,
+                'closed' => false,
             ];
 
             if ($this->nodes[$child]['leaf'] === null && $this->nodes[$child]['base'] === null) {

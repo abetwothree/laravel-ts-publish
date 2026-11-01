@@ -81,7 +81,7 @@ function inertiaWrapperScope(): AnalysisScope
 // chains ->defer(), and an OnceProp is dropped only once the client reports holding it.
 it('resolves the wrapped value and keeps its channels', function (string $method) {
     expect((new InertiaWrapperHandler)->resolve(inertiaWrapperCall('Inertia', $method), inertiaWrapperScope(), inertiaWrapperEngine()))
-        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true]);
+        ->toBe(['type' => 'string', 'optional' => false, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 })->with(['always', 'merge', 'deepMerge', 'scroll', 'once']);
 
 it('marks an IgnoreFirstLoad wrapper optional', function (string $method) {
@@ -94,7 +94,7 @@ it('reads a new of each prop class as its factory', function (string $class, boo
     $expr = new New_(new Name($class), [new Arg(new String_('x'))]);
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), inertiaWrapperEngine(Reading::Inertia)))
-        ->toBe(['type' => 'string', 'optional' => $optional, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true]);
+        ->toBe(['type' => 'string', 'optional' => $optional, 'modelFqcn' => 'Some\Model', 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 })->with([
     [DeferProp::class, true],
     [OptionalProp::class, true],
@@ -140,9 +140,9 @@ it('reads a new of a prop whose callable returns a callable as unknown', functio
     $args = [new Arg(new ArrowFunction(['expr' => new Variable('f')]))];
 
     expect((new InertiaWrapperHandler)->resolve(new New_(new Name(OptionalProp::class), $args), inertiaWrapperScope(), $engine))
-        ->toBe(['type' => 'unknown', 'optional' => true, 'heldObject' => true, 'heldProp' => true])
+        ->toBe(['type' => 'unknown', 'optional' => true, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true])
         ->and((new InertiaWrapperHandler)->resolve(new StaticCall(new Name('Inertia'), 'optional', $args), inertiaWrapperScope(), $engine))
-        ->toBe(['type' => 'number | null', 'optional' => true, 'heldObject' => true, 'heldProp' => true]);
+        ->toBe(['type' => 'number | null', 'optional' => true, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 });
 
 // shareOnce takes the value second, so claiming it would type the key string. It shares the prop
@@ -182,6 +182,7 @@ it('types a deferred closure over an Eloquent finder through the controller prof
         'modelFqcn' => Post::class,
         'heldObject' => true,
         'heldProp' => true,
+        'closedToDottedKeys' => true,
     ]);
 });
 
@@ -224,7 +225,7 @@ it('reads the wrapped value by name when the group is written first', function (
     };
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $engine))
-        ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true, 'heldProp' => true]);
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 });
 
 // The constructor's own names map the arguments, so the callback is read wherever it is written.
@@ -237,5 +238,5 @@ it('reads a new prop\'s value by its constructor\'s parameter name', function ()
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(InertiaController::class), null, 'dashboard', reading: Reading::Inertia);
 
     expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $analyzer))
-        ->toBe(['type' => 'Post[]', 'optional' => true, 'modelFqcn' => Post::class, 'heldObject' => true, 'heldProp' => true]);
+        ->toBe(['type' => 'Post[]', 'optional' => true, 'modelFqcn' => Post::class, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => true]);
 });

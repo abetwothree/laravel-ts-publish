@@ -111,6 +111,7 @@ it('tries InertiaResourcePropHandler before StaticCallHandler for WarehouseResou
         'optional' => false,
         'resourceFqcn' => WarehouseResource::class,
         'customImports' => ['@tolki/types' => ['AnonymousResourceCollection']],
+        'closedToDottedKeys' => true,
     ]);
 });
 
@@ -123,6 +124,7 @@ it('tries InertiaResourcePropHandler before NewResourceHandler for new PostColle
         'type' => 'PostCollection',
         'optional' => false,
         'resourceFqcn' => PostCollection::class,
+        'closedToDottedKeys' => true,
     ]);
 });
 
@@ -136,6 +138,7 @@ it('tries InertiaResourcePropHandler before NewResourceHandler and StaticCallHan
         'type' => '{ data: WarehouseResource }',
         'optional' => false,
         'resourceFqcn' => WarehouseResource::class,
+        'closedToDottedKeys' => true,
     ])
         ->and(inertiaProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
 });
