@@ -116,6 +116,8 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a base query\'s cursor pages' => ['\\Workbench\\App\\Models\\Post::query()->toBase()->orderBy("id")->cursorPaginate()', 'CursorPaginator<Record<string, unknown>>'],
     'a builder a model\'s own static returns that Eloquent does not define' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\SearchedPost::search("x")->where("a", 1)->get()', 'SearchedPost[]'],
     'a step past a find() a variable keys, which a model answers alike' => ['\\Workbench\\App\\Models\\Post::find($ids)->first()', 'Post | null'],
+    'a scope whose hand-back is unproven' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ScopedPost::newestVia()->get()', 'ScopedPost[]'],
+    'a base-query step on a relation' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->comments()->whereIn("id", [1])->get()', 'Comment[]'],
 ]);
 
 it('types a column a query plucks or reads as the model reads it', function (string $php, string $type) {
@@ -155,6 +157,7 @@ it('declines a chain past a step it cannot follow', function (string $php) {
     'a model\'s own static named like a terminal' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ShadowingPost::cursor()'],
     'a step past a find() a variable keys, which a model answers otherwise' => ['\\Workbench\\App\\Models\\Post::find($ids)->all()'],
     'a step past a build a variable counts, which a model answers otherwise' => ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()->last()'],
+    'a step past a scope that provably returns a count' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ScopedPost::tallied()->get()'],
 ]);
 
 // R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list; a count no

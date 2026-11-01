@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
@@ -60,6 +61,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTier
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -2047,6 +2049,25 @@ it('types a query chain from each step it takes before and after its terminal', 
         ->and([$sent->listed[0]->title, $sent->query->pendingAttributes, $sent->proxied[0]->title, $sent->nullCallback->title])
         ->toBe(['First', [], 'First', 'First'])
         ->and($sent->heldCallback[0]->title)->toBe('First');
+});
+
+// A step no body proves or disproves hands the query on keeps the root model's reading; past a step, a branch that
+// returns a count throws, so only the query arm is sent. Sent bare, the macro sends the count, so it stays `unknown`.
+it('keeps the root model\'s reading past a user-defined step whose hand-back is unproven', function () {
+    eloquentStaticsPost();
+    $macros = new ReflectionProperty(Builder::class, 'macros');
+    $saved = $macros->getValue();
+    app()->register(QueryMacroServiceProvider::class, force: true);
+
+    try {
+        $type = pageData(EloquentStaticsController::class.'@unproven')['pageType'];
+        $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->unproven());
+    } finally {
+        $macros->setValue(null, $saved);
+    }
+
+    expect($type)->toBe('Inertia.SharedData & { viaHelper: ScopedPost[], branched: Post[], branchedBare: unknown }')
+        ->and([$sent->viaHelper[0]->title, $sent->branched[0]->title, $sent->branchedBare])->toBe(['First', 'First', 1]);
 });
 
 // A base query's rows are plain objects of the selected columns, which no model casts, in each paginator alike.

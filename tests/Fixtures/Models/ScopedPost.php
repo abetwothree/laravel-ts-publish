@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
-/** A test-only post on the `posts` table with local scopes that hand the query back, or another, or a count. */
+/** A test-only post on the `posts` table with local scopes that hand on the query, another, a count, or a helper's. */
 class ScopedPost extends Post
 {
     protected $table = 'posts';
@@ -73,6 +73,16 @@ class ScopedPost extends Post
     }
 
     /**
+     * The newest posts first, a scope that hands its query to a helper the engine cannot read.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeNewestVia($query)
+    {
+        return $this->newestOf($query);
+    }
+
+    /**
      * The newest posts first, a scope the `#[Scope]` attribute marks.
      *
      * @param  Builder<self>  $query
@@ -81,5 +91,15 @@ class ScopedPost extends Post
     protected function recent(Builder $query): void
     {
         $query->latest();
+    }
+
+    /**
+     * The given query, newest first, through a parameter no type names.
+     *
+     * @param  Builder<self>  $query
+     */
+    private function newestOf($query)
+    {
+        return $query->latest();
     }
 }

@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -35,6 +36,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -50,6 +52,7 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
@@ -128,6 +131,16 @@ final class ReceiverClassResolver
         Factory::class => 'TModel',
     ];
 
+    /** The docblock types that name no object, so a call declaring only these hands no query on. */
+    private const array SCALAR_TYPES = [
+        'int', 'integer', 'string', 'bool', 'boolean', 'float', 'double', 'array', 'list', 'true', 'false', 'null', 'void',
+        'numeric', 'scalar', 'array-key', 'positive-int', 'negative-int', 'non-negative-int', 'non-empty-string',
+        'numeric-string', 'non-empty-array', 'non-empty-list',
+    ];
+
+    /** Whether a user-defined step whose hand-back no body proves or disproves reads as handing the query back. */
+    private bool $presumesSteps = false;
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -150,6 +163,24 @@ final class ReceiverClassResolver
             $expr instanceof Coalesce => $this->fromArms([$expr->left, $expr->right], $scope, true),
             default => null,
         };
+    }
+
+    /**
+     * Resolve as resolve() does, reading a user-defined query step whose hand-back is unproven as handing the query on.
+     *
+     * A scope, macro or custom builder method that delegates to a body the engine cannot read, or that hands the query
+     * on in one branch and a value no call can follow in another, then reads as a chain rooted at a model always read.
+     */
+    public function resolvePresumingSteps(Expr $expr, AnalysisScope $scope): ?ReceiverType
+    {
+        $presumed = $this->presumesSteps;
+        $this->presumesSteps = true;
+
+        try {
+            return $this->resolve($expr, $scope);
+        } finally {
+            $this->presumesSteps = $presumed;
+        }
     }
 
     /**
@@ -1071,8 +1102,8 @@ final class ReceiverClassResolver
         // Without a callback when() hands back a proxy that runs the next call conditionally.
         return ! $arguments->hasUnpack()
             && $callback !== null
-            && $this->callbackHandsBack($callback, $receiver, $scope)
-            && ($default === null || $this->callbackHandsBack($default, $receiver, $scope))
+            && $this->isSameQuery($this->callbackQuery($callback, $receiver, $scope), $receiver)
+            && ($default === null || $this->isSameQuery($this->callbackQuery($default, $receiver, $scope), $receiver))
                 ? $receiver
                 : null;
     }
@@ -1511,11 +1542,33 @@ final class ReceiverClassResolver
             return new ReceiverType([$class], relatedModel: $queried);
         }
 
+        if ($forwarded === null && $queried !== null && is_a($class, Builder::class, true)) {
+            return $this->forwardedQuery($class, $method, $queried);
+        }
+
         if ($forwarded === null) {
-            return $queried !== null && is_a($class, Builder::class, true) ? $this->forwardedQuery($class, $method, $queried) : null;
+            return $queried !== null && is_a($class, Relation::class, true) && ! Relation::hasMacro($method)
+                ? $this->relationForwardedQuery($class, $method, $queried)
+                : null;
         }
 
         return $this->memberMethod($forwarded, $method, false, $queried);
+    }
+
+    /**
+     * What a relation hands back for a call its builder's `__call()` answers, as `forwardDecoratedCallTo()` returns it.
+     *
+     * Itself where the builder hands itself back, else the query the builder hands on.
+     *
+     * @param  class-string<Relation<Model, Model, mixed>>  $class
+     * @param  class-string<Model>  $queried
+     */
+    private function relationForwardedQuery(string $class, string $method, string $queried): ?ReceiverType
+    {
+        $builder = new ReceiverType([QueryForwarding::builderClass($queried)], relatedModel: $queried);
+        $handed = $this->forwardedQuery(QueryForwarding::builderClass($queried), $method, $queried);
+
+        return $this->isSameQuery($handed, $builder) ? new ReceiverType([$class], relatedModel: $queried) : $handed;
     }
 
     /**
@@ -1549,12 +1602,12 @@ final class ReceiverClassResolver
             return $query;
         }
 
-        $key = 'forwarded-query:'.$class.'@'.$method.'@'.$queried;
+        $key = 'forwarded-query:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($memo, $key, $query, $queried, $method): ?ReceiverType {
             if (! $memo->enter($key)) {
-                return null;
+                return $this->unproven($query);
             }
 
             try {
@@ -1586,7 +1639,7 @@ final class ReceiverClassResolver
         $holder = $scope->getParameters()[0] ?? null;
 
         return $context === null || $holder === null
-            ? null
+            ? $this->unproven($query)
             : $this->bodyQuery($context->method->stmts ?? [], $holder->getName(), $query, true, $context);
     }
 
@@ -1602,18 +1655,19 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $key = 'builder-method:'.$class.'@'.$method.'@'.$queried;
+        $key = 'builder-method:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($memo, $key, $class, $method, $queried): ?ReceiverType {
+            $query = new ReceiverType([$class], relatedModel: $queried);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($class, $method) : null;
 
             if ($context === null) {
-                return null;
+                return $this->unproven($query);
             }
 
             try {
-                return $this->bodyQuery($context->method->stmts ?? [], 'this', new ReceiverType([$class], relatedModel: $queried), false, $context);
+                return $this->bodyQuery($context->method->stmts ?? [], 'this', $query, false, $context);
             } finally {
                 $memo->leave($key);
             }
@@ -1643,44 +1697,49 @@ final class ReceiverClassResolver
             ? resolve(MethodLocator::class)->locate($function->getDeclaringClass()->getName(), $function->getName())
             : null;
 
-        return $context === null ? null : $this->bodyQuery($context->method->stmts ?? [], '', $query, false, $context);
+        return $context === null ? $this->unproven($query) : $this->bodyQuery($context->method->stmts ?? [], '', $query, false, $context);
     }
 
     /**
-     * Whether a when() or unless() callback, or the one write of a local holding it, hands back the query it is given.
+     * The query a when() or unless() callback, or the one write of a local holding it, hands on.
      *
-     * Conditionable passes the query first and reads a null return as the query.
+     * Conditionable passes the query first and reads a null return as the query. A callback no closure spells is
+     * unproven.
      */
-    private function callbackHandsBack(Expr $callback, ReceiverType $query, ?AnalysisScope $scope): bool
+    private function callbackQuery(Expr $callback, ReceiverType $query, ?AnalysisScope $scope): ?ReceiverType
     {
         // Conditionable calls a null callback only where the value holds, which throws, so no other value is sent.
         if ($this->isNullLiteral($callback)) {
-            return true;
+            return $query;
         }
 
         $written = $callback instanceof Variable ? $scope?->soleWriteSeenBy($callback) : null;
 
         if ($written !== null) {
-            return $this->callbackHandsBack($written, $query, null);
+            return $this->callbackQuery($written, $query, $scope);
         }
 
         if (! $callback instanceof ClosureExpr && ! $callback instanceof ArrowFunction) {
-            return false;
+            return $this->unproven($query);
         }
 
         $holder = $callback->params[0]->var ?? null;
         $name = $holder instanceof Variable && is_string($holder->name) ? $holder->name : '';
+        $stmts = $callback instanceof ArrowFunction ? [new Return_($callback->expr)] : $callback->stmts;
+        $kinds = [];
 
-        return $callback instanceof ArrowFunction
-            ? $this->handsBack($callback->expr, $name, $query, true)
-            : array_all($this->collectReturnExpressions($callback->stmts), fn (Expr $returned): bool => $this->handsBack($returned, $name, $query, true));
+        foreach ($this->collectReturnExpressions($stmts) as $returned) {
+            array_push($kinds, ...$this->returnKinds($returned, $name, $query, true, fn (): ?AnalysisScope => $scope));
+        }
+
+        return $this->joinedQuery($kinds, $query);
     }
 
     /**
      * The one query of one model every value a body returns hands on: the given query, or one a returned value names.
      *
      * The given query is what `$holder` holds, returned as it is, through calls that hand it back, or, where the caller
-     * reads null as it, as null or no return at all; any other caller needs the body to end with a return.
+     * reads null as it, as null or no return at all; a body that may end with no return is unproven elsewhere.
      *
      * @param  array<Stmt>  $stmts
      * @param  class-string|null  $runtime  the class a static call reached the body through, which `static` names
@@ -1693,33 +1752,141 @@ final class ReceiverClassResolver
         MethodContext $context,
         ?string $runtime = null,
     ): ?ReceiverType {
-        if (! $nullHandsBack && ! end($stmts) instanceof Return_) {
+        $bodyScope = null;
+        $scope = function () use (&$bodyScope, $context, $runtime): AnalysisScope {
+            return $bodyScope ??= $this->bodyScope($context, $runtime);
+        };
+        $kinds = $nullHandsBack || end($stmts) instanceof Return_ ? [] : [null];
+
+        foreach ($this->collectReturnExpressions($stmts) as $returned) {
+            array_push($kinds, ...$this->returnKinds($returned, $holder, $query, $nullHandsBack, $scope));
+        }
+
+        return $this->joinedQuery($kinds, $query);
+    }
+
+    /**
+     * What a returned value is, arm by arm: a query of one model, false where provably no query, null where unread.
+     *
+     * @param  Closure(): ?AnalysisScope  $scope  the bindings the body reads, built only where a value needs them
+     * @return list<ReceiverType|false|null>
+     */
+    private function returnKinds(Expr $returned, string $holder, ReceiverType $query, bool $nullHandsBack, Closure $scope): array
+    {
+        if ($returned instanceof Ternary) {
+            return [
+                ...$this->returnKinds($returned->if ?? $returned->cond, $holder, $query, $nullHandsBack, $scope),
+                ...$this->returnKinds($returned->else, $holder, $query, $nullHandsBack, $scope),
+            ];
+        }
+
+        if ($this->handsBack($returned, $holder, $query, $nullHandsBack)) {
+            return [$query];
+        }
+
+        $bodyScope = $scope();
+        $held = $bodyScope === null ? null : $this->resolve($returned, $bodyScope);
+
+        if ($held !== null) {
+            return [$held->relatedModel !== null && count($held->classes) === 1 && $held->within([Builder::class])
+                ? new ReceiverType($held->classes, relatedModel: $held->relatedModel)
+                : false];
+        }
+
+        return [$this->isNoQuery($returned, $holder, $query) ? false : null];
+    }
+
+    /**
+     * The query the values a body returns join to: the one query every arm hands on.
+     *
+     * Where some arm is unread or provably no query, only presumed steps name the query an arm hands on, or the given
+     * one: a call after such a step throws on an arm that is no object, so only the query arm can be sent past it.
+     *
+     * @param  list<ReceiverType|false|null>  $kinds
+     */
+    private function joinedQuery(array $kinds, ReceiverType $query): ?ReceiverType
+    {
+        $queries = array_values(array_filter($kinds, fn (ReceiverType|false|null $kind): bool => $kind instanceof ReceiverType));
+        $first = $queries[0] ?? null;
+
+        if ($kinds === []) {
+            return $query;
+        }
+
+        if ($first !== null && ! array_all($queries, fn (ReceiverType $one): bool => $this->isSameQuery($one, $first))) {
             return null;
         }
 
-        $bodyScope = null;
-        $handed = [];
-
-        foreach ($this->collectReturnExpressions($stmts) as $returned) {
-            if ($this->handsBack($returned, $holder, $query, $nullHandsBack)) {
-                $handed[] = $query;
-
-                continue;
-            }
-
-            $bodyScope ??= $this->bodyScope($context, $runtime);
-            $other = $this->resolve($returned, $bodyScope);
-
-            if ($other === null || $other->relatedModel === null || count($other->classes) !== 1 || ! $other->within([Builder::class])) {
-                return null;
-            }
-
-            $handed[] = new ReceiverType($other->classes, relatedModel: $other->relatedModel);
+        if (count($queries) === count($kinds)) {
+            return $first;
         }
 
-        $first = $handed[0] ?? $query;
+        // Every arm provably no query: the step hands no query on.
+        if ($first === null && ! in_array(null, $kinds, true)) {
+            return null;
+        }
 
-        return array_all($handed, fn (ReceiverType $one): bool => $this->isSameQuery($one, $first)) ? $first : null;
+        return $this->presumesSteps ? $first ?? $query : null;
+    }
+
+    /**
+     * The query an unread user-defined step hands on: none, or the given one while steps are presumed.
+     */
+    private function unproven(ReceiverType $query): ?ReceiverType
+    {
+        return $this->presumesSteps ? $query : null;
+    }
+
+    /**
+     * The memo key suffix of the mode steps are read in, since a presumed answer differs from a proven one.
+     */
+    private function modeKey(): string
+    {
+        return $this->presumesSteps ? ':presumed' : '';
+    }
+
+    /**
+     * Whether a returned value is provably no query.
+     *
+     * A literal, an operation on values, or a call on the query its holder holds that declares only types naming no
+     * object, as a passthru count() does.
+     */
+    private function isNoQuery(Expr $returned, string $holder, ReceiverType $query): bool
+    {
+        if ($returned instanceof Scalar || $returned instanceof Array_ || $returned instanceof ConstFetch
+            || ($returned instanceof BinaryOp && ! $returned instanceof Coalesce)
+        ) {
+            return true;
+        }
+
+        if (! $returned instanceof MethodCall || ! $returned->name instanceof Identifier || ! $this->handsBack($returned->var, $holder, $query)) {
+            return false;
+        }
+
+        $method = $returned->name->toString();
+        $class = $query->classes[0];
+        $answering = $this->isCallable($class, $method, false) ? $class : QueryForwarding::forwardedClass($class, $method);
+
+        return $answering !== null && $this->declaresNoObject($answering, $method);
+    }
+
+    /**
+     * Whether a method declares a return of builtin scalar types alone, natively or in its docblock.
+     */
+    private function declaresNoObject(string $class, string $method): bool
+    {
+        $native = new ReflectionMethod($class, $method)->getReturnType();
+
+        if ($native instanceof ReflectionNamedType && $native->getName() !== 'mixed') {
+            return $native->isBuiltin() && ! in_array($native->getName(), ['object', 'static', 'self', 'iterable', 'callable'], true);
+        }
+
+        $declared = $this->declaredReturn($class, $method);
+
+        return $declared !== null && array_all(
+            LaravelTsPublish::splitPhpDocUnionType($declared),
+            fn (string $arm): bool => in_array(strtolower(preg_replace('/<.*$/', '', ltrim(trim($arm), '?')) ?? ''), self::SCALAR_TYPES, true),
+        );
     }
 
     /**
@@ -1832,18 +1999,19 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $key = 'model-method-query:'.$model.'@'.$method;
+        $key = 'model-method-query:'.$model.'@'.$method.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($memo, $key, $model, $method): ?ReceiverType {
+            $query = new ReceiverType([QueryForwarding::builderClass($model)], relatedModel: $model);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($model, $method) : null;
 
             if ($context === null) {
-                return null;
+                return $this->unproven($query);
             }
 
             try {
-                return $this->bodyQuery($context->method->stmts ?? [], '', new ReceiverType([Builder::class], relatedModel: $model), false, $context, $model);
+                return $this->bodyQuery($context->method->stmts ?? [], '', $query, false, $context, $model);
             } finally {
                 $memo->leave($key);
             }

@@ -211,7 +211,12 @@ final class ModelFinderHandler implements ExpressionHandler
      */
     private function queryTerminal(MethodCall $call, string $terminal, AnalysisScope $scope): ?array
     {
-        $receiver = $this->isTerminal($terminal) ? resolve(ReceiverClassResolver::class)->resolve($call->var, $scope) : null;
+        $receivers = resolve(ReceiverClassResolver::class);
+
+        // A user-defined step no body proves or disproves keeps the reading every model-rooted chain had before.
+        $receiver = $this->isTerminal($terminal)
+            ? $receivers->resolve($call->var, $scope) ?? $receivers->resolvePresumingSteps($call->var, $scope)
+            : null;
 
         if ($receiver === null) {
             return null;

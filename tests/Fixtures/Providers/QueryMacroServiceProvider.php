@@ -33,6 +33,9 @@ class QueryMacroServiceProvider extends ServiceProvider
         Builder::macro('tally', function () {
             return $this->count();
         });
+        Builder::macro('latestOrTally', function ($latest) {
+            return $latest ? $this->latest() : $this->count();
+        });
         Builder::macro('commentQuery', function () {
             return Comment::query();
         });

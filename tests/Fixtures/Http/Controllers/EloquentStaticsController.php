@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\QueriedIdCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SearchedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
@@ -52,6 +53,16 @@ class EloquentStaticsController
             'proxied' => Post::query()->when(true)->latest()->get(),
             'nullCallback' => Post::query()->when(true, fn ($query) => null)->first(),
             'heldCallback' => Post::query()->when(true, $newest)->get(),
+        ]);
+    }
+
+    /** Renders chains past a scope that delegates to a helper and a macro that returns the query or a count. */
+    public function unproven(): Response
+    {
+        return Inertia::render('Eloquent/Unproven', [
+            'viaHelper' => ScopedPost::newestVia()->get(),
+            'branched' => Post::query()->latestOrTally(true)->get(),
+            'branchedBare' => Post::query()->latestOrTally(false),
         ]);
     }
 

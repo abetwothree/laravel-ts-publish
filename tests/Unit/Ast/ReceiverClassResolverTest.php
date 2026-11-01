@@ -354,6 +354,26 @@ describe('ReceiverClassResolver::resolve()', function () {
         }
     });
 
+    // A scope that delegates to a helper the engine cannot read neither proves nor disproves it hands the query back:
+    // a receiver read names nothing, and a read presuming such steps keeps the query, as a model-rooted chain read.
+    // Relation::__call() forwards a call its builder's __call() answers, and hands itself back where the builder does.
+    test('a relation hands itself back for a call its builder runs on the base query', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->resource->comments()->whereIn("id", [1])->latest()'), postScope()))
+            ->toEqual(new ReceiverType([HasMany::class], relatedModel: Comment::class));
+    });
+
+    test('a step whose hand-back is unproven names a query only where steps are presumed', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $query = new ReceiverType([Builder::class], relatedModel: ScopedPost::class);
+        $unproven = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::newestVia()');
+        $tallied = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::tallied()');
+
+        expect($resolver->resolve($unproven, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($unproven, postScope()))->toEqual($query)
+            ->and($resolver->resolvePresumingSteps($tallied, postScope()))->toBeNull()
+            ->and($resolver->resolve($unproven, postScope()))->toBeNull();
+    });
+
     test('a static a model declares keeps reading as its declaration', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(
             receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::newest()'),
