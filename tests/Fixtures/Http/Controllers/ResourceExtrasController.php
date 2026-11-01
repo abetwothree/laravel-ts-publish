@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalWithResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldResourceWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LooseWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UserCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VersionedUserCardCollection;
@@ -86,5 +88,20 @@ class ResourceExtrasController
             'versioned' => new VersionedUserCardCollection(User::all()),
             'paged' => UserCardResource::collection(User::query()->paginate())->additional(['meta' => ['n' => 1]]),
         ]);
+    }
+
+    /** Renders a post whose `with()` keys the when() family may leave out, alone and beside an `additional()` key. */
+    public function conditional(Post $post): Response
+    {
+        return Inertia::render('ResourceExtras/Conditional', [
+            'card' => ConditionalWithResource::make($post),
+            'added' => ConditionalWithResource::make($post)->additional(['extra' => 1]),
+        ]);
+    }
+
+    /** Renders a post whose `with()` holds a resource, its resolved body and a map kept as a Collection. */
+    public function held(Post $post): Response
+    {
+        return Inertia::render('ResourceExtras/Held', ['card' => HeldResourceWithResource::make($post)]);
     }
 }

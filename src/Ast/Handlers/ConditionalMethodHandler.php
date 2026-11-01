@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -164,7 +165,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $defaultArg = $args->named('default');
 
         if ($defaultArg === null || ! $this->hasExplicitDefaultArg($args)) {
-            return ValueResult::missable($value);
+            return $this->leftOut($value, $engine);
         }
 
         $defaultExpr = $defaultArg->value;
@@ -203,6 +204,28 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
         // which an inline array's member and Inertia shared data do not honour.
         return ValueResult::unionResults([$value, $default], countMembers: true);
+    }
+
+    /**
+     * A value Laravel may leave out as a MissingValue: an optional key, which `filter()` removes, else the `[]` sent.
+     *
+     * Nothing filters a response's `with()` and `additional()` keys, so `json_encode()` writes the MissingValue as
+     * `{}`, which Inertia decodes and sends as `[]`.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    protected function leftOut(array $value, ExpressionEngine $engine): array
+    {
+        if ($engine->reading() !== Reading::EncodedUnfiltered) {
+            return ValueResult::missable($value);
+        }
+
+        unset($value['absentReadsNull']);
+
+        return $value['type'] === 'unknown'
+            ? $value
+            : ValueResult::unionResults([$value, ['type' => 'never[]', 'optional' => false]], countMembers: true);
     }
 
     /**

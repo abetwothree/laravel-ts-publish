@@ -46,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVisibilitiesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignedInViewerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
@@ -2613,7 +2614,7 @@ it('reads each paginator kind, and its kind past the paginator\'s own steps', fu
         ->toBe([15, null, 1]);
 });
 
-// T16-6: a setter keeps the paginator and its items; through() maps them, `unknown` where its callable is not read.
+// A setter keeps the paginator and its items; through() maps them, `unknown` where its callable is not read.
 it('types a paginator past its own steps as the same paginator', function () {
     paginatedPost();
     $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->steps());
@@ -2625,4 +2626,44 @@ it('types a paginator past its own steps as the same paginator', function () {
         ->toBe(['First', 1, 'First'])
         ->and([$sent->fragment->next_page_url, $sent->base->data[0]->title, $sent->titles->data, $sent->unread->data])
         ->toBe([null, 'First', ['First'], ['First']]);
+});
+
+// Nothing filters a response's `with()` keys, so a value the when() family leaves out is sent as `[]`.
+it('publishes a with() key the when() family may leave out as always sent, with the [] it is sent as', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id, 'visibility' => Visibility::Public])->fresh();
+    $sent = fn (string $query): array => json_decode((string) json_encode(
+        inertiaProps(new ResourceExtrasController()->conditional($post), Request::create('/'.$query)),
+    ), true);
+
+    $with = 'flag: number | never[]; visibility: AsEnum<typeof Visibility> | never[]; hidden: string | never[]; '
+        .'fallback: number | string; author: User | never[]; category: number | never[]; nested: { inner: { n: number } | never[] }';
+
+    expect(pageData(ResourceExtrasController::class.'@conditional')['pageType'])->toBe('Inertia.SharedData & { '
+        ."card: { data: ConditionalWithResource; {$with} }, added: { data: ConditionalWithResource; {$with}; extra: number } }")
+        ->and(array_keys($sent('')['card']))->toBe(['data', 'flag', 'visibility', 'hidden', 'fallback', 'author', 'category', 'nested'])
+        ->and($sent('')['card'])->toMatchArray(['flag' => [], 'visibility' => [], 'hidden' => 'hidden', 'fallback' => 'none'])
+        ->and($sent('')['card'])->toMatchArray(['author' => [], 'category' => [], 'nested' => ['inner' => []]])
+        ->and($sent('?shown=1')['card'])->toMatchArray(['flag' => 1, 'hidden' => [], 'fallback' => 1, 'nested' => ['inner' => ['n' => 2]]])
+        ->and([$sent('?shown=1')['card']['visibility']['name'], $sent('')['added']['flag'], $sent('')['added']['extra']])
+        ->toBe([Visibility::Public->name, [], 1]);
+});
+
+// A resource a `with()` key holds publishes its own type, and with it its kept map's known gap: a null enum sends `[]`.
+it('publishes a resource a with() key holds as its own type', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $sent = json_decode((string) json_encode(inertiaProps(new ResourceExtrasController()->held($post))), true);
+
+    expect(pageData(ResourceExtrasController::class.'@held')['pageType'])->toBe('Inertia.SharedData & { card: { '
+        .'data: HeldResourceWithResource; item: PostVisibilitiesResource; resolved: PostVisibilitiesResource; '
+        .'kept: (AsEnum<typeof Visibility> | never[])[] } }')
+        ->and(resourceProps(PostVisibilitiesResource::class))
+        ->toBe(['visibility' => 'AsEnum<typeof Visibility> | null', 'visibilities' => 'AsEnum<typeof Visibility>[]'])
+        ->and($sent['card'])->toBe([
+            'data' => ['id' => $post->id],
+            'item' => ['visibility' => null, 'visibilities' => [[]]],
+            'resolved' => ['visibility' => null, 'visibilities' => [[]]],
+            'kept' => [[]],
+        ]);
 });

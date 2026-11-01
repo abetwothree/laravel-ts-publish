@@ -165,8 +165,10 @@ ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses
   an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
   of the other is `unknown`. `with()` is read under `EncodedUnfiltered`, and so is `additional()`'s argument, by the
   caller's analyzer (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
-  Inertia sends once it decodes the response. Once one is sent, a body with no live wrap key nests under `data`
-  (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource` collection declines `additional()`.
+  Inertia sends once it decodes the response. Under that reading `ConditionalMethodHandler` publishes a value the
+  `when()` family leaves out as that `never[]` beside the value, not as an optional key. Once one is sent, a body with
+  no live wrap key nests under `data` (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource`
+  collection declines `additional()`.
 
 The reading joins the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
