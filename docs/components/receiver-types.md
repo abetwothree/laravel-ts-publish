@@ -15,6 +15,7 @@ These classes carry receiver inference:
 | [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms |
 | [`CollectionSteps`] | What a collection step does to the items and their keys, for the resolver and the relation-chain and `collect()` handlers |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
+| [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
 | [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
@@ -244,13 +245,13 @@ Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relati
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks nine convention rules on each class before
+`ReceiverMethodReturnResolver` checks ten convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all nine loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
-`Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to `Record<string, unknown>`,
-`Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`, `Collection::all()` declares
-`array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the template `TValue|null`. Each
-rule answers only on the receiver it names:
+Laravel declares nine loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()` and
+`getAuthIdentifier()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
+`Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`,
+`Collection::all()` declares `array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the
+template `TValue|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -303,6 +304,15 @@ rule answers only on the receiver it names:
   gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
   keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
   `except(null)` keeps a `keyed` collection's keys (`CollectionSteps::eloquentKeyedAfter()`).
+- **`load()`, `loadMissing()`**: on a concrete model, or an `Eloquent\Collection` with `elementModel` set, that runs
+  Laravel's own, the model intersected with the members `LoadedRelations` reads off the literal argument, as Laravel's
+  eager-load parser does: `Post & { author: User }`, or `(Post & { author: User })[]`. Each member is keyed as
+  `toArray()` writes it, by `ModelAttributeResolver::sentRelationKey()`, and typed as the relation's read publishes it,
+  nested under a dotted path. A column list is a `Pick<>`, and a to-one relation adds `| null` where a closure may
+  filter its row out, its column list leaves out the key Laravel matches the row by, or no row backs the model. A
+  member whose payload no type admits is left out: a closure that may change the columns, a `morphTo` under columns
+  or a child, a relation the model's `$with` loads narrowed for `loadMissing()`. A non-literal argument, or none left,
+  keeps the model's own type. The members ride only the call's own value, not a step after it.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
@@ -319,7 +329,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the nine on a resource collection's items alone:
+One more rule reads no model, and runs before the ten on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
@@ -508,6 +518,7 @@ These pages cover the neighbors of receiver resolution:
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
 [`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php

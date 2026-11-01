@@ -59,6 +59,9 @@ final class ReceiverMethodReturnResolver
 
     private const array ITEMS_SUBSET = ['only', 'except'];
 
+    /** The methods that load relations onto a model, or each model of an Eloquent collection, and hand it back. */
+    private const array LOADS = ['load', 'loadMissing'];
+
     /**
      * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
      * row of the class, each serialized as the loaded relations decide.
@@ -257,6 +260,12 @@ final class ReceiverMethodReturnResolver
             return $this->publishedModelOrNull($receiver->relatedModel);
         }
 
+        $loaded = in_array($methodName, self::LOADS, true) ? $this->loadedRelations($receiver, $class, $methodName, $scope, $call) : null;
+
+        if ($loaded !== null) {
+            return $loaded;
+        }
+
         $modelRule = $this->modelRule($class, $methodName);
 
         if ($modelRule !== null) {
@@ -301,6 +310,50 @@ final class ReceiverMethodReturnResolver
         }
 
         return $this->typesAsModelFilter($class, $methodName) ? $this->attributeFilterRule($receiver, $methodName, $scope, $call) : null;
+    }
+
+    /**
+     * A `load()` or `loadMissing()` that runs Laravel's own: the model intersected with the relations the call adds,
+     * `Post & { author: User }`, or a list of such models on an Eloquent collection; null where the call adds none
+     * this types, so the model's own type stands.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function loadedRelations(
+        ReceiverType $receiver,
+        string $class,
+        string $methodName,
+        AnalysisScope $scope,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
+        if (! $scope->carriesImports || $receiver->collectedItems || ! ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)) {
+            return null;
+        }
+
+        $listed = $receiver->elementModel !== null && is_a($class, EloquentCollection::class, true);
+        $model = match (true) {
+            $listed => new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === EloquentCollection::class
+                ? $receiver->elementModel
+                : null,
+            is_a($class, Model::class, true) && $this->runsModelMethod($class, $methodName) => $class,
+            default => null,
+        };
+        $members = $model === null ? null : resolve(LoadedRelations::class)->members($model, $call, $receiver->unsaved);
+
+        if ($model === null || $members === null) {
+            return null;
+        }
+
+        $element = class_basename($model).' & '.$members['type'];
+        $result = [
+            ...ValueResult::unknown(),
+            'type' => $listed ? $this->listOrKeyed(ValueResult::arrayWrapType($element), $receiver) : $element,
+            'modelFqcn' => $model,
+            'embeddedModelFqcns' => $members['models'],
+        ];
+
+        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**

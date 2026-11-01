@@ -525,6 +525,17 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
+### The relations `load()` adds ride only the call's own value
+
+`$post->load('author')` publishes `Post & { author: User }` as its own value only. A model read after a `load()`
+statement (`$post->load('author'); return ['post' => $post]`), a step past the call (`->load('author')->first()`) and
+`$this->comments->load('user')` in an API resource publish the model or list alone, so `post.author` does not compile.
+A relation no type here admits is left out too: one a closure may narrow (a call other than a filter, an order or a
+nested load), and a `morphTo` under columns or a child. `loadMissing()` keeps what is already loaded, and only a
+`$with` that picked columns is read: after an earlier `load()`, a query's `with()` or a global scope, a member may claim
+columns that load left out, as when two props load one relation of the same model differently and the last load is the
+one sent. [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
+
 ### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list
 
 `$bag->map(fn (Post $p) => ['id' => $p->id])` publishes `{ id: number }[]` when nothing names the class `$bag` holds,

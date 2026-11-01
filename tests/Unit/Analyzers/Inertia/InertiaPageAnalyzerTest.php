@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LoadedRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\NullableEnumResourceController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PropsLocalController;
@@ -96,10 +97,12 @@ use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Grade;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\Crm\Models\User as CrmUser;
 use Workbench\Database\Factories\UserFactory;
 
 afterEach(function () {
@@ -2400,4 +2403,127 @@ it('reads the signed-in user where every guard names the one model', function ()
         .'helper: string | null, facade: string | null, request: string | null, guard: string | null, user: User | null }')
         ->and([$page->sent->helper, $page->sent->facade, $page->sent->request, $page->sent->guard, $page->sent->user->name])
         ->toBe(['Ada', 'Ada', 'Ada', 'Ada', 'Ada']);
+});
+
+/** Seed a post by Ada, who wrote it alone, with one comment, and return it as a route binding reads it. */
+function seedLoadedPost(): Post
+{
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
+    Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $author->id]);
+
+    return Post::query()->findOrFail($post->id);
+}
+
+it('publishes the relations load() and loadMissing() add', function (string $action, string $type, Closure $read, mixed $sent) {
+    $loaded = inertiaProps(new LoadedRelationsController()->{$action}(seedLoadedPost()))->loaded;
+
+    expect(pageData(LoadedRelationsController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type)
+        ->and($read($loaded))->toBe($sent);
+})->with([
+    'one' => ['one', '{ loaded: Post & { author: User } }', fn (stdClass $loaded) => $loaded->author->name, 'Ada'],
+    'a list' => [
+        'many',
+        '{ loaded: Post & { author: User; comments: Comment[] } }',
+        fn (stdClass $loaded) => [$loaded->author->name, $loaded->comments[0]->content],
+        ['Ada', 'alpha'],
+    ],
+    'a nested path' => [
+        'nested',
+        '{ loaded: Post & { author: User & { posts: Post[] } } }',
+        fn (stdClass $loaded) => [$loaded->author->name, $loaded->author->posts[0]->title],
+        ['Ada', 'First'],
+    ],
+    'a constraint' => [
+        'constrained',
+        '{ loaded: Post & { author: User } }',
+        fn (stdClass $loaded) => [$loaded->author->name, $loaded->author->posts_count],
+        ['Ada', 1],
+    ],
+    'columns' => [
+        'columns',
+        "{ loaded: Post & { author: Pick<User, 'id' | 'name'> } }",
+        fn (stdClass $loaded) => array_keys((array) $loaded->author),
+        ['id', 'name'],
+    ],
+    'loadMissing' => ['missing', '{ loaded: Post & { author: User } }', fn (stdClass $loaded) => $loaded->author->name, 'Ada'],
+    'a camel-cased relation' => [
+        'camel',
+        '{ loaded: Post & { category_rel: Category | null } }',
+        fn (stdClass $loaded) => [property_exists($loaded, 'category_rel'), $loaded->category_rel],
+        [true, null],
+    ],
+    'a constraint that may filter a to-one row out' => [
+        'filtered',
+        '{ loaded: Post & { author: User | null } }',
+        fn (stdClass $loaded) => [property_exists($loaded, 'author'), $loaded->author],
+        [true, null],
+    ],
+    // A closure that selects columns may leave any key out, so its relation stays unclaimed, as before.
+    'a list constraint beside a closure that selects' => [
+        'listed',
+        '{ loaded: Post & { comments: Comment[] } }',
+        fn (stdClass $loaded) => [$loaded->comments[0]->content, array_keys((array) $loaded->author)],
+        ['alpha', ['id', 'email']],
+    ],
+    'several string arguments' => [
+        'variadic',
+        '{ loaded: Post & { author: User; comments: Comment[] } }',
+        fn (stdClass $loaded) => [$loaded->author->name, $loaded->comments[0]->content],
+        ['Ada', 'alpha'],
+    ],
+    'a nested array with columns' => [
+        'nestedArray',
+        "{ loaded: Post & { author: User & { posts: Pick<Post, 'id' | 'user_id' | 'title'>[] } } }",
+        fn (stdClass $loaded) => array_keys((array) $loaded->author->posts[0]),
+        ['id', 'user_id', 'title'],
+    ],
+    'columns under a dotted path' => [
+        'nestedColumns',
+        "{ loaded: Post & { author: Pick<User, 'id' | 'name'> & { posts: Post[] } } }",
+        fn (stdClass $loaded) => [array_keys((array) $loaded->author), $loaded->author->posts[0]->title],
+        [['id', 'name', 'posts'], 'First'],
+    ],
+]);
+
+// A key held in a local is not read, and loadCount() keeps the model's own type; both admit the keys they add.
+it('publishes the relations load() adds on a found, queried or signed-in model, and keeps the rest', function () {
+    $post = seedLoadedPost();
+    Auth::setUser($post->author);
+    $sent = inertiaProps(new LoadedRelationsController()->receivers($post));
+    Auth::forgetUser();
+
+    expect(pageData(LoadedRelationsController::class.'@receivers')['pageType'])->toBe('Inertia.SharedData & { '
+        .'found: Post & { author: User } | null, queried: Post & { comments: Comment[] }, '
+        .'viewer: User & { posts: Post[] } | null, held: Post, counted: Post }')
+        ->and([$sent->found->author->name, $sent->queried->comments[0]->content, $sent->viewer->posts[0]->title])
+        ->toBe(['Ada', 'alpha', 'First'])
+        ->and([$sent->held->author->name, $sent->counted->comments_count])->toBe(['Ada', 1]);
+});
+
+it('publishes the relations load() and loadMissing() add to each model of an Eloquent collection', function () {
+    $sent = inertiaProps(new LoadedRelationsController()->collections(seedLoadedPost()));
+    $page = pageData(LoadedRelationsController::class.'@collections');
+
+    expect($page['pageType'])
+        ->toBe('Inertia.SharedData & { posts: (Post & { author: User })[], comments: (Comment & { user: User })[] }')
+        ->and($page['classFqcns'])->toBe([Post::class, User::class, Comment::class])
+        ->and([$sent->posts[0]->author->name, $sent->comments[0]->user->name])->toBe(['Ada', 'Ada']);
+});
+
+it('aliases the same-named models two loaded relations name', function () {
+    app(Router::class)->get('/loaded/{handover}', [LoadedRelationsController::class, 'sameNamed']);
+    $sender = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $receiver = CrmUser::create(['name' => 'Grace', 'email' => 'grace@example.com']);
+    $handover = Handover::create(['sender_id' => $sender->id, 'receiver_id' => $receiver->id]);
+    $transformer = new RouteTransformer(LoadedRelationsController::class);
+    $sent = inertiaProps(new LoadedRelationsController()->sameNamed($handover))->loaded;
+
+    expect(array_column($transformer->actions, 'pageType', 'originalMethodName'))->toBe(['sameNamed' => 'Inertia.SharedData & '
+        .'{ loaded: Handover & { sender: WorkbenchUser | null; receiver: CrmUser | null } }'])
+        ->and($transformer->typeImports)->toBe([
+            '../../../../../../workbench/app/models' => ['Handover', 'User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ])
+        ->and([$sent->sender->name, $sent->receiver->name])->toBe(['Ada', 'Grace']);
 });
