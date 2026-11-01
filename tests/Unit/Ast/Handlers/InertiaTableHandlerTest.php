@@ -123,7 +123,8 @@ it('types a pluck() past the table\'s query() and the query itself as Inertia se
 });
 
 // Nothing types an untyped method that hands the table back. In a render call's props literal, where the reader this
-// replaced read it as the table, it keeps that type; elsewhere it stays `unknown`.
+// replaced read it as the table, it keeps that type; elsewhere it stays `unknown`. Both props hold the table, whose
+// stubbed toArray() throws, so no oracle runs.
 it('keeps the table type of a chain past the table that nothing else reads where it always had it', function () {
     expect(pageData(InertiaTableBesidePropsController::class.'@untyped')['pageType'])
         ->toBe('Inertia.SharedData & { posts: TableResource<Post>, held: unknown }');

@@ -652,11 +652,16 @@ methods, not a collection pipeline on it, and not a member of the API resource `
 ### An Inertia prop past a query step the package cannot read publishes `unknown`
 
 An Inertia prop or shared value types a query chain rooted at a model, such as `Post::query()->latest()->get()`, from
-what each step hands on. A step reads where Eloquent declares its return, sends it to the base query, or where a scope,
-a closure macro, a `when()` callback or a custom builder's untyped method returns the query it is given. A macro
-registered as a callable array or by a closure outside a class method, a builder macro a global scope other than
-`SoftDeletingScope` adds, or a step after `find($id)` of a key no literal spells ends the chain at `unknown`, where the
-package once guessed the root model. Type the prop with `#[TsCasts]`.
+what each step hands on, so a step the package cannot read ends the chain at `unknown`, where it once guessed the root
+model. A step reads from its declared return, from Eloquent sending it to the base query, or from the body of a scope,
+a macro, a custom builder's method or a `when()` callback that returns the query it is given or another model's query.
+Some steps it cannot read:
+
+- a scope or macro that returns its query through a helper method, or the query on one branch and a count on another;
+- a `when()` callback a property or a parameter holds;
+- a builder macro a global scope other than `SoftDeletingScope` adds, or a closure macro registered outside a method.
+
+Type the prop with `#[TsCasts]`.
 
 ### A resource collection prop over a paginator the engine does not type publishes no pagination
 

@@ -2038,25 +2038,65 @@ it('types a query chain from each step it takes before and after its terminal', 
     expect(pageData(EloquentStaticsController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
         .'ordered: string | null, conditional: Post[], trashed: Post | null, titles: string[], lastTitle: string | null, '
         .'comments: Comment[], author: User | null, rows: Record<string, unknown>[], ids: number[], listed: Post[], '
-        .'query: { pendingAttributes: Record<string, unknown> | never[] } }')
+        .'query: { pendingAttributes: Record<string, unknown> | never[] }, proxied: Post[], nullCallback: Post | null, '
+        .'heldCallback: Post[] }')
         ->and([$sent->ordered, $sent->trashed->title, $sent->titles, $sent->lastTitle, $sent->ids])
         ->toBe(['First', 'First', ['First'], 'First', [1]])
         ->and([$sent->conditional[0]->title, $sent->comments[0]->content, $sent->author->name, $sent->rows[0]->title])
         ->toBe(['First', 'alpha', 'Ada', 'First'])
-        ->and([$sent->listed[0]->title, $sent->query->pendingAttributes])->toBe(['First', []]);
+        ->and([$sent->listed[0]->title, $sent->query->pendingAttributes, $sent->proxied[0]->title, $sent->nullCallback->title])
+        ->toBe(['First', [], 'First', 'First'])
+        ->and($sent->heldCallback[0]->title)->toBe('First');
 });
 
-// R8: make() and create() build a list once count(), times() or a number passed to factory() sets a count.
+// A base query's rows are plain objects of the selected columns, which no model casts, in each paginator alike.
+it('types a base query\'s paginator over its rows', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->basePages());
+
+    expect(pageData(EloquentStaticsController::class.'@basePages')['pageType'])->toBe('Inertia.SharedData & { '
+        .'paged: LengthAwarePaginator<Record<string, unknown>>, simple: SimplePaginator<Record<string, unknown>>, '
+        .'cursor: CursorPaginator<Record<string, unknown>>, comments: LengthAwarePaginator<Record<string, unknown>> }')
+        ->and([$sent->paged->data[0]->title, $sent->simple->data[0]->title, $sent->cursor->data[0]->title])
+        ->toBe(['First', 'First', 'First'])
+        ->and($sent->comments->data[0]->content)->toBe('alpha');
+});
+
+// Scout's search() returns a builder Eloquent does not define, read as the model its terminals return.
+it('types a terminal on a builder a model\'s own static returns that Eloquent does not define', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->searched());
+
+    expect(pageData(EloquentStaticsController::class.'@searched')['pageType'])->toBe('Inertia.SharedData & { '
+        .'rows: SearchedPost[], filtered: SearchedPost[], paged: LengthAwarePaginator<SearchedPost>, first: SearchedPost | null }')
+        ->and([$sent->rows[0]->title, $sent->filtered[0]->title, $sent->paged->data[0]->title, $sent->first->title])
+        ->toBe(['First', 'First', 'First', 'First']);
+});
+
+// A model's own static named like a terminal runs as declared; a step past a find() of a variable key reads where a
+// model and a list of it answer alike.
+it('reads a model\'s own static as declared, and a step past a find() a variable keys', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->ownStatics());
+
+    expect(pageData(EloquentStaticsController::class.'@ownStatics')['pageType'])
+        ->toBe('Inertia.SharedData & { cursor: number, value: string, queried: string | null, firstFound: Post | null }')
+        ->and([$sent->cursor, $sent->value, $sent->queried, $sent->firstFound->title])->toBe([7, 'own-title', 'First', 'First']);
+});
+
+// R8: make() and create() build a list once count(), times() or a number passed to factory() sets a count; a count no
+// literal spells may build either.
 it('publishes a factory build as a list once a count is set, else as one model', function () {
     $type = pageData(EloquentStaticsController::class.'@factories')['pageType'];
     Factory::guessFactoryNamesUsing(fn (string $model): string => 'Workbench\\Database\\Factories\\'.class_basename($model).'Factory');
     $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->factories());
 
     expect($type)->toBe('Inertia.SharedData & { '
-        .'one: User, counted: User[], timed: User[], argued: User[], cleared: User, single: User, firstMade: User | null }')
+        .'one: User, counted: User[], timed: User[], argued: User[], cleared: User, single: User, firstMade: User | null, '
+        .'either: User | User[], eitherFirst: User | null }')
         ->and($sent->one->name)->toBe('One')
-        ->and([count($sent->counted), count($sent->timed), count($sent->argued)])->toBe([2, 2, 2])
-        ->and([$sent->cleared, $sent->single, $sent->firstMade])->each->toHaveProperty('email');
+        ->and([count($sent->counted), count($sent->timed), count($sent->argued), count($sent->either)])->toBe([2, 2, 2, 2])
+        ->and([$sent->cleared, $sent->single, $sent->firstMade, $sent->eitherFirst])->each->toHaveProperty('email');
 });
 
 // Every body Inertia sends reads the chain alike; the resource's own interface, read as json_encode() sends it,

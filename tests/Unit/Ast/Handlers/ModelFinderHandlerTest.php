@@ -109,6 +109,13 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a find() of a list of keys' => ['\\Workbench\\App\\Models\\Post::find([1, 2])', 'Post[]'],
     'a cursor' => ['\\Workbench\\App\\Models\\Post::cursor()', 'Post[]'],
     'a custom builder\'s own method' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\BuiltPost::titled()->get()', 'BuiltPost[]'],
+    'a custom builder\'s method declared as Builder' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\BuiltPost::published()->paginate()', 'LengthAwarePaginator<BuiltPost>'],
+    'a parent builder\'s method declared as self' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\BuiltPost::query()->withContent()->get()', 'BuiltPost[]'],
+    'a base query\'s pages' => ['\\Workbench\\App\\Models\\Post::query()->toBase()->paginate()', 'LengthAwarePaginator<Record<string, unknown>>'],
+    'a base query\'s simple pages' => ['\\Workbench\\App\\Models\\Post::query()->getQuery()->simplePaginate()', 'SimplePaginator<Record<string, unknown>>'],
+    'a base query\'s cursor pages' => ['\\Workbench\\App\\Models\\Post::query()->toBase()->orderBy("id")->cursorPaginate()', 'CursorPaginator<Record<string, unknown>>'],
+    'a builder a model\'s own static returns that Eloquent does not define' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\SearchedPost::search("x")->where("a", 1)->get()', 'SearchedPost[]'],
+    'a step past a find() a variable keys, which a model answers alike' => ['\\Workbench\\App\\Models\\Post::find($ids)->first()', 'Post | null'],
 ]);
 
 it('types a column a query plucks or reads as the model reads it', function (string $php, string $type) {
@@ -145,9 +152,13 @@ it('declines a chain past a step it cannot follow', function (string $php) {
     'a pluck keyed by a second column' => ['\\Workbench\\App\\Models\\Post::query()->pluck("title", "id")->first()'],
     'a first() passing a default' => ['\\Workbench\\App\\Models\\Post::query()->get()->first(null, 0)'],
     'a factory row' => ['\\Workbench\\App\\Models\\User::factory()->raw()'],
+    'a model\'s own static named like a terminal' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ShadowingPost::cursor()'],
+    'a step past a find() a variable keys, which a model answers otherwise' => ['\\Workbench\\App\\Models\\Post::find($ids)->all()'],
+    'a step past a build a variable counts, which a model answers otherwise' => ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()->last()'],
 ]);
 
-// R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list.
+// R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list; a count no
+// literal spells may build either.
 it('types a factory build as a list once a count is set, else as one model', function (string $php, string $type) {
     expect(modelFinderType($php))->toBe($type);
 })->with([
@@ -160,6 +171,10 @@ it('types a factory build as a list once a count is set, else as one model', fun
     ['\\Workbench\\App\\Models\\User::factory()->count(2)->count(null)->make()', 'User'],
     ['\\Workbench\\App\\Models\\User::factory()->count(2)->makeOne()', 'User'],
     ['\\Workbench\\App\\Models\\User::factory()->count(2)->make()->first()', 'User | null'],
+    ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()', 'User | User[]'],
+    ['\\Workbench\\App\\Models\\User::factory($n)->create()', 'User | User[]'],
+    ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()->first()', 'User | null'],
+    ['\\Workbench\\App\\Models\\User::factory()->forEachSequence(["name" => "a"])->make()', 'User[]'],
 ]);
 
 // Inertia json_encodes a builder it is handed as is, which writes its one public property.

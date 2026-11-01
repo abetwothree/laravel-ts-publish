@@ -14,8 +14,10 @@ use ReflectionMethod;
 use ReflectionProperty;
 
 /**
- * Where a model, a relation or an Eloquent builder forwards a call it does not declare: a class fact both receiver
- * resolvers read, the class resolver for what the call returns as a receiver, the method-return resolver for its type.
+ * Where a model, a relation or an Eloquent builder forwards a call it does not declare.
+ *
+ * A class fact both receiver resolvers read: the class resolver for what the call returns as a receiver, the
+ * method-return resolver for its type.
  *
  * @internal
  */
@@ -23,6 +25,12 @@ final class QueryForwarding
 {
     /** The calls SoftDeletingScope adds to each query of a soft-deleting model, each handing the query back. */
     private const array SOFT_DELETE_QUERIES = ['withTrashed', 'withoutTrashed', 'onlyTrashed'];
+
+    /** @var array<class-string, class-string<Builder<Model>>> Each model's builder class, fixed by its declarations. */
+    private static array $builderClasses = [];
+
+    /** @var array<class-string, bool> Whether each model uses SoftDeletes. */
+    private static array $softDeleting = [];
 
     /**
      * The class whose declaration answers a method a relation or an Eloquent builder does not declare, or null.
@@ -54,25 +62,14 @@ final class QueryForwarding
     }
 
     /**
-     * The Eloquent builder class a model's queries are, as `Model::newEloquentBuilder()` picks it: the one an override
-     * of it declares, else the one a `#[UseEloquentBuilder]` on the model, a parent or a trait names, else `$builder`.
+     * The Eloquent builder class a model's queries are, as `Model::newEloquentBuilder()` picks it.
      *
      * @param  class-string<Model>  $model
      * @return class-string<Builder<Model>>
      */
     public static function builderClass(string $model): string
     {
-        if (new ReflectionMethod($model, 'newEloquentBuilder')->getDeclaringClass()->getName() !== Model::class) {
-            $declared = DeclaredClasses::returnClasses($model, 'newEloquentBuilder');
-
-            return $declared !== null && count($declared) === 1 && is_subclass_of($declared[0], Builder::class) ? $declared[0] : Builder::class;
-        }
-
-        $attribute = 'Illuminate\Database\Eloquent\Attributes\UseEloquentBuilder';
-        $named = class_exists($attribute) ? self::attributedBuilder($model, $attribute) : null;
-        $builder = $named ?? new ReflectionProperty($model, 'builder')->getDefaultValue();
-
-        return is_string($builder) && is_subclass_of($builder, Builder::class) ? $builder : Builder::class;
+        return self::$builderClasses[$model] ??= self::readBuilderClass($model);
     }
 
     /**
@@ -111,9 +108,10 @@ final class QueryForwarding
     }
 
     /**
-     * Whether `Builder::__call()` runs a call on the base query and hands the Eloquent builder back: a name the
-     * builder lacks, with no macro or model scope under it, that its `$passthru` does not send on for a result, and
-     * that the base query runs as a public method, a macro or a dynamic `where{Column}()`.
+     * Whether `Builder::__call()` runs a call on the base query and hands the Eloquent builder back.
+     *
+     * A name the builder lacks, with no macro or model scope under it and not in its `$passthru`, that the base query
+     * runs as a public method, a macro or a dynamic `where{Column}()`.
      *
      * @param  class-string<Model>  $model  the model the builder queries
      */
@@ -137,28 +135,33 @@ final class QueryForwarding
      */
     public static function isSoftDeleteQuery(string $model, string $methodName): bool
     {
-        return in_array($methodName, self::SOFT_DELETE_QUERIES, true) && in_array(SoftDeletes::class, class_uses_recursive($model), true);
+        return in_array($methodName, self::SOFT_DELETE_QUERIES, true)
+            && (self::$softDeleting[$model] ??= in_array(SoftDeletes::class, class_uses_recursive($model), true));
     }
 
     /**
-     * The builder class a `#[UseEloquentBuilder]` on a model, a parent or one of their traits names, found as
-     * `Model::resolveClassAttribute()` finds it; null where none carries one.
+     * The builder class an override of `newEloquentBuilder()` declares, a `#[UseEloquentBuilder]` names, or `$builder`.
      *
      * @param  class-string<Model>  $model
+     * @return class-string<Builder<Model>>
      */
-    private static function attributedBuilder(string $model, string $attribute): mixed
+    private static function readBuilderClass(string $model): string
     {
-        for ($class = new ReflectionClass($model); $class !== false; $class = $class->getParentClass()) {
-            foreach ([$class, ...$class->getTraits()] as $holder) {
-                $found = $holder->getAttributes($attribute)[0] ?? null;
+        if (new ReflectionMethod($model, 'newEloquentBuilder')->getDeclaringClass()->getName() !== Model::class) {
+            $declared = DeclaredClasses::returnClasses($model, 'newEloquentBuilder');
 
-                if ($found !== null) {
-                    return $found->getArguments()[0] ?? $found->getArguments()['builderClass'] ?? null;
-                }
-            }
+            return $declared !== null && count($declared) === 1 && is_subclass_of($declared[0], Builder::class) ? $declared[0] : Builder::class;
         }
 
-        return null;
+        // Laravel 12.19 to 13.0 read the attribute off the model alone and later releases walk its parents and traits,
+        // so the installed release's resolver answers, on an instance no constructor runs for.
+        $reflection = new ReflectionClass($model);
+        $named = $reflection->hasMethod('resolveCustomBuilderClass') && ! $reflection->isAbstract()
+            ? new ReflectionMethod($model, 'resolveCustomBuilderClass')->invoke($reflection->newInstanceWithoutConstructor())
+            : false;
+        $builder = is_string($named) && $named !== '' ? $named : new ReflectionProperty($model, 'builder')->getDefaultValue();
+
+        return is_string($builder) && is_subclass_of($builder, Builder::class) ? $builder : Builder::class;
     }
 
     /**

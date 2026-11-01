@@ -92,14 +92,15 @@ final class MacroCallResolver
     }
 
     /**
-     * The node a closure macro was built from, recording the file that declares it; null for any other macro, or a
-     * closure locate() cannot find.
+     * The node a closure macro was built from, with its declaring method; null for any other macro or one not found.
+     *
+     * @return LocatedClosure|null
      */
-    public function closureNode(mixed $macro): ClosureExpr|ArrowFunction|null
+    public function locatedClosure(mixed $macro): ?array
     {
         $function = $this->reflect($macro);
 
-        return $function instanceof ReflectionFunction ? $this->locate($function)[0] ?? null : null;
+        return $function instanceof ReflectionFunction ? $this->locate($function) : null;
     }
 
     /**

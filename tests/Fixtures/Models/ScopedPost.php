@@ -6,9 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
-/** A test-only post on the `posts` table with local scopes that hand the query back, and one that does not. */
+/** A test-only post on the `posts` table with local scopes that hand the query back, or another, or a count. */
 class ScopedPost extends Post
 {
     protected $table = 'posts';
@@ -49,6 +50,26 @@ class ScopedPost extends Post
     public function scopeTallied($query)
     {
         return $query->count();
+    }
+
+    /**
+     * Comments, a scope that hands on another model's query.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeRemarks($query)
+    {
+        return Comment::query();
+    }
+
+    /**
+     * Posts as they are, a scope that returns null, which Laravel reads as the query.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeUnfiltered($query)
+    {
+        return null;
     }
 
     /**
