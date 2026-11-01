@@ -901,7 +901,9 @@ on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all in
 A route file publishes each page as `Inertia.SharedData & { … }`, so a page key named like a shared-data key keeps both
 types, though Inertia merges the page's props over shared data: a page's `'auth' => 'x'` publishes `auth` as shared
 data's type and `string` at once. A dotted page key under a shared-data key, `'auth.name'`, is right only while the
-shared value is an array Inertia writes into. Name page keys apart from shared-data keys.
+shared value is an array Inertia writes into. The other way round, shared data's own dotted key unpacks after the merge
+and writes into, or over, the page's value: shared `'auth.name'` beside a page's `'auth' => 'x'` sends
+`{ auth: { name: … } }`. Name page keys apart from shared-data keys.
 
 ### A dotted key under a key that holds an object publishes the object's keys beside its own
 
@@ -910,12 +912,12 @@ though Inertia replaces any value it does not find as an array, an API resource 
 `Inertia::always([…])` included, and sends `{ extra: 1 }`. A key holding an array, a model or a collection is written
 into as published. Write the dotted key under a key of its own.
 
-### A props local with more than four int keys it may lack before another numbers each as if it were written
+### A props local whose branches write its int keys in different orders numbers them in the first branch's order
 
-Laravel renumbers a page's int keys from 0, so a key the local may not hold moves every later int key down. Up to four
-such keys publish each number a key can land on; past four, each key keeps the one it has when every key is written:
-`{ "0"?: string, …, "5": string }`, though Laravel sends the last key on `"0"` when the others are absent. Use string
-keys.
+Laravel renumbers a page's int keys from 0 in the order the array holds them, but a props local's branches are joined
+into one key order: after `if ($c) { $p[1] = 'a'; $p[2] = 5; } else { $p[2] = 5; $p[1] = 'a'; }`, `{ "0": string,
+"1": number }` publishes, though Laravel sends `5` on `"0"` from the second branch. Write int keys in one order, or
+use string keys.
 
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 

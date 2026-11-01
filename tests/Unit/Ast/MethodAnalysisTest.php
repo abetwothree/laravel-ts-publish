@@ -289,6 +289,7 @@ it('takes over every field of another analysis, both flags included', function (
     $source->holdsUnreadKeys = true;
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
+    $source->leftOutValues = ['a' => true];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);
@@ -300,6 +301,23 @@ it('takes over every field of another analysis, both flags included', function (
         ARRAY_FILTER_USE_BOTH,
     ))->toBe([])
         ->and(get_object_vars($target))->toBe(get_object_vars($source));
+});
+
+it('notes a key whose own value may be left out, apart from a key a write may skip, through merges', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('deferred', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('skipped', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->addProperty('reset', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('reset', ['type' => 'number', 'optional' => false]);
+    $other = new MethodAnalysis;
+    $other->addProperty('when', ['type' => 'string', 'optional' => true]);
+    $analysis->merge($other);
+
+    expect($analysis->leftOutValues)->toBe(['deferred' => true, 'when' => true]);
+
+    $analysis->forgetChannels('when');
+
+    expect($analysis->leftOutValues)->toBe(['deferred' => true]);
 });
 
 it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {

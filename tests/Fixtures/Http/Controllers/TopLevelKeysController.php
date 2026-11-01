@@ -148,6 +148,80 @@ class TopLevelKeysController
         return Inertia::render('TopLevelKeys/ManyIntKeys', $props);
     }
 
+    /** Renders a local holding a deferred prop on an int key before another, which Inertia leaves out at first. */
+    public function walkedDeferred(): Response
+    {
+        $props = [7 => Inertia::defer(fn () => 'a')];
+        $props[8] = 'b';
+
+        return Inertia::render('TopLevelKeys/WalkedDeferred', $props);
+    }
+
+    /** Renders a deferred prop on an int key joined by `+` before another. */
+    public function plusDeferred(): Response
+    {
+        return Inertia::render('TopLevelKeys/PlusDeferred', [7 => Inertia::defer(fn () => 'a')] + [8 => 'b']);
+    }
+
+    /** Renders a local written a deferred prop on an int key only in a block, before another int key. */
+    public function walkedDeferredInBlock(Request $request): Response
+    {
+        $props = [];
+
+        if ($request->boolean('c')) {
+            $props[7] = Inertia::defer(fn () => 'a');
+        }
+
+        $props[8] = 'b';
+
+        return Inertia::render('TopLevelKeys/WalkedDeferredInBlock', $props);
+    }
+
+    /** Renders an optional prop on an int key in one arm of a ternary joined by `+` before another int key. */
+    public function plusOptionalInTernary(Request $request): Response
+    {
+        return Inertia::render(
+            'TopLevelKeys/PlusOptionalInTernary',
+            ($request->boolean('c') ? [7 => Inertia::optional(fn () => 'a')] : ['y' => 1]) + [8 => 'b'],
+        );
+    }
+
+    /** Renders a dotted key only one props array holds over the path a deeper dotted key both hold writes. */
+    public function optionalOverDeeper(Request $request): Response
+    {
+        return Inertia::render('TopLevelKeys/OptionalOverDeeper', $request->boolean('c')
+            ? ['a.b.c' => 1, 'a.b' => ['y' => 1]]
+            : ['a.b.c' => 1]);
+    }
+
+    /** Renders a dotted key whose head a spread's template-literal signature covers. */
+    public function signatureHead(): Response
+    {
+        return Inertia::render('TopLevelKeys/SignatureHead', [...$this->tags(), 'x_tag.b' => 1]);
+    }
+
+    /**
+     * Keys ending in `_tag`, which only the docblock types.
+     *
+     * @return array<string, string>
+     */
+    public function tags(): array
+    {
+        $tags = [];
+
+        foreach (['east', 'west'] as $name) {
+            $tags["{$name}_tag"] = $this->opaque();
+        }
+
+        return $tags;
+    }
+
+    /** A value the analysis cannot type. */
+    public function opaque(): mixed
+    {
+        return 'v';
+    }
+
     /** Renders two same-named enums under one dotted head, beside one of them at the top level. */
     public function sameNamedNested(): Response
     {

@@ -15,7 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
  * @phpstan-type TypePiece = array{text: string, from: array-key|null}
  * @phpstan-type TopLevelEntry = array{type: string, optional: bool, pieces?: list<TypePiece>}
  * @phpstan-type Base = array{pieces: list<TypePiece>, text: string, optional: bool, direct: bool}
- * @phpstan-type Node = array{parent: string|null, segment: string, leaf: array-key|null, base: Base|null}
+ * @phpstan-type Node = array{parent: ?string, segment: string, leaf: array-key|null, base: Base|null, or: ?string}
  * @phpstan-type Printed = array{pieces: list<TypePiece>, optional: bool}
  *
  * @internal
@@ -25,8 +25,14 @@ final class DottedTopLevelKeys
     /** What an empty PHP array publishes as, which a write leaves holding only the keys it writes. */
     private const array EMPTY = ['[]', 'never[]', '{}', TsTypeString::EMPTY_OBJECT];
 
+    /** The parent of a value a key that may be left out replaced, kept apart from every path Inertia's array holds. */
+    private const string REPLACED = "\1";
+
     /** @var array<string, Node> each node by its path, in the order Inertia's array holds them */
     private array $nodes = [];
+
+    /** How many replaced values are kept apart, which names the next one's path. */
+    private int $replaced = 0;
 
     /**
      * @param  array<array-key, array{type: string, optional: bool}>  $props
@@ -130,6 +136,19 @@ final class DottedTopLevelKeys
     }
 
     /**
+     * A top-level entry printed from pieces.
+     *
+     * @param  list<TypePiece>  $pieces
+     * @return TopLevelEntry
+     */
+    private static function entry(array $pieces, bool $optional): array
+    {
+        $pieces = self::merged($pieces);
+
+        return ['type' => implode('', array_column($pieces, 'text')), 'optional' => $optional, 'pieces' => $pieces];
+    }
+
+    /**
      * Unpack every dotted key, then print each top-level key a write reached.
      *
      * @return array<array-key, TopLevelEntry>
@@ -139,7 +158,7 @@ final class DottedTopLevelKeys
         foreach (array_keys($this->props) as $key) {
             if (! self::isDotted($key)) {
                 $this->nodes[self::id(null, (string) $key)] = [
-                    'parent' => null, 'segment' => (string) $key, 'leaf' => $key, 'base' => null,
+                    'parent' => null, 'segment' => (string) $key, 'leaf' => $key, 'base' => null, 'or' => null,
                 ];
             }
         }
@@ -164,12 +183,42 @@ final class DottedTopLevelKeys
             }
 
             $printed = $this->printed($id);
-            $pieces = self::merged($printed['pieces']);
-            $nested[$node['segment']] = [
-                'type' => implode('', array_column($pieces, 'text')),
-                'optional' => $printed['optional'],
-                'pieces' => $pieces,
-            ];
+            $nested[$node['segment']] = self::entry($printed['pieces'], $printed['optional']);
+        }
+
+        return $this->widenSignatures($nested);
+    }
+
+    /**
+     * Each signature beside a key the writes reached, joined with that key's type wherever it covers the key, as
+     * TypeScript checks a key its signature covers (TS2411).
+     *
+     * @param  array<array-key, TopLevelEntry>  $nested
+     * @return array<array-key, TopLevelEntry>
+     */
+    private function widenSignatures(array $nested): array
+    {
+        foreach (array_keys($nested) as $signature) {
+            $signature = (string) $signature;
+
+            if (! IndexSignatureKey::is($signature)
+                || in_array('unknown', TsTypeShape::splitTopLevel($nested[$signature]['type'], ['|']), true)) {
+                continue;
+            }
+
+            $pieces = $nested[$signature]['pieces'] ?? [['text' => $nested[$signature]['type'], 'from' => $signature]];
+
+            foreach ($nested as $key => $entry) {
+                $key = (string) $key;
+
+                if (isset($entry['pieces']) && ! IndexSignatureKey::is($key) && IndexSignatureKey::covers($signature, $key)) {
+                    $pieces = [...$pieces, ...self::text(' | '), ...$entry['pieces']];
+                }
+            }
+
+            if (count($pieces) > 1) {
+                $nested[$signature] = self::entry($pieces, $nested[$signature]['optional']);
+            }
         }
 
         return $nested;
@@ -191,7 +240,7 @@ final class DottedTopLevelKeys
             $node = $this->nodes[$id] ?? null;
 
             if ($node === null) {
-                $this->nodes[$id] = ['parent' => $parent, 'segment' => $segment, 'leaf' => null, 'base' => null];
+                $this->nodes[$id] = ['parent' => $parent, 'segment' => $segment, 'leaf' => null, 'base' => null, 'or' => null];
             } elseif ($node['leaf'] !== null) {
                 $entry = $this->props[$node['leaf']];
                 $this->nodes[$id] = [...$node, 'leaf' => null, 'base' => [
@@ -206,6 +255,7 @@ final class DottedTopLevelKeys
         }
 
         $id = self::id($parent, $last);
+        $or = isset($this->nodes[$id]) && $this->props[$dotted]['optional'] ? $this->keepReplaced($id) : null;
 
         foreach (array_keys($this->nodes) as $other) {
             if (str_starts_with($other, $id."\0")) {
@@ -213,7 +263,27 @@ final class DottedTopLevelKeys
             }
         }
 
-        $this->nodes[$id] = ['parent' => $parent, 'segment' => $last, 'leaf' => $dotted, 'base' => null];
+        $this->nodes[$id] = ['parent' => $parent, 'segment' => $last, 'leaf' => $dotted, 'base' => null, 'or' => $or];
+    }
+
+    /**
+     * Copy the value at a path, with everything under it, apart from Inertia's array, for a key that replaces it only
+     * where it is sent; returns the copy's path.
+     */
+    private function keepReplaced(string $id): string
+    {
+        $kept = self::REPLACED.$this->replaced++;
+
+        foreach ($this->nodes as $other => $node) {
+            if ($other === $id || str_starts_with($other, $id."\0")) {
+                $this->nodes[$kept.substr($other, strlen($id))] = [
+                    ...$node,
+                    'parent' => $other === $id ? self::REPLACED : $kept.substr((string) $node['parent'], strlen($id)),
+                ];
+            }
+        }
+
+        return $kept;
     }
 
     /**
@@ -240,8 +310,12 @@ final class DottedTopLevelKeys
 
         if ($node['leaf'] !== null) {
             $entry = $this->props[$node['leaf']];
+            $own = [['text' => $entry['type'], 'from' => $node['leaf']]];
+            $replaced = $node['or'] === null ? null : $this->printed($node['or']);
 
-            return ['pieces' => [['text' => $entry['type'], 'from' => $node['leaf']]], 'optional' => $entry['optional']];
+            return $replaced === null
+                ? ['pieces' => $own, 'optional' => $entry['optional']]
+                : ['pieces' => [...$own, ...self::text(' | '), ...$replaced['pieces']], 'optional' => $replaced['optional']];
         }
 
         $base = $node['base'] ?? $member;

@@ -508,6 +508,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
         $merged->readsCompletely = $channels->readsCompletely;
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
+        $merged->leftOutValues = $channels->leftOutValues;
         $merged->queueSplitClasses($analyses);
 
         return $merged;

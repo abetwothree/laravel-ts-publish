@@ -114,4 +114,47 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
         [1 => '{ "5": string }', 'a' => '{ "": { b: number } }', '' => '{ c: number }', 'd' => '{ "": number }'],
     ],
     'into an int key' => [[1 => 'string', '1.5' => 'number'], [1 => '{ "5": number }']],
+    'a later dotted key that may be left out over an earlier one' => [
+        ['a.b.c' => 'number', 'a.b' => '{ y: number }?'],
+        ['a' => '{ b: { y: number } | { c: number } }'],
+    ],
+    'a later dotted key that may be left out over an earlier one that may be too' => [
+        ['a.b.c' => 'number?', 'a.b' => 'string?'],
+        ['a' => '{ b?: string | { c?: number } }?'],
+    ],
+    'a template signature covering the head' => [
+        ['[key: `${string}_tag`]' => 'string | undefined', 'x_tag.b' => 'number'],
+        ['[key: `${string}_tag`]' => 'string | undefined | { b: number }', 'x_tag' => '{ b: number }'],
+    ],
+    'a number signature covering a numeric head' => [
+        ['[key: number]' => 'string', '1.5' => 'number'],
+        ['[key: number]' => 'string | { "5": number }', 1 => '{ "5": number }'],
+    ],
+    'a signature covering no head' => [
+        ['[key: `${string}_tag`]' => 'string', 'a.b' => 'number'],
+        ['[key: `${string}_tag`]' => 'string', 'a' => '{ b: number }'],
+    ],
+    'two signatures covering the head' => [
+        ['[key: `${string}_tag`]' => 'string', '[key: string]' => 'string', 'x_tag.b' => 'number'],
+        [
+            '[key: `${string}_tag`]' => 'string | { b: number }',
+            '[key: string]' => 'string | { b: number }',
+            'x_tag' => '{ b: number }',
+        ],
+    ],
+    'an unknown signature' => [
+        ['[key: string]' => 'unknown', 'a.b' => 'number'],
+        ['[key: string]' => 'unknown', 'a' => '{ b: number }'],
+    ],
 ]);
+
+it('prints a signature a head widens from its own text and the head\'s', function () {
+    $nested = DottedTopLevelKeys::nest(['[key: string]' => topLevelEntry('Post'), 'a.b' => topLevelEntry('User')]);
+
+    expect($nested['[key: string]']['pieces'] ?? null)->toBe([
+        ['text' => 'Post', 'from' => '[key: string]'],
+        ['text' => ' | { b: ', 'from' => null],
+        ['text' => 'User', 'from' => 'a.b'],
+        ['text' => ' }', 'from' => null],
+    ]);
+});

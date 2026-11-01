@@ -82,7 +82,7 @@ final class IndexSignatureReconciler
                 continue;
             }
 
-            $pattern = $this->keyPattern($segments[$name]);
+            $pattern = IndexSignatureKey::keyPattern($segments[$name]);
             $keys = [$name];
             $types = [];
 
@@ -352,17 +352,5 @@ final class IndexSignatureReconciler
 
         return ! (str_starts_with($headA, $headB) || str_starts_with($headB, $headA))
             || ! (str_ends_with($tailA, $tailB) || str_ends_with($tailB, $tailA));
-    }
-
-    /**
-     * The regex a named key matches when a template-literal signature with these literal segments covers it.
-     *
-     * @param  non-empty-list<string>  $segments
-     */
-    private function keyPattern(array $segments): string
-    {
-        $quoted = array_map(fn (string $segment): string => preg_quote($segment, '/'), $segments);
-
-        return '/^'.implode('.*', $quoted).'$/s';
     }
 }

@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDottedKeys;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDottedSignatureHead;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEmbeddedCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
@@ -663,6 +664,14 @@ test('a dotted key of shared data publishes nested, as Inertia unpacks it', func
     expect(analyzeSharedDataFor(MiddlewareWithDottedKeys::class)['sharedPageProps'] ?? null)
         ->toBe('{ auth: { user: string }, "1": { "5": string } }')
         ->and(inertiaPropsJson(Inertia::render('Shared', [])))->toBe('{"auth":{"user":"x"},"1":{"5":"y"}}');
+});
+
+test('a signature of shared data that covers a dotted key\'s head takes the head\'s type', function () {
+    Inertia::share(new MiddlewareWithDottedSignatureHead()->share(request()));
+
+    expect(analyzeSharedDataFor(MiddlewareWithDottedSignatureHead::class)['sharedPageProps'] ?? null)
+        ->toBe('{ [key: `${string}_tag`]: string | undefined | { b: number }, x_tag: { b: number } }')
+        ->and(inertiaPropsJson(Inertia::render('Shared', [])))->toBe('{"east_tag":"v","west_tag":"v","x_tag":{"b":1}}');
 });
 
 test('share()\'s spelling of a signature outranks the class\'s exact name', function () {

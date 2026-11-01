@@ -30,9 +30,10 @@ The helpers and the test that pins them live in these files:
   payload. Static and `@internal`.
 - [`Support\DottedTopLevelKeys`](../../src/Support/DottedTopLevelKeys.php): the object Inertia sends once it writes
   each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
-  key each prints. Static and `@internal`.
+  key each prints, and each signature covering a head it wrote widened to admit it. Static and `@internal`.
 - [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
-  grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
+  grammar: encode from parts, recognize, literal segments, cast spellings and the keys a signature covers. Static and
+  `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names

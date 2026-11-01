@@ -81,9 +81,6 @@ class InertiaPageAnalyzer
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
 
-    /** Cap on the int keys a props array may lack before a later one, each doubling the arrays renumbered apart. */
-    private const MAX_SHIFTING_KEYS = 4;
-
     /** TypeScript's own generic heads, which a rendered type spells without naming any PHP class. */
     private const UTILITY_TYPES = ['Record', 'Omit', 'Pick', 'Partial', 'Required', 'Readonly', 'Exclude', 'Extract', 'NonNullable'];
 
@@ -236,7 +233,7 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Each props array an argument may hold: one per literal, else a local walked before the render call, or a `+`.
+     * Each props array an argument may hold: one per literal, else one per path of a walked local or a `+`.
      *
      * @return non-empty-list<ResourceAnalysis>|null
      */
@@ -249,37 +246,12 @@ class InertiaPageAnalyzer
         $literals = $this->propsArrayLiterals($propsArg, $scope);
 
         if ($literals !== []) {
-            // This literal IS the render call's whole props shape, not an array embedded inside it —
-            // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
-            return array_map(
-                fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
-                $literals,
-            );
+            return $this->literalProps($literals, $analyzer);
         }
 
-        if ($propsArg instanceof Variable) {
-            $walked = $analyzer->variableAnalysis($propsArg, $context->method->stmts ?? []);
+        $read = $this->pathProps($propsArg, $context, $analyzer, $scope);
 
-            return $walked === null ? null : [$walked];
-        }
-
-        if (! $propsArg instanceof Plus) {
-            return null;
-        }
-
-        $unread = UnreadSpreads::count();
-        $left = $this->oneProps($this->readProps($propsArg->left, $context, $analyzer, $scope), $analyzer);
-
-        // `+` keeps each key its left side holds, so a key the left may hold unread, or a signature may stand for, may
-        // take the right's place.
-        if ($left === null || ! $left->readsCompletely || UnreadSpreads::count() !== $unread
-            || array_any($left->properties, fn (array $prop): bool => JsEmitter::isIndexSignatureKey($prop['name']))) {
-            return null;
-        }
-
-        $right = $this->oneProps($this->readProps($propsArg->right, $context, $analyzer, $scope), $analyzer);
-
-        return $right === null ? null : [$this->plusProps($left, $right, $analyzer)];
+        return $read === null ? null : $this->presenceArms($read);
     }
 
     /**
@@ -505,7 +477,8 @@ class InertiaPageAnalyzer
 
     /**
      * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
-     * Each props array is renumbered before this, so it moves only a key the action's casts add.
+     *
+     * Each props array and each action cast is numbered before this, so a page's keys arrive as Laravel sends them.
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $casts
@@ -660,7 +633,7 @@ class InertiaPageAnalyzer
         $renumberedAnalyses = [];
         $sent = [];
 
-        foreach (array_merge(...array_map($this->presenceArms(...), $analyses)) as $analysis) {
+        foreach ($analyses as $analysis) {
             $names = array_values(array_unique(array_map(strval(...), array_column($analysis->properties, 'name'))));
             $renumbered = TopLevelRenumbering::renumber($names);
             TopLevelRenumbering::warnRenumbered($subject, 'a page', $renumbered);
@@ -681,9 +654,10 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * The props array once per set of the int keys it may lack before a later int key, up to a cap.
+     * The props a walked local or a `+` holds, once for each count of the int keys it may lack before a later int key.
      *
-     * Such a key moves every later one down; a key Inertia leaves out after the merge, as a deferred prop, does not.
+     * Such a key moves every later one down; lacking the first n of them puts each key on every number lacking any n
+     * would. A key an arm keeps is sent there, unless its own value may be left out, as a deferred prop's is.
      *
      * @return non-empty-list<ResourceAnalysis>
      */
@@ -693,27 +667,30 @@ class InertiaPageAnalyzer
 
         foreach ($analysis->properties as $property) {
             if (PhpArrayKey::storedInt($property['name']) !== null) {
-                $optional[$property['name']] = $property['optional'] && ! isset($analysis->heldObjectKeys[$property['name']]);
+                $optional[$property['name']] = $property['optional'];
             }
         }
 
         $shifting = array_map(strval(...), array_keys(array_filter(array_slice($optional, 0, -1, true))));
 
-        if ($shifting === [] || count($shifting) > self::MAX_SHIFTING_KEYS) {
+        if ($shifting === []) {
             return [$analysis];
         }
 
         $arms = [];
 
-        for ($mask = 0; $mask < 2 ** count($shifting); $mask++) {
-            $absent = array_values(array_filter($shifting, static fn (int $at): bool => ($mask >> $at & 1) === 1, ARRAY_FILTER_USE_KEY));
+        for ($lacked = 0; $lacked <= count($shifting); $lacked++) {
+            $absent = array_slice($shifting, 0, $lacked);
             $arm = clone $analysis;
             $arm->properties = [];
 
             foreach ($analysis->properties as $property) {
-                if (! in_array($property['name'], $absent, true)) {
-                    $arm->properties[] = in_array($property['name'], $shifting, true) ? [...$property, 'optional' => false] : $property;
+                if (in_array($property['name'], $absent, true)) {
+                    continue;
                 }
+
+                $sent = in_array($property['name'], $shifting, true) && ! isset($analysis->leftOutValues[$property['name']]);
+                $arm->properties[] = $sent ? [...$property, 'optional' => false] : $property;
             }
 
             foreach ($absent as $name) {
@@ -812,17 +789,71 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * The props arrays an operand of `+` may hold as one analysis, or null where it holds none the reader reads.
+     * Each literal read as a render call's whole props.
      *
-     * @param  non-empty-list<ResourceAnalysis>|null  $alternatives
+     * @param  non-empty-list<Array_>  $literals
+     * @return non-empty-list<ResourceAnalysis>
      */
-    private function oneProps(?array $alternatives, ResourceAstAnalyzer $analyzer): ?ResourceAnalysis
+    private function literalProps(array $literals, ResourceAstAnalyzer $analyzer): array
     {
-        return match (true) {
-            $alternatives === null => null,
-            count($alternatives) === 1 => $alternatives[0],
-            default => $analyzer->mergeReturnBranches($alternatives),
-        };
+        // This literal IS the render call's whole props shape, not an array embedded inside it —
+        // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
+        return array_map(
+            fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
+            $literals,
+        );
+    }
+
+    /**
+     * The props a local walked from its writes before the render call, or a `+`, holds, its paths joined.
+     */
+    private function pathProps(
+        Expr $propsArg,
+        MethodContext $context,
+        ResourceAstAnalyzer $analyzer,
+        AnalysisScope $scope,
+    ): ?ResourceAnalysis {
+        if ($propsArg instanceof Variable) {
+            return $analyzer->variableAnalysis($propsArg, $context->method->stmts ?? []);
+        }
+
+        if (! $propsArg instanceof Plus) {
+            return null;
+        }
+
+        $unread = UnreadSpreads::count();
+        $left = $this->operandProps($propsArg->left, $context, $analyzer, $scope);
+
+        // `+` keeps each key its left side holds, so a key the left may hold unread, or a signature may stand for, may
+        // take the right's place.
+        if ($left === null || ! $left->readsCompletely || UnreadSpreads::count() !== $unread
+            || array_any($left->properties, fn (array $prop): bool => JsEmitter::isIndexSignatureKey($prop['name']))) {
+            return null;
+        }
+
+        $right = $this->operandProps($propsArg->right, $context, $analyzer, $scope);
+
+        return $right === null ? null : $this->plusProps($left, $right, $analyzer);
+    }
+
+    /**
+     * An operand of `+` as one analysis: its literals joined, else the local or `+` it holds.
+     */
+    private function operandProps(
+        Expr $operand,
+        MethodContext $context,
+        ResourceAstAnalyzer $analyzer,
+        AnalysisScope $scope,
+    ): ?ResourceAnalysis {
+        $literals = $this->propsArrayLiterals($operand, $scope);
+
+        if ($literals === []) {
+            return $this->pathProps($operand, $context, $analyzer, $scope);
+        }
+
+        $analyses = $this->literalProps($literals, $analyzer);
+
+        return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
     }
 
     /**

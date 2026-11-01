@@ -95,6 +95,15 @@ class MethodAnalysis
     public array $heldObjectKeys = [];
 
     /**
+     * Property name => true where a value addProperty() gave the key may be left out by itself, as an Inertia deferred
+     * prop or a `when()` value may, beside a key whose only absence is a write that may not run. Merges and joins keep
+     * every branch's.
+     *
+     * @var array<array-key, true>
+     */
+    public array $leftOutValues = [];
+
+    /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
@@ -175,6 +184,12 @@ class MethodAnalysis
             $this->heldObjectKeys[$name] = $held;
         }
 
+        if ($result['optional']) {
+            $this->leftOutValues[$name] = true;
+        } else {
+            unset($this->leftOutValues[$name]);
+        }
+
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
             $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
@@ -229,7 +244,7 @@ class MethodAnalysis
      *
      * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key it
      * sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType() consumes
-     * each as a positional queue. `carried` unions per kind; `readsCompletely` ANDs and `holdsUnreadKeys` ORs.
+     * each as a positional queue. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
@@ -243,6 +258,7 @@ class MethodAnalysis
         $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
         $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
         $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
+        $this->leftOutValues = array_replace($this->leftOutValues, $source->leftOutValues);
 
         foreach ($source->properties as $property) {
             if (! isset($source->casts[$property['name']])) {
@@ -301,6 +317,7 @@ class MethodAnalysis
         $this->carried = $source->carried;
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
         $this->heldObjectKeys = $source->heldObjectKeys;
+        $this->leftOutValues = $source->leftOutValues;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -501,6 +518,7 @@ class MethodAnalysis
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
             $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
+            $this->leftOutValues[$name],
         );
     }
 
@@ -553,6 +571,7 @@ class MethodAnalysis
         $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
+        $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
     }
 
     /**

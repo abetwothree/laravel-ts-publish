@@ -1944,8 +1944,54 @@ it('drops a cast on an int key another props array sends another key on, with a 
         ->and($sent)->toBe(['["a"]', '{"x":1,"0":"b"}']);
 });
 
-// Each int key a local may lack before a later one doubles the arrays renumbered apart, so past four it is read once.
-it('numbers the int keys of a local past the cap on the keys it may lack as if each were written', function () {
+it('sends the last int key of a local written five it may lack on each number they leave it', function () {
+    $sent = array_map(function (array $query): string {
+        $request = Request::create('/', 'GET', $query);
+
+        return inertiaPropsJson(new TopLevelKeysController()->manyIntKeys($request), $request);
+    }, [[], ['b' => 1, 'd' => 1], ['a' => 1, 'b' => 1, 'c' => 1, 'd' => 1, 'e' => 1]]);
+
     expect(pageData(TopLevelKeysController::class.'@manyIntKeys')['pageType'])
-        ->toBe('Inertia.SharedData & { "0"?: string, "1"?: string, "2"?: string, "3"?: string, "4"?: string, "5": string }');
+        ->toBe('Inertia.SharedData & { "0": string, "1"?: string, "2"?: string, "3"?: string, "4"?: string, "5"?: string }')
+        ->and($sent)->toBe(['["f"]', '["b","d","f"]', '["a","b","c","d","e","f"]']);
+});
+
+// PropsResolver::resolve() leaves a deferred or optional prop out of a first visit after the merge has numbered it.
+it('keeps a deferred int key of a local or a `+` optional on each number it may be sent on', function (string $action, string $type, array $sent) {
+    expect(pageData(TopLevelKeysController::class.'@'.$action)['pageType'])->toBe('Inertia.SharedData & '.$type);
+
+    foreach ($sent as $c => $json) {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        expect(inertiaPropsJson(new TopLevelKeysController()->{$action}($request), $request))->toBe($json);
+    }
+})->with([
+    'a local' => ['walkedDeferred', '{ "0"?: string, "1"?: string }', [0 => '{"1":"b"}']],
+    'a `+`' => ['plusDeferred', '{ "0"?: string, "1"?: string }', [0 => '{"1":"b"}']],
+    'a local written in a block' => ['walkedDeferredInBlock', '{ "0"?: string, "1"?: string }', [1 => '{"1":"b"}', 0 => '["b"]']],
+    'a `+` after a ternary' => [
+        'plusOptionalInTernary',
+        '{ "0"?: string, y?: number, "1"?: string }',
+        [1 => '{"1":"b"}', 0 => '{"y":1,"0":"b"}'],
+    ],
+]);
+
+it('keeps the value an optional dotted key replaces beside its own', function () {
+    $sent = array_map(function (int $c): string {
+        $request = Request::create('/', 'GET', ['c' => $c]);
+
+        return inertiaPropsJson(new TopLevelKeysController()->optionalOverDeeper($request), $request);
+    }, [1, 0]);
+
+    expect(pageData(TopLevelKeysController::class.'@optionalOverDeeper')['pageType'])
+        ->toBe('Inertia.SharedData & { a: { b: { y: number } | { c: number } } }')
+        ->and($sent)->toBe(['{"a":{"b":{"y":1}}}', '{"a":{"b":{"c":1}}}']);
+});
+
+// TypeScript checks every key a signature covers against it (TS2411), a key the unpack nests included.
+it('widens a signature that covers a dotted key\'s head with the head\'s type', function () {
+    expect(pageData(TopLevelKeysController::class.'@signatureHead')['pageType'])
+        ->toBe('Inertia.SharedData & { [key: `${string}_tag`]: string | undefined | { b: number }, x_tag: { b: number } }')
+        ->and(inertiaPropsJson(new TopLevelKeysController()->signatureHead()))
+        ->toBe('{"east_tag":"v","west_tag":"v","x_tag":{"b":1}}');
 });
