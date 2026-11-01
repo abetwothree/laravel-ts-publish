@@ -130,8 +130,8 @@ test('a body is analyzed once per reading, apart', function () use ($countLookup
         $readings,
     );
 
-    expect($types)->toBe(['Record<string, never>', 'string', 'string', 'Record<string, never>', 'string', 'string'])
-        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(3);
+    expect($types)->toBe([...$once = ['Record<string, never>', 'Record<string, never>', 'string', 'string'], ...$once])
+        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(4);
 });
 
 test('an accessor body is analyzed once per model, attribute and import mode', function () use ($countLookups) {

@@ -90,13 +90,21 @@ final class ValueResult
     }
 
     /**
-     * A type's top-level members but its empty ones, which an arm's shape and its enum are read past.
+     * A type's top-level members except its empty ones, which an arm's shape and its enum are read past.
      *
      * @return list<string>
      */
     public static function filledArms(string $type): array
     {
         return array_values(array_diff(TsTypeString::splitTopLevelUnion($type), self::EMPTY_ARMS));
+    }
+
+    /**
+     * Whether a type, its empty arms aside, ends in a list, as an enum wrap's or a direct read's shape is read.
+     */
+    public static function isListShaped(string $type): bool
+    {
+        return str_ends_with(implode(' | ', self::filledArms($type)), '[]');
     }
 
     /**
@@ -421,7 +429,7 @@ final class ValueResult
                 return $union;
             }
 
-            $isList = str_ends_with(implode(' | ', self::filledArms($arm['type'])), '[]');
+            $isList = self::isListShaped($arm['type']);
 
             if ($wraps) {
                 $wrapIsList[] = $isList;

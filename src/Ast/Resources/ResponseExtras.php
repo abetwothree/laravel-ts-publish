@@ -48,7 +48,7 @@ final readonly class ResponseExtras
     private function __construct(public ?array $object, public ?bool $sent, private bool $whole = true) {}
 
     /**
-     * The keys a resource's `with()` returns, its `$with` default where JsonResource's own runs, as its own body reads.
+     * The keys a resource's `with()` returns, its `$with` default where JsonResource's own runs, as its response sends.
      *
      * @param  class-string<JsonResource>  $resource
      */
@@ -69,7 +69,7 @@ final readonly class ResponseExtras
             }
         }
 
-        return self::ofAnalysis(resolve(AstEngine::class)->analyzeMethod($resource, 'with', reading: Reading::Encoded));
+        return self::ofAnalysis(resolve(AstEngine::class)->analyzeMethod($resource, 'with', reading: Reading::EncodedUnfiltered));
     }
 
     /**

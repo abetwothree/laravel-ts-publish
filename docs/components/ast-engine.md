@@ -128,9 +128,10 @@ a share middleware build this profile, and each ordering above, the method-call 
 `toResourceCollection()` `unknown` included.
 
 The [`Reading`] a body is read under, not the class that declares it, picks this profile: `Encoded` (as
-`json_encode()` sends it, the default), `Inertia`, or `InertiaFiltered` (Inertia's, once a `JsonResource::filter()`
-ran). `analyzeMethod()`, `analyzeMethodValue()` and `ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()`
-reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses an injected profile beside one.
+`json_encode()` sends it, the default), `EncodedUnfiltered` (the same with no `filter()` over it), `Inertia`, or
+`InertiaFiltered` (Inertia's, once a `JsonResource::filter()` ran). `analyzeMethod()`, `analyzeMethodValue()` and
+`ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()` reports it; `Reading::encodes()` groups the two encoded
+ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses an injected profile beside one.
 
 - **Who sets it**: `InertiaPageAnalyzer`, on a page's analyzer and on the collaborator method a page's props come
   from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`, each `Reading::Inertia`.
@@ -138,17 +139,18 @@ reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` r
   `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
   middleware's helper an API resource reads runs the resource's reading.
 - **Who reads `Encoded`**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`),
-  a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix,
-  and the keys a resource's response adds beside its body (below), which reach Inertia already JSON.
+  a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
+  The keys a resource's response adds beside its body (below) reach Inertia already JSON and unfiltered, so they read
+  `EncodedUnfiltered`, which `entering()` turns into `Encoded` where it enters a `JsonResource`'s `toArray()` whole.
 - **The filtered reading**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
   `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `Reading::filterReaches()` says
   whether `filter()` reaches a value, which `ReadsNullablePayloads` asks before a resource around a nullable payload
   takes that null: under `InertiaFiltered` in any body, a helper's or a service's included, outside Inertia only in a
   `JsonResource` subject's own, and never inside a `map()` kept as a `Collection`, where a call's body reads
-  `Inertia` (`Reading::calledFrom()`). An `EnumResource` wrap it does not reach under either Inertia reading sends a
-  null payload as `[]`, its `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`), which
-  `ValueResult::filledArms()` reads past where a union's enum arms are counted. `TernaryHandler`'s `?:` rule applies
-  only under `Inertia`.
+  `Inertia` (`Reading::calledFrom()`). An `EnumResource` wrap it does not reach sends a null payload as `[]`, its
+  `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`), under every reading but `Encoded`, which keeps
+  base's rule for events and a resource's own kept maps; `ValueResult::filledArms()` and `isListShaped()` read past
+  that arm where a union's enum arms are counted or shaped. `TernaryHandler`'s `?:` rule applies only under `Inertia`.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
@@ -158,8 +160,8 @@ reports it. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` r
   `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), joined in one step, as Laravel merges
   them once: merged into a `{ data: R }` literal, else intersected, with the key the body sits under `unknown` beside
   an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
-  of the other is `unknown`. `with()` is the class's own reading; `additional()`'s argument is read by the caller's
-  analyzer under `Encoded` (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
+  of the other is `unknown`. `with()` is read under `EncodedUnfiltered`, and so is `additional()`'s argument, by the
+  caller's analyzer (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
   Inertia sends once it decodes the response. Once one is sent, a body with no live wrap key nests under `data`
   (`ResourceWrapping::responseKey()`). A JSON:API resource or an `EnumResource` collection declines `additional()`.
 

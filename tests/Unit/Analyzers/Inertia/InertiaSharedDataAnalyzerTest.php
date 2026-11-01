@@ -839,23 +839,29 @@ test('a share middleware types the short ternary its own helper returns over an 
         ->and([$picked['status']['name'], $absent['status']])->toBe([Status::Published->name, []]);
 });
 
-// No JsonResource::filter() runs over shared data, so Inertia sends the wrap around null as the `[]` resolve() returns.
+// No JsonResource::filter() runs over shared data, nor over a response's with() and additional(), so Inertia sends
+// each wrap around null as the `[]` resolve() returns.
 test('a share middleware admits the empty list Inertia sends for an EnumResource over a null enum', function () {
     $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
-    $sent = function (): mixed {
+    $sent = function (): array {
         $request = Request::create('/');
         Inertia::flushShared();
         Inertia::share(new MiddlewareWithNullableEnumResource()->share($request));
+        $props = json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true);
 
-        return inertiaProps(Inertia::render('Shared', []), $request)->visibility;
+        return [$props['visibility'], $props['card']['meta'], $props['card']['extra']];
     };
     $hidden = $sent();
     $post->update(['visibility' => Visibility::Public]);
+    $wrap = 'AsEnum<typeof Visibility> | never[]';
 
-    expect(sharedProps(MiddlewareWithNullableEnumResource::class))->toBe(['visibility' => 'AsEnum<typeof Visibility> | never[]'])
-        ->and($hidden)->toBe([])
-        ->and($sent()->name)->toBe(Visibility::Public->name);
+    expect(sharedProps(MiddlewareWithNullableEnumResource::class))->toBe([
+        'visibility' => $wrap,
+        'card' => "{ data: PostVisibilitiesResource; meta: {$wrap}; extra: {$wrap} }",
+    ])
+        ->and($hidden)->toBe([[], [], []])
+        ->and(array_column($sent(), 'name'))->toBe(array_fill(0, 3, Visibility::Public->name));
 });
 
 test('a share() a trait supplies under an alias publishes the keys the trait method returns', function () {

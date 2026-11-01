@@ -79,6 +79,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
+use Workbench\App\Http\Controllers\InertiaEnumResourceController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
@@ -1281,6 +1282,37 @@ it('admits the empty list a resolved body sends for an EnumResource over a null 
         ->and($card($hidden))->toBe(['visibility' => null, 'visibilities' => [[]]])
         ->and([$card($shown)['visibility']['name'], $card($shown)['visibilities'][0]['name']])
         ->toBe([Visibility::Public->name, Visibility::Public->name]);
+});
+
+// The workbench's own wrap of a nullable enum, so the golden tree and the token gate compile its `never[]` arm.
+it('types the workbench enum resource over a nullable enum as Inertia sends it', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $hidden = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $shown = Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $author->id, 'visibility' => Visibility::Private])->fresh();
+
+    expect(pageData(InertiaEnumResourceController::class.'@visibility')['pageType'])
+        ->toBe('Inertia.SharedData & { visibility: AsEnum<typeof Visibility> | never[] }')
+        ->and(inertiaProps(new InertiaEnumResourceController()->visibility($hidden))->visibility)->toBe([])
+        ->and(inertiaProps(new InertiaEnumResourceController()->visibility($shown))->visibility->name)->toBe(Visibility::Private->name);
+});
+
+// A response passes with() and additional() to wrap() unfiltered, so a wrap around null among them sends `[]`.
+it('admits the empty list a resource response sends for an EnumResource over a null enum in with() and additional()', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $hidden = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $shown = Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $author->id, 'visibility' => Visibility::Public])->fresh();
+    $sent = fn (Post $post): array => json_decode((string) json_encode(inertiaProps(new NullableEnumResourceController()->extras($post))), true);
+    $extras = fn (array $props): array => [
+        $props['response']['meta'], $props['added']['meta'], $props['added']['extra'], $props['listed']['extra'],
+    ];
+
+    expect(pageData(NullableEnumResourceController::class.'@extras')['pageType'])
+        ->toBe('Inertia.SharedData & { response: { data: PostVisibilitiesResource; meta: AsEnum<typeof Visibility> | never[] }, '
+            .'added: { data: PostVisibilitiesResource; meta: AsEnum<typeof Visibility> | never[]; extra: AsEnum<typeof Visibility> | never[] }, '
+            .'listed: AnonymousResourceCollection<PostVisibilitiesResource> & { extra: AsEnum<typeof Visibility> | never[] } }')
+        ->and($extras($sent($hidden)))->toBe([[], [], [], []])
+        ->and(array_column($extras($sent($shown)), 'name'))->toBe(array_fill(0, 4, Visibility::Public->name))
+        ->and($sent($hidden)['response']['data'])->toBe(['visibility' => null, 'visibilities' => [[]]]);
 });
 
 // The `[]` a wrap around null sends is no list, and holds none of the enums a union's wraps take in turn.

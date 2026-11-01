@@ -10,6 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\Post;
 
 /**
  * Renders an EnumResource prop, which Inertia sends as the resource's objects rather than the bare cases.
@@ -41,6 +42,18 @@ class InertiaEnumResourceController
         return Inertia::render('Enums/Unions', [
             'either' => $admin ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft),
             'mixed' => $admin ? EnumResource::make(Status::Draft) : Status::Published,
+        ]);
+    }
+
+    /**
+     * The post's nullable visibility, which Inertia sends as `[]` while it is null.
+     *
+     * Result should be { visibility: AsEnum<typeof Visibility> | never[] }
+     */
+    public function visibility(Post $post): Response
+    {
+        return Inertia::render('Enums/Visibility', [
+            'visibility' => EnumResource::make($post->visibility),
         ]);
     }
 }

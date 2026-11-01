@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -71,7 +70,7 @@ final class InertiaWrapperHandler implements ExpressionHandler, KeepsHeldObjects
 
         // json_encode() sends a prop object as `{}`, which the `unknown` a `new` of one read as before admits.
         $built = $expr instanceof New_;
-        $factory = $built && $engine->reading() === Reading::Encoded ? null : $this->factory($expr);
+        $factory = $built && $engine->reading()->encodes() ? null : $this->factory($expr);
         $wrapped = $factory === null ? null : $this->wrapperArguments($expr, $factory)->at(0);
 
         if ($wrapped === null) {

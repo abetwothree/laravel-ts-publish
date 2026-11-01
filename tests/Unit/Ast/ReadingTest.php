@@ -19,7 +19,7 @@ function readingScope(string $subject, bool $inCollection = false): AnalysisScop
 // A body read for anything but Inertia keeps its key, so a resource publishing itself never splits its memo entries.
 it('spells each reading\'s memo key suffix', function () {
     expect(array_map(fn (Reading $reading): string => $reading->memoKey(), Reading::cases()))
-        ->toBe(['', '@inertia', '@inertia@filtered']);
+        ->toBe(['', '@unfiltered', '@inertia', '@inertia@filtered']);
 });
 
 // resolve() runs filter() over an API resource's toArray() read whole, and over nothing a call to it returns.
@@ -32,6 +32,9 @@ it('filters an Inertia read from the API resource toArray() it enters whole', fu
     'Inertia entering a service' => [Reading::Inertia, CardPropsBuilder::class, 'toArray', false, Reading::Inertia],
     'the filtered reading entering a service' => [Reading::InertiaFiltered, CardPropsBuilder::class, 'build', true, Reading::InertiaFiltered],
     'the encoded reading entering a resource toArray() whole' => [Reading::Encoded, UserCardResource::class, 'toArray', false, Reading::Encoded],
+    'the unfiltered encoded reading entering a resource toArray() whole' => [Reading::EncodedUnfiltered, UserCardResource::class, 'toArray', false, Reading::Encoded],
+    'the unfiltered encoded reading calling a resource toArray() for its value' => [Reading::EncodedUnfiltered, UserCardResource::class, 'toArray', true, Reading::EncodedUnfiltered],
+    'the unfiltered encoded reading entering a resource with()' => [Reading::EncodedUnfiltered, UserCardResource::class, 'with', false, Reading::EncodedUnfiltered],
 ]);
 
 // filter() sends a resource around null as null wherever it reaches, and it enters arrays only, never a Collection.
@@ -41,6 +44,7 @@ it('says where a JsonResource filter() reaches a value', function (Reading $read
     'an encoded resource body' => [Reading::Encoded, UserCardResource::class, false, true],
     'an encoded resource body inside a kept Collection' => [Reading::Encoded, UserCardResource::class, true, false],
     'an encoded service body' => [Reading::Encoded, CardPropsBuilder::class, false, false],
+    'a resource body encoded with no filter over it' => [Reading::EncodedUnfiltered, UserCardResource::class, false, false],
     'a resource body Inertia reads unfiltered' => [Reading::Inertia, UserCardResource::class, false, false],
     'a service body below a filtered one' => [Reading::InertiaFiltered, CardPropsBuilder::class, false, true],
     'a service body below a filtered one inside a kept Collection' => [Reading::InertiaFiltered, CardPropsBuilder::class, true, false],
@@ -55,3 +59,8 @@ it('reads a call from inside a kept Collection as Inertia sends it unfiltered', 
     'an unfiltered Inertia value inside a kept Collection' => [Reading::Inertia, true, Reading::Inertia],
     'an encoded value inside a kept Collection' => [Reading::Encoded, true, Reading::Encoded],
 ]);
+
+// Both encoded readings send a held callable as `{}` and read with the subject's own profile; neither Inertia one does.
+it('groups the readings json_encode() sends', function () {
+    expect(array_map(fn (Reading $reading): bool => $reading->encodes(), Reading::cases()))->toBe([true, true, false, false]);
+});

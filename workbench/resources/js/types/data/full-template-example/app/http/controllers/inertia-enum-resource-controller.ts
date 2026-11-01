@@ -1,6 +1,6 @@
 import { defineRoute, annotatePageProps, type AsEnum } from '@tolki/ts';
 
-import type { Role, Status, StatusType } from '../../enums';
+import type { Role, Status, StatusType, Visibility } from '../../enums';
 
 export type IndexPageProps = Inertia.SharedData & { statuses: { data: AsEnum<typeof Status>[] } };
 
@@ -31,6 +31,21 @@ export const unions = annotatePageProps<UnionsPageProps>()(defineRoute({
     component: 'Enums/Unions',
 }));
 
+export type VisibilityPageProps = Inertia.SharedData & { visibility: AsEnum<typeof Visibility> | never[] };
+
+/**
+ * The post's nullable visibility, which Inertia sends as `[]` while it is null.
+ *
+ * Result should be { visibility: AsEnum<typeof Visibility> | never[] }
+ */
+export const visibility = annotatePageProps<VisibilityPageProps>()(defineRoute({
+    name: 'enum-resources.visibility',
+    url: '/enum-resources/{post}/visibility',
+    methods: ['get', 'head'] as const,
+    args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
+    component: 'Enums/Visibility',
+}));
+
 /**
  * Renders an EnumResource prop, which Inertia sends as the resource's objects rather than the bare cases.
  *
@@ -39,6 +54,7 @@ export const unions = annotatePageProps<UnionsPageProps>()(defineRoute({
 const InertiaEnumResourceController = {
     index,
     unions,
+    visibility,
 };
 
 export default InertiaEnumResourceController;

@@ -168,7 +168,8 @@ final class AstEngine
     }
 
     /**
-     * What `json_encode()` sends for an expression of the body an engine reads, read by that body's own analyzer.
+     * What `json_encode()` sends for an expression of the body an engine reads, with no `filter()` over it, read by
+     * that body's own analyzer: the value `additional()` adds beside a resource's body.
      *
      * @return ValueExpressionResult
      *

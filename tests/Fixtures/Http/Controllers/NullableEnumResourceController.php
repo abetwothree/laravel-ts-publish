@@ -30,6 +30,16 @@ class NullableEnumResourceController
         ]);
     }
 
+    /** Renders the response whose `with()` wraps the visibility: alone, with `additional()`, and as a list. */
+    public function extras(Post $post): Response
+    {
+        return Inertia::render('NullableEnumResource/Extras', [
+            'response' => PostVisibilitiesResource::make($post),
+            'added' => PostVisibilitiesResource::make($post)->additional(['extra' => EnumResource::make($post->visibility)]),
+            'listed' => PostVisibilitiesResource::collection([$post])->additional(['extra' => EnumResource::make($post->visibility)]),
+        ]);
+    }
+
     /** Renders a wrap beside a bare read of its enum, or beside another enum's wrap, as `c` and `d` pick. */
     public function ternaries(Request $request, Post $post): Response
     {

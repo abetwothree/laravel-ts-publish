@@ -132,6 +132,7 @@ Route::get('/deals/{deal}/same-named-enums', [InertiaSameNamedEnumsController::c
 Route::get('/deals/{deal}/same-named-enum-names', [InertiaSameNamedEnumsController::class, 'names'])->name('deals.same-named-enum-names');
 Route::get('/enum-resources/statuses', [InertiaEnumResourceController::class, 'index'])->name('enum-resources.statuses');
 Route::get('/enum-resources/unions', [InertiaEnumResourceController::class, 'unions'])->name('enum-resources.unions');
+Route::get('/enum-resources/{post}/visibility', [InertiaEnumResourceController::class, 'visibility'])->name('enum-resources.visibility');
 Route::get('/key-edges', [InertiaKeyEdgesController::class, 'show'])->name('key-edges.show');
 Route::get('/list-props', [InertiaListPropsController::class, 'show'])->name('list-props.show');
 

@@ -10,8 +10,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Wraps a post's nullable visibility at the top level, which filter() sends as null, and in a map kept as a Collection,
- * which serializes each wrap itself.
+ * Wraps a post's nullable visibility in its body, in a map kept as a Collection there, and in its response's `with()`.
+ *
+ * filter() sends the body's own wrap around null as null; the kept map and `with()` send each wrap as it serializes.
  *
  * @mixin Post
  */
@@ -28,5 +29,15 @@ class PostVisibilitiesResource extends JsonResource
             'visibility' => EnumResource::make($this->visibility),
             'visibilities' => collect([$this->resource])->map(fn (Post $post) => EnumResource::make($post->visibility)),
         ];
+    }
+
+    /**
+     * The post's visibility, wrapped beside the body in its response.
+     *
+     * @return array<string, mixed>
+     */
+    public function with(Request $request): array
+    {
+        return ['meta' => EnumResource::make($this->visibility)];
     }
 }

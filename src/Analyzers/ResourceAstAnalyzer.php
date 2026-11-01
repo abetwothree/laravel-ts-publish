@@ -189,7 +189,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         private readonly bool $readsCall = false,
         private readonly Reading $reading = Reading::Encoded,
     ) {
-        if ($handlerProfile !== null && $reading !== Reading::Encoded) {
+        if ($handlerProfile !== null && ! $reading->encodes()) {
             throw new LogicException('An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
         }
 
@@ -389,7 +389,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * A reader of this body as `json_encode()` sends it: the same scope, method and call, under the encoded reading.
+     * A reader of this body as `json_encode()` sends it unfiltered: the same scope, method and call, read that way.
      */
     public function encodedReader(): self
     {
@@ -401,6 +401,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             context: $this->context,
             passed: $this->passed,
             readsCall: $this->readsCall,
+            reading: Reading::EncodedUnfiltered,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack;

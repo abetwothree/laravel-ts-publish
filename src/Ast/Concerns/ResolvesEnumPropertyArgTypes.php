@@ -119,9 +119,10 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. A null payload no filter() reaches is
-     * sent as the `[]` resolve() returns: Inertia's reading spells that arm `never[]`, while the encoded one keeps its
-     * null outside a map() kept as a Collection and drops it inside.
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps.
+     *
+     * A null payload no filter() reaches is sent as the `[]` resolve() returns, spelled `never[]`, except under the
+     * plain encoded reading, which keeps its null outside a map() kept as a Collection and drops it inside.
      *
      * @return ValueExpressionResult|null
      */
@@ -160,7 +161,7 @@ trait ResolvesEnumPropertyArgTypes
         // The resolved property may already be a collection type (an AsEnumCollection cast or a
         // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
         $type = $enumResult['type'];
-        $alreadyCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+        $alreadyCollection = ValueResult::isListShaped($type);
 
         return [
             ...$enumResult,

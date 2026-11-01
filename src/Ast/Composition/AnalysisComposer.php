@@ -77,7 +77,7 @@ final class AnalysisComposer
             }
 
             $type = $types[$propName];
-            $isCollection = str_ends_with(implode(' | ', ValueResult::filledArms($type)), '[]');
+            $isCollection = ValueResult::isListShaped($type);
             $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
 
             $arms[$propName] = [

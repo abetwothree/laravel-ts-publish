@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
@@ -40,7 +39,7 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
             $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
             // An object is never null, so `??` returns it whole and Inertia sends the null its call returns. Inertia
             // sends a callable a called closure returns as `{}`, which no type read here admits, so it reads as before.
-            $held = $leftResult['type'] === 'unknown' || $engine->reading() === Reading::Encoded
+            $held = $leftResult['type'] === 'unknown' || $engine->reading()->encodes()
                 || ($scope->readsCallableReturn && ! ($leftResult['heldProp'] ?? false))
                 ? null
                 : ValueResult::heldNullsOf($leftResult);

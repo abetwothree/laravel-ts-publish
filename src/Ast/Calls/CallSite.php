@@ -147,6 +147,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return $this->reading() === Reading::Encoded && HeldCallables::mayHold($argument, $this->scope, $valueRead);
+        return $this->reading()->encodes() && HeldCallables::mayHold($argument, $this->scope, $valueRead);
     }
 }

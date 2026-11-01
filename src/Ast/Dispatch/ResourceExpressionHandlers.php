@@ -81,7 +81,7 @@ final class ResourceExpressionHandlers
     {
         $own = is_a($subjectClass, JsonResource::class, true) ? self::make($engine) : self::forNonResourceSubjects();
 
-        return $reading === Reading::Encoded ? $own : self::forInertia($own);
+        return $reading->encodes() ? $own : self::forInertia($own);
     }
 
     /**

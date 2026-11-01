@@ -8,8 +8,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 
 /**
- * How the values a body returns reach the client, which decides how they are read: as `json_encode()` sends them, as
- * Inertia sends a page's props and shared data, or as Inertia sends them once a JsonResource's `filter()` ran.
+ * How the values a body returns reach the client, which decides how they are read: as `json_encode()` sends them, with
+ * or without a JsonResource's `filter()` over them, as Inertia sends a page's props and shared data, or as Inertia
+ * sends them once `filter()` ran.
  *
  * @internal
  */
@@ -17,6 +18,9 @@ enum Reading
 {
     /** `json_encode()` sends them: what a class publishes for itself, and what reaches Inertia already JSON. */
     case Encoded;
+
+    /** `json_encode()` sends them, no `filter()` over them: the keys a resource's response adds beside its body. */
+    case EncodedUnfiltered;
 
     /** Inertia sends them, calling each callable among them: a page's props, shared data and every body they read. */
     case Inertia;
@@ -31,23 +35,36 @@ enum Reading
     {
         return match ($this) {
             self::Encoded => '',
+            self::EncodedUnfiltered => '@unfiltered',
             self::Inertia => '@inertia',
             self::InertiaFiltered => '@inertia@filtered',
         };
     }
 
     /**
-     * The reading a body takes from this one: filtered once an Inertia read enters an API resource's whole `toArray()`.
+     * The reading a body takes from this one: filtered where an unfiltered read enters a resource's whole `toArray()`.
      *
      * @param  ReflectionClass<object>  $runs  the class the body runs for
      */
     public function entering(ReflectionClass $runs, string $method, bool $readsCall): self
     {
-        if ($this !== self::Inertia || $readsCall || $method !== 'toArray') {
+        if ($readsCall || $method !== 'toArray' || ! is_a($runs->getName(), JsonResource::class, true)) {
             return $this;
         }
 
-        return is_a($runs->getName(), JsonResource::class, true) ? self::InertiaFiltered : $this;
+        return match ($this) {
+            self::Inertia => self::InertiaFiltered,
+            self::EncodedUnfiltered => self::Encoded,
+            default => $this,
+        };
+    }
+
+    /**
+     * Whether `json_encode()` sends the values, which sends a callable it holds as `{}` where Inertia would call it.
+     */
+    public function encodes(): bool
+    {
+        return $this === self::Encoded || $this === self::EncodedUnfiltered;
     }
 
     /**
@@ -67,13 +84,13 @@ enum Reading
     }
 
     /**
-     * Whether `filter()` runs over the scope's body: below a filtered Inertia read, or an API resource's own elsewhere.
+     * Whether `filter()` runs over the scope's body: below a filtered Inertia read, or a resource's own when encoded.
      */
     public function filtersBodyOf(AnalysisScope $scope): bool
     {
         return match ($this) {
             self::Encoded => $scope->subjectReflection->isSubclassOf(JsonResource::class),
-            self::Inertia => false,
+            self::EncodedUnfiltered, self::Inertia => false,
             self::InertiaFiltered => true,
         };
     }
