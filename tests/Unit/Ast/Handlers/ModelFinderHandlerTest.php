@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -27,6 +28,12 @@ function modelFinderResult(Expr $expr): ?array
         new AnalysisScope($reflection),
         new ResourceAstAnalyzer($reflection, null, 'dashboard'),
     );
+}
+
+/** Resolve one expression statement, written with fully-qualified names, through the handler under test. */
+function modelFinderType(string $php): ?string
+{
+    return modelFinderResult(new AstParser()->parseSource('<?php '.$php.';')[0]->expr)['type'] ?? null;
 }
 
 it('claims static calls and method calls', function () {
@@ -87,3 +94,78 @@ it('declines an unknown terminal, a non-model root, and a first-class callable',
         ->and(modelFinderResult($variableRoot))->toBeNull()
         ->and(modelFinderResult($firstClassCallable))->toBeNull();
 });
+
+// The terminal types against the model the query before it builds, which each step's own return names.
+it('types a terminal on the query each step before it hands on', function (string $php, string $type) {
+    expect(modelFinderType($php))->toBe($type);
+})->with([
+    'a base-query step' => ['\\Workbench\\App\\Models\\Post::query()->whereIn("id", [1])->orderBy("id")->get()', 'Post[]'],
+    'a when() whose callback hands the query back' => ['\\Workbench\\App\\Models\\Post::query()->when(true, fn ($q) => $q->latest())->first()', 'Post | null'],
+    'a soft-delete step' => ['\\Workbench\\App\\Models\\Post::withTrashed()->count()', 'number'],
+    'a relation of a found model' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->comments()->get()', 'Comment[]'],
+    'a singular relation' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->author()->first()', 'User | null'],
+    'a model forwarding a terminal it lacks to a new query' => ['\\Workbench\\App\\Models\\Post::findOrFail(1)->count()', 'number'],
+    'a base query, whose rows no model casts' => ['\\Workbench\\App\\Models\\Post::query()->toBase()->get()', 'Record<string, unknown>[]'],
+    'a find() of a list of keys' => ['\\Workbench\\App\\Models\\Post::find([1, 2])', 'Post[]'],
+    'a cursor' => ['\\Workbench\\App\\Models\\Post::cursor()', 'Post[]'],
+    'a custom builder\'s own method' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\BuiltPost::titled()->get()', 'BuiltPost[]'],
+]);
+
+it('types a column a query plucks or reads as the model reads it', function (string $php, string $type) {
+    expect(modelFinderType($php))->toBe($type);
+})->with([
+    ['\\Workbench\\App\\Models\\Post::query()->pluck("id")', 'number[]'],
+    ['\\Workbench\\App\\Models\\Post::pluck("title")', 'string[]'],
+    ['\\Workbench\\App\\Models\\Post::query()->latest()->value("title")', 'string | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->comments()->pluck("content")', 'string[]'],
+]);
+
+it('types a collection step on a list the query returns', function (string $php, string $type) {
+    expect(modelFinderType($php))->toBe($type);
+})->with([
+    ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->first()', 'number | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->last(fn ($id) => $id > 1)', 'number | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->all()', 'number[]'],
+    ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->count()', 'number'],
+    ['\\Workbench\\App\\Models\\Post::query()->get()->first()', 'Post | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->get()->get(0)', 'Post | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->get()->find(1)', 'Post | null'],
+    ['\\Workbench\\App\\Models\\Post::query()->get()->sole()', 'Post'],
+    ['\\Workbench\\App\\Models\\Post::all()->pluck("id")->values()', 'number[]'],
+]);
+
+// "Never guess": a step whose return the engine cannot type, or that leaves the query, ends what the handler reads.
+it('declines a chain past a step it cannot follow', function (string $php) {
+    expect(modelFinderType($php))->toBeNull();
+})->with([
+    'a when() whose callback returns a count' => ['\\Workbench\\App\\Models\\Post::query()->when(true, fn ($q) => $q->count())->get()'],
+    'a call no query runs' => ['\\Workbench\\App\\Models\\Post::query()->notAQueryMethod()->get()'],
+    'a find() of a key no literal spells' => ['\\Workbench\\App\\Models\\Post::find($id)->comments()->get()'],
+    'a collection step it does not list' => ['\\Workbench\\App\\Models\\Post::query()->pluck("id")->map(fn ($id) => $id)->first()'],
+    'a pluck keyed by a second column' => ['\\Workbench\\App\\Models\\Post::query()->pluck("title", "id")->first()'],
+    'a first() passing a default' => ['\\Workbench\\App\\Models\\Post::query()->get()->first(null, 0)'],
+    'a factory row' => ['\\Workbench\\App\\Models\\User::factory()->raw()'],
+]);
+
+// R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list.
+it('types a factory build as a list once a count is set, else as one model', function (string $php, string $type) {
+    expect(modelFinderType($php))->toBe($type);
+})->with([
+    ['\\Workbench\\App\\Models\\User::factory()->make()', 'User'],
+    ['\\Workbench\\App\\Models\\User::factory()->state(["name" => "a"])->create()', 'User'],
+    ['\\Workbench\\App\\Models\\User::factory()->count(2)->make()', 'User[]'],
+    ['\\Workbench\\App\\Models\\User::factory()->times(3)->unverified()->create()', 'User[]'],
+    ['\\Workbench\\App\\Models\\User::factory(2)->make()', 'User[]'],
+    ['\\Workbench\\App\\Models\\User::factory(["name" => "a"])->make()', 'User'],
+    ['\\Workbench\\App\\Models\\User::factory()->count(2)->count(null)->make()', 'User'],
+    ['\\Workbench\\App\\Models\\User::factory()->count(2)->makeOne()', 'User'],
+    ['\\Workbench\\App\\Models\\User::factory()->count(2)->make()->first()', 'User | null'],
+]);
+
+// Inertia json_encodes a builder it is handed as is, which writes its one public property.
+it('types a model query sent with no terminal as the builder object', function (string $php) {
+    expect(modelFinderType($php))->toBe('{ pendingAttributes: Record<string, unknown> | never[] }');
+})->with([
+    ['\\Workbench\\App\\Models\\Post::query()'],
+    ['\\Workbench\\App\\Models\\Post::where("id", 1)->latest()'],
+]);

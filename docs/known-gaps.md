@@ -649,6 +649,15 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
+### An Inertia prop past a query step the package cannot read publishes `unknown`
+
+An Inertia prop or shared value types a query chain rooted at a model, such as `Post::query()->latest()->get()`, from
+what each step hands on. A step reads where Eloquent declares its return, sends it to the base query, or where a scope,
+a closure macro, a `when()` callback or a custom builder's untyped method returns the query it is given. A macro
+registered as a callable array or by a closure outside a class method, a builder macro a global scope other than
+`SoftDeletingScope` adds, or a step after `find($id)` of a key no literal spells ends the chain at `unknown`, where the
+package once guessed the root model. Type the prop with `#[TsCasts]`.
+
 ### A resource collection prop over a paginator the engine does not type publishes no pagination
 
 An Inertia prop or shared value reads its paginator's kind from a query chain rooted at a model, such as

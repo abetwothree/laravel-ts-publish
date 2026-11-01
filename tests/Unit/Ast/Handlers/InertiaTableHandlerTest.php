@@ -71,7 +71,7 @@ it('types a chain past the table as its last call, in a literal, a local, shared
         ->toBe('Inertia.SharedData & { n: number, held: number }')
         ->and(pageData(InertiaTableBesidePropsController::class.'@countedResolved')['pageType'])
         ->toBe('Inertia.SharedData & { card: PostTableCountResource }')
-        ->and(sharedProps(MiddlewareWithTableCount::class))->toBe(['n' => 'number', 'ids' => 'unknown'])
+        ->and(sharedProps(MiddlewareWithTableCount::class))->toBe(['n' => 'number', 'ids' => 'number[]'])
         ->and([$counted->n, $counted->held, $resolved->card->n, $shared->n, $shared->ids])->toBe([2, 2, 2, 2, [1, 2]]);
 });
 
@@ -109,18 +109,24 @@ it('reads a chain past the table\'s query() on the model that query() queries', 
         ->and($sent->first->name)->toBe('Ada');
 });
 
-// Nothing types a builder or its pluck(). In a render call's props literal, where the reader this replaced read them as
-// tables, they keep that type, though it rejects what Inertia sends, as it always did; elsewhere they stay `unknown`.
-it('keeps the table type of a chain past the table that nothing else reads where it always had it', function () {
+// The table's query plucks the column as the model reads it, and Inertia json_encodes the query itself as its one
+// public property.
+it('types a pluck() past the table\'s query() and the query itself as Inertia sends them', function () {
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
     Post::create(['title' => 'Second', 'content' => 'Body', 'user_id' => $user->id]);
     $sent = inertiaProps(new InertiaTableBesidePropsController()->plucked());
 
-    expect(pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'])
-        ->toBe('Inertia.SharedData & { ids: TableResource<Post>, query: TableResource<Post>, held: unknown }')
-        ->and([$sent->ids, $sent->held])->toBe([[1, 2], [1, 2]])
-        ->and($sent->query)->toBeObject();
+    expect(pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'])->toBe('Inertia.SharedData & { '
+        .'ids: number[], query: { pendingAttributes: Record<string, unknown> | never[] }, held: number[] }')
+        ->and([$sent->ids, $sent->held, $sent->query->pendingAttributes])->toBe([[1, 2], [1, 2], []]);
+});
+
+// Nothing types an untyped method that hands the table back. In a render call's props literal, where the reader this
+// replaced read it as the table, it keeps that type; elsewhere it stays `unknown`.
+it('keeps the table type of a chain past the table that nothing else reads where it always had it', function () {
+    expect(pageData(InertiaTableBesidePropsController::class.'@untyped')['pageType'])
+        ->toBe('Inertia.SharedData & { posts: TableResource<Post>, held: unknown }');
 });
 
 // The table type a props literal's item keeps is marked on the node the page analyzer reads, so it holds after the
@@ -140,14 +146,14 @@ it('keeps the table type of a props literal item past the table after the parse 
             }
         }
     };
-    $type = 'Inertia.SharedData & { ids: TableResource<Post>, query: TableResource<Post>, held: unknown }';
-    resolve(MethodLocator::class)->locateDeclared(InertiaTableBesidePropsController::class, 'plucked');
+    $type = 'Inertia.SharedData & { posts: TableResource<Post>, held: unknown }';
+    resolve(MethodLocator::class)->locateDeclared(InertiaTableBesidePropsController::class, 'untyped');
     $evict();
-    $afterLocated = pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'];
+    $afterLocated = pageData(InertiaTableBesidePropsController::class.'@untyped')['pageType'];
     $evict();
 
     expect($afterLocated)->toBe($type)
-        ->and(pageData(InertiaTableBesidePropsController::class.'@plucked')['pageType'])->toBe($type);
+        ->and(pageData(InertiaTableBesidePropsController::class.'@untyped')['pageType'])->toBe($type);
 });
 
 // A static root other than make() is a call like any other: the table where it says it returns one.

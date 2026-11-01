@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\DocblockPostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\StaticRootTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\UntypedPostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\UserQueryPostTable;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -60,7 +61,7 @@ class InertiaTableBesidePropsController
         return Inertia::render('Tables/CountedLocal', $props);
     }
 
-    /** Renders a table query's plucked ids, inline and in a local, and the query itself, which no handler reads. */
+    /** Renders a table query's plucked ids, inline and in a local, and the query itself. */
     public function plucked(): Response
     {
         $held = PostQueryTable::make()->query()->pluck('id');
@@ -70,6 +71,14 @@ class InertiaTableBesidePropsController
             'query' => PostQueryTable::make()->query(),
             'held' => $held,
         ]);
+    }
+
+    /** Renders an untyped table method that hands the table back, inline and through a local. */
+    public function untyped(): Response
+    {
+        $held = UntypedPostTable::make()->filtered();
+
+        return Inertia::render('Tables/Untyped', ['posts' => UntypedPostTable::make()->filtered(), 'held' => $held]);
     }
 
     /** Renders the rows and the first row of the query of a table whose `query()` names another model than its own. */

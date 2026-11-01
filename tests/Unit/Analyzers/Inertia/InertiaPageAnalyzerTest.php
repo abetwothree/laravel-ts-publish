@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EloquentStaticsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\FilteredRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\HelperCallablePropsController;
@@ -43,6 +44,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCast
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -58,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTier
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
@@ -88,6 +91,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\Database\Factories\UserFactory;
 
 afterEach(function () {
     JsonResource::flushState();
@@ -1994,4 +1998,80 @@ it('widens a signature that covers a dotted key\'s head with the head\'s type', 
         ->toBe('Inertia.SharedData & { [key: `${string}_tag`]: string | undefined | { b: number }, x_tag: { b: number } }')
         ->and(inertiaPropsJson(new TopLevelKeysController()->signatureHead()))
         ->toBe('{"east_tag":"v","west_tag":"v","x_tag":{"b":1}}');
+});
+
+/** Seed an author and the one post Eloquent statics read, `First`, with a comment. */
+function eloquentStaticsPost(): Post
+{
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $user->id]);
+
+    return $post;
+}
+
+// The test app's factory guesser names a class that does not exist, so the oracle builds the users from the factory.
+it('reads a prop through an Eloquent static as the query it forwards to', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(Inertia::render('Eloquent/Statics', [
+        'findTitle' => Post::find(1)?->title,
+        'failTitle' => Post::findOrFail(1)->title,
+        'firstId' => Post::query()->pluck('id')->first(),
+        'made' => UserFactory::new()->count(2)->make(),
+        'queryTitle' => Post::query()->first()?->title,
+        'whereFirst' => Post::where('id', 1)->first(),
+        'found' => Post::find(1),
+    ]));
+
+    expect(pageData(EloquentStaticsController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'findTitle: string | null, failTitle: string, firstId: number | null, made: User[], '
+        .'queryTitle: string | null, whereFirst: Post | null, found: Post | null }')
+        ->and([$sent->findTitle, $sent->failTitle, $sent->firstId, $sent->queryTitle])->toBe(['First', 'First', 1, 'First'])
+        ->and($sent->made)->toHaveCount(2)
+        ->and([$sent->whereFirst->title, $sent->found->title])->toBe(['First', 'First']);
+});
+
+it('types a query chain from each step it takes before and after its terminal', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->steps());
+
+    expect(pageData(EloquentStaticsController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
+        .'ordered: string | null, conditional: Post[], trashed: Post | null, titles: string[], lastTitle: string | null, '
+        .'comments: Comment[], author: User | null, rows: Record<string, unknown>[], ids: number[], listed: Post[], '
+        .'query: { pendingAttributes: Record<string, unknown> | never[] } }')
+        ->and([$sent->ordered, $sent->trashed->title, $sent->titles, $sent->lastTitle, $sent->ids])
+        ->toBe(['First', 'First', ['First'], 'First', [1]])
+        ->and([$sent->conditional[0]->title, $sent->comments[0]->content, $sent->author->name, $sent->rows[0]->title])
+        ->toBe(['First', 'alpha', 'Ada', 'First'])
+        ->and([$sent->listed[0]->title, $sent->query->pendingAttributes])->toBe(['First', []]);
+});
+
+// R8: make() and create() build a list once count(), times() or a number passed to factory() sets a count.
+it('publishes a factory build as a list once a count is set, else as one model', function () {
+    $type = pageData(EloquentStaticsController::class.'@factories')['pageType'];
+    Factory::guessFactoryNamesUsing(fn (string $model): string => 'Workbench\\Database\\Factories\\'.class_basename($model).'Factory');
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->factories());
+
+    expect($type)->toBe('Inertia.SharedData & { '
+        .'one: User, counted: User[], timed: User[], argued: User[], cleared: User, single: User, firstMade: User | null }')
+        ->and($sent->one->name)->toBe('One')
+        ->and([count($sent->counted), count($sent->timed), count($sent->argued)])->toBe([2, 2, 2])
+        ->and([$sent->cleared, $sent->single, $sent->firstMade])->each->toHaveProperty('email');
+});
+
+// Every body Inertia sends reads the chain alike; the resource's own interface, read as json_encode() sends it,
+// stays `unknown`.
+it('reads a query chain past its builder in a resolved resource, a helper and a collaborator alike', function () {
+    $post = eloquentStaticsPost();
+    $controller = new EloquentStaticsController(new QueriedIdStats);
+
+    expect(pageData(EloquentStaticsController::class.'@resolvedCard')['pageType'])
+        ->toBe("Inertia.SharedData & { card: Omit<QueriedIdCardResource, 'firstId'> & { firstId: number | null } }")
+        ->and(pageData(EloquentStaticsController::class.'@helperMeta')['pageType'])
+        ->toBe('Inertia.SharedData & { meta: { firstId: number | null } }')
+        ->and(pageData(EloquentStaticsController::class.'@collaboratorStats')['pageType'])
+        ->toBe('Inertia.SharedData & { stats: { firstId: number | null } }')
+        ->and(inertiaProps($controller->resolvedCard($post))->card->firstId)->toBe(1)
+        ->and(inertiaProps($controller->helperMeta())->meta->firstId)->toBe(1)
+        ->and(inertiaProps($controller->collaboratorStats())->stats->firstId)->toBe(1);
 });

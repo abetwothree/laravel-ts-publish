@@ -100,7 +100,10 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   It also precedes `StaticCallHandler` and `NewResourceHandler`, which type a single resource as a nested key's value
   and a `ResourceCollection` as its element array.
 - `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never
-  declines one, so a query chain types as the paginator it returns.
+  declines one, so a query chain types as the paginator it returns. It types a terminal against the query
+  `ReceiverClassResolver` reads its receiver as, so a step that leaves the query, or that the engine cannot read, ends
+  the chain. A factory's `make()` or `create()` is a list once a count step or argument sets one, and a model's query
+  with no terminal is the builder object Inertia `json_encode()`s.
 - `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
   either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
   `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
