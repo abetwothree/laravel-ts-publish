@@ -143,6 +143,16 @@ class LoadedRelationsController
         return Inertia::render('Loaded/Lowercased', ['loaded' => $post->loadmissing('author')]);
     }
 
+    /** Renders loads after a chain step the analysis cannot see through, or that hides the relation from toArray(). */
+    public function chained(Post $post): Response
+    {
+        return Inertia::render('Loaded/Chained', [
+            'whenWith' => Post::query()->when(true, fn ($query) => $query->with('author:id'))->first()?->loadMissing('author'),
+            'withWhereHas' => Post::withWhereHas('author:id')->first()?->loadMissing('author'),
+            'hiddenFirst' => $post->makeHidden('author')->load('author', 'comments'),
+        ]);
+    }
+
     /** Renders a handover with its relations to two models of one name loaded. */
     public function sameNamed(Handover $handover): Response
     {

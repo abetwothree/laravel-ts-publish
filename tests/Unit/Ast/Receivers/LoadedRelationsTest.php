@@ -249,6 +249,44 @@ it('sends what an earlier load in the chain picked to loadMissing()', function (
     expect(array_keys(Post::with('author:id')->first()?->loadMissing('author')->toArray()['author'] ?? []))->toBe(['id']);
 });
 
+// A callback, an unread eager load or the application's own code in the chain may have loaded the relation narrowed.
+it('keeps the model\'s type where loadMissing() follows a chain step it cannot read', function (string $model, string $call, ?string $type) {
+    expect(loadedMembers($model, $call)['type'] ?? null)->toBe($type);
+})->with([
+    'a callback' => [Post::class, 'Post::query()->when(true, fn ($q) => $q->with("author:id"))->first()?->loadMissing("author")', null],
+    'tap()' => [Post::class, 'Post::query()->tap(fn ($q) => $q->with("author:id"))->first()?->loadMissing("author")', null],
+    'withWhereHas()' => [Post::class, 'Post::withWhereHas("author:id")->first()?->loadMissing("author")', null],
+    'a scope' => [ScopedAuthorPost::class, 'ScopedAuthorPost::query()->withSlimAuthor()->first()?->loadMissing("author")', null],
+    'the framework\'s own steps' => [Post::class, 'Post::query()->latest()->whereKey(1)->first()?->loadMissing("author")', '{ author: User }'],
+]);
+
+it('sends what a scope in the chain eager loaded to loadMissing(), and leaves out what a chain step hides', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
+    $scoped = ScopedAuthorPost::query()->withSlimAuthor()->first()?->loadMissing('author')->toArray();
+    $listed = Post::all()->makeHidden('author')->load('author')->toArray();
+    $own = ScopedAuthorPost::query()->firstOrFail()->hideAuthor()->load('author')->toArray();
+
+    expect(array_keys($scoped['author'] ?? []))->toBe(['id'])
+        ->and([array_key_exists('author', $listed[0]), array_key_exists('author', $own)])->toBe([false, false]);
+});
+
+// Laravel writes no relation a visibility call earlier in the chain hides, so the call's members leave it out.
+it('leaves out a relation a visibility call earlier in the chain keeps out of toArray()', function (string $model, string $call, ?string $type) {
+    expect(loadedMembers($model, $call)['type'] ?? null)->toBe($type);
+})->with([
+    'makeHidden()' => [Post::class, '$post->makeHidden("author")->load("author", "comments")', '{ comments: Comment[] }'],
+    'makeHidden() of a list' => [Post::class, '$post->makeHidden(["author"])->load("author")', null],
+    'makeHiddenIf()' => [Post::class, '$post->makeHiddenIf(true, "author")->load("author", "comments")', '{ comments: Comment[] }'],
+    'mergeHidden()' => [Post::class, '$post->mergeHidden(["comments"])->loadMissing("author", "comments")', '{ author: User }'],
+    'setVisible()' => [Post::class, '$post->setVisible(["id", "author"])->load("author", "comments")', '{ author: User }'],
+    'a collection\'s makeHidden()' => [Post::class, 'Post::all()->makeHidden("author")->load("author")', null],
+    'names held in a variable' => [Post::class, '$post->makeHidden($names)->load("author")', null],
+    'a callback' => [Post::class, '$posts->each(fn ($p) => $p->makeHidden("author"))->load("author")', null],
+    'a method of the model\'s own' => [ScopedAuthorPost::class, '$post->hideAuthor()->load("author")', null],
+    'a scope, which hides nothing' => [ScopedAuthorPost::class, 'ScopedAuthorPost::query()->withSlimAuthor()->first()?->load("author")', '{ author: User }'],
+]);
+
 it('declines a model that writes its own array', function () {
     expect(loadedMembers(ArrayShapedPost::class, '$post->load("author")'))->toBeNull();
 });

@@ -2531,6 +2531,16 @@ it('publishes the relations load() and loadMissing() add to each model of an Elo
         ->and([$sent->posts[0]->author->name, $sent->comments[0]->user->name])->toBe(['Ada', 'Ada']);
 });
 
+// Each step hides from the analysis, or from toArray(), what it did to the relation, so it keeps the model's own type.
+it('keeps the model\'s type where a chain step narrows or hides what load() and loadMissing() then send', function () {
+    $sent = inertiaProps(new LoadedRelationsController()->chained(seedLoadedPost()));
+
+    expect(pageData(LoadedRelationsController::class.'@chained')['pageType'])->toBe('Inertia.SharedData & { '
+        .'whenWith: Post | null, withWhereHas: Post | null, hiddenFirst: Post & { comments: Comment[] } }')
+        ->and([array_keys((array) $sent->whenWith->author), array_keys((array) $sent->withWhereHas->author)])->toBe([['id'], ['id']])
+        ->and([property_exists($sent->hiddenFirst, 'author'), $sent->hiddenFirst->comments[0]->content])->toBe([false, 'alpha']);
+});
+
 it('aliases the same-named models two loaded relations name', function () {
     app(Router::class)->get('/loaded/{handover}', [LoadedRelationsController::class, 'sameNamed']);
     $sender = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

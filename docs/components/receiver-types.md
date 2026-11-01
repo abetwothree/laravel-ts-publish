@@ -312,9 +312,11 @@ template `TValue|null`. Each rule answers only on the receiver it names:
   writes. A to-one relation adds `| null` where a closure may filter its row out, or a side holds no key Laravel
   matches the row by: its own column list, its parent's, or a model no row backs. A member whose payload no type admits
   is left out: a closure that may change the columns (a `select()`, a scope, a builder macro), a `morphTo` under
-  columns or a child, and for `loadMissing()` a relation the model's `$with` or an eager load earlier in the call's
-  chain loads narrowed. A non-literal argument, or none left, keeps the model's own type; so does a `loadMissing()`
-  after an eager load in its chain whose argument is not a literal. The members ride only the call's own value.
+  columns or a child, one a `makeHidden()`, `setHidden()` or `setVisible()` earlier in the chain keeps out of
+  `toArray()`, and for `loadMissing()` one the model's `$with` or an eager load earlier in the chain loads narrowed. A
+  non-literal argument, or none left, keeps the model's own type; so does a chain step it cannot read: a callback, a
+  model's own method, an unread visibility list, and for `loadMissing()` a scope, a macro, a custom builder's method or
+  an unread eager load. The members ride only the call's own value.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty

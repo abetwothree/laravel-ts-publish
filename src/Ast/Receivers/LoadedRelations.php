@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -41,6 +43,7 @@ use Throwable;
  * @phpstan-type RelationPaths = array<string, list<Constraint>>
  * @phpstan-type RelationTree = array<string, array{constraints: list<Constraint>, children: array<string, mixed>}>
  * @phpstan-type LoadedMembers = array{type: string, models: list<class-string>}
+ * @phpstan-type ChainRead = array{kept: list<string>, hidden: list<string>, shown: list<list<string>>}
  *
  * @internal
  */
@@ -64,6 +67,18 @@ final class LoadedRelations
     /** The calls, lowercased, that load the relations their argument names as `load()` reads it. */
     private const array EAGER_LOADS = ['with', 'withonly', 'load', 'loadmissing'];
 
+    /** The calls, lowercased, that eager load relations in a way a loadMissing() after them cannot read. */
+    private const array UNREAD_EAGER_LOADS = ['withwherehas', 'withwhererelation', 'seteagerloads'];
+
+    /** The calls, lowercased, that run a callback of the application's own on a model, its collection or its query. */
+    private const array CALLBACKS = ['when', 'unless', 'tap', 'pipe', 'each', 'transform', 'map'];
+
+    /** The calls, lowercased, that keep the names they are given out of toArray(). */
+    private const array HIDES = ['makehidden', 'makehiddenif', 'mergehidden', 'sethidden'];
+
+    /** The calls, lowercased, after which toArray() writes only the names they are given. */
+    private const array SHOWS_ONLY = ['setvisible', 'mergevisible'];
+
     /** The Model methods that write a loaded relation into the array Inertia and json_encode() send. */
     private const array SERIALIZERS = ['toArray', 'jsonSerialize', 'relationsToArray', 'getArrayableRelations', 'getArrayableItems'];
 
@@ -80,13 +95,20 @@ final class LoadedRelations
     {
         $paths = $this->relationPaths($call);
         $missing = $call->name instanceof Identifier && $call->name->toLowerString() === 'loadmissing';
-        $kept = $missing ? $this->loadedBefore($call->var) : [];
+        $chain = $this->chainBefore($call->var, $model, $missing);
 
-        if ($paths === null || $kept === null) {
+        if ($paths === null || $chain === null) {
             return null;
         }
 
-        return $this->membersOf($model, $this->tree($paths), $unsaved ? [] : null, $missing ? $kept : null);
+        $sent = array_filter(
+            $this->tree($paths),
+            fn (string $name): bool => ! in_array($name, $chain['hidden'], true)
+                && array_all($chain['shown'], fn (array $names): bool => in_array($name, $names, true)),
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        return $this->membersOf($model, $sent, $unsaved ? [] : null, $missing ? $chain['kept'] : null);
     }
 
     /**
@@ -130,35 +152,82 @@ final class LoadedRelations
     }
 
     /**
-     * The relation paths that calls earlier in a loadMissing()'s chain load with a constraint, which it keeps.
+     * What the calls earlier in a load's chain did to the model, or null where one may have done anything.
      *
-     * Null where such a call's argument cannot be read, so what it loaded is not known.
+     * `kept` lists the paths an eager load picked columns or a constraint for, which a loadMissing() keeps as loaded;
+     * `hidden` the names a visibility call keeps out of toArray(), and `shown` each list a visible list limits it to.
      *
-     * @return list<string>|null
+     * @param  class-string<Model>  $model
+     * @return ChainRead|null
      */
-    private function loadedBefore(Expr $receiver): ?array
+    private function chainBefore(Expr $receiver, string $model, bool $missing): ?array
     {
-        $kept = [];
+        $read = ['kept' => [], 'hidden' => [], 'shown' => []];
 
         while ($receiver instanceof MethodCall || $receiver instanceof NullsafeMethodCall || $receiver instanceof StaticCall) {
-            if ($receiver->name instanceof Identifier && in_array($receiver->name->toLowerString(), self::EAGER_LOADS, true)) {
-                $paths = $this->relationPaths($receiver);
+            if (! $receiver->name instanceof Identifier) {
+                return null;
+            }
 
-                if ($paths === null) {
-                    return null;
-                }
+            $call = $receiver->name->toString();
+            $name = strtolower($call);
+            // A scope runs on the query, which can hide nothing, but may eager load what a loadMissing() then keeps.
+            $unread = in_array($name, self::CALLBACKS, true) || ($missing
+                ? in_array($name, self::UNREAD_EAGER_LOADS, true) || $this->runsUserCode($model, $call)
+                : $this->declaresOwn($model, $call) && QueryForwarding::namedScope($model, $call) === null);
+            $names = in_array($name, self::HIDES, true) || in_array($name, self::SHOWS_ONLY, true)
+                ? $this->literalNames($receiver, $name === 'makehiddenif' ? 1 : 0)
+                : [];
+            $paths = $missing && in_array($name, self::EAGER_LOADS, true) ? $this->relationPaths($receiver) : [];
 
-                foreach ($paths as $path => $constraints) {
-                    if (array_any($constraints, fn (mixed $constraint): bool => $constraint !== null)) {
-                        $kept[] = $path;
-                    }
+            if ($unread || $names === null || $paths === null) {
+                return null;
+            }
+
+            if (in_array($name, self::HIDES, true)) {
+                array_push($read['hidden'], ...$names);
+            } elseif ($names !== []) {
+                $read['shown'][] = $names;
+            }
+
+            foreach ($paths as $path => $constraints) {
+                if (array_any($constraints, fn (mixed $constraint): bool => $constraint !== null)) {
+                    $read['kept'][] = $path;
                 }
             }
 
             $receiver = $receiver instanceof StaticCall ? null : $receiver->var;
         }
 
-        return $kept;
+        return $read;
+    }
+
+    /**
+     * The names a visibility call is given as literal strings, from the argument at a position on; null for any other.
+     *
+     * @return list<string>|null
+     */
+    private function literalNames(MethodCall|NullsafeMethodCall|StaticCall $call, int $from): ?array
+    {
+        if ($call->isFirstClassCallable()) {
+            return null;
+        }
+
+        $args = array_slice($call->getArgs(), $from);
+        $values = $args !== [] && $args[0]->value instanceof Array_
+            ? array_map(fn (ArrayItem $item): ?Expr => $item->key === null && ! $item->unpack ? $item->value : null, $args[0]->value->items)
+            : array_map(fn (Arg $arg): ?Expr => $arg->unpack || $arg->name !== null ? null : $arg->value, $args);
+        $names = [];
+
+        foreach ($values as $value) {
+            if (! $value instanceof String_) {
+                return null;
+            }
+
+            $names[] = $value->value;
+        }
+
+        return $names === [] ? null : $names;
     }
 
     /**
@@ -519,7 +588,7 @@ final class LoadedRelations
         foreach ($calls as $call) {
             $read = in_array($call, self::KEEPS_ROWS, true) || in_array($call, self::FILTERS_ROWS, true) || $this->filtersByWhere($call);
 
-            if (! $read || $this->runsUserCode($instance, $call)) {
+            if (! $read || $this->runsUserCode($related, $call)) {
                 return null;
             }
         }
@@ -536,11 +605,28 @@ final class LoadedRelations
     }
 
     /**
-     * Whether a call the Eloquent builder does not declare runs a builder macro or a scope, as its __call() does.
+     * Whether a call on a model or its query runs the application's own code: a declared method, a macro or a scope.
+     *
+     * Builder::__call() runs a builder macro or the model's scope for a name the Eloquent builder does not declare.
+     *
+     * @param  class-string<Model>  $model
      */
-    private function runsUserCode(Model $instance, string $call): bool
+    private function runsUserCode(string $model, string $call): bool
     {
-        return ! method_exists(Builder::class, $call) && (Builder::hasGlobalMacro($call) || $instance->hasNamedScope($call));
+        return $this->declaresOwn($model, $call)
+            || $this->declaresOwn(QueryForwarding::builderClass($model), $call)
+            || (! method_exists(Builder::class, $call) && (Builder::hasGlobalMacro($call) || QueryForwarding::namedScope($model, $call) !== null));
+    }
+
+    /**
+     * Whether a class declares a method of this name in the application's code rather than Laravel's.
+     *
+     * @param  class-string  $class
+     */
+    private function declaresOwn(string $class, string $method): bool
+    {
+        return method_exists($class, $method)
+            && ! str_starts_with(new ReflectionMethod($class, $method)->getDeclaringClass()->getName(), 'Illuminate\\');
     }
 
     /**
