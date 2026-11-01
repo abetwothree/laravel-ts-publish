@@ -49,10 +49,13 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
 use ReflectionEnum;
 use ReflectionMethod;
+use ReflectionNamedType;
 use ReflectionProperty;
 use Throwable;
 
@@ -121,6 +124,9 @@ final class ReceiverClassResolver
         Relation::class => 'TRelatedModel',
         Factory::class => 'TModel',
     ];
+
+    /** @var array<string, true> The `model@method` scopes and macros whose returns are being read. */
+    private array $readingQueryCalls = [];
 
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
@@ -215,7 +221,7 @@ final class ReceiverClassResolver
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
                     ? $this->modelFactory($class, $method, $call) ?? $this->forwardedReturn($call, $class, $method, $scope)
-                    : $this->forwardedStaticQuery($class, $method),
+                    : $this->forwardedStaticQuery($call, $class, $method),
                 $receiver->classes,
             ),
             $receiver->shortCircuits,
@@ -947,8 +953,23 @@ final class ReceiverClassResolver
 
         $kept = $this->keptItems($call, $method, $receiver, $shortCircuits);
 
-        if ($kept !== null) {
-            return $kept;
+        return $kept ?? $this->memberCallResult($call, $method, $receiver, $shortCircuits);
+    }
+
+    /**
+     * What a call returns on a resolved receiver where no relation, request or collection rule answers it: a query's
+     * find() of literal keys or its when()/unless(), else the method each class the receiver holds runs.
+     */
+    private function memberCallResult(
+        MethodCall|NullsafeMethodCall|StaticCall $call,
+        string $method,
+        ReceiverType $receiver,
+        bool $shortCircuits,
+    ): ?ReceiverType {
+        $read = $this->foundByKey($call, $method, $receiver, $shortCircuits) ?? $this->conditionalQuery($call, $method, $receiver);
+
+        if ($read !== null) {
+            return $read;
         }
 
         $result = $this->merge(
@@ -961,6 +982,58 @@ final class ReceiverClassResolver
 
         // A fluent call such as fill() hands the same model back, so no row backs it yet either.
         return $result !== null && $receiver->unsaved && $this->returnsItself($receiver, $method) ? $result->asUnsaved() : $result;
+    }
+
+    /**
+     * What a query's own `find()` or `findOrFail()` hands back for literal keys: the model it builds for one key, a
+     * collection of it for a list. Laravel picks by the argument, which the docblock spells as a conditional.
+     */
+    private function foundByKey(
+        MethodCall|NullsafeMethodCall|StaticCall $call,
+        string $method,
+        ReceiverType $receiver,
+        bool $shortCircuits,
+    ): ?ReceiverType {
+        $model = $receiver->relatedModel;
+
+        if ($model === null
+            || ! in_array($method, ['find', 'findOrFail'], true)
+            || ! array_all($receiver->classes, fn (string $class): bool => $this->runsBuilderMethod($class, $method))
+        ) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Builder::class, $method));
+        $id = $arguments->hasUnpack() ? null : $arguments->named('id')?->value;
+
+        return match (true) {
+            $id instanceof Int_, $id instanceof String_ => ReceiverType::of($model, $shortCircuits),
+            $id instanceof Array_ => new ReceiverType([EloquentCollection::class], $shortCircuits, elementModel: $model),
+            default => null,
+        };
+    }
+
+    /**
+     * The query a `when()` or `unless()` on it hands back: Conditionable returns what the callback it runs returns, or
+     * the query where that is null, so it is the same query where each callback passed hands back the one it is given.
+     */
+    private function conditionalQuery(MethodCall|NullsafeMethodCall|StaticCall $call, string $method, ReceiverType $receiver): ?ReceiverType
+    {
+        if (! in_array($method, ['when', 'unless'], true) || $receiver->relatedModel === null || count($receiver->classes) !== 1 || ! $receiver->within([Builder::class])) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Builder::class, $method));
+        $callback = $arguments->named('callback')?->value;
+        $default = $arguments->named('default')?->value;
+
+        // Without a callback when() hands back a proxy that runs the next call conditionally.
+        return ! $arguments->hasUnpack()
+            && $callback !== null
+            && $this->callbackHandsBack($callback, $receiver)
+            && ($default === null || $this->callbackHandsBack($default, $receiver))
+                ? $receiver
+                : null;
     }
 
     /**
@@ -1397,19 +1470,187 @@ final class ReceiverClassResolver
             return new ReceiverType([$class], relatedModel: $queried);
         }
 
-        return $forwarded === null ? null : $this->memberMethod($forwarded, $method, false, $queried);
+        if ($forwarded === null) {
+            return $queried !== null && is_a($class, Builder::class, true) && $this->handsQueryBack($class, $method, $queried)
+                ? new ReceiverType([$class], relatedModel: $queried)
+                : null;
+        }
+
+        return $this->memberMethod($forwarded, $method, false, $queried);
     }
 
     /**
-     * What a static call a concrete model does not declare returns: Model::__callStatic() runs it on a new query.
+     * What a static call Model::__callStatic() runs on a new query of the model returns: what the same call on the
+     * model's `query()` returns.
      */
-    private function forwardedStaticQuery(string $class, string $method): ?ReceiverType
+    private function forwardedStaticQuery(StaticCall $call, string $class, string $method): ?ReceiverType
     {
-        if (! ReceiverType::isConcreteModel($class) || method_exists($class, $method)) {
+        if (! QueryForwarding::queriesStatically($class, $method)) {
             return null;
         }
 
-        return $this->memberMethod(Builder::class, $method, false, $class);
+        $query = $this->returned($class, 'query');
+
+        return $query === null || $query->relatedModel !== $class ? null : $this->memberCallResult($call, $method, $query, false);
+    }
+
+    /**
+     * Whether an Eloquent builder hands itself back for a call it does not declare: one it runs on the base query, a
+     * call a soft-deleting model's scope adds, or a model scope or macro that hands back the query it runs on.
+     *
+     * @param  class-string<Builder<Model>>  $class
+     * @param  class-string<Model>  $queried
+     */
+    private function handsQueryBack(string $class, string $method, string $queried): bool
+    {
+        if (QueryForwarding::forwardsToBaseQuery($class, $method, $queried) || QueryForwarding::isSoftDeleteQuery($queried, $method)) {
+            return true;
+        }
+
+        $key = $queried.'@'.$method;
+
+        // A scope or macro that calls itself reads as one that never hands the query back.
+        if (isset($this->readingQueryCalls[$key])) {
+            return false;
+        }
+
+        $this->readingQueryCalls[$key] = true;
+
+        try {
+            $query = new ReceiverType([$class], relatedModel: $queried);
+            $scope = QueryForwarding::namedScope($queried, $method);
+
+            return match (true) {
+                $scope !== null => $this->scopeHandsBack($scope, $query),
+                Builder::hasGlobalMacro($method) => $this->macroHandsBack(Builder::getGlobalMacro($method), $query),
+                default => false,
+            };
+        } finally {
+            unset($this->readingQueryCalls[$key]);
+        }
+    }
+
+    /**
+     * Whether a model scope hands back the query it is given: Laravel returns the scope's own return, or the query
+     * where that is null, so a `void` scope does, and any other where each value it returns is that query.
+     */
+    private function scopeHandsBack(ReflectionMethod $scope, ReceiverType $query): bool
+    {
+        $declared = $scope->getReturnType();
+
+        if ($declared instanceof ReflectionNamedType && $declared->getName() === 'void') {
+            return true;
+        }
+
+        $context = resolve(MethodLocator::class)->locate($scope->getDeclaringClass()->getName(), $scope->getName());
+        $holder = $scope->getParameters()[0] ?? null;
+
+        return $context !== null && $holder !== null && $this->bodyHandsBack($context->method->stmts ?? [], $holder->getName(), $query, true);
+    }
+
+    /**
+     * Whether a method a custom builder declares with no return type hands the builder back: its body ends by
+     * returning `$this` or a chain of calls on it that each hand it back.
+     *
+     * @param  class-string  $class
+     * @param  class-string<Model>  $queried
+     */
+    private function methodHandsBack(string $class, string $method, string $queried): bool
+    {
+        $key = $class.'@'.$method;
+        $declaring = new ReflectionMethod($class, $method)->getDeclaringClass()->getName();
+        $context = isset($this->readingQueryCalls[$key]) || $declaring === Builder::class
+            ? null
+            : resolve(MethodLocator::class)->locate($class, $method);
+
+        if ($context === null) {
+            return false;
+        }
+
+        $this->readingQueryCalls[$key] = true;
+
+        try {
+            return $this->bodyHandsBack($context->method->stmts ?? [], 'this', new ReceiverType([$class], relatedModel: $queried), false);
+        } finally {
+            unset($this->readingQueryCalls[$key]);
+        }
+    }
+
+    /**
+     * Whether a builder macro hands back the query it runs on: Builder::__call() binds a closure to the query and
+     * returns what it returns, so the closure must end by returning `$this` or a chain of calls that hand it back.
+     */
+    private function macroHandsBack(mixed $macro, ReceiverType $query): bool
+    {
+        $closure = resolve(MacroCallResolver::class)->closureNode($macro);
+
+        return $closure instanceof ArrowFunction
+            ? $this->handsBack($closure->expr, 'this', $query)
+            : $this->bodyHandsBack($closure->stmts ?? [], 'this', $query, false);
+    }
+
+    /**
+     * Whether a callback hands back the query it is given as its first parameter, as when() and unless() call it: it
+     * returns nothing, or returns that parameter or a chain of calls on it that each hand the query back.
+     */
+    private function callbackHandsBack(Expr $callback, ReceiverType $query): bool
+    {
+        if (! $callback instanceof ClosureExpr && ! $callback instanceof ArrowFunction) {
+            return false;
+        }
+
+        $holder = $callback->params[0]->var ?? null;
+        $name = $holder instanceof Variable && is_string($holder->name) ? $holder->name : '';
+
+        return $callback instanceof ArrowFunction
+            ? $this->handsBack($callback->expr, $name, $query)
+            : $this->bodyHandsBack($callback->stmts, $name, $query, true);
+    }
+
+    /**
+     * Whether each value a body returns is the query a variable holds, or a chain of calls on it that hand it back; a
+     * body whose caller reads a null return as the query may return nothing, any other must end by returning one.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    private function bodyHandsBack(array $stmts, string $holder, ReceiverType $query, bool $nullHandsBack): bool
+    {
+        $last = end($stmts);
+
+        return ($nullHandsBack || $last instanceof Return_)
+            && array_all($this->collectReturnExpressions($stmts), fn (Expr $returned): bool => $this->handsBack($returned, $holder, $query));
+    }
+
+    /**
+     * Whether an expression is the query a variable holds, or a chain of calls on it that each hand that query back.
+     */
+    private function handsBack(Expr $expr, string $holder, ReceiverType $query): bool
+    {
+        if ($expr instanceof Ternary) {
+            return $this->handsBack($expr->if ?? $expr->cond, $holder, $query) && $this->handsBack($expr->else, $holder, $query);
+        }
+
+        if (! $expr instanceof MethodCall) {
+            return $expr instanceof Variable && $expr->name === $holder && $holder !== '';
+        }
+
+        if (! $expr->name instanceof Identifier || $expr->isFirstClassCallable() || ! $this->handsBack($expr->var, $holder, $query)) {
+            return false;
+        }
+
+        $result = $this->memberCallResult($expr, $expr->name->toString(), $query, false);
+
+        return $result !== null && $result->classes === $query->classes && $result->relatedModel === $query->relatedModel;
+    }
+
+    /**
+     * Whether Eloquent\Builder's own declaration answers a method on a query or relation, called or forwarded to it.
+     */
+    private function runsBuilderMethod(string $class, string $method): bool
+    {
+        $answering = $this->isCallable($class, $method, false) ? $class : QueryForwarding::forwardedClass($class, $method);
+
+        return $answering !== null && new ReflectionMethod($answering, $method)->getDeclaringClass()->getName() === Builder::class;
     }
 
     /**
@@ -1448,7 +1689,9 @@ final class ReceiverClassResolver
         $declared = $this->declaredReturn($class, $method);
         $ownQuery = $declared !== null && preg_match('/^[^|<>]+<(?:static|\$this)>$/', $declared) === 1;
 
-        return new ReceiverType($classes, relatedModel: $ownQuery ? $class : null);
+        return $ownQuery
+            ? new ReceiverType([QueryForwarding::builderClass($class)], relatedModel: $class)
+            : new ReceiverType($classes);
     }
 
     /**
@@ -1482,7 +1725,13 @@ final class ReceiverClassResolver
 
         $classes = DeclaredClasses::returnClasses($class, $method);
 
-        return $classes === [$class] ? new ReceiverType($classes, relatedModel: $queried) : null;
+        if ($classes === [$class]) {
+            return new ReceiverType($classes, relatedModel: $queried);
+        }
+
+        return $classes === null && is_a($class, Builder::class, true) && $this->methodHandsBack($class, $method, $queried)
+            ? new ReceiverType([$class], relatedModel: $queried)
+            : null;
     }
 
     /**

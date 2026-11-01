@@ -11,9 +11,15 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributedBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Builders\PublishedPostBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OverriddenBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -258,8 +264,88 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->make()'), postScope()))
             ->toEqual(new ReceiverType([Comment::class], unsaved: true))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
-            ->toEqual(ReceiverType::of(Comment::class))
-            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+            ->toEqual(ReceiverType::of(Comment::class));
+    });
+
+    // find() returns a model for one key and a collection for a list, which its docblock spells as a conditional.
+    test('a query\'s find() names its model for one literal key and a collection of it for a list', function (string $php, ?ReceiverType $held) {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope()))->toEqual($held);
+    })->with([
+        'a static' => ['\Workbench\App\Models\Post::find(1)', ReceiverType::of(Post::class)],
+        'a static that throws when it misses' => ['\Workbench\App\Models\Post::findOrFail("1")', ReceiverType::of(Post::class)],
+        'a query' => ['\Workbench\App\Models\Post::query()->latest()->find(1)', ReceiverType::of(Post::class)],
+        'a relation' => ['$this->resource->comments()->find(1)', ReceiverType::of(Comment::class)],
+        'a list of keys' => ['\Workbench\App\Models\Post::find([1, 2])', new ReceiverType([EloquentCollection::class], elementModel: Post::class)],
+        'a key no literal spells' => ['\Workbench\App\Models\Post::find($id)', null],
+    ]);
+
+    // Builder::__call() hands the query back for a call it runs on the base query, and a scope or a when() callback
+    // returns its own return, or the query where that is null; a static the model lacks runs on a new query of it.
+    test('a query hands itself back for a call Eloquent runs on it and returns it', function (string $php, ?string $model) {
+        $held = resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope());
+
+        expect($held)->toEqual($model === null ? null : new ReceiverType([Builder::class], relatedModel: $model));
+    })->with([
+        'a base-query call' => ['\Workbench\App\Models\Post::whereIn("id", [1])', Post::class],
+        'base-query calls in a chain' => ['\Workbench\App\Models\Post::query()->orderBy("id")->limit(1)', Post::class],
+        'a dynamic where' => ['\Workbench\App\Models\Post::whereTitle("x")', Post::class],
+        'a soft-delete call' => ['\Workbench\App\Models\Post::withTrashed()', Post::class],
+        'a void scope' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::titled("x")', ScopedPost::class],
+        'an untyped scope returning its query' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::query()->identified()', ScopedPost::class],
+        'a scope returning a count' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::tallied()', null],
+        'a when() arrow function' => ['\Workbench\App\Models\Post::query()->when(true, fn ($query) => $query->latest())', Post::class],
+        'a when() closure returning nothing' => ['\Workbench\App\Models\Post::when(true, function ($query) { $query->latest(); })', Post::class],
+        'an unless() with a default' => ['\Workbench\App\Models\Post::query()->unless(true, fn ($q) => $q, fn ($q) => $q->oldest())', Post::class],
+        'a when() callback returning a count' => ['\Workbench\App\Models\Post::query()->when(true, fn ($query) => $query->count())', null],
+        'a when() with no callback' => ['\Workbench\App\Models\Post::query()->when(true)', null],
+        'a call no query runs' => ['\Workbench\App\Models\Post::query()->notAQueryMethod()', null],
+        'a through() of a relation' => ['\Workbench\App\Models\Post::throughComments()', null],
+    ]);
+
+    // Model::__callStatic() sends a method the `#[Scope]` attribute marks to query(), whose __call() runs the scope.
+    test('an attribute scope called statically hands the query back', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(
+            receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::recent()'),
+            postScope(),
+        ))->toEqual(new ReceiverType([Builder::class], relatedModel: ScopedPost::class));
+    })->skip(fn (): bool => ! class_exists('Illuminate\Database\Eloquent\Attributes\Scope'), 'The #[Scope] attribute ships in Laravel 12.4.0.');
+
+    // Model::newEloquentBuilder() builds the class an override of it declares, else the one `$builder` names.
+    test('a model\'s query is the custom builder it names, whose own methods hand it back', function (string $model) {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $query = new ReceiverType([PublishedPostBuilder::class], relatedModel: $model);
+
+        expect($resolver->resolve(receiverExpr('\\'.$model.'::query()'), postScope()))->toEqual($query)
+            ->and($resolver->resolve(receiverExpr('\\'.$model.'::titled()->latest()'), postScope()))->toEqual($query);
+    })->with([[BuiltPost::class], [OverriddenBuilderPost::class]]);
+
+    test('a model\'s query is the custom builder its `#[UseEloquentBuilder]` names', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\\'.AttributedBuilderPost::class.'::query()->titled()'), postScope()))
+            ->toEqual(new ReceiverType([PublishedPostBuilder::class], relatedModel: AttributedBuilderPost::class));
+    })->skip(fn (): bool => ! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\UseEloquentBuilder'), 'The attribute ships in Laravel 12.19.0.');
+
+    test('a builder macro hands the query back where its closure returns it', function () {
+        $macros = new ReflectionProperty(Builder::class, 'macros');
+        $saved = $macros->getValue();
+        app()->register(QueryMacroServiceProvider::class, force: true);
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        try {
+            expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->newestFirst()'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::titleLike("x")'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->tally()'), postScope()))->toBeNull();
+        } finally {
+            $macros->setValue(null, $saved);
+        }
+    });
+
+    test('a static a model declares keeps reading as its declaration', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(
+            receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::newest()'),
+            postScope(),
+        ))->toEqual(ReceiverType::of(ScopedPost::class));
     });
 
     // forwardDecoratedCallTo() hands the relation back only for the very builder it holds, which `$this` promises and

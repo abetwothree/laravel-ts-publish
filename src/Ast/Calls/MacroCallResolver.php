@@ -92,6 +92,17 @@ final class MacroCallResolver
     }
 
     /**
+     * The node a closure macro was built from, recording the file that declares it; null for any other macro, or a
+     * closure locate() cannot find.
+     */
+    public function closureNode(mixed $macro): ClosureExpr|ArrowFunction|null
+    {
+        $function = $this->reflect($macro);
+
+        return $function instanceof ReflectionFunction ? $this->locate($function)[0] ?? null : null;
+    }
+
+    /**
      * What the macro a call runs returns: its native return, else its `@return`, else, for a closure, its body read
      * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class the call reaches,
      * runtime class known or assumed, name and model.

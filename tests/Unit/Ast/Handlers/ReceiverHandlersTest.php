@@ -1404,7 +1404,7 @@ describe('getKey()', function () {
         ['\Workbench\App\Models\Post::create([])->getKey()', 'number'],
         ['\Workbench\App\Models\Post::query()->firstOrFail()->getKey()', 'number'],
         ['$this->resource->comments()->create([])->getKey()', 'number'],
-        ['\Workbench\App\Models\Post::find(1)->getKey()', 'unknown'],
+        ['\Workbench\App\Models\Post::find(1)->getKey()', 'number'],
         ['\Workbench\App\Models\Post::query()->get()->getKey()', 'unknown'],
         ['\Workbench\App\Models\Post::query()->getRelated()->getKey()', 'unknown'],
     ]);
