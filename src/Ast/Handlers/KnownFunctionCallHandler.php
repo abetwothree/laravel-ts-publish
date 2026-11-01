@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -113,14 +112,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        $users = resolve(AuthUserResolver::class);
-
-        // `auth()->user()` keeps the default guard's model it always read; the newer spellings take it only while it is
-        // the one model a guard names, as a route's guard middleware may sign in any guard's.
         return match (true) {
-            $this->callsWithoutArguments($expr->var, 'auth') => $this->authMethodResult($expr->name->toString(), $users->model()),
-            $this->isDefaultGuard($expr->var) => $this->authMethodResult($expr->name->toString(), $users->soleModel()),
-            $this->readsSignedInUser($expr) => $this->authMethodResult('user', $users->soleModel()),
+            $this->callsWithoutArguments($expr->var, 'auth') => $this->authMethodResult($expr->name->toString()),
+            $this->isDefaultGuard($expr->var) => $this->authMethodResult($expr->name->toString(), onlyWhileSole: true),
+            $this->readsSignedInUser($expr) => $this->authMethodResult('user', onlyWhileSole: true),
             default => null,
         };
     }

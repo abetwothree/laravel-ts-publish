@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
+use ReflectionClass;
 
 /**
  * Resolves the Eloquent model behind the application's default auth guard.
@@ -43,7 +44,18 @@ final class AuthUserResolver
         $model = $this->model();
         $models = $model === null ? [] : resolve(AnalysisMemo::class)->remember('auth-guard-models', $this->guardModels(...));
 
-        return $models === [$model] ? $model : null;
+        return $model !== null && $models === [self::className($model)] ? $model : null;
+    }
+
+    /**
+     * The class a model name loads, so a leading `\` or a `class_alias()` of it counts as the same model.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Model>
+     */
+    private static function className(string $model): string
+    {
+        return new ReflectionClass($model)->getName();
     }
 
     /**
@@ -60,11 +72,11 @@ final class AuthUserResolver
             $model = $this->guardModel((string) $guard);
 
             if ($model !== null) {
-                $models[$model] = $model;
+                $models[self::className($model)] = true;
             }
         }
 
-        return array_values($models);
+        return array_keys($models);
     }
 
     /**

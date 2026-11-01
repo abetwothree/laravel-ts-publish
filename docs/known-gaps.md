@@ -215,8 +215,11 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
 provider names that one Eloquent model. A route's `auth:admin` middleware makes the admin guard the default for that
 request, so where another guard names another model either user may be sent, and these stay `unknown` until a
 guard-aware reader lands. `$request->user()`, the bare `auth()->user()` and `Auth::user()`, `auth()->id()` and
-`Auth::id()` keep the default guard's model, so behind such a route they publish that model's type. A named guard,
-`auth('admin')` or `Auth::guard('admin')`, publishes `unknown`. Type the key with `#[TsCasts]`.
+`Auth::id()` keep the default guard's model, so behind such a route they publish that model's type. A guard whose
+provider names no Eloquent model is not counted, though it can sign in another kind of user: Sanctum's token guard (its
+tokenable is any `HasApiTokens` model), a `viaRequest()` or `Auth::extend()` guard with no provider, or a `database`
+provider over another table. A named guard, `auth('admin')` or `Auth::guard('admin')`, publishes `unknown`. Type the
+key with `#[TsCasts]`.
 
 ### Some unions of `EnumResource` arms publish the wrong enum shape
 

@@ -476,9 +476,22 @@ it('keeps base\'s auth()->user(), Auth::user() and $request->user() where anothe
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'user'), requestRuleScope(), requestRuleEngine()))->toBe($user)
         ->and((new KnownMethodRuleHandler)->resolve(new MethodCall(new Variable('request'), 'user'), requestRuleScope(), requestRuleEngine()))
         ->toBe($user)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | null', 'optional' => false])
         ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user')))->toBeNull()
         ->and($resolve(new MethodCall(new StaticCall(new Name(Auth::class), 'guard'), 'user')))->toBeNull()
         ->and($resolve(new MethodCall(new MethodCall(new FuncCall(new Name('auth')), 'guard'), 'id')))->toBeNull();
+});
+
+// A name in another case is a spelling the rules never typed, so it reads the model only while no guard names another.
+it('declines auth()->ID() and Auth::User() where another guard names another model', function () {
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+    config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'ID'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'User'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
 });
 
 it('reads the auth methods by name in any case, as PHP calls them', function () {

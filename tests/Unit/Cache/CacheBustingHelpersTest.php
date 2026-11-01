@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Support\ConfigFingerprint;
 use AbeTwoThree\LaravelTsPublish\Support\PackageVersion;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
@@ -66,6 +67,22 @@ it('changes the config fingerprint when only a connection\'s url changes its dri
     config()->set('database.connections.reporting.url', 'pgsql://root@127.0.0.1/forge');
 
     expect(ConfigFingerprint::compute())->not->toBe($mysql);
+});
+
+// The signed-in user types from the default guard's model only while no other guard names another model.
+it('changes the config fingerprint when a guard over another user model is added', function () {
+    $one = ConfigFingerprint::compute();
+
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'admins']);
+    config()->set('auth.providers.admins', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+
+    expect(ConfigFingerprint::compute())->not->toBe($one);
+});
+
+it('keeps the config fingerprint stable over a closure in the auth config', function () {
+    config()->set('auth.guards.api', ['driver' => 'token', 'provider' => fn () => 'users']);
+
+    expect(ConfigFingerprint::compute())->toBe(ConfigFingerprint::compute());
 });
 
 it('does not throw and forces a rebuild when a connection\'s url is malformed', function () {

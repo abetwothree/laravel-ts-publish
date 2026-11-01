@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
@@ -141,7 +140,7 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $expr->isFirstClassCallable()
         ) {
-            $auth = $this->authMethodResult($expr->name->toString(), resolve(AuthUserResolver::class)->model());
+            $auth = $this->authMethodResult($expr->name->toString());
 
             if ($auth !== null) {
                 return $auth;

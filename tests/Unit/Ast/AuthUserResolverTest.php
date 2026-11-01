@@ -57,3 +57,16 @@ it('names no sole model where the default guard names no Eloquent model', functi
 
     expect((new AuthUserResolver)->soleModel())->toBeNull();
 });
+
+it('counts a provider model spelled with a leading backslash or through a class alias as the model it loads', function () {
+    if (! class_exists('AuthUserResolverTestUserAlias', false)) {
+        class_alias(User::class, 'AuthUserResolverTestUserAlias');
+    }
+
+    config()->set('auth.guards.slashed', ['driver' => 'session', 'provider' => 'slashed']);
+    config()->set('auth.providers.slashed', ['driver' => 'eloquent', 'model' => '\\'.User::class]);
+    config()->set('auth.guards.aliased', ['driver' => 'session', 'provider' => 'aliased']);
+    config()->set('auth.providers.aliased', ['driver' => 'eloquent', 'model' => 'AuthUserResolverTestUserAlias']);
+
+    expect((new AuthUserResolver)->soleModel())->toBe(User::class);
+});

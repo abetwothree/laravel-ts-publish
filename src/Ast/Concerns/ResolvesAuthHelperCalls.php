@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
@@ -29,25 +29,31 @@ use PhpParser\Node\Name;
 trait ResolvesAuthHelperCalls
 {
     /**
-     * Type `user()` or `id()` against the resolved auth model, or decline for any other name.
+     * Type `user()` or `id()` against the default guard's model, or decline for any other name.
      *
-     * @param  class-string<Model>|null  $model
+     * A route's guard middleware may sign in another guard's model, so another case or `$onlyWhileSole` reads it only
+     * while it is the sole one; `user` and `id` in lowercase keep it, so `auth()->user()` and `Auth::id()` never turn
+     * `unknown`.
+     *
      * @return ValueExpressionResult|null
      */
-    protected function authMethodResult(string $method, ?string $model): ?array
+    protected function authMethodResult(string $method, bool $onlyWhileSole = false): ?array
     {
-        $method = strtolower($method);
+        $name = strtolower($method);
+
+        if ($name !== 'user' && $name !== 'id') {
+            return null;
+        }
+
+        $users = resolve(AuthUserResolver::class);
+        $model = $onlyWhileSole || $name !== $method ? $users->soleModel() : $users->model();
 
         if ($model === null) {
             return null;
         }
 
-        if ($method === 'user') {
+        if ($name === 'user') {
             return ['type' => class_basename($model).' | null', 'optional' => false, 'modelFqcn' => $model];
-        }
-
-        if ($method !== 'id') {
-            return null;
         }
 
         DependencyRecorder::recordClass($model);
