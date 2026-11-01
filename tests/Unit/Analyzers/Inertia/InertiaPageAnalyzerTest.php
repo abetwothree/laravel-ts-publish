@@ -2756,13 +2756,13 @@ it('publishes a callable or an Inertia prop object a with() or additional() key 
 
     expect(pageData(ResourceExtrasController::class.'@callables')['pageType'])->toBe('Inertia.SharedData & { card: { '
         .'data: CallableWithResource; cb: never[]; prop: never[]; either: number | string | never[]; '
-        .'helper: { cb: never[]; n: number }; listed: (never[] | number)[]; written: never[] }, '
+        .'helper: { cb: never[]; n: number }; listed: (never[] | number)[]; mapped: (number | never[])[]; written: never[] }, '
         .'added: { data: UserCardResource; cb: never[]; prop: never[]; either: number | string | never[]; '
         .'listed: (never[] | number)[] } }')
         ->and($sent(''))->toBe([
             'card' => [
                 'data' => ['id' => $post->id], 'cb' => [], 'prop' => [], 'either' => 'x', 'helper' => ['cb' => [], 'n' => 6],
-                'listed' => [[], 8], 'written' => [],
+                'listed' => [[], 8], 'mapped' => [[]], 'written' => [],
             ],
             'added' => ['data' => ['id' => $author->id, 'name' => 'Ada'], 'cb' => [], 'prop' => [], 'either' => [], 'listed' => [[], 8]],
         ])

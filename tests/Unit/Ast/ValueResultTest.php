@@ -631,6 +631,15 @@ it('reads a value as closed to dotted keys only while its type is the one it was
         ->and(ValueResult::closedToDottedKeys(['type' => '{ data: R }', 'optional' => false]))->toBeFalse();
 });
 
+// A map() element is what its callback returns, and one that returns a callable may hold an object.
+it('reads the value a held callable returns apart from the callable', function () {
+    $number = ['type' => 'number', 'optional' => false];
+
+    expect(ValueResult::calledValue(ValueResult::heldObject(ValueResult::heldObject($number))))
+        ->toBe([...$number, 'mayHoldObject' => ['objectNull' => false, 'plainNull' => false]])
+        ->and(ValueResult::calledValue(ValueResult::heldObject($number)))->toBe($number);
+});
+
 // Inertia resolves a prop object even where a callable it called returns it, and sends a callable there as `{}`; it
 // replaces either object, and a union of them, before a dotted key writes under it.
 it('marks a held object\'s kind, and a callable that may return a callable', function () {

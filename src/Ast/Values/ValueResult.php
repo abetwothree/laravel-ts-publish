@@ -260,6 +260,23 @@ final class ValueResult
     }
 
     /**
+     * The value a call of a held callable returns, apart from the callable: a callable it may return marks it as one
+     * that may hold an object.
+     *
+     * @param  ValueExpressionResult  $callable
+     * @return ValueExpressionResult
+     */
+    public static function calledValue(array $callable): array
+    {
+        $value = self::withoutHeldObject($callable);
+        $nullable = self::mayBeNull($value['type']);
+
+        return ($callable['returnsCallable'] ?? false)
+            ? [...$value, 'mayHoldObject' => ['objectNull' => $nullable, 'plainNull' => $nullable]]
+            : $value;
+    }
+
+    /**
      * Where PHP may hold the value as an object and which arms may be null.
      *
      * Null where no arm is such an object.

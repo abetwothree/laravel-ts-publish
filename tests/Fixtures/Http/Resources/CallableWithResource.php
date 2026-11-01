@@ -11,7 +11,7 @@ use Workbench\App\Models\Post;
 
 /**
  * A post's id, with keys its response's `with()` holds as callables or an Inertia prop object, which `json_encode()`
- * writes as `{}`, directly, in a list, through a helper and on some requests only.
+ * writes as `{}`, directly, in a list, from a `map()` callback, through a helper and on some requests only.
  *
  * @mixin Post
  */
@@ -40,6 +40,7 @@ class CallableWithResource extends JsonResource
             'either' => $request->boolean('shown') ? fn () => 3 : 'x',
             'helper' => $this->helper(),
             'listed' => [fn () => 7, 8],
+            'mapped' => collect([1])->map(fn (int $i) => fn () => $i),
         ];
         $with['written'] = fn () => 4;
 
