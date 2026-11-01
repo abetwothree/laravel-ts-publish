@@ -15,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -145,7 +144,7 @@ final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects
 
         $operand = $engine->resolve($expr->cond);
 
-        return array_diff(TsTypeString::splitTopLevelUnion($operand['type']), ['unknown', 'null', 'never[]']) === []
+        return array_diff(ValueResult::filledArms($operand['type']), ['unknown']) === []
             ? null
             : $operand;
     }

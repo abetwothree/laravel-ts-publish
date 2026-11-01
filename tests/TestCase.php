@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
@@ -74,6 +75,7 @@ class TestCase extends Orchestra
         RoutedControllers::flush();
         CallArguments::reset();
         ValueResult::forgetEnumNames();
+        QueryForwarding::forget();
         CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(

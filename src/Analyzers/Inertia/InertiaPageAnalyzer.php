@@ -73,6 +73,7 @@ use Throwable;
  * }
  * @phpstan-type PagePropEntry = SentEntry
  * @phpstan-type PagePropMap = array<array-key, PagePropEntry>
+ * @phpstan-type RenumberedAnalyses = array{list<ResourceAnalysis>, array<array-key, list<string>>}
  */
 class InertiaPageAnalyzer
 {
@@ -632,7 +633,7 @@ class InertiaPageAnalyzer
      * Laravel's top-level `array_merge()` renumbers each array's int keys from 0; each key it moves warns.
      *
      * @param  list<ResourceAnalysis>  $analyses
-     * @return array{list<ResourceAnalysis>, array<array-key, list<string>>}
+     * @return RenumberedAnalyses
      */
     private function renumberEach(array $analyses, string $subject): array
     {

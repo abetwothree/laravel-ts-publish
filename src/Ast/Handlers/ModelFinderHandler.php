@@ -67,14 +67,17 @@ final class ModelFinderHandler implements ExpressionHandler
     use ResolvesRelatedModelTypes;
     use SpellsKeyedCollections;
 
-    /** Terminals returning one model instance; the first three can miss and so are nullable. */
-    private const SINGLE = [
-        'find', 'first', 'firstWhere',
-        'sole', 'firstOrFail', 'findOrFail', 'firstOrCreate', 'firstOrNew',
-        'create', 'make', 'updateOrCreate',
-    ];
-
+    /** Terminals returning the one row or model they find, which can miss and so are nullable. */
     private const NULLABLE_SINGLE = ['find', 'first', 'firstWhere'];
+
+    /** Terminals returning the one row or model they find, which throw where there is none. */
+    private const SOLE = ['sole', 'firstOrFail'];
+
+    /** Terminals returning one model instance. */
+    private const SINGLE = [
+        ...self::NULLABLE_SINGLE, ...self::SOLE,
+        'findOrFail', 'firstOrCreate', 'firstOrNew', 'create', 'make', 'updateOrCreate',
+    ];
 
     private const MANY = ['all', 'get', 'cursor', 'findMany'];
 
@@ -105,7 +108,11 @@ final class ModelFinderHandler implements ExpressionHandler
         'get' => 'nullableElement', 'all' => 'list', 'values' => 'list', 'count' => 'count', 'pluck' => 'column',
     ];
 
-    /** The terminals and list steps every chain rooted at a model was typed by before its steps were read. */
+    /**
+     * The terminals and list steps every chain rooted at a model was typed by before its steps were read.
+     *
+     * A snapshot, not derived from SINGLE and the others: a terminal added there gains no presumed read.
+     */
     private const BASE_TERMINALS = [
         'find', 'first', 'firstWhere', 'sole', 'firstOrFail', 'findOrFail', 'firstOrCreate', 'firstOrNew', 'create', 'make',
         'updateOrCreate', 'all', 'get', 'paginate', 'simplePaginate', 'cursorPaginate', 'count', 'exists',
@@ -306,7 +313,7 @@ final class ModelFinderHandler implements ExpressionHandler
             ],
             in_array($terminal, ['get', 'cursor'], true) => ['result' => [...$row, 'type' => self::ROW.'[]'], 'element' => $row],
             in_array($terminal, self::NULLABLE_SINGLE, true) => ['result' => [...$row, 'type' => self::ROW.' | null'], 'element' => null],
-            in_array($terminal, ['sole', 'firstOrFail'], true) => ['result' => $row, 'element' => null],
+            in_array($terminal, self::SOLE, true) => ['result' => $row, 'element' => null],
             default => null,
         };
     }

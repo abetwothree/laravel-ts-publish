@@ -33,6 +33,15 @@ final class QueryForwarding
     private static array $softDeleting = [];
 
     /**
+     * Forget each model's builder class and soft deletes, so a run reads every model's declarations afresh.
+     */
+    public static function forget(): void
+    {
+        self::$builderClasses = [];
+        self::$softDeleting = [];
+    }
+
+    /**
      * The class whose declaration answers a method a relation or an Eloquent builder does not declare, or null.
      *
      * A relation's `__call()` forwards the call to its Eloquent builder, and the builder's sends a name its `$passthru`

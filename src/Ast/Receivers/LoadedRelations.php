@@ -46,7 +46,8 @@ use Throwable;
  *
  * @phpstan-type Constraint = list<string>|ClosureExpr|ArrowFunction|false|null
  * @phpstan-type RelationPaths = array<string, list<Constraint>>
- * @phpstan-type RelationTree = array<string, array{constraints: list<Constraint>, children: array<string, mixed>}>
+ * @phpstan-type RelationNode = array{constraints: list<Constraint>, children: array<string, mixed>}
+ * @phpstan-type RelationTree = array<string, RelationNode>
  * @phpstan-type LoadedMembers = array{type: string, models: list<class-string>}
  * @phpstan-type ChainRead = array{kept: list<string>, hidden: list<string>, shown: list<list<string>>}
  *
@@ -458,7 +459,7 @@ final class LoadedRelations
     /**
      * One loaded relation's value as Laravel sends it; null where it is never sent or nothing here admits it.
      *
-     * @param  array{constraints: list<Constraint>, children: array<string, mixed>}  $node
+     * @param  RelationNode  $node
      * @param  list<string>|null  $held
      * @param  list<string>|null  $kept
      * @return LoadedMembers|null
