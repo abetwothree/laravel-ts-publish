@@ -276,6 +276,29 @@ final class ValueResult
     }
 
     /**
+     * A key's value as `json_encode()` writes it and Inertia decodes it: an object PHP holds, a callable or an Inertia
+     * prop, goes as `{}`, then `[]`, on every arm that holds one.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function heldObjectAsDecoded(array $result): array
+    {
+        if ($result['heldObject'] ?? false) {
+            return [
+                'type' => 'never[]',
+                'optional' => false,
+                'heldObject' => true,
+                ...array_intersect_key($result, ['heldProp' => true, 'returnsCallable' => true]),
+            ];
+        }
+
+        return isset($result['mayHoldObject']) && $result['type'] !== 'unknown'
+            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]], countMembers: true)
+            : $result;
+    }
+
+    /**
      * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
      */
     public static function mayBeNull(string $type): bool

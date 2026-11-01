@@ -1663,7 +1663,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $result = $this->analyzeValueExpression($item->value);
+            $result = $this->reading->arrayValue($this->analyzeValueExpression($item->value));
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
                 $analysis->addSignatureEntry($keyName, $result);

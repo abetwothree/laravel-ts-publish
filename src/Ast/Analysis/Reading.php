@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 
@@ -11,6 +13,8 @@ use ReflectionClass;
  * How the values a body returns reach the client, which decides how they are read: as `json_encode()` sends them, with
  * or without a JsonResource's `filter()` over them, as Inertia sends a page's props and shared data, or as Inertia
  * sends them once `filter()` ran.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @internal
  */
@@ -57,6 +61,18 @@ enum Reading
             self::EncodedUnfiltered => self::Encoded,
             default => $this,
         };
+    }
+
+    /**
+     * A value as an array read this way holds it, as a key's or an element's: in a response's extras, an object PHP
+     * holds is the `[]` Inertia decodes `json_encode()`'s `{}` into.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public function arrayValue(array $result): array
+    {
+        return $this === self::EncodedUnfiltered ? ValueResult::heldObjectAsDecoded($result) : $result;
     }
 
     /**

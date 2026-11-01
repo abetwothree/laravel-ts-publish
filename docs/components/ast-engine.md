@@ -165,7 +165,8 @@ ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses
   an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
   of the other is `unknown`. `with()` is read under `EncodedUnfiltered`, and so is `additional()`'s argument, by the
   caller's analyzer (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
-  Inertia sends once it decodes the response. Under that reading `ConditionalMethodHandler` publishes a value the
+  Inertia sends once it decodes the response. So is a callable or an Inertia prop object a key or a list element holds,
+  at any depth (`Reading::arrayValue()`). Under that reading `ConditionalMethodHandler` publishes a value the
   `when()` family leaves out as that `never[]` beside the value, not as an optional key, and a `merge()` or
   `mergeWhen()` merges no key, since Laravel sends each MergeValue whole under a positional key. Once one is sent, a
   body with no live wrap key nests under `data` (`ResourceWrapping::responseKey()`). A JSON:API resource or an

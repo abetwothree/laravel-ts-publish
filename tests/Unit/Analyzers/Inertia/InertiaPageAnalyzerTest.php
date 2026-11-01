@@ -2721,6 +2721,30 @@ it('publishes no key a merge() or mergeWhen() in a with() would merge', function
         ]);
 });
 
+// json_encode() writes a callable or an Inertia prop object as `{}`, and Inertia decodes the response's `{}` as `[]`.
+it('publishes a callable or an Inertia prop object a with() or additional() key holds as the [] it is sent as', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
+    $sent = fn (string $query): array => json_decode(
+        inertiaPropsJson(new ResourceExtrasController()->callables($post), Request::create('/'.$query)),
+        true,
+    );
+
+    expect(pageData(ResourceExtrasController::class.'@callables')['pageType'])->toBe('Inertia.SharedData & { card: { '
+        .'data: CallableWithResource; cb: never[]; prop: never[]; either: number | string | never[]; '
+        .'helper: { cb: never[]; n: number }; listed: (never[] | number)[]; written: never[] }, '
+        .'added: { data: UserCardResource; cb: never[]; prop: never[]; either: number | string | never[]; '
+        .'listed: (never[] | number)[] } }')
+        ->and($sent(''))->toBe([
+            'card' => [
+                'data' => ['id' => $post->id], 'cb' => [], 'prop' => [], 'either' => 'x', 'helper' => ['cb' => [], 'n' => 6],
+                'listed' => [[], 8], 'written' => [],
+            ],
+            'added' => ['data' => ['id' => $author->id, 'name' => 'Ada'], 'cb' => [], 'prop' => [], 'either' => [], 'listed' => [[], 8]],
+        ])
+        ->and($sent('?shown=1')['card']['either'])->toBe([]);
+});
+
 // A declared class the paginator kinds share leaves the kind to the type, and a declared union outranks the body.
 it('reads a paginator\'s kind from a declared class only where the class decides it', function () {
     paginatedPost();

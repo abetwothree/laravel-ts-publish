@@ -228,7 +228,7 @@ final class ValueResolver
         $elements = [];
 
         foreach ($items as $item) {
-            $element = $engine->resolve($item->value);
+            $element = $engine->reading()->arrayValue($engine->resolve($item->value));
 
             if ($item->unpack) {
                 $elementType = $this->spreadListElementType($element['type']);

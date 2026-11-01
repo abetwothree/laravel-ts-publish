@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CallableWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldResourceWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LooseWithResource;
@@ -104,6 +105,21 @@ class ResourceExtrasController
     public function held(Post $post): Response
     {
         return Inertia::render('ResourceExtras/Held', ['card' => HeldResourceWithResource::make($post)]);
+    }
+
+    /** Renders a post whose `with()` holds callables and a prop object, and a card whose `additional()` holds them. */
+    public function callables(Post $post): Response
+    {
+        return Inertia::render('ResourceExtras/Callables', [
+            'card' => CallableWithResource::make($post),
+            'added' => UserCardResource::make($post->author)
+                ->additional([
+                    'cb' => fn () => 1,
+                    'prop' => Inertia::always(2),
+                    'either' => $post->id > 0 ? fn () => 3 : 'x',
+                    'listed' => [fn () => 7, 8],
+                ]),
+        ]);
     }
 
     /** Renders a post whose `with()` holds `merge()` values, alone and beside an `additional()` key. */

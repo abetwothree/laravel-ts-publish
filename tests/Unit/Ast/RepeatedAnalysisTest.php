@@ -117,8 +117,8 @@ test('a resource spread twice inside another analysis is analyzed once', functio
         ->and($lookups['own:'.PostBadgeResource::class.'::toArray'] ?? 0)->toBe(1);
 });
 
-// Inertia calls a callable a body returns, which json_encode() writes as `{}`, and filter() sends a resource around
-// null as null, so the readings never share an answer.
+// Inertia calls a callable a body returns, which json_encode() writes as `{}` and a response's extras decode as `[]`,
+// and filter() sends a resource around null as null, so the readings never share an answer.
 test('a body is analyzed once per reading, apart', function () use ($countLookups) {
     $lookups = $countLookups();
     $engine = resolve(AstEngine::class);
@@ -130,7 +130,7 @@ test('a body is analyzed once per reading, apart', function () use ($countLookup
         $readings,
     );
 
-    expect($types)->toBe([...$once = ['Record<string, never>', 'Record<string, never>', 'string', 'string'], ...$once])
+    expect($types)->toBe([...$once = ['Record<string, never>', 'never[]', 'string', 'string'], ...$once])
         ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(4);
 });
 

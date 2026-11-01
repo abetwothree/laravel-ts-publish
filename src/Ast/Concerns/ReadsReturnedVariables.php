@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
@@ -135,6 +136,11 @@ trait ReadsReturnedVariables
      * The scope the walk reads in, which an arm its join leaves out is recorded against.
      */
     abstract protected function analysisScope(): AnalysisScope;
+
+    /**
+     * How the values the walk reads reach the client, which decides what a key's value sends.
+     */
+    abstract public function reading(): Reading;
 
     /**
      * The string, int or class-constant literal a local holds at a read where the host binds it, so a key write or an
@@ -515,7 +521,7 @@ trait ReadsReturnedVariables
                 $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
-                    $into->addSignatureEntry($keyName, $result);
+                    $into->addSignatureEntry($keyName, $this->reading()->arrayValue($result));
 
                     continue;
                 }
@@ -1517,7 +1523,7 @@ trait ReadsReturnedVariables
         $this->recordWrite($keyName, $isConditional, $heldType, false, ValueResult::heldNullsOf($result), $result['type']);
         $appendedIndex = count($into->properties);
 
-        $into->addProperty($keyName, $result, $isConditional || $result['optional']);
+        $into->addProperty($keyName, $this->reading()->arrayValue($result), $isConditional || $result['optional']);
 
         // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one was
         // absent.
@@ -1562,7 +1568,7 @@ trait ReadsReturnedVariables
 
         // A signature stands for many runtime keys, so the default is one more it may cover.
         if ($signature) {
-            $into->addSignatureEntry($keyName, $default);
+            $into->addSignatureEntry($keyName, $this->reading()->arrayValue($default));
 
             return;
         }
