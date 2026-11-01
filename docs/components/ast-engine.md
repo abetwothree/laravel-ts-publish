@@ -727,8 +727,8 @@ that only assumes its runtime class adds `@assumed` to them and to `macro:`, so 
 shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
 cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
 A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:` and `method-return:` keys, and
-`@filtered` after it under a resource's filter, so a helper read for a page never shares the answer a read for anything
-else gets ([Inertia profile](#inertia-profile)).
+`@filtered` after it under a resource's filter; a response's extras read adds `@unfiltered`. So a helper read for a page
+never shares the answer a read for anything else gets ([Inertia profile](#inertia-profile)).
 
 A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
 computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's
