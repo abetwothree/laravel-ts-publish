@@ -55,10 +55,12 @@ final class CollectionSteps
     private const array ADDS_ITEMS = ['merge', 'concat'];
 
     /**
-     * The REPLACES_ITEMS steps whose items stay the kind they were: lists of the same items, or, for `flatten()`, the
-     * same models, which it never opens.
+     * The REPLACES_ITEMS steps whose items stay the kind they were: lists of the same items, or, for `flatten()`,
+     * `dot()` and `undot()`, the same models, which none of them opens.
      */
-    private const array KEEPS_ITEM_KIND = ['groupBy', 'chunk', 'chunkWhile', 'split', 'splitIn', 'partition', 'sliding', 'flatten'];
+    private const array KEEPS_ITEM_KIND = [
+        'groupBy', 'chunk', 'chunkWhile', 'split', 'splitIn', 'partition', 'sliding', 'flatten', 'dot', 'undot',
+    ];
 
     /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
     private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];

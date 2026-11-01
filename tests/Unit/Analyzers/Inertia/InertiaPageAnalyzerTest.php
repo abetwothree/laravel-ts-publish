@@ -2094,8 +2094,8 @@ it('keeps the root model\'s reading past a model\'s own method whose branches re
         ->and([$sent->eitherFirst->title, $sent->eitherCount, $sent->twoFirst->title, $sent->twoCount])->toBe(['First', 1, 'First', 1]);
 });
 
-// Item-keeping steps keep the models, a list of lists counts, and a step that replaces the items ends the chain. Past
-// a list of lists first() keeps the root model's reading, which the list sent here does not match; as always.
+// Item-keeping steps keep the models, as dot() and undot() do, a list of lists counts, and a step that replaces the
+// items ends the chain. Past a list of lists first() keeps the root model's reading, which the sent list won't match.
 it('types terminals past collection steps that keep, list or replace the models', function () {
     eloquentStaticsPost();
     $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->collectionSteps());
@@ -2103,14 +2103,16 @@ it('types terminals past collection steps that keep, list or replace the models'
     expect(pageData(EloquentStaticsController::class.'@collectionSteps')['pageType'])->toBe('Inertia.SharedData & { '
         .'shuffled: Post | null, merged: Post | null, concatenated: Post | null, lazyFirst: Post | null, lazyAll: Post[], '
         .'lazyCount: number, lazyByIdFirst: Post | null, cursorFiltered: Post | null, groupedCount: number, chunkedCount: number, '
-        .'groupFirstCount: number, groupFirst: Post | null, mapped: unknown, keyedValues: Post[] }')
+        .'groupFirstCount: number, groupFirst: Post | null, mapped: unknown, keyedValues: Post[], dotted: Post | null, '
+        .'dottedAll: Post[], undotted: Post | null }')
         ->and([$sent->shuffled->title, $sent->merged->title, $sent->concatenated->title, $sent->lazyFirst->title])
         ->toBe(['First', 'First', 'First', 'First'])
         ->and([$sent->lazyAll[0]->title, $sent->lazyCount, $sent->lazyByIdFirst->title, $sent->cursorFiltered->title])
         ->toBe(['First', 1, 'First', 'First'])
         ->and([$sent->groupedCount, $sent->chunkedCount, $sent->groupFirstCount, $sent->groupFirst[0]->title])
         ->toBe([1, 1, 1, 'First'])
-        ->and([$sent->mapped, $sent->keyedValues[0]->title])->toBe(['First', 'First']);
+        ->and([$sent->mapped, $sent->keyedValues[0]->title])->toBe(['First', 'First'])
+        ->and([$sent->dotted->title, $sent->dottedAll[0]->title, $sent->undotted->title])->toBe(['First', 'First', 'First']);
 });
 
 // A step the engine cannot read is presumed to hand the query on only for terminals every model-rooted chain was typed

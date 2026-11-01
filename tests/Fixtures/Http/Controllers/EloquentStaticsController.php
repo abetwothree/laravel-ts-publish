@@ -114,6 +114,9 @@ class EloquentStaticsController
             'groupFirst' => Post::all()->groupBy('user_id')->first(),
             'mapped' => Post::all()->map(fn ($post) => $post->title)->first(),
             'keyedValues' => Post::all()->keyBy('id')->values()->all(),
+            'dotted' => Post::all()->dot()->first(),
+            'dottedAll' => Post::all()->dot()->all(),
+            'undotted' => Post::all()->undot()->first(),
         ]);
     }
 

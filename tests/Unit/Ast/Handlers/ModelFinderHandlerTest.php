@@ -132,6 +132,8 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a lazy list\'s count' => ['\\Workbench\\App\\Models\\Post::query()->lazyById()->count()', 'number'],
     'a filtered cursor' => ['\\Workbench\\App\\Models\\Post::cursor()->filter(fn ($post) => true)->first()', 'Post | null'],
     'a list of lists\' count' => ['\\Workbench\\App\\Models\\Post::all()->chunk(2)->count()', 'number'],
+    'a dotted list, whose models dot() never opens' => ['\\Workbench\\App\\Models\\Post::all()->dot()->all()', 'Post[]'],
+    'an undotted list\'s first model' => ['\\Workbench\\App\\Models\\Post::all()->undot()->first()', 'Post | null'],
     'a group of a list of lists' => ['\\Workbench\\App\\Models\\Post::all()->groupBy("user_id")->first()->count()', 'number'],
 ]);
 
