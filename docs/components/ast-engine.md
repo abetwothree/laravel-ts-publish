@@ -103,8 +103,10 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   declines one, so a query chain types as the paginator it returns. It types a terminal against the query
   `ReceiverClassResolver` reads its receiver as, so a step that provably leaves the query ends the chain, and a list
   step reads a list of models that receiver holds. For a terminal every model-rooted chain was once typed by, a
-  user-defined step the engine cannot prove either way reads as handing the query on (`resolvePresumingSteps()`), and
-  a builder a model's own static returns that Eloquent does not define, such as Scout's, reads against the root model.
+  user-defined step the engine cannot prove either way, or a collection step it does not follow that provably keeps
+  the items' kind, reads as handing the query or models on (`resolvePresumingSteps()`), and a builder a model's own
+  static returns that Eloquent does not define, such as Scout's, reads against the root model. `count()` on any
+  `Enumerable` is a number, and a keyed list a step hands on gains the object arm `json_encode()` writes.
   A factory's `make()` or `create()` is a list once a count step or argument sets one, and a model's query with no
   terminal is the builder object Inertia `json_encode()`s.
 - `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on

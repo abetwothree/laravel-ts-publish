@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
@@ -26,6 +27,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Enumerable;
+use Illuminate\Support\LazyCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -55,6 +57,7 @@ final class ModelFinderHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
     use ResolvesRelatedModelTypes;
+    use SpellsKeyedCollections;
 
     /** Terminals returning one model instance; the first three can miss and so are nullable. */
     private const SINGLE = [
@@ -228,6 +231,15 @@ final class ModelFinderHandler implements ExpressionHandler
         $read = match (true) {
             $model !== null => $this->typeFor($terminal, $model, $call, $scope),
             $receiver->within([QueryBuilder::class]) => $this->rowsFor($terminal),
+            $terminal === 'count' && $receiver->within([Enumerable::class]) => [
+                'result' => ['type' => 'number', 'optional' => false],
+                'element' => null,
+            ],
+            // LazyCollection::all() returns its source, which reads as the object, so its items' kind is left unread.
+            $terminal === 'all' && $receiver->elementModel === null && $receiver->within([LazyCollection::class]) => [
+                'result' => ['type' => 'unknown[] | Record<string, unknown>', 'optional' => false],
+                'element' => null,
+            ],
             default => null,
         };
 
@@ -241,15 +253,16 @@ final class ModelFinderHandler implements ExpressionHandler
     /**
      * The receiver a terminal or list step runs on, read strictly, else through presumed user-defined steps.
      *
-     * The presumed read is only for a step every model-rooted chain was once typed by, which keeps that reading where
-     * no body proves or disproves a step.
+     * The presumed read is only for a step every model-rooted chain was once typed by, where the strict read names
+     * nothing or a list whose items it lost, which keeps that reading where no body or collection step proves the kind.
      */
     private function receiverFor(Expr $receiver, string $step, AnalysisScope $scope): ?ReceiverType
     {
         $receivers = resolve(ReceiverClassResolver::class);
+        $held = $receivers->resolve($receiver, $scope);
+        $unread = $held === null || ($held->elementModel === null && $held->relatedModel === null && $held->within([Enumerable::class]));
 
-        return $receivers->resolve($receiver, $scope)
-            ?? (in_array($step, self::BASE_TERMINALS, true) ? $receivers->resolvePresumingSteps($receiver, $scope) : null);
+        return $unread && in_array($step, self::BASE_TERMINALS, true) ? $receivers->resolvePresumingSteps($receiver, $scope) ?? $held : $held;
     }
 
     /**
@@ -452,18 +465,26 @@ final class ModelFinderHandler implements ExpressionHandler
             return null;
         }
 
-        // A keyed list is sent as an object, which a step handing the list on keeps.
-        if (($inner['keyed'] ?? false) && ($kind === 'list' || $kind === 'column') && $step !== 'values') {
-            return null;
-        }
-
         return match ($kind) {
             'nullableElement' => ['result' => [...$element, 'type' => ValueResult::withNullArm($element['type'])], 'element' => null],
             'element' => ['result' => $element, 'element' => null],
-            'list' => $inner,
+            'list' => $step === 'values' ? [...$inner, 'keyed' => false] : $this->keptKeys($inner, $inner['keyed'] ?? false),
             'count' => ['result' => ['type' => 'number', 'optional' => false], 'element' => null],
-            'column' => $this->pluckedColumn($call, $element, $scope),
+            'column' => $this->keptKeys($this->pluckedColumn($call, $element, $scope), $inner['keyed'] ?? false),
         };
+    }
+
+    /**
+     * A list read that keeps its keys, with the object arm json_encode() writes where they are out of 0..n-1.
+     *
+     * @param  ChainRead|null  $read
+     * @return ChainRead|null
+     */
+    private function keptKeys(?array $read, bool $keyed): ?array
+    {
+        return $read === null || ! $keyed
+            ? $read
+            : [...$read, 'result' => [...$read['result'], 'type' => $this->keyedObjectArm($read['result']['type'])], 'keyed' => true];
     }
 
     /**

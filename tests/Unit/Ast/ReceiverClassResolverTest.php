@@ -38,6 +38,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\LazyCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
@@ -389,6 +390,35 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr($listing.'::rowsVia()'), postScope()))->toBeNull()
             ->and($resolver->resolvePresumingSteps(receiverExpr($listing.'::rowsVia()'), postScope()))
             ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class));
+    });
+
+    // Arms naming different things prove nothing, so only a read presuming steps keeps the model's own query, as base.
+    test('a model\'s own method whose branches return different things names a query only where steps are presumed', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $either = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost::either(true)');
+        $two = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost::postsOrComments(true)');
+        $query = new ReceiverType([Builder::class], relatedModel: ListingPost::class);
+
+        expect($resolver->resolve($either, postScope()))->toBeNull()
+            ->and($resolver->resolve($two, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($either, postScope()))->toEqual($query)
+            ->and($resolver->resolvePresumingSteps($two, postScope()))->toEqual($query);
+    });
+
+    // lazy() and cursor() hand on a LazyCollection of the models, which item-keeping steps and same-model merges keep;
+    // filter() keeps the keys it skips past.
+    test('a lazy list and an item-keeping step name the models they hold', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $lazy = new ReceiverType([LazyCollection::class], elementModel: Post::class);
+        $list = new ReceiverType([EloquentCollection::class], elementModel: Post::class);
+
+        expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->lazy()'), postScope()))->toEqual($lazy)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::cursor()->filter(fn ($post) => true)'), postScope()))
+            ->toEqual(new ReceiverType([LazyCollection::class], elementModel: Post::class, keyed: true))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->shuffle()'), postScope()))->toEqual($list)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->merge([])'), postScope()))->toEqual($list)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->concat(\Workbench\App\Models\Comment::all())'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class]));
     });
 
     // Builder::__call() runs a local macro, as a global scope's extend() adds, before it would throw.

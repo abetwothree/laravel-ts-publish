@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\OpaqueQueries;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
 /** A test-only post on the `posts` table whose own methods list posts, find one, or query through a service. */
@@ -46,6 +47,22 @@ class ListingPost extends Post
     public static function newest()
     {
         return static::query()->latest()->first();
+    }
+
+    /**
+     * Every post, or the first one.
+     */
+    public static function either(bool $many)
+    {
+        return $many ? static::query()->get() : static::query()->first();
+    }
+
+    /**
+     * Every post, or every comment.
+     */
+    public static function postsOrComments(bool $posts)
+    {
+        return $posts ? static::query()->get() : Comment::query()->get();
     }
 
     /**

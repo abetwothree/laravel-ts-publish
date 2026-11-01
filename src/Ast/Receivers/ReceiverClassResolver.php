@@ -32,6 +32,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Enumerable;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -1015,7 +1016,12 @@ final class ReceiverClassResolver
             return ReceiverType::of($element, $shortCircuits);
         }
 
-        $kept = $this->keptItems($call, $method, $receiver, $shortCircuits);
+        // An Eloquent collection's toQuery() queries the models it holds.
+        if ($method === 'toQuery' && $receiver->elementModel !== null && $receiver->within([EloquentCollection::class])) {
+            return new ReceiverType([QueryForwarding::builderClass($receiver->elementModel)], $shortCircuits, relatedModel: $receiver->elementModel);
+        }
+
+        $kept = $this->keptItems($call, $method, $receiver, $shortCircuits) ?? $this->addedItems($call, $method, $receiver, $shortCircuits, $scope);
 
         return $kept ?? $this->memberCallResult($call, $method, $receiver, $shortCircuits, $scope);
     }
@@ -1046,8 +1052,43 @@ final class ReceiverClassResolver
             $shortCircuits,
         );
 
+        $result ??= $this->inheritedCollectionStep($method, $receiver, $shortCircuits);
+
+        if ($this->presumesCollectionStep($method, $receiver, $result)) {
+            return new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed);
+        }
+
         // A fluent call such as fill() hands the same model back, so no row backs it yet either.
         return $result !== null && $receiver->unsaved && $this->returnsItself($receiver, $method) ? $result->asUnsaved() : $result;
+    }
+
+    /**
+     * The collection a step whose own docblock only inherits returns, as `Enumerable` declares it: one of the same
+     * class, its items unread, as LazyCollection's `countBy()` and `pad()` hand back.
+     */
+    private function inheritedCollectionStep(string $method, ReceiverType $receiver, bool $shortCircuits): ?ReceiverType
+    {
+        if ($receiver->collectedItems || ! $receiver->within([Enumerable::class]) || ! method_exists(Enumerable::class, $method)) {
+            return null;
+        }
+
+        $declared = $this->declaredReturn(Enumerable::class, $method);
+
+        return $declared !== null && preg_match('/^static(?:<|$)/', $declared) === 1 ? new ReceiverType($receiver->classes, $shortCircuits) : null;
+    }
+
+    /**
+     * Whether a collection step that loses its models' element is presumed to keep them: one the engine does not
+     * follow that provably hands back no other kind of item, read as every model-rooted chain once read it.
+     */
+    private function presumesCollectionStep(string $method, ReceiverType $receiver, ?ReceiverType $result): bool
+    {
+        return $this->presumesSteps
+            && $receiver->elementModel !== null
+            && ! $receiver->collectedItems
+            && $receiver->within([Enumerable::class])
+            && ($result === null || ($result->elementModel === null && $result->within([Enumerable::class])))
+            && ! CollectionSteps::changesItems($method);
     }
 
     /**
@@ -1814,11 +1855,9 @@ final class ReceiverClassResolver
             return $query;
         }
 
-        if ($first !== null && ! array_all($named, fn (ReceiverType $one): bool => $this->isSameReceiver($one, $first))) {
-            return null;
-        }
+        $agree = $first !== null && array_all($named, fn (ReceiverType $one): bool => $this->isSameReceiver($one, $first));
 
-        if (count($named) === count($kinds)) {
+        if ($agree && count($named) === count($kinds)) {
             return $first;
         }
 
@@ -1827,7 +1866,8 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return $this->presumesSteps ? $first ?? $query : null;
+        // Arms naming different things keep the given query, as every model-rooted chain was once read.
+        return $this->presumesSteps ? ($agree ? $first : $query) : null;
     }
 
     /**
@@ -2167,11 +2207,12 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether a docblock return lists a template, as `Collection<int, TModel>` and `Collection<int, static>` do.
+     * Whether a docblock return lists a template, as `Collection<int, TModel>`, `LazyCollection<int, TModel>` and
+     * `Collection<int, static>` do; a trait's template bound by its `@use` tag reads with a leading `\`.
      */
     private function listsTemplate(string $declared, string $template): bool
     {
-        return preg_match('/^\\\\?(?:[\\w\\\\]+\\\\)?Collection<\s*int\s*,\s*'.preg_quote($template, '/').'\s*>$/', $declared) === 1;
+        return preg_match('/^\\\\?(?:[\\w\\\\]+\\\\)?(?:Lazy)?Collection<\s*int\s*,\s*\\\\?'.preg_quote($template, '/').'\s*>$/', $declared) === 1;
     }
 
     /**
@@ -2466,13 +2507,42 @@ final class ReceiverClassResolver
         }
 
         return new ReceiverType(
-            in_array($method, ['collect', 'toBase'], true) ? [Collection::class] : $receiver->classes,
+            match ($method) {
+                'collect', 'toBase' => [Collection::class],
+                'lazy' => [LazyCollection::class],
+                default => $receiver->classes,
+            },
             $shortCircuits,
             elementModel: $receiver->elementModel,
             keyed: $keepsKeys
                 ? $receiver->keyed
                 : CollectionSteps::keyedAfter($call, $method, $receiver->keyed, $receiver->within([EloquentCollection::class])),
         );
+    }
+
+    /**
+     * What a `merge()` or `concat()` of an empty list or a list of the same model holds: the same kind of items.
+     */
+    private function addedItems(
+        MethodCall|NullsafeMethodCall $call,
+        string $method,
+        ReceiverType $receiver,
+        bool $shortCircuits,
+        AnalysisScope $scope,
+    ): ?ReceiverType {
+        $added = count($call->getArgs()) === 1 && ! $call->getArgs()[0]->unpack ? $call->getArgs()[0]->value : null;
+
+        if ($added === null || $receiver->elementModel === null || $receiver->collectedItems || ! CollectionSteps::addsItems($method)
+            || ! $receiver->within([Enumerable::class])
+        ) {
+            return null;
+        }
+
+        $held = $added instanceof Array_ ? null : $this->resolve($added, $scope);
+        $same = ($added instanceof Array_ && $added->items === [])
+            || ($held?->elementModel === $receiver->elementModel && $held->within([Enumerable::class]));
+
+        return $same ? new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed) : null;
     }
 
     /**

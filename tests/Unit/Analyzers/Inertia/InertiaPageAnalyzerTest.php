@@ -2084,6 +2084,35 @@ it('types a terminal past a model\'s own method that returns a list or a model',
         ->toBe(['First', 1, 'First', 'First']);
 });
 
+// Arms naming a list and one model, or two models' lists, keep the root model's reading for a terminal past them.
+it('keeps the root model\'s reading past a model\'s own method whose branches return different things', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->joinedReturns());
+
+    expect(pageData(EloquentStaticsController::class.'@joinedReturns')['pageType'])->toBe('Inertia.SharedData & { '
+        .'eitherFirst: ListingPost | null, eitherCount: number, twoFirst: ListingPost | null, twoCount: number }')
+        ->and([$sent->eitherFirst->title, $sent->eitherCount, $sent->twoFirst->title, $sent->twoCount])->toBe(['First', 1, 'First', 1]);
+});
+
+// Item-keeping steps keep the models, a list of lists counts, and a step that replaces the items ends the chain. Past
+// a list of lists first() keeps the root model's reading, which the list sent here does not match; as always.
+it('types terminals past collection steps that keep, list or replace the models', function () {
+    eloquentStaticsPost();
+    $sent = inertiaProps(new EloquentStaticsController(new QueriedIdStats)->collectionSteps());
+
+    expect(pageData(EloquentStaticsController::class.'@collectionSteps')['pageType'])->toBe('Inertia.SharedData & { '
+        .'shuffled: Post | null, merged: Post | null, concatenated: Post | null, lazyFirst: Post | null, lazyAll: Post[], '
+        .'lazyCount: number, lazyByIdFirst: Post | null, cursorFiltered: Post | null, groupedCount: number, chunkedCount: number, '
+        .'groupFirstCount: number, groupFirst: Post | null, mapped: unknown, keyedValues: Post[] }')
+        ->and([$sent->shuffled->title, $sent->merged->title, $sent->concatenated->title, $sent->lazyFirst->title])
+        ->toBe(['First', 'First', 'First', 'First'])
+        ->and([$sent->lazyAll[0]->title, $sent->lazyCount, $sent->lazyByIdFirst->title, $sent->cursorFiltered->title])
+        ->toBe(['First', 1, 'First', 'First'])
+        ->and([$sent->groupedCount, $sent->chunkedCount, $sent->groupFirstCount, $sent->groupFirst[0]->title])
+        ->toBe([1, 1, 1, 'First'])
+        ->and([$sent->mapped, $sent->keyedValues[0]->title])->toBe(['First', 'First']);
+});
+
 // A step the engine cannot read is presumed to hand the query on only for terminals every model-rooted chain was typed
 // by; a column the step's real query reads may be another model's, as the integer content sent here is.
 it('leaves a column past an unread step unknown', function () {

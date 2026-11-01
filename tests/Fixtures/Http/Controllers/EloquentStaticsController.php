@@ -85,6 +85,38 @@ class EloquentStaticsController
         ]);
     }
 
+    /** Renders terminals past a model's own method that returns a list or one model, or two models' lists. */
+    public function joinedReturns(): Response
+    {
+        return Inertia::render('Eloquent/JoinedReturns', [
+            'eitherFirst' => ListingPost::either(true)->first(),
+            'eitherCount' => ListingPost::either(false)->count(),
+            'twoFirst' => ListingPost::postsOrComments(true)->first(),
+            'twoCount' => ListingPost::postsOrComments(false)->count(),
+        ]);
+    }
+
+    /** Renders terminals past collection steps that keep, list or replace the models a query returned. */
+    public function collectionSteps(): Response
+    {
+        return Inertia::render('Eloquent/CollectionSteps', [
+            'shuffled' => Post::all()->shuffle()->first(),
+            'merged' => Post::all()->merge([])->first(),
+            'concatenated' => Post::all()->concat([])->first(),
+            'lazyFirst' => Post::query()->lazy()->first(),
+            'lazyAll' => Post::query()->lazy()->all(),
+            'lazyCount' => Post::query()->lazy()->count(),
+            'lazyByIdFirst' => Post::query()->lazyById()->first(),
+            'cursorFiltered' => Post::cursor()->filter(fn ($post) => true)->first(),
+            'groupedCount' => Post::all()->groupBy('user_id')->count(),
+            'chunkedCount' => Post::all()->chunk(2)->count(),
+            'groupFirstCount' => Post::all()->groupBy('user_id')->first()->count(),
+            'groupFirst' => Post::all()->groupBy('user_id')->first(),
+            'mapped' => Post::all()->map(fn ($post) => $post->title)->first(),
+            'keyedValues' => Post::all()->keyBy('id')->values()->all(),
+        ]);
+    }
+
     /** Renders column terminals past a scope that hands on another model's query through a service. */
     public function opaqueColumns(): Response
     {

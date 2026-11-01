@@ -124,6 +124,15 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a column of a list a model\'s own method returns' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::popular()->pluck("title")', 'string[]'],
     'a model a model\'s own untyped method returns' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::newest()->count()', 'number'],
     'a keyed list\'s element' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->first()', 'Post | null'],
+    'a keyed list handed on, which json_encode writes as an object' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->all()', 'Post[] | Record<string, Post>'],
+    'a keyed list re-indexed' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->values()->all()', 'Post[]'],
+    'a shuffled list' => ['\\Workbench\\App\\Models\\Post::all()->shuffle()->first()', 'Post | null'],
+    'a list merged with the same model\'s list' => ['\\Workbench\\App\\Models\\Post::all()->merge(\\Workbench\\App\\Models\\Post::all())->first()', 'Post | null'],
+    'a lazy list' => ['\\Workbench\\App\\Models\\Post::query()->lazy()->all()', 'Post[]'],
+    'a lazy list\'s count' => ['\\Workbench\\App\\Models\\Post::query()->lazyById()->count()', 'number'],
+    'a filtered cursor' => ['\\Workbench\\App\\Models\\Post::cursor()->filter(fn ($post) => true)->first()', 'Post | null'],
+    'a list of lists\' count' => ['\\Workbench\\App\\Models\\Post::all()->chunk(2)->count()', 'number'],
+    'a group of a list of lists' => ['\\Workbench\\App\\Models\\Post::all()->groupBy("user_id")->first()->count()', 'number'],
 ]);
 
 it('types a column a query plucks or reads as the model reads it', function (string $php, string $type) {
@@ -164,7 +173,7 @@ it('declines a chain past a step it cannot follow', function (string $php) {
     'a step past a build a variable counts, which a model answers otherwise' => ['\\Workbench\\App\\Models\\User::factory()->count($n)->make()->last()'],
     'a step past a scope that provably returns a count' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ScopedPost::tallied()->get()'],
     'a column past an unread step, whose query may be another model\'s' => ['\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Models\\ListingPost::commentsVia()->pluck("content")'],
-    'a keyed list handed on' => ['\\Workbench\\App\\Models\\Post::all()->keyBy("id")->all()'],
+    'a step that replaces the models' => ['\\Workbench\\App\\Models\\Post::all()->map(fn ($post) => $post->title)->first()'],
 ]);
 
 // R8: a count() or times() step, or a number passed to factory(), makes make() and create() build a list; a count no
