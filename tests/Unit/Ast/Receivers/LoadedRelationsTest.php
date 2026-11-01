@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\LoadedRelations;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LoadedRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArrayShapedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EagerColumnsPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HidingCollectionPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedAuthorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
@@ -25,14 +26,15 @@ use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
 /**
- * What `$model->load(...)`, written as PHP that names Post and ScopedAuthorPost by their short names, adds to a model.
+ * What `$model->load(...)`, written as PHP that names the fixture posts by their short names, adds to a model.
  *
  * @param  class-string<Model>  $model
  * @return array{type: string, models: list<class-string>}|null
  */
 function loadedMembers(string $model, string $call, bool $unsaved = false): ?array
 {
-    $statements = new AstParser()->parseSource('<?php use '.Post::class.'; use '.ScopedAuthorPost::class.'; '.$call.';');
+    $uses = 'use '.Post::class.'; use '.ScopedAuthorPost::class.'; use '.HidingCollectionPost::class.';';
+    $statements = new AstParser()->parseSource('<?php '.$uses.' '.$call.';');
     $statement = end($statements);
     assert($statement instanceof Expression);
     $expr = $statement->expr;
@@ -286,6 +288,23 @@ it('reads a load\'s chain only through the steps it lists', function (string $ca
     ],
     'a collection\'s fetch' => ['Post::all()->first()?->loadMissing("author")', '{ author: User }'],
 ]);
+
+// A step the application's own collection or model declares is its code, whatever the step is named like.
+it('keeps the model\'s type past a step a custom collection or the model overrides', function (string $model, string $call) {
+    expect(loadedMembers($model, $call))->toBeNull();
+})->with([
+    'a collection\'s own first()' => [HidingCollectionPost::class, 'HidingCollectionPost::all()->first()?->load("author")'],
+    'the model\'s own fresh()' => [ScopedAuthorPost::class, 'ScopedAuthorPost::query()->first()?->fresh()?->loadMissing("author")'],
+]);
+
+it('sends what an overridden first() hides and an overridden fresh() picked', function () {
+    $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id]);
+    $first = HidingCollectionPost::all()->first()?->load('author')->toArray() ?? [];
+    $fresh = ScopedAuthorPost::query()->first()?->fresh()?->loadMissing('author')->toArray() ?? [];
+
+    expect([array_key_exists('author', $first), array_keys($fresh['author'] ?? [])])->toBe([false, ['id']]);
+});
 
 it('sends what a scope in the chain eager loaded to loadMissing(), and leaves out what a chain step hides', function () {
     $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

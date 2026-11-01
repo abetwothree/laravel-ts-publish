@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -52,6 +54,7 @@ use Throwable;
  */
 final class LoadedRelations
 {
+    use ResolvesAuthHelperCalls;
     use ResolvesFilteredRelationTypes;
 
     /** The constraint calls that keep each related row and its columns: they order, count, or load more under it. */
@@ -182,7 +185,7 @@ final class LoadedRelations
             $name = $receiver->name->toLowerString();
 
             // Whatever reached the signed-in user is another request's work, as a variable's value is.
-            if ($name === 'user' && $this->holdsModels($receiver, $scope)) {
+            if ($name === 'user' && $this->readsGuardUser($receiver, $scope)) {
                 break;
             }
 
@@ -228,7 +231,7 @@ final class LoadedRelations
         $name = strtolower($call);
         $listed = match (true) {
             ! $missing && QueryForwarding::namedScope($model, $call) !== null => true,
-            $name === 'fresh' => $step->getArgs() === [],
+            $name === 'fresh' => $step->getArgs() === [] && ! $this->runsUserCode($model, $call),
             default => (in_array($name, self::READS_THROUGH, true) || $this->filtersByWhere($call)) && ! $this->runsUserCode($model, $call),
         };
         $receivers = resolve(ReceiverClassResolver::class);
@@ -238,13 +241,26 @@ final class LoadedRelations
     }
 
     /**
-     * Whether a call holds only models, as `auth()->user()` and `$request->user()` hand back the signed-in user.
+     * Whether a `user()` call is Laravel's own guard or request handing back the signed-in user, and holds only models.
+     *
+     * `auth()->user()`, `Auth::user()`, `request()->user()` and a guard's count, as does `$request->user()` where the
+     * request's class runs Laravel's own; a helper of the application's own named `user()` is read as any other step.
      */
-    private function holdsModels(MethodCall|NullsafeMethodCall|StaticCall $call, AnalysisScope $scope): bool
+    private function readsGuardUser(MethodCall|NullsafeMethodCall|StaticCall $call, AnalysisScope $scope): bool
     {
-        $held = resolve(ReceiverClassResolver::class)->resolve($call, $scope);
+        $receivers = resolve(ReceiverClassResolver::class);
+        $held = $receivers->resolve($call, $scope);
 
-        return $held !== null && $held->models() === $held->classes;
+        if ($held === null || $held->models() !== $held->classes) {
+            return false;
+        }
+
+        $request = $call instanceof StaticCall ? null : $receivers->resolve($call->var, $scope);
+
+        return $this->readsSignedInUser($call)
+            || ($request !== null
+                && $request->within([Request::class])
+                && array_all($request->classes, fn (string $class): bool => ! $this->declaresOwn($class, 'user')));
     }
 
     /**
@@ -652,14 +668,18 @@ final class LoadedRelations
     /**
      * Whether a call on a model or its query runs the application's own code: a declared method, a macro or a scope.
      *
-     * Builder::__call() runs a builder macro or the model's scope for a name the Eloquent builder does not declare.
+     * A method counts where the model, its custom builder or its custom collection declares it; Builder::__call() runs
+     * a builder macro or the model's scope for a name the Eloquent builder does not declare.
      *
      * @param  class-string<Model>  $model
      */
     private function runsUserCode(string $model, string $call): bool
     {
+        $collection = resolve(ModelAttributeResolver::class)->getInstance($model)?->newCollection();
+
         return $this->declaresOwn($model, $call)
             || $this->declaresOwn(QueryForwarding::builderClass($model), $call)
+            || ($collection !== null && $this->declaresOwn($collection::class, $call))
             || (! method_exists(Builder::class, $call) && (Builder::hasGlobalMacro($call) || QueryForwarding::namedScope($model, $call) !== null));
     }
 

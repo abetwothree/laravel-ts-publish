@@ -2551,6 +2551,16 @@ it('reads loadMissing() only past a fresh() that loads nothing, and keeps the mo
         ->and([$sent->freshPlain->author->name, $sent->setRelationNull->author])->toBe(['Ada', null]);
 });
 
+// A helper of the controller's own named user() is no guard: what it eager loaded stays loaded for loadMissing().
+it('keeps the model\'s type for loadMissing() on a user a helper of the application\'s own fetches', function () {
+    $request = bindRequestUser(seedLoadedPost()->author);
+    $sent = inertiaProps(new LoadedRelationsController()->helperUser($request), $request);
+
+    expect(pageData(LoadedRelationsController::class.'@helperUser')['pageType'])
+        ->toBe('Inertia.SharedData & { viewer: User | null, requested: User & { posts: Post[] } | null }')
+        ->and([array_keys((array) $sent->viewer->posts[0]), $sent->requested->posts[0]->title])->toBe([['id', 'user_id'], 'First']);
+});
+
 it('aliases the same-named models two loaded relations name', function () {
     app(Router::class)->get('/loaded/{handover}', [LoadedRelationsController::class, 'sameNamed']);
     $sender = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);

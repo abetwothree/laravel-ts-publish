@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
 use Illuminate\Contracts\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Models\Handover;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /** Renders a route-bound model after `load()` or `loadMissing()`, in each argument spelling Laravel reads. */
 class LoadedRelationsController
@@ -164,9 +166,24 @@ class LoadedRelationsController
         ]);
     }
 
+    /** Renders loadMissing() on a user the controller's own helper fetches, and load() on the request's user. */
+    public function helperUser(Request $request): Response
+    {
+        return Inertia::render('Loaded/HelperUser', [
+            'viewer' => $this->user()?->loadMissing('posts'),
+            'requested' => $request->user()?->load('posts'),
+        ]);
+    }
+
     /** Renders a handover with its relations to two models of one name loaded. */
     public function sameNamed(Handover $handover): Response
     {
         return Inertia::render('Loaded/SameNamed', ['loaded' => $handover->load('sender', 'receiver')]);
+    }
+
+    /** The first user, with the key and owner of each post alone. */
+    private function user(): ?User
+    {
+        return User::with('posts:id,user_id')->first();
     }
 }
