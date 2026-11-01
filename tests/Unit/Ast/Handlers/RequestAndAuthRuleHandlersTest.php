@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -439,6 +440,28 @@ it('types Auth::user() and Auth::id()', function () {
         ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
         ->and((new StaticCallHandler)->resolve($call('id'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'number | null', 'optional' => false]);
+});
+
+it('types user() and id() on the default guard guard() names, and request()->user() naming no guard', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $guards = [new StaticCall(new Name(Auth::class), 'guard'), new MethodCall(new FuncCall(new Name('auth')), 'guard')];
+    $user = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect(array_map(fn (Expr $guard): ?array => $resolve(new MethodCall($guard, 'user')), $guards))->toBe([$user, $user])
+        ->and(array_map(fn (Expr $guard): ?array => $resolve(new MethodCall($guard, 'id')), $guards))
+        ->toBe(array_fill(0, 2, ['type' => 'number | null', 'optional' => false]))
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user')))->toBe($user);
+});
+
+it('declines a guard() or request()->user() naming a guard, and guard() on a class other than the Auth facade', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $admin = [new Arg(new String_('admin'))];
+
+    expect($resolve(new MethodCall(new StaticCall(new Name(Auth::class), 'guard', $admin), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new MethodCall(new FuncCall(new Name('auth')), 'guard', $admin), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user', $admin)))->toBeNull()
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request'), [new Arg(new String_('key'))]), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new StaticCall(new Name('Foo\\Auth'), 'guard'), 'user')))->toBeNull();
 });
 
 it('types config() with a literal key from the live configuration value', function (string $key, mixed $value, string $type) {

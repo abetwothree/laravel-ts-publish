@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SignedInUserController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
@@ -42,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignedInViewerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
@@ -58,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\DeclinedGuessMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\FinalTierPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignedInUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NinthTierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\TierPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -66,6 +69,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Workbench\App\Enums\Priority;
@@ -2213,4 +2217,67 @@ it('reads a query chain past its builder in a resolved resource, a helper and a 
         ->and(inertiaProps($controller->resolvedCard($post))->card->firstId)->toBe(1)
         ->and(inertiaProps($controller->helperMeta())->meta->firstId)->toBe(1)
         ->and(inertiaProps($controller->collaboratorStats())->stats->firstId)->toBe(1);
+});
+
+/** Configure an `admin` guard beside the default, sign a user in on the default one, and bind a request reading it. */
+function signInOnDefaultGuard(): User
+{
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'users']);
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    Auth::setUser($user);
+    // Rebinding the request sets its user resolver to the auth guard's, as a request through the kernel has it.
+    app()->instance('request', Request::create('/'));
+
+    return $user;
+}
+
+it('reads the signed-in user through each spelling Laravel offers', function () {
+    signInOnDefaultGuard();
+    $sent = inertiaProps(new SignedInUserController()->show(request()));
+
+    expect(pageData(SignedInUserController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'helper: string | null, facade: string | null, request: string | null, user: User | null, '
+        .'injected: string | null, named: unknown }')
+        ->and([$sent->helper, $sent->facade, $sent->request, $sent->user->name, $sent->injected, $sent->named])
+        ->toBe(['Ada', 'ada@example.com', 'Ada', 'Ada', 'Ada', null]);
+});
+
+it('sends null for each spelling of the signed-in user to a guest', function () {
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'users']);
+    app()->instance('request', Request::create('/'));
+
+    expect((array) inertiaProps(new SignedInUserController()->show(request())))
+        ->toBe(['helper' => null, 'facade' => null, 'request' => null, 'user' => null, 'injected' => null, 'named' => null]);
+});
+
+// A guest's `->name` reads a property of null, which Laravel throws on, so nothing is sent.
+it('reads past the signed-in user without a nullsafe call, through a relation, and through the default guard', function () {
+    $user = signInOnDefaultGuard();
+    Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $sent = inertiaProps(new SignedInUserController()->steps());
+    Auth::forgetUser();
+
+    expect(pageData(SignedInUserController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
+        .'helper: string, facade: string, request: string, posts: number, maybePosts: number | null, '
+        .'guard: string | null, helperGuard: string | null, namedGuard: unknown, namedRequest: unknown }')
+        ->and((array) $sent)->toBe([
+            'helper' => 'Ada', 'facade' => 'ada@example.com', 'request' => 'Ada', 'posts' => 1, 'maybePosts' => 1,
+            'guard' => 'Ada', 'helperGuard' => 'Ada', 'namedGuard' => null, 'namedRequest' => null,
+        ])
+        ->and(fn () => new SignedInUserController()->steps())->toThrow(ErrorException::class);
+});
+
+it('reads the signed-in user alike in shared data and in an API resource', function () {
+    $user = signInOnDefaultGuard();
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    Inertia::share(new MiddlewareWithSignedInUser()->share(request()));
+    $shared = inertiaProps(Inertia::render('Shared', []));
+
+    expect(sharedProps(MiddlewareWithSignedInUser::class))
+        ->toBe(['helper' => 'string | null', 'facade' => 'string | null', 'request' => 'string | null', 'user' => 'User | null'])
+        ->and(resourceProps(SignedInViewerResource::class))
+        ->toBe(['id' => 'number', 'helper' => 'string | null', 'facade' => 'string | null', 'request' => 'string | null'])
+        ->and([$shared->helper, $shared->facade, $shared->request, $shared->user->name])->toBe(['Ada', 'ada@example.com', 'Ada', 'Ada'])
+        ->and((array) sentAsJson(new SignedInViewerResource($post)->resolve(request())))
+        ->toBe(['id' => $post->id, 'helper' => 'Ada', 'facade' => 'ada@example.com', 'request' => 'Ada']);
 });

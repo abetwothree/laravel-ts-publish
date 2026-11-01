@@ -212,6 +212,42 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->toBe([User::class]);
     });
 
+    test('auth(), Auth and request() hold the default guard\'s user as $request->user() does', function () {
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope())?->classes;
+
+        expect(array_map($holds, [
+            'auth()->user()',
+            '\\Illuminate\\Support\\Facades\\Auth::user()',
+            '\\Auth::user()',
+            'request()->user()',
+            '\\Illuminate\\Support\\Facades\\Auth::guard()->user()',
+            'auth()->guard()->user()',
+        ]))->each->toBe([User::class])
+            ->and(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('auth()?->user()'), postScope())?->shortCircuits)->toBeTrue();
+    });
+
+    test('a named guard, a first-class callable and a class other than the Auth facade hold no signed-in user', function () {
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope())?->classes;
+
+        expect(array_map($holds, [
+            "auth('admin')->user()",
+            "\\Illuminate\\Support\\Facades\\Auth::guard('admin')->user()",
+            "auth()->guard('admin')->user()",
+            "request()->user('admin')",
+            'auth()->user(...)',
+            '\\Illuminate\\Support\\Facades\\Config::guard()->user()',
+            '\\Foo\\Auth::user()',
+        ]))->each->toBeNull();
+    });
+
+    test('the signed-in user holds nothing where the default guard\'s provider names no Eloquent model', function () {
+        config()->set('auth.providers.users.model', stdClass::class);
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('auth()->user()'), postScope()))->toBeNull()
+            ->and(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\\Illuminate\\Support\\Facades\\Auth::user()'), postScope()))
+            ->toBeNull();
+    });
+
     test('model and collection variable bindings hold their model and their collection', function () {
         $scope = postScope();
         $scope->varModelBindings['comment'] = Comment::class;

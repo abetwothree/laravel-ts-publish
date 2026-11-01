@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -85,6 +86,7 @@ final class ReceiverClassResolver
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
+    use ResolvesAuthHelperCalls;
 
     /** The class each value helper returns; KnownFunctionCallHandler types the helper by it too. */
     public const array HELPER_CLASSES = [
@@ -235,6 +237,10 @@ final class ReceiverClassResolver
         }
 
         $method = $call->name->toString();
+
+        if ($this->readsSignedInUser($call)) {
+            return $this->signedInUser(false);
+        }
 
         // A named class sendsToSubjectCall() admits is the subject's own name.
         if ($this->sendsToSubjectCall($call, $scope)) {
@@ -947,6 +953,10 @@ final class ReceiverClassResolver
      */
     private function fromReceiverMethodCall(MethodCall|NullsafeMethodCall $call, string $method, AnalysisScope $scope): ?ReceiverType
     {
+        if ($this->readsSignedInUser($call)) {
+            return $this->signedInUser($call instanceof NullsafeMethodCall);
+        }
+
         $receiver = $this->resolve($call->var, $scope);
 
         return $receiver === null
@@ -1004,10 +1014,10 @@ final class ReceiverClassResolver
             return $loaded;
         }
 
-        $authModel = $method === 'user' && $this->holdsOnlyRequests($receiver) ? resolve(AuthUserResolver::class)->model() : null;
+        $user = $method === 'user' && $this->holdsOnlyRequests($receiver) ? $this->signedInUser($shortCircuits) : null;
 
-        if ($authModel !== null) {
-            return ReceiverType::of($authModel, $shortCircuits);
+        if ($user !== null) {
+            return $user;
         }
 
         $element = $this->collectedElement($call, $method, $receiver);
@@ -1261,6 +1271,16 @@ final class ReceiverClassResolver
             $name === 'resolve', $name === 'app' => $this->containerClass($call),
             default => null,
         };
+    }
+
+    /**
+     * The default guard's user, held by `$request->user()` and each spelling readsSignedInUser() admits.
+     */
+    private function signedInUser(bool $shortCircuits): ?ReceiverType
+    {
+        $model = resolve(AuthUserResolver::class)->model();
+
+        return $model === null ? null : ReceiverType::of($model, $shortCircuits);
     }
 
     /**

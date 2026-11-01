@@ -40,8 +40,8 @@ use stdClass;
 
 /**
  * A call to a known PHP built-in function typed from its reflected return type, `array_filter()` and `array_values()`
- * as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`, `now()`,
- * `today()`, `str()`, `url()` and `collect()`.
+ * as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`,
+ * `request()->user()`, `now()`, `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -100,7 +100,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve `auth()->user()` / `auth()->id()`, or decline any other receiver.
+     * Resolve `user()` or `id()` on the default guard, and `request()->user()`, or decline any other receiver.
      *
      * `auth('admin')` names a guard AuthUserResolver does not read, and answering with the default
      * guard's model would be confidently wrong — worse than the `unknown` a decline leaves.
@@ -109,16 +109,17 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      */
     private function authHelperMethodRule(MethodCall $expr): ?array
     {
-        if (! $expr->name instanceof Identifier
-            || ! $expr->var instanceof FuncCall
-            || ! $expr->var->name instanceof Name
-            || $expr->var->name->getLast() !== 'auth'
-            || $expr->var->isFirstClassCallable()
-            || ! CallArguments::for($expr->var, new ReflectionFunction('auth'))->isEmpty()) {
+        if (! $expr->name instanceof Identifier) {
             return null;
         }
 
-        return $this->authMethodResult($expr->name->toString(), resolve(AuthUserResolver::class)->model());
+        $method = match (true) {
+            $this->isDefaultGuard($expr->var) => $expr->name->toString(),
+            $this->readsSignedInUser($expr) => 'user',
+            default => null,
+        };
+
+        return $method === null ? null : $this->authMethodResult($method, resolve(AuthUserResolver::class)->model());
     }
 
     /**

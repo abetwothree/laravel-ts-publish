@@ -31,7 +31,7 @@ class ImportlessCastController
     {
         return Inertia::render('ImportlessCast/Carried', [
             'meta' => ['author' => $post->author],
-            'owner' => request()->user(),
+            'owner' => request()->user('web'),
         ]);
     }
 
@@ -41,7 +41,7 @@ class ImportlessCastController
     {
         return Inertia::render('ImportlessCast/CarriedDirect', [
             'author' => $post->author,
-            'owner' => request()->user(),
+            'owner' => request()->user('web'),
         ]);
     }
 
@@ -66,7 +66,7 @@ class ImportlessCastController
     public function castBesideModel(Post $post): Response
     {
         return Inertia::render('ImportlessCast/CastBesideModel', [
-            'owner' => request()->user(),
+            'owner' => request()->user('web'),
             'author' => $post->author,
         ]);
     }
@@ -79,7 +79,7 @@ class ImportlessCastController
             return Inertia::render('ImportlessCast/ModuleBranch', [...$this->ownerFromModule($post), 'note' => null]);
         }
 
-        return Inertia::render('ImportlessCast/ModelBranch', ['writer' => $post->author, 'note' => request()->user()]);
+        return Inertia::render('ImportlessCast/ModelBranch', ['writer' => $post->author, 'note' => request()->user('web')]);
     }
 
     /** Renders the same two branches as moduleBranchFirst(), the author's first. */
@@ -89,7 +89,7 @@ class ImportlessCastController
         if (! request()->boolean('module')) {
             return Inertia::render('ImportlessCast/ModelBranch', [
                 'writer' => $post->author,
-                'note' => request()->user(),
+                'note' => request()->user('web'),
             ]);
         }
 

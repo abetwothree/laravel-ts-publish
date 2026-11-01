@@ -15,6 +15,6 @@ final class MiddlewareWithCarriedCast extends Middleware
     #[TsCasts(['meta' => 'Record<string, unknown>', 'owner' => 'User | null'])]
     public function share(Request $request): array
     {
-        return ['meta' => ['author' => $request->user()], 'owner' => request()->user()];
+        return ['meta' => ['author' => $request->user()], 'owner' => request()->user('web')];
     }
 }
