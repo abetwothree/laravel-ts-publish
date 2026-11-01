@@ -259,8 +259,9 @@ final class ValueResult
     }
 
     /**
-     * Where PHP may hold the value as an object, whether an object arm may resolve to null and a plain arm may be null;
-     * null where no arm is such an object.
+     * Where PHP may hold the value as an object and which arms may be null.
+     *
+     * Null where no arm is such an object.
      *
      * @param  ValueExpressionResult  $result
      * @return HeldNulls|null

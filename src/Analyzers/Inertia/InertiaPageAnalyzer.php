@@ -773,8 +773,9 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Mark each string-keyed value of the first render call's props literal, where the table reader this analyzer once
-     * held typed a chain rooted at a table, so such a chain nothing else reads keeps that type.
+     * Marks each string-keyed value of the first render call's props literal that a table-rooted chain types.
+     *
+     * Where the table reader this analyzer once held typed such a chain, one nothing else reads keeps that type.
      */
     private function markTableReads(MethodContext $context): void
     {

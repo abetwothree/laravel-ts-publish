@@ -22,8 +22,8 @@ each macro registered on `JsonResource`, by name and by what it runs: an invokab
 method. A closure counts as `Closure`, since its file is already a recorded dependency. Adding, removing or re-pointing
 a macro changes what a bare `$this->m()` in any resource publishes. It also holds each `$wrap` slot the booted app
 changed from its declared default (`ResourceWrapping::runtimeOverrides()`), since a provider's `withoutWrapping()` or
-`wrap()` reshapes every collection and page prop that wraps by it, and the default auth guard and each guard's
-provider model, since they decide the model a read of the signed-in user types as. An entry hits when the fingerprint of its
+`wrap()` reshapes every collection and page prop that wraps by it, and the default auth guard and each guard's provider
+model, since they decide the model a read of the signed-in user types as. An entry hits when the fingerprint of its
 recorded dependencies, plus the class's signature and the published-model signature, matches the stored one and every
 output file it wrote still exists.
 

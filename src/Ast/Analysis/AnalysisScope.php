@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -18,9 +19,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Pagination\CursorPaginator;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
@@ -740,7 +738,7 @@ final class AnalysisScope
     {
         if ($this->subjectReflection->isSubclassOf(ResourceCollection::class)) {
             return new ReceiverType(
-                [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
+                [Collection::class, ...array_values(PaginatorSteps::BUILT)],
                 collectedItems: true,
                 collectedElement: $this->collectedElement,
             );

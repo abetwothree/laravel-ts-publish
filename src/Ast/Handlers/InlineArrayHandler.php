@@ -284,7 +284,8 @@ final class InlineArrayHandler implements ExpressionHandler
 
     /**
      * Whether a keyless item is a `$this->merge()`, `mergeWhen()` or `mergeUnless()` call, whose keys an API resource
-     * merges into the array instead of listing the call's value; where no `filter()` runs, the value is listed.
+     * merges into the array instead of listing the call's value; in a response's `with()` or `additional()`, the value
+     * is listed.
      */
     private function holdsMergeCall(Array_ $array): bool
     {

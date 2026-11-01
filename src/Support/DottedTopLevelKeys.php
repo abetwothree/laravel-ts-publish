@@ -190,7 +190,8 @@ final class DottedTopLevelKeys
     }
 
     /**
-     * Each signature beside a key the writes reached, joined with that key's type wherever it covers the key, as
+     * Joins each signature with the type of every key it covers.
+     *
      * TypeScript checks a key its signature covers (TS2411).
      *
      * @param  array<array-key, TopLevelEntry>  $nested
@@ -267,8 +268,9 @@ final class DottedTopLevelKeys
     }
 
     /**
-     * Copy the value at a path, with everything under it, apart from Inertia's array, for a key that replaces it only
-     * where it is sent; returns the copy's path.
+     * Copies the value at a path, with everything under it, for a key that replaces it only where it is sent.
+     *
+     * Returns the copy's path, apart from Inertia's array.
      */
     private function keepReplaced(string $id): string
     {

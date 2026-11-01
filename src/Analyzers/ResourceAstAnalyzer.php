@@ -766,7 +766,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *
      * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
      * some branches set publishes optional, and a key every branch sets is required. Their types union as a ternary's
-     * arms do, leaving out a side the engine cannot type. Where no `filter()` runs, the call merges no key.
+     * arms do, leaving out a side the engine cannot type.
+     *
+     * In a response's `with()` or `additional()`, the call merges no key.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {

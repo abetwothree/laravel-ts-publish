@@ -716,6 +716,8 @@ holding a paginator bare publishes its items only from a query chain rooted at a
 a query builder variable, `$query->paginate()` publishes `unknown`, and past a setter such as `->withQueryString()`
 `{ onEachSide: number }`, as `Post::query()->paginate()->setCollection(…)` does, since the collection it is given may
 hold anything. Declare the method's return type, build the paginator in the props, or type the prop with `#[TsCasts]`.
+An API resource's own `toArray()` holding a paginator from a builder variable publishes the same: `unknown`, or
+`{ onEachSide: number }` past a setter. Type the paginator through a helper's return type or with `#[TsCasts]`.
 
 ### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
@@ -962,7 +964,8 @@ types, though Inertia merges the page's props over shared data: a page's `'auth'
 data's type and `string` at once. A dotted page key under a shared-data key, `'auth.name'`, is right only while the
 shared value is an array Inertia writes into. The other way round, shared data's own dotted key unpacks after the merge
 and writes into, or over, the page's value: shared `'auth.name'` beside a page's `'auth' => 'x'` sends
-`{ auth: { name: … } }`. Name page keys apart from shared-data keys.
+`{ auth: { name: … } }`. A shared-data index signature that covers a page key's head intersects the same way. Name
+page keys apart from shared-data keys.
 
 ### A dotted key under a key that holds an object publishes the object's keys beside its own
 

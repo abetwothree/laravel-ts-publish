@@ -100,8 +100,9 @@ final class IndexSignatureKey
     }
 
     /**
-     * Whether TypeScript checks a named key against a signature: every key for `string`, a numeric one for `number`,
-     * and one its pattern matches for a template literal.
+     * Whether TypeScript checks a named key against a signature.
+     *
+     * Every key for `string`, a numeric one for `number`, and one its pattern matches for a template literal.
      */
     public static function covers(string $signature, string $key): bool
     {

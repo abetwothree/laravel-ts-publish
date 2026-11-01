@@ -1135,8 +1135,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * What a value leaves a key holding: a plain value, whose null `??=` replaces, or an object on some arm, whose null
-     * is what Inertia resolves it to, beside the plain arms' (ValueResult::heldNullsOf()).
+     * The key paths a value leaves a key holding.
+     *
+     * A plain value's null `??=` replaces; an object on some arm resolves to the null Inertia sends, beside the plain
+     * arms' (ValueResult::heldNullsOf()).
      *
      * @param  HeldNulls|null  $held
      * @return KeyPaths
