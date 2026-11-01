@@ -15,7 +15,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\EmptyReceiverGuess;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceResponseType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResponseExtras;
@@ -23,11 +25,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use Illuminate\Contracts\Pagination\CursorPaginator as CursorPaginatorContract;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Pagination\CursorPaginator;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
-use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -56,6 +62,12 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
+
+    /** The classes whose instances are each one paginator kind, by the `@tolki/types` name TolkiTypes::MAP gives it. */
+    private const array PAGINATOR_KINDS = [LengthAwarePaginatorContract::class, CursorPaginatorContract::class, Paginator::class];
+
+    /** The paginators Laravel builds, which a class one of them extends or implements may hold. */
+    private const array PAGINATORS = [LengthAwarePaginator::class, Paginator::class, CursorPaginator::class];
 
     /**
      * Builds each response from the spelling this handler reads.
@@ -103,7 +115,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $className = $this->scopeClassName($expr->class, $scope);
 
         if (is_a($className, ResourceCollection::class, true)) {
-            return $this->namedCollection($expr, $className, $engine, $added);
+            return $this->namedCollection($expr, $className, $scope, $engine, $added);
         }
 
         return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine, $added) : null;
@@ -133,7 +145,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         // make() is `new static(...$parameters)`, so it is sent exactly as the `new` it spells.
         if (is_a($className, ResourceCollection::class, true)) {
-            return $this->namedCollection($expr, $className, $engine, $added);
+            return $this->namedCollection($expr, $className, $scope, $engine, $added);
         }
 
         return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine, $added) : null;
@@ -241,7 +253,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
                     ?? $this->unnamedEnumListResponse(),
                 $this->collectsAnonymously($explicit) => $this->responses->anonymousCollection(
                     $explicit,
-                    $this->paginatorsOf($engine->resolve($call->var)['type']),
+                    $this->payloadPaginators($call->var, $scope, $engine),
                     $added,
                 ),
                 default => null,
@@ -249,7 +261,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         $receiver = $engine->resolve($call->var);
-        $paginators = $this->paginatorsOf($receiver['type']);
+        $paginators = $this->payloadPaginators($call->var, $scope, $engine);
         $guessed = $this->guessedCollection($call->var, $receiver, $scope);
 
         if ($guessed === null) {
@@ -317,7 +329,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         $result = $this->collectsAnonymously($className) ? $this->responses->anonymousCollection(
             $className,
-            $this->payloadPaginators($this->resourcePayloadArguments($expr, $className)->at(0), $engine),
+            $this->payloadPaginators($this->resourcePayloadArguments($expr, $className)->at(0)?->value, $scope, $engine),
             $added,
         ) : null;
 
@@ -365,11 +377,16 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      * @param  class-string<ResourceCollection>  $className
      * @return ValueExpressionResult|null
      */
-    private function namedCollection(StaticCall|New_ $call, string $className, ExpressionEngine $engine, ?ResponseExtras $added): ?array
-    {
+    private function namedCollection(
+        StaticCall|New_ $call,
+        string $className,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?ResponseExtras $added,
+    ): ?array {
         $result = $this->responses->namedCollection(
             $className,
-            $this->payloadPaginators($this->resourcePayloadArguments($call, $className)->at(0), $engine),
+            $this->payloadPaginators($this->resourcePayloadArguments($call, $className)->at(0)?->value, $scope, $engine),
             $added,
         );
 
@@ -436,13 +453,53 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * The `@tolki/types` paginator each arm of the payload argument's type names, see paginatorsOf().
+     * The `@tolki/types` paginator kinds a collection's payload may hold, with `null` for an unpaginated one: from the
+     * classes the receiver resolver names, else the payload's type, else the paginator a paginator's step is taken on.
      *
      * @return PayloadPaginators
      */
-    private function payloadPaginators(?Arg $payload, ExpressionEngine $engine): array
+    private function payloadPaginators(?Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return $payload === null ? [null] : $this->paginatorsOf($engine->resolve($payload->value)['type']);
+        if ($payload === null) {
+            return [null];
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->resolve($payload, $scope);
+        $kinds = $held === null ? null : $this->heldPaginators($held);
+
+        if ($kinds !== null) {
+            return $kinds;
+        }
+
+        $typed = $this->paginatorsOf($engine->resolve($payload)['type']);
+        // A setter on a paginator the resolver reads only by a contract that lacks it hands back that same paginator.
+        $page = $held === null && $typed === [null] ? PaginatorSteps::steppedFrom($payload) : null;
+
+        return $page === null ? $typed : $this->payloadPaginators($page, $scope, $engine);
+    }
+
+    /**
+     * The paginator kind of each class a payload may be an instance of, in order and once each, `null` for one that is
+     * no paginator; null where a class may or may not be one, or either of two kinds, as the `Paginator` contract may.
+     *
+     * @return PayloadPaginators|null
+     */
+    private function heldPaginators(ReceiverType $held): ?array
+    {
+        $paginators = [];
+
+        foreach ($held->classes as $class) {
+            $paginator = array_find(self::PAGINATOR_KINDS, static fn (string $paginator): bool => is_a($class, $paginator, true));
+
+            if ($paginator === null && array_any(self::PAGINATORS, static fn (string $built): bool => is_a($built, $class, true))) {
+                return null;
+            }
+
+            $kind = $paginator === null ? null : TolkiTypes::MAP[$paginator];
+            $paginators[$kind ?? ''] = $kind;
+        }
+
+        return array_values($paginators);
     }
 
     /**

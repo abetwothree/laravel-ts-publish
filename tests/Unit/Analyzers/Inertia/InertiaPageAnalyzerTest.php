@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LoadedRelationsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\NullableEnumResourceController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PaginatorSourcesController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PropsLocalController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedApiCardController;
@@ -50,6 +51,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ViewerCardResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostPages;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
@@ -2576,4 +2578,51 @@ it('aliases the same-named models two loaded relations name', function () {
             '../../../../../../workbench/crm/models' => ['User as CrmUser'],
         ])
         ->and([$sent->sender->name, $sent->receiver->name])->toBe(['Ada', 'Grace']);
+});
+
+/** Seed one post with no comment, which PostResource would read through a CommentResource that throws on it. */
+function paginatedPost(): Post
+{
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+
+    return Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+}
+
+it('reads a paginator\'s kind from a builder variable, a helper or a service', function () {
+    paginatedPost();
+    $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->index());
+
+    expect(pageData(PaginatorSourcesController::class.'@index')['pageType'])->toBe('Inertia.SharedData & { '
+        .'fromVariable: JsonResourcePaginator<PostResource>, fromHelper: JsonResourcePaginator<PostResource>, '
+        .'fromService: JsonResourcePaginator<PostResource> }')
+        ->and([$sent->fromVariable, $sent->fromHelper, $sent->fromService])->each->toHaveProperties(['data', 'links', 'meta'])
+        ->and([$sent->fromVariable->meta->total, $sent->fromService->data[0]->title])->toBe([1, 'First']);
+});
+
+// A paginator's own setters hand back the same paginator, which a contract the resolver reads it by may not declare.
+it('reads each paginator kind, and its kind past the paginator\'s own steps', function () {
+    paginatedPost();
+    $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->kinds());
+
+    expect(pageData(PaginatorSourcesController::class.'@kinds')['pageType'])->toBe('Inertia.SharedData & { '
+        .'simpleVariable: JsonResourceSimplePaginator<PostResource>, cursorVariable: JsonResourceCursorPaginator<PostResource>, '
+        .'simpleService: JsonResourceSimplePaginator<PostResource>, cursorService: JsonResourceCursorPaginator<PostResource>, '
+        .'steppedVariable: JsonResourcePaginator<PostResource>, steppedService: JsonResourcePaginator<PostResource> }')
+        ->and((array) $sent)->each->toHaveProperties(['data', 'links', 'meta'])
+        ->and([$sent->simpleVariable->meta->per_page, $sent->cursorService->meta->next_cursor, $sent->steppedService->meta->total])
+        ->toBe([15, null, 1]);
+});
+
+// T16-6: a setter keeps the paginator and its items; through() maps them, `unknown` where its callable is not read.
+it('types a paginator past its own steps as the same paginator', function () {
+    paginatedPost();
+    $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->steps());
+
+    expect(pageData(PaginatorSourcesController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
+        .'withQueryString: LengthAwarePaginator<Post>, onEachSide: LengthAwarePaginator<Post>, fragment: SimplePaginator<Post>, '
+        .'base: CursorPaginator<Record<string, unknown>>, titles: LengthAwarePaginator<string>, unread: LengthAwarePaginator<unknown> }')
+        ->and([$sent->withQueryString->data[0]->title, $sent->onEachSide->total, $sent->fragment->data[0]->title])
+        ->toBe(['First', 1, 'First'])
+        ->and([$sent->fragment->next_page_url, $sent->base->data[0]->title, $sent->titles->data, $sent->unread->data])
+        ->toBe([null, 'First', ['First'], ['First']]);
 });

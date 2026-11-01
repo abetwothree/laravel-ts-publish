@@ -108,7 +108,8 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   static returns that Eloquent does not define, such as Scout's, reads against the root model. `count()` on any
   `Enumerable` is a number, and a keyed list a step hands on gains the object arm `json_encode()` writes.
   A factory's `make()` or `create()` is a list once a count step or argument sets one, and a model's query with no
-  terminal is the builder object Inertia `json_encode()`s.
+  terminal is the builder object Inertia `json_encode()`s. A paginator's own setter, such as `withQueryString()`, keeps
+  the paginator it is called on, and `through()` is that paginator over what its callback returns ([`PaginatorSteps`]).
 - `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
   either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
   `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
@@ -938,6 +939,7 @@ These pages cover the engine's neighbors:
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
+[`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php

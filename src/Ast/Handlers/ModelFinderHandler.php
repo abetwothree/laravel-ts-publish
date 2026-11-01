@@ -7,12 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -26,6 +28,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Enumerable;
 use Illuminate\Support\LazyCollection;
 use PhpParser\Node\Expr;
@@ -44,18 +47,23 @@ use ReflectionMethod;
  * Eloquent query chains rooted at a model, typed from the terminal call on the query each step before it hands on.
  *
  * `Post::findOrFail($id)`, `Post::query()->latest()->get()`, `Team::query()->paginate(10)`, a few collection steps on
- * a list such a terminal returns, a model factory's `make()` or `create()`, and a query sent as it is.
+ * a list such a terminal returns, a paginator's own steps, a model factory's `make()` or `create()`, and a query sent
+ * as it is.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type ChainElement ValueExpressionResult|null
- * @phpstan-type ChainRead array{result: ValueExpressionResult, element: ChainElement, maybeOne?: bool, keyed?: bool}
+ * @phpstan-type ChainPage array{terminal: string, item: ValueExpressionResult, model: class-string<Model>|null}
+ * @phpstan-type ChainRead array{
+ *     result: ValueExpressionResult, element: ChainElement, maybeOne?: bool, keyed?: bool, page?: ChainPage,
+ * }
  *
  * @internal
  */
 final class ModelFinderHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use BindsMapCallbacks;
     use ResolvesRelatedModelTypes;
     use SpellsKeyedCollections;
 
@@ -134,9 +142,11 @@ final class ModelFinderHandler implements ExpressionHandler
             return null;
         }
 
-        return $this->isClaimed($this->nameOf($call), $call)
-            ? $this->read($call, $scope)['result'] ?? null
-            : $this->builderObject($call, $scope);
+        if ($this->isClaimed($this->nameOf($call), $call)) {
+            return $this->read($call, $scope, $engine)['result'] ?? null;
+        }
+
+        return $this->paginatorStep($call, $scope, $engine)['result'] ?? $this->builderObject($call, $scope);
     }
 
     /**
@@ -186,7 +196,7 @@ final class ModelFinderHandler implements ExpressionHandler
      *
      * @return ChainRead|null
      */
-    private function read(Expr $expr, AnalysisScope $scope): ?array
+    private function read(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $call = $this->namedCall($expr);
 
@@ -207,7 +217,8 @@ final class ModelFinderHandler implements ExpressionHandler
 
         return $this->factoryBuild($call, $name)
             ?? $this->queryTerminal($call, $name, $scope)
-            ?? $this->listStep($call, $name, $scope)
+            ?? $this->listStep($call, $name, $scope, $engine)
+            ?? $this->paginatorStep($call, $scope, $engine)
             ?? $this->foreignBuilderTerminal($call, $name, $scope);
     }
 
@@ -295,7 +306,11 @@ final class ModelFinderHandler implements ExpressionHandler
 
         return match (true) {
             isset(self::SCALARS[$terminal]) => ['result' => ['type' => self::SCALARS[$terminal], 'optional' => false], 'element' => null],
-            isset(self::PAGINATORS[$terminal]) => ['result' => $this->paginatorOver($terminal, self::ROW), 'element' => null],
+            isset(self::PAGINATORS[$terminal]) => [
+                'result' => $this->paginatorOver($terminal, $row),
+                'element' => null,
+                'page' => ['terminal' => $terminal, 'item' => $row, 'model' => null],
+            ],
             in_array($terminal, ['get', 'cursor'], true) => ['result' => [...$row, 'type' => self::ROW.'[]'], 'element' => $row],
             in_array($terminal, self::NULLABLE_SINGLE, true) => ['result' => [...$row, 'type' => self::ROW.' | null'], 'element' => null],
             in_array($terminal, ['sole', 'firstOrFail'], true) => ['result' => $row, 'element' => null],
@@ -449,10 +464,10 @@ final class ModelFinderHandler implements ExpressionHandler
      *
      * @return ChainRead|null
      */
-    private function listStep(MethodCall $call, string $step, AnalysisScope $scope): ?array
+    private function listStep(MethodCall $call, string $step, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $kind = self::LIST_STEPS[$step] ?? null;
-        $inner = $kind === null ? null : $this->read($call->var, $scope) ?? $this->heldList($call->var, $step, $scope);
+        $inner = $kind === null ? null : $this->read($call->var, $scope, $engine) ?? $this->heldList($call->var, $step, $scope);
         $element = $inner['element'] ?? null;
 
         if ($kind === null || $inner === null || $element === null || ! $this->takesStepArguments($call, $step, $element)) {
@@ -539,12 +554,16 @@ final class ModelFinderHandler implements ExpressionHandler
         }
 
         $basename = class_basename($modelFqcn);
+        $model = [...ValueResult::unknown(), 'type' => $basename, 'modelFqcn' => $modelFqcn];
 
         if (isset(self::PAGINATORS[$terminal])) {
-            return ['result' => $this->paginatorOver($terminal, $basename, $modelFqcn), 'element' => null];
+            return [
+                'result' => $this->paginatorOver($terminal, $model),
+                'element' => null,
+                'page' => ['terminal' => $terminal, 'item' => $model, 'model' => $modelFqcn],
+            ];
         }
 
-        $model = [...ValueResult::unknown(), 'type' => $basename, 'modelFqcn' => $modelFqcn];
         $key = $this->findsKeys($terminal) ? $call->getArgs()[0]->value ?? null : null;
 
         // Laravel finds a collection for a list of keys, which the docblock spells as a conditional on the argument.
@@ -559,19 +578,53 @@ final class ModelFinderHandler implements ExpressionHandler
     }
 
     /**
-     * The `@tolki/types` paginator a paginating terminal returns, over a model or a base query's rows.
+     * The `@tolki/types` paginator a paginating terminal returns, over what each item publishes as: a model, a base
+     * query's row, or what `through()` maps one to.
      *
-     * @param  class-string<Model>|null  $modelFqcn
+     * @param  ValueExpressionResult  $item
      * @return ValueExpressionResult
      */
-    private function paginatorOver(string $terminal, string $element, ?string $modelFqcn = null): array
+    private function paginatorOver(string $terminal, array $item): array
     {
         $tolkiName = TolkiTypes::MAP[self::PAGINATORS[$terminal]];
-        $paginator = [...ValueResult::unknown(), 'type' => $tolkiName.'<'.$element.'>'];
+        $imports = $item['customImports'] ?? [];
+        $imports[TolkiTypes::MODULE] = array_values(array_unique([...$imports[TolkiTypes::MODULE] ?? [], $tolkiName]));
+
+        return [...$item, 'type' => $tolkiName.'<'.$item['type'].'>', 'optional' => false, 'customImports' => $imports];
+    }
+
+    /**
+     * A paginator's own step on a paginator a terminal returned: the same read, or for `through()`, the same paginator
+     * over what its callback maps each item to, `unknown` where the callback cannot be read.
+     *
+     * @return ChainRead|null
+     */
+    private function paginatorStep(StaticCall|MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $maps = $call instanceof MethodCall && PaginatorSteps::mapsItems($call);
+
+        if (! $call instanceof MethodCall || (! $maps && ! PaginatorSteps::keepsPage($call))) {
+            return null;
+        }
+
+        $inner = $this->read($call->var, $scope, $engine);
+        $page = $inner['page'] ?? null;
+
+        if ($inner === null || $page === null) {
+            return null;
+        }
+
+        if (! $maps) {
+            return $inner;
+        }
+
+        $callback = CallArguments::for($call, new ReflectionMethod(AbstractPaginator::class, 'through'))->named('callback')?->value;
+        $item = $this->resolveMapCallback($callback, $page['model'], $page['item'], false, $scope, $engine) ?? ValueResult::unknown();
 
         return [
-            ...($modelFqcn === null ? $paginator : [...$paginator, 'modelFqcn' => $modelFqcn]),
-            'customImports' => [TolkiTypes::MODULE => [$tolkiName]],
+            'result' => $this->paginatorOver($page['terminal'], $item),
+            'element' => null,
+            'page' => ['terminal' => $page['terminal'], 'item' => $item, 'model' => null],
         ];
     }
 

@@ -632,11 +632,13 @@ publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, wit
 sends where no `filter()` runs; the route file imports the const with `import type`.
 `toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items, the argument of
 a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
-its nested value, `EnumResource[]`, names a type no run publishes. Over a paginator, a collection's own body sits
-beside the pagination blocks of the payload's kind, and an anonymous or flat one is that kind's paginator response,
-such as `JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per
-kind. A payload of several kinds, or sometimes none, publishes each. A JSON:API resource is its document
-([above](#jsonapi-resources)), and its collection the bare list once `withoutWrapping()` empties the shared key.
+its nested value, `EnumResource[]`, names a type no run publishes. A payload's paginator kind is read from the classes
+`ReceiverClassResolver` names it as, else from its type, else from the paginator a setter such as `withQueryString()`
+is called on. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and an
+anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
+`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes none,
+publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare list once
+`withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 
