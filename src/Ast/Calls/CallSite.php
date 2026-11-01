@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -45,6 +47,14 @@ final readonly class CallSite
     public static function signature(array $passed): string
     {
         return $passed === [] ? '' : '@args:'.hash('xxh128', serialize($passed));
+    }
+
+    /**
+     * How what the caller reads reaches the client, and so what the call returns there, which the body it runs takes.
+     */
+    public function reading(): Reading
+    {
+        return $this->engine->reading()->calledFrom($this->scope);
     }
 
     /**
@@ -137,6 +147,6 @@ final readonly class CallSite
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->engine->invokesCallables() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
+        return $this->reading()->encodes() && HeldCallables::mayHold($argument, $this->scope, $valueRead);
     }
 }

@@ -201,3 +201,19 @@ it('keeps a plain read of first()\'s model and a non-null parameter holding it n
         ->and(fn () => $uncommented->response(request()))->toThrow(ErrorException::class)
         ->and(fn () => new ReflectionMethod($uncommented, 'comment')->invoke($uncommented, null))->toThrow(TypeError::class);
 });
+
+// A run reads each model's declarations afresh, as BaseRunner::resetRunState() forgets what an earlier run read.
+it('reads a model\'s builder class and soft deletes again once forgotten', function () {
+    $answers = fn (): array => [QueryForwarding::builderClass(Post::class), QueryForwarding::isSoftDeleteQuery(Post::class, 'withTrashed')];
+    $read = $answers();
+    $cache = new ReflectionClass(QueryForwarding::class);
+    $cache->setStaticPropertyValue('builderClasses', [Post::class => QueryBuilder::class]);
+    $cache->setStaticPropertyValue('softDeleting', [Post::class => ! $read[1]]);
+    $poisoned = $answers();
+
+    QueryForwarding::forget();
+
+    expect($poisoned)->toBe([QueryBuilder::class, ! $read[1]])
+        ->and($answers())->toBe($read)
+        ->and($read[0])->toBe(Builder::class);
+});

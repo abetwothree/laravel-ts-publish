@@ -15,6 +15,7 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 | [`CastChannels`](../../src/Ast/Composition/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
 | [`ResourceTransformer::collectCastsInForce()`](../../src/Transformers/ResourceTransformer.php) | Picks the cast in force per key from the method, model and resource casts. |
 | [`JsEmitter::castTargets()`](../../src/Support/JsEmitter.php) | Decides which published key a cast key retypes. |
+| [`ParentCallChain`](../../src/Ast/Parsing/ParentCallChain.php) | Finds each `share()` whose keys shared data returns, through `parent::share()`. |
 
 ## Sources and precedence
 
@@ -25,11 +26,15 @@ Each row lists a publisher's sources, lowest first. A later source wins the key,
 | Model | class < `$casts` < `casts()` |
 | API resource | its model's casts < the resource's own: a spread helper's method < `toArray()` < class < `$casts` < `casts()` |
 | Broadcast event | `broadcastWith()` < class < `$casts` < `casts()`; a class-level cast on a key the payload lacks adds nothing |
-| Inertia shared data | inference < `@return` docblock < the middleware class < `share()` |
+| Inertia shared data | inference < `@return` docblock < each class from the deepest `share()` it reads to the middleware: a class < its own `share()` |
 | Inertia page | inference < the action's `#[TsCasts]` |
 | Model metadata `provide()` | inference < docblock < `#[TsCasts]` |
 
 An API resource's method casts outrank its model's, so `modelCastsOver()` skips every key a method casts.
+
+Shared data reads a parent's `share()` when the middleware inherits it or returns its keys through `parent::share()`.
+PHP never hands a class its parent's attributes, so each class on that chain is a location of its own, and a parent
+whose `share()` the middleware never reads, or nests under a key, adds no cast.
 
 `optional` follows the same order on every publisher: a cast's own flag wins, even over shared data's `key?`, and a cast
 that says nothing about it keeps the next source's flag (an earlier location's, a resource's model cast, shared data's
@@ -56,7 +61,9 @@ A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merg
 merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method
 cast does. At the top level of an Inertia page, shared data or an event payload, Laravel's own `array_merge()`
 renumbers int keys from 0, so a numeric cast key there publishes on the key Laravel renumbers it to, with a warning
-([`TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php)).
+([`TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php)). A page renumbers each props array it may send
+apart, so a page cast whose key lands on a number another props array fills from another key retypes none, and warns.
+A dotted cast key retypes the key as written; the key then nests where Inertia unpacks it.
 
 ## A cast is final for its key
 
@@ -66,16 +73,24 @@ name, to alias them, never to reshape the text. Every other displaced class is i
 published text still needs it.
 
 `CastChannels::fit()` applies the rule once, over the casts in force, so no `AsEnum` rewrite, `Partial<>` or alias
-queue meets the displaced value. `ResourceTransformer::runAstAnalysis()` and
-`BroadcastEventTransformer::transformProperties()` call it after the reconcile, `AnalysisComposer::compose()` first,
-for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can
-retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
-method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
-cast key's import channels with `forgetChannels()`. Shared data carries the custom imports its `@return` shape keeps
-only for a key no cast replaces, and drops an inferred import of a name a cast brings from another module, by the rule a
-resource's fit applies too (`CastChannels::withoutOtherPaths()`, which reads `X as Y` as `Y`). Unlike
+queue meets the displaced value. `ResourceTransformer::runAstAnalysis()`,
+`BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()` and
+`InertiaSharedDataAnalyzer::buildResult()` call it after the reconcile, `AnalysisComposer::compose()` first, for
+`AstEngine::analyze()`, `ModelMetadataAnalyzer::composeTypes()` for a companion, and `InlineObjectResult` over an inline
+object's members, whose casts no outer cast can retype.
+A page's casts in force are a props helper's own method casts under the action's; shared data's are a helper's under
+its `@return` shape's and those of each class and `share()` it reads. A class-level event cast whose key names no
+payload property adds neither the key nor its import, while a method-level cast on `broadcastWith()` adds the key, as a
+resource method cast does.
+
+Shared data's `@return` shape is a cast in force on each key no `#[TsCasts]` entry replaces, with the custom imports it
+keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`). The
+fit keeps exactly those classes and displaces every other class the value carried, dropping one whose name the shape's
+own imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the
+namer reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. Unlike
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
-key there that names a model or an enum publishes the name with no import, not `unknown`.
+key there that names a model or an enum is imported, unless its own override import spells that name; a nested one
+still follows that rule.
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.
@@ -92,12 +107,16 @@ pins it.
 
 - The cast's own import is kept, and it binds each name it brings. A displaced class of that name is dropped unless
   another key reads it, and `fit()` drops a custom import of that name from any other path, such as a displaced
-  `#[TsType]` import, on every publisher. `ResourceTransformer` also skips a model attribute's import of it.
+  `#[TsType]` import, on every publisher but a companion, whose transformer throws for one name from two paths.
+  `ResourceTransformer` also skips a model attribute's import of it.
 - A class the text spells stays queued for the key, so it is imported and aliased like any package name.
 - Every other displaced class is carried in `MethodAnalysis::$carried`, which an inline array passes on as its own
   result key. Each publisher registers a carried class only where `CastChannels::spelledUnclaimed()` finds a text
   that spells its name with no class of its own behind it: another key's cast without import channels, an extends
-  clause, a type alias. So a carried class no such text keeps never forces an alias.
+  clause, a type alias. So a carried class no such text keeps never forces an alias. A route file, shared data and a
+  companion apply **the unclaimed-token rule** instead: such a text's token takes the one class of its name on any
+  channel or carried, unless a custom import brings that name. A token inside a quoted literal, or after `typeof`,
+  names no class and takes none ([`FileImportNames`](import-name-registry.md#fileimportnames)).
   `ResourceTransformer::keepSpelled()` applies the same test to the classes it holds, and `pruneUnspelledImports()`,
   after the `AsEnum` rewrite, drops any import whose local name no published type spells.
 - For a cast key, `resolveMultiEnumAccessorFqcns()` and `resolveMultiClassAccessorFqcns()` register through

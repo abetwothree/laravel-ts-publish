@@ -5,12 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Response as InertiaResponse;
@@ -40,10 +42,10 @@ function chainHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         /** Fails the test: no array is analyzed in this case. */
@@ -181,6 +183,30 @@ function inertiaProps(InertiaResponse $page, ?Request $request = null): stdClass
     $request->headers->set('X-Inertia', 'true');
 
     return json_decode((string) $page->toResponse($request)->getContent(), false)->props;
+}
+
+/**
+ * The JSON of the props Inertia sends for a page on a first visit, which is a list where every top-level key is an int.
+ */
+function inertiaPropsJson(InertiaResponse $page, ?Request $request = null): string
+{
+    $request ??= Request::create('/');
+    $request->headers->set('X-Inertia', 'true');
+
+    return (string) json_encode(json_decode((string) $page->toResponse($request)->getContent(), false)->props);
+}
+
+/**
+ * A fresh request bound as the app's, resolving the given user for `request()->user()` and `$request->user()`.
+ */
+function bindRequestUser(Authenticatable $user): Request
+{
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's, so the resolver is set after.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn (): Authenticatable => $user);
+
+    return $request;
 }
 
 /**

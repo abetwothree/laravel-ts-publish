@@ -20,8 +20,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
-use ReflectionFunction;
 use ReflectionMethod;
 
 /**
@@ -139,15 +137,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
      */
     private function collectRootResult(Expr $root, ExpressionEngine $engine): ?array
     {
-        if (! $root instanceof FuncCall
-            || ! $root->name instanceof Name
-            || $root->name->getLast() !== 'collect'
-            || $root->isFirstClassCallable()
-        ) {
-            return null;
-        }
-
-        $argument = CallArguments::for($root, new ReflectionFunction('collect'))->named('value')?->value;
+        $argument = CallArguments::collectArgument($root);
 
         return $argument === null ? null : $engine->resolve($argument);
     }
@@ -175,7 +165,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
      */
     private function elementModel(FuncCall $root, array $rootResult, string $element, AnalysisScope $scope): ?string
     {
-        $argument = CallArguments::for($root, new ReflectionFunction('collect'))->named('value')?->value;
+        $argument = CallArguments::collectArgument($root);
         $named = $argument === null ? null : resolve(ReceiverClassResolver::class)->resolve($argument, $scope)?->elementModel;
 
         if ($named !== null) {

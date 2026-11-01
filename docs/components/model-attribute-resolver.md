@@ -214,6 +214,9 @@ A union keeps its arms' merged imports unless an arm its own imports do not cove
 bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
 `Panel|Status` keeps `UiNode`'s.
 
+`docblockReturnShapeInfos()` also names the class behind each top-level key's tokens (`tokenFqcns`), which only shared
+data reads ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)); every reader below ignores it.
+
 These readers apply it, each with the scope and the fallback its page gives:
 
 - a value object's shape, steps 5a and 5c ([above](#arrayable-and-jsonserializable-take-their-shape-differently));

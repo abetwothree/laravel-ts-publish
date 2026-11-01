@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
@@ -40,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ParentCallChain;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
@@ -62,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use LogicException;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -136,14 +139,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Built once per instance by dispatcher(), so the handler-candidate memo survives across dispatches. */
     protected ?ExpressionDispatcher $dispatcher = null;
 
-    /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
+    /** The class declaring the share() the analyzed middleware runs; a parent's analyzer keeps it. */
     protected ?string $sharedDataShareClass = null;
 
     /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
     private readonly bool $ownsScope;
-
-    /** Whether the handler profile invokes callables, read once from it by invokesCallables(). */
-    private ?bool $invokingProfile = null;
 
     /** @var array<string, true> the runtime class's methods whose reads enclose this one, so a read of one re-enters */
     private array $methodsOnStack = [];
@@ -161,7 +161,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *
      * @param  ReflectionClass<T>  $resourceReflection  templated because ReflectionClass is invariant
      * @param  class-string<Model>|null  $modelClass
-     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile
+     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile; encoded reading only
      * @param  AnalysisScope|null  $scope  a scope AstEngine::bindingsFor() seeded; it gains only the collection facts
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
@@ -171,6 +171,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                                      scope's own
      * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
+     * @param  Reading  $reading  how the values read reach the client: an Inertia reading runs the subject's profile
+     *                            through ResourceExpressionHandlers::forInertia(), and every body it reads the same way
+     *
+     * @throws LogicException for a $handlerProfile under an Inertia reading, whose CallSite binds a callable as called
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -183,7 +187,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         private readonly array $passed = [],
         ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
+        private readonly Reading $reading = Reading::Encoded,
     ) {
+        if ($handlerProfile !== null && ! $reading->encodes()) {
+            throw new LogicException('An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
+        }
+
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
             $this->modelClass,
@@ -360,14 +369,44 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether this analyzer's handler profile reads a callable as the call it stands for, as Inertia's profiles do.
+     * The keys a local holds where it is read, walked as a returned variable's are; null where the walk declines.
+     *
+     * Public for `Inertia::render()`, which copies its props argument where it runs.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
      */
-    public function invokesCallables(): bool
+    public function variableAnalysis(Variable $read, array $stmts): ?ResourceAnalysis
     {
-        return $this->invokingProfile ??= array_any(
-            $this->handlers(),
-            fn (ExpressionHandler $handler): bool => $handler instanceof FirstClassCallableHandler && $handler->invokesCallables(),
+        return $this->walkedAnalysis($read, $stmts);
+    }
+
+    /**
+     * How the values this analyzer reads reach the client.
+     */
+    public function reading(): Reading
+    {
+        return $this->reading;
+    }
+
+    /**
+     * A reader of this body as `json_encode()` sends it unfiltered: the same scope, method and call, read that way.
+     */
+    public function encodedReader(): self
+    {
+        $analyzer = new self(
+            $this->scope->subjectReflection,
+            $this->scope->modelClass,
+            $this->methodName,
+            scope: $this->scope,
+            context: $this->context,
+            passed: $this->passed,
+            readsCall: $this->readsCall,
+            reading: Reading::EncodedUnfiltered,
         );
+        $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
+        $analyzer->methodsOnStack = $this->methodsOnStack;
+
+        return $analyzer;
     }
 
     /**
@@ -395,9 +434,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $flatTypeAlias = null;
         $flatTypeAliasFqcn = null;
 
+        /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
+        $closed = [];
+
         foreach ($analyses as $analysis) {
             foreach ($analysis->properties as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
+                $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
             }
 
             $channels->merge($analysis);
@@ -470,6 +513,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
         $merged->readsCompletely = $channels->readsCompletely;
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
+        $merged->leftOutValues = $channels->leftOutValues;
+        $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
         $merged->queueSplitClasses($analyses);
 
         return $merged;
@@ -596,11 +641,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The string, int or class-constant literal a local written once holds at a read, as literalWriteAt() reads it.
+     * The string, int or class-constant literal a local holds at a read that sees its one write.
      */
     protected function literalLocal(Variable $read): ?Expr
     {
-        $bound = $this->scope->literalWriteAt($read);
+        $bound = $this->soleSpelledWrite($read, $this->scope);
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
@@ -692,8 +737,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function handlers(): array
     {
-        return $this->handlerProfile
-            ?? ResourceExpressionHandlers::forSubject($this->scope->subjectReflection->getName(), $this);
+        $subject = $this->scope->subjectReflection->getName();
+
+        return $this->handlerProfile ?? ResourceExpressionHandlers::forSubject($subject, $this, $this->reading);
     }
 
     /**
@@ -726,9 +772,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
      * some branches set publishes optional, and a key every branch sets is required. Their types union as a ternary's
      * arms do, leaving out a side the engine cannot type.
+     *
+     * In a response's `with()` or `additional()`, the call merges no key.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
+        // Nothing filters a response's `with()` and `additional()` keys, so each MergeValue is sent whole, as a value.
+        if ($this->reading === Reading::EncodedUnfiltered) {
+            return new ResourceAnalysis;
+        }
+
         $isMerge = $this->isThisMethodCall($call, 'merge');
         $isMergeWhen = $this->isThisMethodCall($call, 'mergeWhen');
         $isMergeUnless = $this->isThisMethodCall($call, 'mergeUnless');
@@ -920,7 +973,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
-        $this->applyTsCastsFromMethod($method, $analysis);
+
+        if (! $this->isInertiaShare($method)) {
+            $this->applyTsCastsFromMethod($method, $analysis);
+        }
 
         // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
@@ -1288,7 +1344,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
 
-        // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+        // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
         if (! $this->isInertiaShare($ownMethod)) {
             $this->applyTsCastsFromMethod($ownMethod, $analysis);
         }
@@ -1607,7 +1663,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $result = $this->analyzeValueExpression($item->value);
+            $result = $this->reading->arrayValue($this->analyzeValueExpression($item->value));
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
                 $analysis->addSignatureEntry($keyName, $result);
@@ -1658,7 +1714,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Classify a top-level spread's value via InlineArrayHandler::classifySpreadArm() and flatten its shape into this
      * resource's own properties. Null for anything the classifier declines, or takes only by its type other than a
-     * JSON:API instance, so the caller falls through to $this->merge()'s own handling.
+     * JSON:API instance or a resolved resource, so the caller falls through to $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {
@@ -1666,6 +1722,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         if ($arm === null) {
             return null;
+        }
+
+        // A resolved resource's restated keys flatten as the resource does, which an Inertia reading restates alike.
+        if (isset($arm['result']['resolvedFqcn'])) {
+            return $this->analyzeResourceSpreadArm($arm['result']['resolvedFqcn']);
         }
 
         if (isset($arm['type'])) {
@@ -1718,8 +1779,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         DependencyRecorder::recordClass($resourceFqcn);
 
-        $analysis = resolve(AstEngine::class)
-            ->analyzeMethod($resourceFqcn, 'toArray', runtime: $this->scope->builtRuntime($resourceFqcn));
+        $analysis = resolve(AstEngine::class)->analyzeMethod(
+            $resourceFqcn,
+            'toArray',
+            runtime: $this->scope->builtRuntime($resourceFqcn),
+            reading: $this->reading,
+        );
 
         // The spread takes the resource's published keys as given, as a value read takes its type.
         $analysis->readsCompletely = true;
@@ -1847,8 +1912,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * A local variable's name and the value its one write assigns, unless its read is under way; null for any other
-     * expression.
+     * A local variable's name and the value of the one write its read sees, unless its read is under way; null for any
+     * other expression.
      *
      * @return WrittenLocal|null
      */
@@ -1858,7 +1923,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        $bound = $this->scope->literalWriteAt($expr);
+        $bound = $this->soleSpelledWrite($expr, $this->scope);
 
         return $bound === null ? null : [$expr->name, $bound];
     }
@@ -2004,7 +2069,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * The one place a nested analyzer is built: it reads a body as the runtime class runs it, with the methods whose
-     * reads enclose it and the share() whose casts InertiaSharedDataAnalyzer applies.
+     * reads enclose it and the share() whose chain's casts InertiaSharedDataAnalyzer applies.
      *
      * @param  ReflectionClass<object>  $class
      * @param  class-string<Model>|null  $modelClass
@@ -2018,6 +2083,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
             runtime: $this->scope->runtime,
+            reading: $this->reading,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
@@ -2086,8 +2152,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The class declaring the share() InertiaSharedDataAnalyzer reads the casts of, own or inherited by the analyzed
-     * middleware; an empty string for any other subject.
+     * The class declaring the share() the analyzed middleware runs; an empty string for any other subject.
      */
     private function sharedDataShareClass(): string
     {
@@ -2098,12 +2163,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether the method is the share() whose casts InertiaSharedDataAnalyzer applies, never a parent's one that the
-     * middleware's own share() spreads.
+     * Whether the method is a share() of the chain whose casts InertiaSharedDataAnalyzer lays itself.
      */
     private function isInertiaShare(ReflectionMethod $method): bool
     {
-        return $method->getDeclaringClass()->getName() === $this->sharedDataShareClass();
+        $shareClass = $this->sharedDataShareClass();
+
+        return $shareClass !== ''
+            && strtolower($method->getName()) === 'share'
+            && in_array(
+                $method->getDeclaringClass()->getName(),
+                resolve(ParentCallChain::class)->declaringClasses($shareClass, 'share'),
+                true,
+            );
     }
 
     /**

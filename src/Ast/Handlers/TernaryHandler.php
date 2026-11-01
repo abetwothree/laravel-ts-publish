@@ -6,15 +6,22 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 
 /**
  * Ternary and Elvis expressions — both arms resolved through the engine and unioned.
@@ -23,7 +30,7 @@ use PhpParser\Node\Expr\Ternary;
  *
  * @internal
  */
-final class TernaryHandler implements ExpressionHandler
+final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects
 {
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
@@ -57,6 +64,12 @@ final class TernaryHandler implements ExpressionHandler
      */
     private function analyzeTernary(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
+        $operand = $this->resourceOperand($expr, $scope, $engine);
+
+        if ($operand !== null) {
+            return ValueResult::checkedOperand($operand);
+        }
+
         $arms = [$expr->if ?? $expr->cond, $expr->else];
         $nonNull = [$this->nonNullReads($expr->cond, true), $this->nonNullReads($expr->cond, false)];
         $proof = $expr->if === null ? null : $this->instanceofProof($expr->cond);
@@ -110,5 +123,44 @@ final class TernaryHandler implements ExpressionHandler
         $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
 
         return ValueResult::withEnumArmShapes($union, $results);
+    }
+
+    /**
+     * The checked operand of a short ternary over a built API resource, where Inertia reads it unfiltered and it types.
+     *
+     * An object is always true and Inertia sends it as it is, so the other arm never runs; filter() can send a resource
+     * around null as null, and an operand the engine cannot type leaves the other arm as the only reading.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resourceOperand(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if ($expr->if !== null
+            || $engine->reading() !== Reading::Inertia
+            || ! $this->buildsResource($expr->cond, $scope)
+        ) {
+            return null;
+        }
+
+        $operand = $engine->resolve($expr->cond);
+
+        return array_diff(ValueResult::filledArms($operand['type']), ['unknown']) === []
+            ? null
+            : $operand;
+    }
+
+    /**
+     * Whether an expression builds an API resource: `new X(…)`, or `X::make(…)` or `X::collection(…)` on one.
+     */
+    private function buildsResource(Expr $expr, AnalysisScope $scope): bool
+    {
+        $class = match (true) {
+            $expr instanceof New_ => $expr->class,
+            $expr instanceof StaticCall && ! $expr->isFirstClassCallable() && $expr->name instanceof Identifier
+                && in_array($expr->name->toString(), ['make', 'collection'], true) => $expr->class,
+            default => null,
+        };
+
+        return $class instanceof Name && is_a($this->scopeClassName($class, $scope), JsonResource::class, true);
     }
 }

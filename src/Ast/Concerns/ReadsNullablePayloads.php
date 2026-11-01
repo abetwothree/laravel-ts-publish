@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
@@ -18,8 +17,7 @@ use PhpParser\Node\Name;
 
 /**
  * The type of a resource built around a payload that can serialize as null. Only JsonResource::filter() turns a
- * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null, and
- * only where filter() reaches the wrap: it recurses into arrays, never into a Collection.
+ * nested resource whose payload is null into null, so only a value Reading::filterReaches() says it reaches carries it.
  *
  * @internal
  */
@@ -38,30 +36,40 @@ trait ReadsNullablePayloads
     abstract protected function isResourceClass(string $fqcn): bool;
 
     /**
-     * The type `new X(…)` or `X::make(…)` publishes: `null` for a payload that is only ever null in a JsonResource
-     * subject, the instance or null for one that can be null, else the instance, as JsonApiResources::instanceType().
+     * The type `new X(…)` or `X::make(…)` publishes: `null` for a payload that is only ever null where filter() reaches
+     * it, the instance or null for one that can be null, else the instance, as JsonApiResources::instanceType().
      *
      * @param  class-string  $className
      */
     protected function resourceWrapType(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): string
     {
-        $instance = JsonApiResources::instanceType($className);
+        return $this->filteredType($call, $className, JsonApiResources::instanceType($className), $scope, $engine);
+    }
 
+    /**
+     * The type `new X(…)` or `X::make(…)` sends once filter() runs: `null`, or `| null`, as its payload may be null.
+     *
+     * @param  class-string  $className
+     */
+    protected function filteredType(StaticCall|New_ $call, string $className, string $type, AnalysisScope $scope, ExpressionEngine $engine): string
+    {
         return match ($this->nullablePayloadType($call, $className, $scope, $engine)) {
-            null => $instance,
+            null => $type,
             'null' => 'null',
-            default => ValueResult::withNullArm($instance),
+            default => ValueResult::withNullArm($type),
         };
     }
 
     /**
-     * The resolved payload type of `new X(…)` or `X::make(…)` in a JsonResource subject when the payload can be null,
+     * The resolved payload type of `new X(…)` or `X::make(…)` where filter() reaches it and the payload can be null,
      * else null. A ResourceCollection never wraps null: it throws. Neither does a payload that is `new` or a resource's
      * `make()`, since PHP builds an object and only that inner resource serializes as null, nor a read a guard proves.
      */
     private function nullablePayloadType(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): ?string
     {
-        if (! $scope->subjectReflection->isSubclassOf(JsonResource::class) || is_a($className, ResourceCollection::class, true)) {
+        $reading = $engine->reading();
+
+        if (! $reading->filtersBodyOf($scope) || is_a($className, ResourceCollection::class, true)) {
             return null;
         }
 
@@ -84,7 +92,7 @@ trait ReadsNullablePayloads
             return null;
         }
 
-        if (! $scope->filtersNestedResources
+        if (! $reading->filterReaches($scope)
             || ! ValueResult::hasNullArm($resolved['type'])
             || $this->isProvenNonNull($payload, $scope)
         ) {

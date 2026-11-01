@@ -156,6 +156,18 @@ final class NamesakeEdgeResource extends JsonResource
         return $copy;
     }
 
+    /** A closure object each branch of an `if` assigns to a local. */
+    public function formatterViaBranches()
+    {
+        if ($this->title) {
+            $format = fn () => 1;
+        } else {
+            $format = fn () => 2;
+        }
+
+        return $format;
+    }
+
     /** A first-class callable held in a local. */
     public function callableViaLocal()
     {

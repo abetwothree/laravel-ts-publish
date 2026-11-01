@@ -126,15 +126,15 @@ it('keeps each typed closure\'s own override import where only its declared type
     expect($return)->toBeInstanceOf(Return_::class)
         ->and(new ResourceAstAnalyzer(new ReflectionClass(UiNodeResource::class), null)->resolve($return->expr))->toBe($expected);
 })->with([
-    'an own override' => ['\\'.Gauge::class, ['type' => 'UiGauge', 'customImports' => ['@js/types/ui' => ['UiGauge']], 'optional' => false]],
+    'an own override' => ['\\'.Gauge::class, ['type' => 'UiGauge', 'customImports' => ['@js/types/ui' => ['UiGauge']], 'optional' => false, 'heldObject' => true]],
     'a composed class, its module named by the marker' => [
-        '\\'.Chart::class, ['type' => 'ChartType', 'customImports' => [ComposedClassTypes::marker(Chart::class) => ['ChartType']], 'optional' => false],
+        '\\'.Chart::class, ['type' => 'ChartType', 'customImports' => [ComposedClassTypes::marker(Chart::class) => ['ChartType']], 'optional' => false, 'heldObject' => true],
     ],
-    'a nullable inherited override' => ['?\\'.Panel::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false]],
+    'a nullable inherited override' => ['?\\'.Panel::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false, 'heldObject' => true]],
     'an override already nullable, its null kept once' => [
-        '?\\'.MaybeNode::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false],
+        '?\\'.MaybeNode::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false, 'heldObject' => true],
     ],
-    'a class with no override, which keeps its shape' => ['\\'.Plain::class, ['type' => '{ a: number }', 'optional' => false]],
+    'a class with no override, which keeps its shape' => ['\\'.Plain::class, ['type' => '{ a: number }', 'optional' => false, 'heldObject' => true]],
 ]);
 
 // The closures read a container id, so the oracle binds each one to a value of its declared class.

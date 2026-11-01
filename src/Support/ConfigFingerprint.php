@@ -13,6 +13,11 @@ use InvalidArgumentException;
 use ReflectionProperty;
 use Throwable;
 
+/**
+ * Hashes the config that shapes output, for the generation cache's header.
+ *
+ * @phpstan-type AuthModels array{default: string|null, guards: array<string, string|null>}
+ */
 class ConfigFingerprint
 {
     /**
@@ -42,7 +47,7 @@ class ConfigFingerprint
      * publishes as its driver returns it, a hit never renders its template again, and a macro types what it answers.
      *
      * It also holds each `$wrap` set at runtime, which reshapes every collection and page prop wrapping by it while no
-     * recorded file changes.
+     * recorded file changes, and the default auth guard and each guard's user model, which type the signed-in user.
      *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
@@ -58,6 +63,7 @@ class ConfigFingerprint
                 'ts-publish' => $config,
                 'database.default' => Config::get('database.default'),
                 'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
+                'auth' => self::authModels(),
                 'templates' => self::templateFiles(),
                 'resource-macros' => self::resourceMacros(),
                 'resource-wrap' => ResourceWrapping::runtimeOverrides(),
@@ -71,6 +77,28 @@ class ConfigFingerprint
             // A per-run token can never match a stored manifest header, forcing a full rebuild over stale output.
             return 'unfingerprintable-'.bin2hex(random_bytes(16));
         }
+    }
+
+    /**
+     * The default guard and the model each guard's provider names, which decide the model a read of the signed-in user
+     * types as; a value that is not a string is left out, so a closure in the auth config cannot break the hash.
+     *
+     * @return AuthModels
+     */
+    private static function authModels(): array
+    {
+        $guards = Config::get('auth.guards');
+        $models = [];
+
+        foreach (is_array($guards) ? $guards : [] as $name => $guard) {
+            $provider = is_array($guard) ? $guard['provider'] ?? null : null;
+            $model = is_string($provider) ? Config::get("auth.providers.{$provider}.model") : null;
+            $models[(string) $name] = is_string($model) ? $model : null;
+        }
+
+        $default = Config::get('auth.defaults.guard');
+
+        return ['default' => is_string($default) ? $default : null, 'guards' => $models];
     }
 
     /**

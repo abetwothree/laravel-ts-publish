@@ -40,6 +40,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOverriddenUnionDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
@@ -1665,6 +1668,24 @@ describe('parseDocblockReturnArrayShape', function () {
         $result = $this->service->parseDocblockReturnArrayShape($method);
 
         expect($result)->toBe([]);
+    });
+});
+
+describe('docblockReturnShapeInfos', function () {
+    test('names the class behind each token of a class\'s name, in token order, and omits the key with none', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithModelDocblock::class, 'share')))->toBe([
+            'owner' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class]],
+            'status' => ['type' => 'StatusType', 'customImports' => [], 'tokenFqcns' => [Status::class]],
+        ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithDocblockOverEmbeddedModel::class, 'share')))->toBe([
+            'team' => ['type' => 'User[]', 'customImports' => [], 'tokenFqcns' => [User::class]],
+        ]);
+    });
+
+    test('names no class behind a token an override spells like the model beside it', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithOverriddenUnionDocblock::class, 'share')))->toBe([
+            'person' => ['type' => 'User', 'customImports' => ['@js/types/ui' => ['User']]],
+            'either' => ['type' => 'User | User', 'customImports' => [], 'tokenFqcns' => [null, User::class]],
+        ]);
     });
 });
 

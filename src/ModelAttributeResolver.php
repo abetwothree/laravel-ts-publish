@@ -657,11 +657,30 @@ class ModelAttributeResolver
             $name = $relation['name'];
 
             if (! $excludeHidden || self::isArrayable($instance, $name)) {
-                $keys[$name] = $instance::$snakeAttributes ? Str::snake($name) : $name;
+                $keys[$name] = self::relationKey($instance, $name);
             }
         }
 
         return $keys;
+    }
+
+    /**
+     * The key toArray() writes a loaded relation under, or null where it writes none.
+     *
+     * The key follows delegatedRelationKeys()'s rule; `$visible` and `$hidden` decide whether it is written, whatever
+     * `exclude_hidden` publishes.
+     */
+    public function sentRelationKey(Model $instance, string $relationName): ?string
+    {
+        return $this->writesName($instance, $relationName) ? self::relationKey($instance, $relationName) : null;
+    }
+
+    /**
+     * Whether toArray() writes an attribute or relation of this name past `$visible` and `$hidden`.
+     */
+    public function writesName(Model $instance, string $name): bool
+    {
+        return self::isArrayable($instance, $name);
     }
 
     /**
@@ -1864,6 +1883,14 @@ class ModelAttributeResolver
     private static function isToManyRelation(array $relation): bool
     {
         return RelationMap::isToMany($relation['type'], $relation['class']);
+    }
+
+    /**
+     * A relation's name as toArray() writes it: snake-cased while the model's `$snakeAttributes` is on.
+     */
+    private static function relationKey(Model $instance, string $relationName): string
+    {
+        return $instance::$snakeAttributes ? Str::snake($relationName) : $relationName;
     }
 
     /**

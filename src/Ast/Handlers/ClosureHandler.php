@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -42,7 +43,7 @@ use PhpParser\Node\NullableType;
  *
  * @internal
  */
-final class ClosureHandler implements ExpressionHandler
+final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
@@ -68,7 +69,8 @@ final class ClosureHandler implements ExpressionHandler
             return null;
         }
 
-        return $scope->within(function () use ($expr, $scope): void {
+        return ValueResult::heldObject($scope->within(function () use ($expr, $scope): void {
+            $scope->readsCallableReturn = true;
             // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
             $scope->releaseUnclaimedParameters($expr);
             // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
@@ -79,7 +81,7 @@ final class ClosureHandler implements ExpressionHandler
                 $this->seedBody($expr->stmts, $scope, $expr);
                 $this->bindForeachLoopVariables($expr->stmts, $scope);
             }
-        }, fn (): array => $this->resolveBody($expr, $closureReturns, $scope, $engine));
+        }, fn (): array => $this->resolveBody($expr, $closureReturns, $scope, $engine)));
     }
 
     /**

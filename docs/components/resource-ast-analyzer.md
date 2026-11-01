@@ -35,9 +35,9 @@ These are the classes a change to resource analysis usually touches:
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
 
-The controller profile drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`, the
-model-getter profile drops the first two, and any other non-resource subject drops `ConditionalMethodHandler` alone. In
-every profile, the order handlers run in decides which one answers; see
+The model-getter profile drops `ConditionalMethodHandler` and `ToResourceHandler`, any other non-resource subject drops
+`ConditionalMethodHandler` alone, and the Inertia profile, which every body Inertia sends runs, adds the page-prop
+handlers to the subject's own. In every profile, the order handlers run in decides which one answers; see
 [AST engine § Handler ordering](ast-engine.md#handler-ordering).
 
 ## How `analyze()` reads a method
@@ -86,12 +86,22 @@ every profile, the order handlers run in decides which one answers; see
   included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
   object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
-  A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
+  A local whose read sees one write reads as its value (`writtenLocal()`), and the walk names a key such a local holds
   (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
-  completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
+  completely. A `??=` of a key the walk holds joins the value it keeps with the default, the key optional only where a
+  value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. A placeholder, a closure and
+  an Inertia prop object (a result's `heldObject`, which `MethodAnalysis::$heldObjectKeys` keeps for a literal's key)
+  are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; a ternary,
+  `??` or `match` with only some such arms (`mayHoldObject`) keeps the null its objects resolve to, and joins the
+  default only past its plain arms' null; the default joins only past a plain `null`, or where a path may leave the key
+  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal
+  write's keys count as set. A written value that reads the variable itself reads the keys the walk holds there
+  (`readAgainstWalk()`), or, where the walk cannot spell them, reads as the body's other reads do, which a page
+  declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
   method's of its name. A closure's returns and a method's read as a value share the walk through
   `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
-  binding; a value read of a local built by keys shares it through `walkedLocal()`.
+  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local its
+  literal writes do not spell, read from its writes before the render call, through `variableAnalysis()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and
@@ -499,7 +509,8 @@ arm of an intersection instead of flattening its keys. `InlineArrayHandler::clas
 - **Collection arm**: `$var->toArray()` on a to-many `whenLoaded()` parameter, or a relation chain that ends to-many.
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
 - **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
-  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries.
+  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries. So does a resolved resource whose keys
+  Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
@@ -523,7 +534,8 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
 
 PHP's array union `$a + $b` keeps every key `$a` sets. In value position
 [`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
-`InspectsAstNodes::arrayUnionLiteral()` builds. With every key a literal, that literal holds the items PHP keeps, in
+`InspectsAstNodes::arrayUnionLiteral()` builds, or, where a local operand's read sees several literal writes, one
+literal per write, joined. With every key a literal, that literal holds the items PHP keeps, in
 PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
 cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
 one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
@@ -612,15 +624,21 @@ adds `never[]` beside a guessed collection's own type, and in a prop or shared v
 unless the guessed one's response is the plain list under the same wrap key.
 
 `InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
-lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
+lazy prop wrapper, as its `toResponse()` data, which [`ResourceResponseType`](../../src/Ast/Resources/ResourceResponseType.php)
+builds. A single resource and a body without the live wrap key sit inside that
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
-publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
-`import type`. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and
-an anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
-`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes
-none, publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare
-list once `withoutWrapping()` empties the shared key.
+publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, with `| never[]` for the `[]` a null enum
+sends where no `filter()` runs; the route file imports the const with `import type`.
+`toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items, the argument of
+a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
+its nested value, `EnumResource[]`, names a type no run publishes. A payload's paginator kind is read from the classes
+`ReceiverClassResolver` names it as, else from its type, else from the paginator a setter such as `withQueryString()`
+is called on. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and an
+anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
+`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes none,
+publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare list once
+`withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 
@@ -650,7 +668,8 @@ keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay 
 `filter()` re-indexes what the method returns. A foreign receiver such as `new CategoryResource($x)->summary()` keeps
 the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that.
 `resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`. Where Inertia reads it, each key it
+sends otherwise is restated over that type ([AST engine § Inertia profile](ast-engine.md#inertia-profile)).
 
 ## Numeric keys
 
@@ -724,10 +743,11 @@ beside a signature are all known:
 - **In each publisher, over every cast in force**, method casts included: `ResourceTransformer::runAstAnalysis()`,
   `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
   `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
+  Inertia analyzers pass only the action's or the middleware's casts, not a spread helper's own. The two
   transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
   entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
-  channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
-  fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
+  channels, since the cast type is what publishes. After the reconcile, every one of them fits them to the cast's
+  text through `CastChannels::fit()`; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
@@ -937,12 +957,25 @@ A mixed ternary wraps the enum in one arm and reads it directly in the other, as
 `ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/TernaryHandler.php) and
 [`MatchHandler`](../../src/Ast/Handlers/MatchHandler.php) call, reads each arm's own result and records the shape,
 `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
-mixed, or when the wrap arms, or the direct arms, disagree on their shape.
+mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand builds a
+resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is always
+true, so `TernaryHandler` types it as that operand alone where the operand types and the engine reads under
+`Reading::Inertia`: a page's props, the shared data or a body they read, which no `JsonResource::filter()` reaches.
+Anywhere else, an API resource, a helper it reads, or a resource body Inertia reads through `resolve()`, both arms
+stay, since filter() sends a resource around null as null; they stay too beside an operand the engine cannot type.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
 `rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested
 one. The nested key cannot defer to the transformer, because only flat property lists leave the handler's
 method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case with two array-shaped arms.
+
+On an Inertia page and in shared data, `RewritesEnumResourceProps` substitutes instead, because a wrapped collection
+there publishes its response, `{ data: AsEnum<typeof Status>[] }`. It respells every top-level member but the bare
+read's, and puts the wrap's own spelling from `AnalysisComposer::enumResourceArms()` in front whenever the bare read's
+member is there and no member holds it, since a `make()` wrap always merges into that member. No arm record tells a
+collection wrap alone from one beside a `make()`, so the lone collection keeps that member too. A ternary over two
+enums' wraps has each member's own enum substituted, in branch order, where the resource rewrite replaces the whole
+member.
 
 Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
 members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which

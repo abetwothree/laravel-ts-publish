@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use PhpParser\Node\Expr;
 
 /**
@@ -47,11 +49,18 @@ final class ExpressionDispatcher
         ));
 
         foreach ($this->candidatesByClass[$nodeClass] as $handler) {
-            $result = $handler->resolve($expr, $scope, $engine);
+            // What a handler keeping no object reads, as an array's item or a call's argument, is no longer the value a
+            // closure returns, so Inertia calls a callable it holds.
+            $result = $scope->readsCallableReturn && ! $handler instanceof KeepsHeldObjects
+                ? $scope->apartFromReturn(fn (): ?array => $handler->resolve($expr, $scope, $engine))
+                : $handler->resolve($expr, $scope, $engine);
 
-            if ($result !== null) {
-                return $result;
+            if ($result === null) {
+                continue;
             }
+
+            // A value a handler reads from a held object, as `when()` calls a closure, is not that object itself.
+            return $handler instanceof KeepsHeldObjects ? $result : ValueResult::withoutHeldObject($result);
         }
 
         return null;

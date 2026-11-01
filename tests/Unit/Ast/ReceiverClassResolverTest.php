@@ -11,9 +11,18 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributedBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Builders\PublishedPostBuilder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OverriddenBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -30,6 +39,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\LazyCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
@@ -203,6 +213,54 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->toBe([User::class]);
     });
 
+    test('auth(), Auth and request() hold the default guard\'s user as $request->user() does', function () {
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope())?->classes;
+
+        expect(array_map($holds, [
+            'auth()->user()',
+            '\\Illuminate\\Support\\Facades\\Auth::user()',
+            '\\Auth::user()',
+            'request()->user()',
+            '\\Illuminate\\Support\\Facades\\Auth::guard()->user()',
+            'auth()->guard()->user()',
+        ]))->each->toBe([User::class])
+            ->and(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('auth()?->user()'), postScope())?->shortCircuits)->toBeTrue();
+    });
+
+    test('a named guard, a first-class callable and a class other than the Auth facade hold no signed-in user', function () {
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope())?->classes;
+
+        expect(array_map($holds, [
+            "auth('admin')->user()",
+            "\\Illuminate\\Support\\Facades\\Auth::guard('admin')->user()",
+            "auth()->guard('admin')->user()",
+            "request()->user('admin')",
+            'auth()->user(...)',
+            '\\Illuminate\\Support\\Facades\\Config::guard()->user()',
+            '\\Foo\\Auth::user()',
+        ]))->each->toBeNull();
+    });
+
+    test('only $request->user() holds the default guard\'s user where another guard names another model', function () {
+        config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+        config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+        $scope = postScope();
+        $scope->requestVarNames['request'] = Request::class;
+        $holds = fn (string $php): ?array => resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), $scope)?->classes;
+
+        expect($holds('$request->user()'))->toBe([User::class])
+            ->and(array_map($holds, ['auth()->user()', '\\Illuminate\\Support\\Facades\\Auth::user()', 'request()->user()', 'auth()->guard()->user()']))
+            ->each->toBeNull();
+    });
+
+    test('the signed-in user holds nothing where the default guard\'s provider names no Eloquent model', function () {
+        config()->set('auth.providers.users.model', stdClass::class);
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('auth()->user()'), postScope()))->toBeNull()
+            ->and(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\\Illuminate\\Support\\Facades\\Auth::user()'), postScope()))
+            ->toBeNull();
+    });
+
     test('model and collection variable bindings hold their model and their collection', function () {
         $scope = postScope();
         $scope->varModelBindings['comment'] = Comment::class;
@@ -258,8 +316,175 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->make()'), postScope()))
             ->toEqual(new ReceiverType([Comment::class], unsaved: true))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
-            ->toEqual(ReceiverType::of(Comment::class))
-            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+            ->toEqual(ReceiverType::of(Comment::class));
+    });
+
+    // find() returns a model for one key and a collection for a list, which its docblock spells as a conditional.
+    test('a query\'s find() names its model for one literal key and a collection of it for a list', function (string $php, ?ReceiverType $held) {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope()))->toEqual($held);
+    })->with([
+        'a static' => ['\Workbench\App\Models\Post::find(1)', ReceiverType::of(Post::class)],
+        'a static that throws when it misses' => ['\Workbench\App\Models\Post::findOrFail("1")', ReceiverType::of(Post::class)],
+        'a query' => ['\Workbench\App\Models\Post::query()->latest()->find(1)', ReceiverType::of(Post::class)],
+        'a relation' => ['$this->resource->comments()->find(1)', ReceiverType::of(Comment::class)],
+        'a list of keys' => ['\Workbench\App\Models\Post::find([1, 2])', new ReceiverType([EloquentCollection::class], elementModel: Post::class)],
+        'a key no literal spells' => ['\Workbench\App\Models\Post::find($id)', null],
+    ]);
+
+    // Builder::__call() hands the query back for a call it runs on the base query, and a scope or a when() callback
+    // returns its own return, or the query where that is null; a static the model lacks runs on a new query of it.
+    test('a query hands on the query a call Eloquent runs on it returns', function (string $php, ?string $model) {
+        $held = resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope());
+
+        expect($held)->toEqual($model === null ? null : new ReceiverType([Builder::class], relatedModel: $model));
+    })->with([
+        'a base-query call' => ['\Workbench\App\Models\Post::whereIn("id", [1])', Post::class],
+        'base-query calls in a chain' => ['\Workbench\App\Models\Post::query()->orderBy("id")->limit(1)', Post::class],
+        'a dynamic where' => ['\Workbench\App\Models\Post::whereTitle("x")', Post::class],
+        'a soft-delete call' => ['\Workbench\App\Models\Post::withTrashed()', Post::class],
+        'a void scope' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::titled("x")', ScopedPost::class],
+        'an untyped scope returning its query' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::query()->identified()', ScopedPost::class],
+        'a scope returning a count' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::tallied()', null],
+        'a when() arrow function' => ['\Workbench\App\Models\Post::query()->when(true, fn ($query) => $query->latest())', Post::class],
+        'a when() closure returning nothing' => ['\Workbench\App\Models\Post::when(true, function ($query) { $query->latest(); })', Post::class],
+        'an unless() with a default' => ['\Workbench\App\Models\Post::query()->unless(true, fn ($q) => $q, fn ($q) => $q->oldest())', Post::class],
+        'a when() callback returning a count' => ['\Workbench\App\Models\Post::query()->when(true, fn ($query) => $query->count())', null],
+        'a when() with no callback' => ['\Workbench\App\Models\Post::query()->when(true)', null],
+        'a when() whose callback returns null' => ['\Workbench\App\Models\Post::query()->when(true, fn ($query) => null)', Post::class],
+        'a when() with a null callback' => ['\Workbench\App\Models\Post::query()->when(false, null)', Post::class],
+        'a call when() with no callback runs conditionally' => ['\Workbench\App\Models\Post::query()->when(true)->latest()', Post::class],
+        'a terminal when() with no callback runs conditionally' => ['\Workbench\App\Models\Post::query()->when(true)->get()', null],
+        'a scope returning null' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::unfiltered()', ScopedPost::class],
+        'a scope handing on another model\'s query' => ['\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::remarks()', Comment::class],
+        'a call no query runs' => ['\Workbench\App\Models\Post::query()->notAQueryMethod()', null],
+        'a through() of a relation' => ['\Workbench\App\Models\Post::throughComments()', null],
+    ]);
+
+    // Model::__callStatic() sends a method the `#[Scope]` attribute marks to query(), whose __call() runs the scope.
+    test('an attribute scope called statically hands the query back', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(
+            receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::recent()'),
+            postScope(),
+        ))->toEqual(new ReceiverType([Builder::class], relatedModel: ScopedPost::class));
+    })->skip(fn (): bool => ! class_exists('Illuminate\Database\Eloquent\Attributes\Scope'), 'The #[Scope] attribute ships in Laravel 12.4.0.');
+
+    // Model::newEloquentBuilder() builds the class an override of it declares, else the one `$builder` names; a method
+    // declared as `Builder` or a parent's `self` hands back the builder its body returns.
+    test('a model\'s query is the custom builder it names, whose own methods hand it back', function (string $model) {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $query = new ReceiverType([PublishedPostBuilder::class], relatedModel: $model);
+
+        expect($resolver->resolve(receiverExpr('\\'.$model.'::query()'), postScope()))->toEqual($query)
+            ->and($resolver->resolve(receiverExpr('\\'.$model.'::titled()->latest()'), postScope()))->toEqual($query)
+            ->and($resolver->resolve(receiverExpr('\\'.$model.'::published()'), postScope()))->toEqual($query)
+            ->and($resolver->resolve(receiverExpr('\\'.$model.'::query()->withContent()'), postScope()))->toEqual($query);
+    })->with([[BuiltPost::class], [OverriddenBuilderPost::class]]);
+
+    test('a model\'s query is the custom builder its `#[UseEloquentBuilder]` names', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\\'.AttributedBuilderPost::class.'::query()->titled()'), postScope()))
+            ->toEqual(new ReceiverType([PublishedPostBuilder::class], relatedModel: AttributedBuilderPost::class));
+    })->skip(fn (): bool => ! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\UseEloquentBuilder'), 'The attribute ships in Laravel 12.19.0.');
+
+    test('a builder macro hands on the query its closure or method returns', function () {
+        $macros = new ReflectionProperty(Builder::class, 'macros');
+        $saved = $macros->getValue();
+        app()->register(QueryMacroServiceProvider::class, force: true);
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        try {
+            expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->newestFirst()'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::titleLike("x")'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->tally()'), postScope()))->toBeNull()
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->commentQuery()'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Comment::class))
+                ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::commentQueryFrom()'), postScope()))
+                ->toEqual(new ReceiverType([Builder::class], relatedModel: Comment::class));
+        } finally {
+            $macros->setValue(null, $saved);
+        }
+    });
+
+    // A scope that delegates to a helper the engine cannot read neither proves nor disproves it hands the query back:
+    // a receiver read names nothing, and a read presuming such steps keeps the query, as a model-rooted chain read.
+    // Relation::__call() forwards a call its builder's __call() answers, and hands itself back where the builder does.
+    test('a relation hands itself back for a call its builder runs on the base query', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->resource->comments()->whereIn("id", [1])->latest()'), postScope()))
+            ->toEqual(new ReceiverType([HasMany::class], relatedModel: Comment::class));
+    });
+
+    test('a step whose hand-back is unproven names a query only where steps are presumed', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $query = new ReceiverType([Builder::class], relatedModel: ScopedPost::class);
+        $unproven = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::newestVia()');
+        $tallied = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::tallied()');
+
+        expect($resolver->resolve($unproven, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($unproven, postScope()))->toEqual($query)
+            ->and($resolver->resolvePresumingSteps($tallied, postScope()))->toBeNull()
+            ->and($resolver->resolve($unproven, postScope()))->toBeNull();
+    });
+
+    // A model's own method with no declared return, or one declaring a bare collection, hands on what its body returns.
+    test('a model\'s own method names the list or model its body returns', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $listing = '\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost';
+
+        expect($resolver->resolve(receiverExpr($listing.'::popular()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::popularTyped()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::newest()'), postScope()))->toEqual(ReceiverType::of(ListingPost::class))
+            ->and($resolver->resolve(receiverExpr($listing.'::rowsVia()'), postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps(receiverExpr($listing.'::rowsVia()'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class], elementModel: ListingPost::class));
+    });
+
+    // Arms naming different things prove nothing, so only a read presuming steps keeps the model's own query, as base.
+    test('a model\'s own method whose branches return different things names a query only where steps are presumed', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $either = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost::either(true)');
+        $two = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost::postsOrComments(true)');
+        $query = new ReceiverType([Builder::class], relatedModel: ListingPost::class);
+
+        expect($resolver->resolve($either, postScope()))->toBeNull()
+            ->and($resolver->resolve($two, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($either, postScope()))->toEqual($query)
+            ->and($resolver->resolvePresumingSteps($two, postScope()))->toEqual($query);
+    });
+
+    // lazy() and cursor() hand on a LazyCollection of the models, which item-keeping steps and same-model merges keep;
+    // filter() keeps the keys it skips past.
+    test('a lazy list and an item-keeping step name the models they hold', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $lazy = new ReceiverType([LazyCollection::class], elementModel: Post::class);
+        $list = new ReceiverType([EloquentCollection::class], elementModel: Post::class);
+
+        expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->lazy()'), postScope()))->toEqual($lazy)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::cursor()->filter(fn ($post) => true)'), postScope()))
+            ->toEqual(new ReceiverType([LazyCollection::class], elementModel: Post::class, keyed: true))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->shuffle()'), postScope()))->toEqual($list)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->merge([])'), postScope()))->toEqual($list)
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::all()->concat(\Workbench\App\Models\Comment::all())'), postScope()))
+            ->toEqual(new ReceiverType([EloquentCollection::class]));
+    });
+
+    // Builder::__call() runs a local macro, as a global scope's extend() adds, before it would throw.
+    test('a call nothing but a local macro could answer is presumed to hand the query back', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $archived = receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost::withArchived()');
+
+        expect($resolver->resolve($archived, postScope()))->toBeNull()
+            ->and($resolver->resolvePresumingSteps($archived, postScope()))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: ArchivingPost::class));
+    });
+
+    test('a static a model declares keeps reading as its declaration', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(
+            receiverExpr('\AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost::newest()'),
+            postScope(),
+        ))->toEqual(ReceiverType::of(ScopedPost::class));
     });
 
     // forwardDecoratedCallTo() hands the relation back only for the very builder it holds, which `$this` promises and

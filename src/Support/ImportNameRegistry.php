@@ -19,6 +19,9 @@ use Illuminate\Support\Str;
  */
 class ImportNameRegistry
 {
+    /** The segments a file publishing an API resource's values skips, so every such file names a class alike. */
+    public const RESOURCE_SKIP_SEGMENTS = ['Models', 'Enums', 'Http', 'Resources', 'App'];
+
     /** @var array<string, RegistryEntry> keyed by FQCN */
     protected array $entries = [];
 

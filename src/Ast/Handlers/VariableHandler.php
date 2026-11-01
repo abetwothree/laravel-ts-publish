@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
@@ -57,7 +58,7 @@ use ReflectionMethod;
  *
  * @internal
  */
-final class VariableHandler implements ExpressionHandler
+final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 {
     use AnalyzesPluckCalls;
     use BindsMapCallbacks;
@@ -80,6 +81,19 @@ final class VariableHandler implements ExpressionHandler
 
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->resolveRead($expr, $scope, $engine);
+
+        // Only a bare variable is the closure or prop it holds; a read through it, as `$items->map(…)`, is a value.
+        return $result === null || $expr instanceof Variable ? $result : ValueResult::withoutHeldObject($result);
+    }
+
+    /**
+     * Resolve a variable, or a read rooted at one, through the scope's bindings.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveRead(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $peeled = $expr instanceof MethodCall ? $this->peeledValuesOrAll($expr, $scope, $engine) : null;
 
@@ -238,29 +252,34 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding, a model
-     * as the subclass a guard proves it; past the write that ended its parameter binding, from the local assignment
-     * alone, or inside a gap from the value its write assigned, joined with the old binding where that may still hold.
+     * A bare variable's value from what its read sees.
+     *
+     * Inside a gap, the values its writes assigned, joined with the old binding where that may still hold; else the one
+     * write its read sees; else the binding its name came in with, a model as the subclass a guard proves it.
      *
      * @return ValueExpressionResult|null
      */
     private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($scope->holdsBinding($variable)) {
-            $narrowed = $this->narrowedModel($variable, $name, $scope);
-
-            return $narrowed === null ? $this->heldValue($name, $scope, $engine) : $this->modelValue($narrowed);
-        }
-
         $gap = $scope->gapAt($variable);
 
-        if ($gap === null) {
-            $local = $scope->localVarBindings[$name] ?? null;
-
-            return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
+        if ($gap !== null) {
+            return $this->joinedValue($variable, $name, $gap, $scope, $engine);
         }
 
-        return $this->joinedValue($variable, $name, $gap, $scope, $engine);
+        $write = $scope->soleWriteSeenBy($variable);
+
+        if ($write !== null) {
+            return $this->boundExpressionValue($name, $write, $scope, $engine);
+        }
+
+        if (! $scope->holdsBinding($variable)) {
+            return null;
+        }
+
+        $narrowed = $this->narrowedModel($variable, $name, $scope);
+
+        return $narrowed === null ? $this->heldValue($name, $scope, $engine) : $this->modelValue($narrowed);
     }
 
     /**
@@ -339,7 +358,10 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A bare variable's value from the binding its name came into the body with, or its local assignment.
+     * A bare variable's value from the binding its name came into the body with.
+     *
+     * Where that binds no value, from the body's one write of it, which a value read takes while a receiver keeps the
+     * class.
      *
      * @return ValueExpressionResult|null
      */
@@ -676,18 +698,24 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether an unnamed receiver is read as a collection: a variable a model hint binds the element of, unless its one
-     * write is an array literal, on which map() throws.
+     * Whether an unnamed receiver is read as a collection.
+     *
+     * A variable a model hint binds the element of, unless each write its read sees is an array literal, on which map()
+     * throws.
      *
      * @param  class-string<Model>|null  $declared
      */
     private function mayHoldCollection(Expr $receiver, ?string $declared, AnalysisScope $scope): bool
     {
-        return $declared !== null
-            && $receiver instanceof Variable
-            && is_string($receiver->name)
-            && $receiver->name !== 'this'
-            && ! ($scope->literalLocalBinding($receiver->name) instanceof Array_);
+        if ($declared === null || ! $receiver instanceof Variable || ! is_string($receiver->name)
+            || $receiver->name === 'this'
+        ) {
+            return false;
+        }
+
+        $writes = $scope->writesSeenBy($receiver);
+
+        return $writes === null || ! array_all($writes, fn (Expr $write): bool => $write instanceof Array_);
     }
 
     /**

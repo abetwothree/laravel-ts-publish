@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -30,7 +31,7 @@ use PhpParser\Node\Name;
  * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
  * channel, while a cast, an accessor or a declared type is read from its class.
  *
- * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
+ * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `soleSpelledWrite()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -59,9 +60,9 @@ trait ResolvesEnumPropertyArgTypes
         $result = ValueResult::unknown();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
-            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local
-            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: a parameter is
-            // never bound to a variable.
+            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local whose
+            // read sees one write; a join reads as its resolved value. Only the local takes VariableHandler's guard
+            // against a cyclic binding: a parameter is never bound to a variable.
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
                 $name = $argExpr->name;
 
@@ -69,7 +70,7 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                $local = $scope->literalLocalBinding($name);
+                $local = $this->soleSpelledWrite($argExpr, $scope);
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
                     return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));
@@ -118,8 +119,10 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm stays only where
-     * JsonResource::filter() reaches the wrap, as a resource wrap's does: a Collection sends a null payload as `[]`.
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps.
+     *
+     * A null payload no filter() reaches is sent as the `[]` resolve() returns, spelled `never[]`, except under the
+     * plain encoded reading, which keeps its null outside a map() kept as a Collection and drops it inside.
      *
      * @return ValueExpressionResult|null
      */
@@ -127,10 +130,17 @@ trait ResolvesEnumPropertyArgTypes
     {
         $result = $this->resolveEnumFromPropertyArg($payload, $scope)
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
+        $reading = $engine->reading();
 
-        return $result === null || $scope->filtersNestedResources
-            ? $result
-            : [...$result, 'type' => ValueResult::stripNullArm($result['type'])];
+        if ($result === null || ! ValueResult::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
+            return $result;
+        }
+
+        return match (true) {
+            $reading !== Reading::Encoded => [...$result, 'type' => ValueResult::stripNullArm($result['type']).' | never[]'],
+            $scope->filtersNestedResources => $result,
+            default => [...$result, 'type' => ValueResult::stripNullArm($result['type'])],
+        };
     }
 
     /**
@@ -151,7 +161,7 @@ trait ResolvesEnumPropertyArgTypes
         // The resolved property may already be a collection type (an AsEnumCollection cast or a
         // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
         $type = $enumResult['type'];
-        $alreadyCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+        $alreadyCollection = ValueResult::isListShaped($type);
 
         return [
             ...$enumResult,

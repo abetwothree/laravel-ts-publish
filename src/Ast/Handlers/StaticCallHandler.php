@@ -18,9 +18,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -75,7 +75,9 @@ final class StaticCallHandler implements ExpressionHandler
         ) {
             $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
 
-            return isset($resolved['resourceFqcn']) ? [...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])] : $resolved;
+            return isset($resolved['resourceFqcn'])
+                ? $this->sentResolvedBody([...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])], $engine)
+                : $resolved;
         }
 
         // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
@@ -89,7 +91,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver = $engine->resolve($expr->var);
 
             if (isset($receiver['resourceFqcn'])) {
-                return $this->resolvedBody($expr->var, $receiver, $receiver['resourceFqcn'], $scope);
+                return $this->sentResolvedBody($this->resolvedBody($expr->var, $receiver, $receiver['resourceFqcn'], $scope), $engine);
             }
         }
 
@@ -137,7 +139,7 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $expr->isFirstClassCallable()
         ) {
-            $auth = $this->authMethodResult($expr->name->toString(), resolve(AuthUserResolver::class)->model());
+            $auth = $this->authMethodResult($expr->name->toString());
 
             if ($auth !== null) {
                 return $auth;
@@ -426,6 +428,46 @@ final class StaticCallHandler implements ExpressionHandler
         return $nested !== null
             ? [...$nested, 'optional' => $receiver['optional']]
             : [...$receiver, 'type' => JsonApiResources::instanceType($resourceFqcn)];
+    }
+
+    /**
+     * The keys `resolve()` returns as Inertia sends them: R, or R's list, with the keys it sends otherwise restated.
+     *
+     * @param  ValueExpressionResult  $resolved
+     * @return ValueExpressionResult
+     */
+    private function sentResolvedBody(array $resolved, ExpressionEngine $engine): array
+    {
+        $resource = $resolved['resourceFqcn'] ?? null;
+
+        // Only Inertia walks the keys resolve() returns, and only a plain resource's: a collection's own body stays a
+        // known gap, and a JSON:API resource object's attributes arrive as a stdClass Inertia's PropsResolver does not
+        // walk, so json_encode() sends the resources in them bare.
+        if ($engine->reading()->encodes()
+            || $resource === null
+            || ! is_a($resource, JsonResource::class, true)
+            || is_a($resource, ResourceCollection::class, true)
+            || JsonApiResources::is($resource)
+        ) {
+            return $resolved;
+        }
+
+        $name = TsNaming::resourceTypeName($resource);
+        // A named collection keeps its keys by its own flag, not its items' class's, so either list spelling is R's.
+        $keepsKeys = match ($resolved['type']) {
+            ValueResult::collectionListType($name, false) => false,
+            ValueResult::collectionListType($name, true) => true,
+            default => null,
+        };
+        $sent = $resolved['type'] === $name || $keepsKeys !== null ? resolve(ResolvedResourceBody::class)->sent($resource) : null;
+
+        if ($sent === null) {
+            return $resolved;
+        }
+
+        return $keepsKeys === null
+            ? [...$sent, 'optional' => $resolved['optional'], 'resolvedFqcn' => $resource]
+            : [...$sent, 'type' => ValueResult::collectionListType($sent['type'], $keepsKeys), 'optional' => $resolved['optional']];
     }
 
     /**

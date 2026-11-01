@@ -483,6 +483,14 @@ describe('ValueResult::withEnumArmShapes()', function () {
             true,
             true,
         ],
+        'a wrap around null sent as an empty list, beside a nullable direct read' => [
+            [
+                ['type' => 'StatusType | never[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            false,
+            false,
+        ],
         'wraps that agree, and an arm holding no enum' => [
             [
                 ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
@@ -611,4 +619,48 @@ describe('ValueResult::unionResults() over an empty array beside a list', functi
         'a named type' => [['UserCollection', 'never[]'], 'UserCollection | never[]'],
         'an empty array nested in a shape' => [['{ a: never[] }', 'string[]'], '{ a: never[] } | string[]'],
     ]);
+});
+
+// A list or Collection built from a value Inertia replaces is one it opens, so the mark holds only for its own type.
+it('reads a value as closed to dotted keys only while its type is the one it was marked for', function () {
+    $card = ValueResult::closeToDottedKeys(['type' => '{ data: R }', 'optional' => false]);
+
+    expect(ValueResult::closedToDottedKeys($card))->toBeTrue()
+        ->and(ValueResult::closedToDottedKeys([...$card, 'type' => '{ data: R } | null']))->toBeTrue()
+        ->and(ValueResult::closedToDottedKeys([...$card, 'type' => '{ data: R }[]']))->toBeFalse()
+        ->and(ValueResult::closedToDottedKeys(['type' => '{ data: R }', 'optional' => false]))->toBeFalse();
+});
+
+// A map() element is what its callback returns, and one that returns a callable may hold an object.
+it('reads the value a held callable returns apart from the callable', function () {
+    $number = ['type' => 'number', 'optional' => false];
+
+    expect(ValueResult::calledValue(ValueResult::heldObject(ValueResult::heldObject($number))))
+        ->toBe([...$number, 'mayHoldObject' => ['objectNull' => false, 'plainNull' => false]])
+        ->and(ValueResult::calledValue(ValueResult::heldObject($number)))->toBe($number);
+});
+
+// Inertia resolves a prop object even where a callable it called returns it, and sends a callable there as `{}`; it
+// replaces either object, and a union of them or of one and null, before a dotted key writes under it.
+it('marks a held object\'s kind, and a callable that may return a callable', function () {
+    $closure = ValueResult::heldObject(['type' => 'number', 'optional' => false]);
+    $prop = ValueResult::heldObject(['type' => 'number', 'optional' => false], prop: true);
+    $returnsClosure = ValueResult::heldObject($closure);
+    $returnsProp = ValueResult::heldObject($prop);
+    $plain = ['type' => 'null', 'optional' => false];
+
+    expect($closure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
+        ->and($prop)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => 'number'])
+        ->and($returnsClosure)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true, 'returnsCallable' => true])
+        ->and($returnsProp)->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => 'number', 'heldObject' => true])
+        ->and(ValueResult::unionResults([$prop, $prop]))
+        ->toBe(['type' => 'number', 'optional' => false, 'closedToDottedKeys' => 'number', 'heldObject' => true, 'heldProp' => true])
+        ->and(ValueResult::unionResults([$prop, $returnsProp])['closedToDottedKeys'] ?? null)->toBe('number')
+        ->and(ValueResult::unionResults([$prop, $plain])['closedToDottedKeys'] ?? null)->toBe('number | null')
+        ->and(ValueResult::unionResults([$prop, ['type' => 'string', 'optional' => false]])['closedToDottedKeys'] ?? null)->toBeNull()
+        ->and(ValueResult::unionResults([$plain, $plain])['closedToDottedKeys'] ?? null)->toBeNull()
+        ->and(ValueResult::unionResults([$prop, $closure]))->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true])
+        ->and(ValueResult::unionResults([$prop, $plain])['heldProp'] ?? null)->toBeTrue()
+        ->and(ValueResult::unionResults([$returnsClosure, $plain])['returnsCallable'] ?? null)->toBeTrue()
+        ->and(ValueResult::withoutHeldObject([...$returnsClosure, 'heldProp' => true]))->toBe(['type' => 'number', 'optional' => false]);
 });

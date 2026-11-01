@@ -98,6 +98,7 @@ test('the value read declines a returned closure, a generator, a vendor method a
     'a returned arrow function' => [NamesakeEdgeResource::class, 'arrow', null],
     'a closure held in a local' => [NamesakeEdgeResource::class, 'formatterViaLocal', null],
     'a closure copied between locals' => [NamesakeEdgeResource::class, 'copiedFormatter', null],
+    'a closure each branch of an if assigns a local' => [NamesakeEdgeResource::class, 'formatterViaBranches', null],
     'a first-class callable held in a local' => [NamesakeEdgeResource::class, 'callableViaLocal', null],
     'a closure as a ternary arm' => [NamesakeEdgeResource::class, 'formatterOrTitle', null],
     'a closure as a short ternary\'s fallback' => [NamesakeEdgeResource::class, 'titleOrFormatter', null],

@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -21,6 +21,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type HeldNulls from ExpressionHandler
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -31,7 +32,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
- * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
+ * @phpstan-type TokenFqcns = list<class-string|null>
+ * @phpstan-type CastInForce = array{
+ *     type: string,
+ *     import: string|null,
+ *     optional?: bool,
+ *     customImports?: TypesImportMap,
+ *     tokenFqcns?: TokenFqcns,
+ * }
  * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{
  *     enums?: list<class-string>,
@@ -67,6 +75,41 @@ class MethodAnalysis
      * holdUnreadKeys(); the body fallback publishes such a shape open.
      */
     public bool $holdsUnreadKeys = false;
+
+    /**
+     * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
+     * where an override spells that name: a share() docblock entry's, recorded by CastChannels::fit() at publish time.
+     *
+     * @var array<array-key, TokenFqcns>
+     */
+    public array $declaredTokenFqcns = [];
+
+    /**
+     * Property name => the nulls of a value addProperty() last gave the key that PHP holds as an object on some arm
+     * (ValueResult::heldNullsOf()), which a returned variable's walk reads where the write lands. A merge or a join
+     * sets none, so its keys read as plain.
+     *
+     * @var array<array-key, HeldNulls>
+     */
+    public array $heldObjectKeys = [];
+
+    /**
+     * Property name => true where a value addProperty() gave the key may be left out by itself, as an Inertia deferred
+     * prop or a `when()` value may, beside a key whose only absence is a write that may not run. Merges and joins keep
+     * every branch's.
+     *
+     * @var array<array-key, true>
+     */
+    public array $leftOutValues = [];
+
+    /**
+     * Property name => true where the value addProperty() last gave the key is an object Inertia replaces before a
+     * dotted key writes under it (ValueResult::closedToDottedKeys()). A merge takes the source's; a join keeps a key
+     * every branch holding it closes. A fact of the value, so forgetChannels(), which a cast also runs, keeps it.
+     *
+     * @var array<array-key, true>
+     */
+    public array $closedToDottedKeys = [];
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -141,6 +184,26 @@ class MethodAnalysis
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
 
+        $held = ValueResult::heldNullsOf($result);
+
+        if ($held === null) {
+            unset($this->heldObjectKeys[$name]);
+        } else {
+            $this->heldObjectKeys[$name] = $held;
+        }
+
+        if ($result['optional']) {
+            $this->leftOutValues[$name] = true;
+        } else {
+            unset($this->leftOutValues[$name]);
+        }
+
+        if (ValueResult::closedToDottedKeys($result)) {
+            $this->closedToDottedKeys[$name] = true;
+        } else {
+            unset($this->closedToDottedKeys[$name]);
+        }
+
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
             $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
@@ -193,9 +256,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key it
-     * sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType() consumes
-     * each as a positional queue. `carried` unions per kind; `readsCompletely` ANDs and `holdsUnreadKeys` ORs.
+     * `properties` appends; the single-value class maps, `casts` and `closedToDottedKeys` replace-merge, the source
+     * winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as aliasPropertyType()
+     * reads them by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
@@ -209,15 +272,19 @@ class MethodAnalysis
         $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
         $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
         $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
+        $this->leftOutValues = array_replace($this->leftOutValues, $source->leftOutValues);
 
         foreach ($source->properties as $property) {
             if (! isset($source->casts[$property['name']])) {
                 unset($this->casts[$property['name']]);
             }
+
+            unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
+        $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
@@ -265,6 +332,10 @@ class MethodAnalysis
         $this->enumResourceArmShapes = $source->enumResourceArmShapes;
         $this->casts = $source->casts;
         $this->carried = $source->carried;
+        $this->declaredTokenFqcns = $source->declaredTokenFqcns;
+        $this->heldObjectKeys = $source->heldObjectKeys;
+        $this->leftOutValues = $source->leftOutValues;
+        $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -375,10 +446,7 @@ class MethodAnalysis
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
-        $wrapped = [
-            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
-            ...$this->inlineEnumResourceFqcns[$name] ?? [],
-        ];
+        $wrapped = $this->wrappedEnumFqcns($name);
         $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
         $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
 
@@ -395,6 +463,68 @@ class MethodAnalysis
     }
 
     /**
+     * The enums, models and resources behind a property's type tokens, each kind in the order its channels queue them.
+     *
+     * @return list<class-string>
+     */
+    public function tokenFqcns(string $name): array
+    {
+        return [
+            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
+            ...$this->channelClasses($name, $this->directEnumFqcns, $this->multiEnumResourceFqcns),
+            ...$this->inlineEnumFqcns[$name] ?? [],
+            ...$this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
+            ...$this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+        ];
+    }
+
+    /**
+     * Every class on any import channel behind a type's tokens, a self-keyed embedded class's too, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allTokenFqcns(): array
+    {
+        return $this->allChannelFqcns(
+            [$this->enumResources, $this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
+            [$this->multiEnumResourceFqcns, $this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
+        );
+    }
+
+    /**
+     * Every class a cast displaced and its text does not spell, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allCarriedFqcns(): array
+    {
+        return array_values(array_unique(array_merge([], ...array_values($this->carried))));
+    }
+
+    /**
+     * Every enum any value wraps in an `EnumResource`, once each.
+     *
+     * @return list<class-string>
+     */
+    public function allWrappedEnumFqcns(): array
+    {
+        return $this->allChannelFqcns([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+    }
+
+    /**
+     * The enums a property's value wraps in an `EnumResource`, whose consts an `AsEnum<typeof …>` spells.
+     *
+     * @return list<class-string>
+     */
+    public function wrappedEnumFqcns(string $name): array
+    {
+        return [
+            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
+            ...$this->inlineEnumResourceFqcns[$name] ?? [],
+        ];
+    }
+
+    /**
      * Forget every import channel entry and cast entry keyed by this property name, when another value takes the key
      * over: an import channel entry left behind would alias the new type by the old one's classes or keep an import
      * nothing spells, and a cast entry would fit the new value to a text the key no longer publishes.
@@ -405,7 +535,8 @@ class MethodAnalysis
             $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->casts[$name],
+            $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
+            $this->leftOutValues[$name],
         );
     }
 
@@ -430,6 +561,36 @@ class MethodAnalysis
         }
 
         $this->properties = $kept;
+    }
+
+    /**
+     * Rename properties, with every import channel, cast and held-object entry kept under their names, at once.
+     *
+     * @param  array<array-key, string>  $names  each name => its new name; a name it lacks keeps its own
+     */
+    public function renameKeys(array $names): void
+    {
+        foreach ($this->properties as &$property) {
+            $property['name'] = $names[$property['name']] ?? $property['name'];
+        }
+
+        unset($property);
+
+        $this->enumResources = TopLevelRenumbering::rekey($this->enumResources, $names);
+        $this->nestedResources = TopLevelRenumbering::rekey($this->nestedResources, $names);
+        $this->directEnumFqcns = TopLevelRenumbering::rekey($this->directEnumFqcns, $names);
+        $this->modelFqcns = TopLevelRenumbering::rekey($this->modelFqcns, $names);
+        $this->inlineEnumFqcns = TopLevelRenumbering::rekey($this->inlineEnumFqcns, $names);
+        $this->inlineModelFqcns = TopLevelRenumbering::rekey($this->inlineModelFqcns, $names);
+        $this->inlineResourceFqcns = TopLevelRenumbering::rekey($this->inlineResourceFqcns, $names);
+        $this->multiEnumResourceFqcns = TopLevelRenumbering::rekey($this->multiEnumResourceFqcns, $names);
+        $this->inlineEnumResourceFqcns = TopLevelRenumbering::rekey($this->inlineEnumResourceFqcns, $names);
+        $this->enumResourceArmShapes = TopLevelRenumbering::rekey($this->enumResourceArmShapes, $names);
+        $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
+        $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
+        $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
+        $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
+        $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
     }
 
     /**
@@ -519,6 +680,24 @@ class MethodAnalysis
     }
 
     /**
+     * Every class the given single-entry and list channels hold, once each.
+     *
+     * @param  list<ClassMapType>  $single
+     * @param  list<FqcnQueueMap>  $listed
+     * @return list<class-string>
+     */
+    private function allChannelFqcns(array $single, array $listed): array
+    {
+        $fqcns = array_merge([], ...array_map(array_values(...), $single));
+
+        foreach ($listed as $map) {
+            $fqcns = [...$fqcns, ...array_merge([], ...array_values($map))];
+        }
+
+        return array_values(array_unique($fqcns));
+    }
+
+    /**
      * The classes a property's single-entry channel and its list channel of one kind hold, in that order.
      *
      * @param  ClassMapType  $single
@@ -549,7 +728,7 @@ class MethodAnalysis
             }
 
             $wrapped = $this->wrappedEnums($property['name'], $branches);
-            $tokens = array_diff(TsTypeString::splitTopLevelUnion($property['type']), ['null']);
+            $tokens = ValueResult::filledArms($property['type']);
 
             if ($wrapped === null || count($wrapped) < 2 || count($tokens) !== count($wrapped)) {
                 continue;

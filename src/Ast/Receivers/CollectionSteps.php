@@ -27,7 +27,7 @@ final class CollectionSteps
     /** The collection methods that hand back the same items, or a leading run of them, under the keys they had. */
     private const array SAME_ITEMS = [
         'load', 'loadMissing', 'loadCount', 'loadMorph', 'loadMorphCount', 'loadAggregate', 'loadSum', 'loadMax',
-        'loadMin', 'loadAvg', 'loadExists', 'each', 'tap', 'collect', 'toBase', 'makeHidden', 'mergeHidden',
+        'loadMin', 'loadAvg', 'loadExists', 'each', 'tap', 'collect', 'toBase', 'lazy', 'makeHidden', 'mergeHidden',
         'makeVisible', 'mergeVisible', 'setVisible', 'setHidden', 'append', 'setAppends', 'withoutAppends',
         'withRelationshipAutoloading', 'takeUntil', 'takeWhile',
     ];
@@ -48,6 +48,20 @@ final class CollectionSteps
         'splitIn', 'sliding', 'crossJoin', 'combine', 'transform', 'select', 'dot', 'undot',
     ];
 
+    /** The collection steps that hand back the same items re-indexed 0..n-1. */
+    private const array RELISTS = ['values', 'shuffle'];
+
+    /** The collection steps that add the items they are given to the same items. */
+    private const array ADDS_ITEMS = ['merge', 'concat'];
+
+    /**
+     * The REPLACES_ITEMS steps whose items stay the kind they were: lists of the same items, or, for `flatten()`,
+     * `dot()` and `undot()`, the same models, which none of them opens.
+     */
+    private const array KEEPS_ITEM_KIND = [
+        'groupBy', 'chunk', 'chunkWhile', 'split', 'splitIn', 'partition', 'sliding', 'flatten', 'dot', 'undot',
+    ];
+
     /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
     private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];
 
@@ -64,7 +78,24 @@ final class CollectionSteps
      */
     public static function keepsItems(string $method): bool
     {
-        return self::keepsKeys($method) || $method === 'values' || in_array($method, self::SAME_ITEMS_KEYED, true);
+        return self::keepsKeys($method) || in_array($method, self::RELISTS, true) || in_array($method, self::SAME_ITEMS_KEYED, true);
+    }
+
+    /**
+     * Whether a collection step adds the items it is given, so it keeps the items' kind where those are of it.
+     */
+    public static function addsItems(string $method): bool
+    {
+        return in_array($method, self::ADDS_ITEMS, true);
+    }
+
+    /**
+     * Whether a collection step provably hands back items of another kind than its own, as `map()` and `pluck()` do;
+     * a list of lists of its items, as `groupBy()` hands back, does not.
+     */
+    public static function changesItems(string $method): bool
+    {
+        return in_array($method, self::REPLACES_ITEMS, true) && ! in_array($method, self::KEEPS_ITEM_KIND, true);
     }
 
     /**
@@ -77,7 +108,7 @@ final class CollectionSteps
     public static function keyedAfter(MethodCall|NullsafeMethodCall $call, string $method, bool $keyed, bool $eloquent): bool
     {
         return match (true) {
-            $method === 'values' => false,
+            in_array($method, self::RELISTS, true) => false,
             $method === 'take' => $keyed || ! self::takesFromFront($call),
             $method === 'sortKeys' => $keyed || $call->getArgs() !== [],
             in_array($method, self::ELOQUENT_RELISTS, true) && $eloquent => self::eloquentKeyedAfter($call, $method, $keyed),

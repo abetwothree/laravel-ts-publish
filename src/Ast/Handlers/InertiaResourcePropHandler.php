@@ -6,34 +6,29 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\EmptyReceiverGuess;
-use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
-use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
-use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceResponseBody;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceResponseType;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResponseExtras;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
-use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -41,18 +36,16 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * A resource a controller hands to `Inertia::render()` or a middleware shares, at any depth of the props, is sent as
- * its `toResponse()` data rather than the value a nested resource key flattens it to: its body inside the live wrap
- * key, and for a collection the pagination members of each paginator kind its payload may hold.
+ * its `toResponse()` data, not the value a nested resource key flattens it to: its body inside the live wrap key, a
+ * collection's pagination members for each paginator its payload may hold, and the `with()` and `additional()` keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type GuessedCollection from GuessesModelResources
- *
- * @phpstan-type PayloadPaginators = non-empty-list<string|null>
- * @phpstan-type JsonApiIncluded = array{arguments: string, resources: list<class-string>, imports: list<string>}
+ * @phpstan-import-type PayloadPaginators from ResourceResponseType
  *
  * @internal
  */
@@ -61,11 +54,14 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use GuessesModelResources;
     use InspectsAstNodes;
     use InspectsResourceCalls;
+    use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
 
-    /** Where a paginated response nests its list with no live wrap key, as its pagination members sit beside it. */
-    private const PAGINATED_LIST_KEY = 'data';
+    /**
+     * Builds each response from the spelling this handler reads.
+     */
+    public function __construct(private readonly ResourceResponseType $responses = new ResourceResponseType) {}
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -76,23 +72,24 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        return match (true) {
-            $expr instanceof New_ => $this->resolveNew($expr, $scope, $engine),
-            $expr instanceof StaticCall => $this->resolveStatic($expr, $scope, $engine),
-            $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall => $this->resolveMethodCall($expr, $scope, $engine),
-            default => null,
-        };
+        $result = $this->resolveBuilt($expr, $scope, $engine);
+
+        return $result === null ? null : ValueResult::closeToDottedKeys($result);
     }
 
     /**
-     * Re-reflect by name so the invariant ReflectionClass template widens back to <object>.
+     * A resource or collection an expression builds, as sent with the keys an `additional()` call on it adds.
      *
-     * @param  class-string  $className
-     * @return ReflectionClass<object>
+     * @return ValueExpressionResult|null
      */
-    private static function reflect(string $className): ReflectionClass
+    private function resolveBuilt(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine, ?ResponseExtras $added = null): ?array
     {
-        return new ReflectionClass($className);
+        return match (true) {
+            $expr instanceof New_ => $this->resolveNew($expr, $scope, $engine, $added),
+            $expr instanceof StaticCall => $this->resolveStatic($expr, $scope, $engine, $added),
+            $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall => $this->resolveMethodCall($expr, $scope, $engine, $added),
+            default => null,
+        };
     }
 
     /**
@@ -100,7 +97,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveNew(New_ $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function resolveNew(New_ $expr, AnalysisScope $scope, ExpressionEngine $engine, ?ResponseExtras $added): ?array
     {
         if (! $expr->class instanceof Name) {
             return null;
@@ -109,28 +106,28 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $className = $this->scopeClassName($expr->class, $scope);
 
         if (is_a($className, ResourceCollection::class, true)) {
-            return $this->namedCollection($expr, $className, $engine);
+            return $this->namedCollection($expr, $className, $scope, $engine, $added);
         }
 
-        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className) : null;
+        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine, $added) : null;
     }
 
     /**
      * `SomeResource::make($model)`, `SomeCollection::make($items)`, `SomeResource::collection($items)` and
-     * `EnumResource::collection($cases)`.
+     * `EnumResource::collection($cases)`, the class named or as `self` or `static`.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveStatic(StaticCall $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function resolveStatic(StaticCall $expr, AnalysisScope $scope, ExpressionEngine $engine, ?ResponseExtras $added): ?array
     {
-        $className = $this->resolveStaticCallClassName($expr);
+        $className = $expr->class instanceof Name ? $this->scopeClassName($expr->class, $scope) : null;
 
         if ($className === null || ! $expr->name instanceof Identifier || $expr->isFirstClassCallable()) {
             return null;
         }
 
         if ($expr->name->toString() === 'collection') {
-            return $this->resolveStaticCollection($expr, $className, $scope, $engine);
+            return $this->resolveStaticCollection($expr, $className, $scope, $engine, $added);
         }
 
         if ($expr->name->toString() !== 'make') {
@@ -139,26 +136,27 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         // make() is `new static(...$parameters)`, so it is sent exactly as the `new` it spells.
         if (is_a($className, ResourceCollection::class, true)) {
-            return $this->namedCollection($expr, $className, $engine);
+            return $this->namedCollection($expr, $className, $scope, $engine, $added);
         }
 
-        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className) : null;
+        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine, $added) : null;
     }
 
     /**
-     * `$model->toResource()` or `$items->toResourceCollection()`, with or without a class, through `->` or `?->`.
+     * `toResource()`, `toResourceCollection()`, with or without a class, and `additional()`, through `->` or `?->`.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveMethodCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function resolveMethodCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine, ?ResponseExtras $added): ?array
     {
         if (! $call->name instanceof Identifier) {
             return null;
         }
 
         $result = match ($call->name->toString()) {
-            'toResource' => $this->resolveToResource($call, $scope),
-            'toResourceCollection' => $this->resolveToResourceCollection($call, $scope, $engine),
+            'toResource' => $this->resolveToResource($call, $scope, $added),
+            'toResourceCollection' => $this->resolveToResourceCollection($call, $scope, $engine, $added),
+            'additional' => $this->resolveAdditional($call, $scope, $engine),
             default => null,
         };
 
@@ -169,38 +167,55 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
+     * `->additional([...])` on a resource or collection this handler builds: its response with those keys, as encoded.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveAdditional(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $data = CallArguments::for($call, new ReflectionMethod(JsonResource::class, 'additional'))->named('data')?->value;
+        $built = $call->var;
+
+        // Each call replaces the keys an earlier one set.
+        while (($built instanceof MethodCall || $built instanceof NullsafeMethodCall)
+            && $built->name instanceof Identifier
+            && $built->name->toString() === 'additional'
+        ) {
+            $built = $built->var;
+        }
+
+        if ($data === null) {
+            return null;
+        }
+
+        return $this->resolveBuilt($built, $scope, $engine, ResponseExtras::ofValue(resolve(AstEngine::class)->analyzeEncodedValue($data, $engine)));
+    }
+
+    /**
      * `$model->toResource()` or `$model->toResource(SomeResource::class)`: each resource it may build, as sent.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveToResource(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): ?array
+    private function resolveToResource(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ?ResponseExtras $added): ?array
     {
         $value = $this->analyzeToResourceCall($call, $scope);
         $responses = [];
-        $included = [];
-        $imports = [];
 
         foreach (isset($value['resourceFqcn']) ? [$value['resourceFqcn']] : ($value['embeddedResourceFqcns'] ?? []) as $resource) {
-            if (! $this->sendsResourceObject($resource)) {
+            $response = $this->sendsResourceObject($resource) ? $this->responses->single($resource, $added) : null;
+
+            if ($response === null) {
                 return null;
             }
 
-            $response = $this->instanceResult($resource);
-            $responses[] = $response['type'];
-            $included = [...$included, ...$response['embeddedResourceFqcns'] ?? []];
-            $imports = [...$imports, ...$response['customImports'][TolkiTypes::MODULE] ?? []];
+            $responses[] = $response;
         }
 
-        if ($responses === []) {
-            return null;
-        }
-
-        return [
-            ...$value,
-            'type' => implode(' | ', $responses),
-            ...($included === [] ? [] : ['embeddedResourceFqcns' => [...$value['embeddedResourceFqcns'] ?? [], ...$included]]),
-            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => array_values(array_unique($imports))]]),
-        ];
+        return match (count($responses)) {
+            0 => null,
+            1 => [...$value, ...$responses[0], 'optional' => $value['optional']],
+            default => [...$value, ...ValueResult::unionResults($responses), 'optional' => $value['optional']],
+        };
     }
 
     /**
@@ -210,8 +225,12 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null null for a receiver whose model, or a class, it cannot read
      */
-    private function resolveToResourceCollection(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
+    private function resolveToResourceCollection(
+        MethodCall|NullsafeMethodCall $call,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?ResponseExtras $added,
+    ): ?array {
         $args = $this->resourceCallArguments($call, Collection::class, 'toResourceCollection');
         $explicitArg = $args->named('resourceClass') ?? $args->at(0);
 
@@ -219,13 +238,21 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($explicitArg->value);
 
             // Laravel calls `$explicit::collection($items)`; the receiver is read only for a class this sends.
-            return $explicit !== null && $this->collectsAnonymously($explicit)
-                ? $this->anonymousCollectionType($explicit, $this->paginatorsOf($engine->resolve($call->var)['type']))
-                : null;
+            return match (true) {
+                $explicit === null, $added !== null && $this->isEnumResourceClass($explicit) => null,
+                $this->isEnumResourceClass($explicit) => $this->enumListResponse($call->var, $scope, $engine)
+                    ?? $this->unnamedEnumListResponse(),
+                $this->collectsAnonymously($explicit) => $this->responses->anonymousCollection(
+                    $explicit,
+                    $this->payloadPaginators($call->var, $scope, $engine),
+                    $added,
+                ),
+                default => null,
+            };
         }
 
         $receiver = $engine->resolve($call->var);
-        $paginators = $this->paginatorsOf($receiver['type']);
+        $paginators = $this->payloadPaginators($call->var, $scope, $engine);
         $guessed = $this->guessedCollection($call->var, $receiver, $scope);
 
         if ($guessed === null) {
@@ -233,14 +260,16 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         if ($guessed['collection'] !== null) {
-            $named = $this->namedCollectionType($guessed['collection'], $paginators);
+            $named = $this->responses->namedCollection($guessed['collection'], $paginators, $added);
 
             return $named === null || resolve(EmptyReceiverGuess::class)->responseAdmitsEmpty($guessed['collection'])
                 ? $named
-                : $this->besideEmptyReceiver($named, $paginators);
+                : $this->responses->besideEmptyReceiver($named, $paginators, $added);
         }
 
-        return $this->collectsAnonymously($guessed['resource']) ? $this->anonymousCollectionType($guessed['resource'], $paginators) : null;
+        return $this->collectsAnonymously($guessed['resource'])
+            ? $this->responses->anonymousCollection($guessed['resource'], $paginators, $added)
+            : null;
     }
 
     /**
@@ -278,23 +307,24 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveStaticCollection(StaticCall $expr, string $className, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
+    private function resolveStaticCollection(
+        StaticCall $expr,
+        string $className,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?ResponseExtras $added,
+    ): ?array {
         if ($this->isEnumResourceClass($className)) {
-            return $this->enumResourceCollection($expr, $className, $scope, $engine);
+            return $added === null ? $this->enumResourceCollection($expr, $className, $scope, $engine) : null;
         }
 
-        if (! $this->collectsAnonymously($className)) {
-            return null;
-        }
+        $result = $this->collectsAnonymously($className) ? $this->responses->anonymousCollection(
+            $className,
+            $this->payloadPaginators($this->resourcePayloadArguments($expr, $className)->at(0)?->value, $scope, $engine),
+            $added,
+        ) : null;
 
-        return [
-            ...$this->anonymousCollectionType(
-                $className,
-                $this->payloadPaginators($this->resourcePayloadArguments($expr, $className)->at(0), $engine),
-            ),
-            'optional' => $this->hasConditionalArgument($expr, $className),
-        ];
+        return $result === null ? null : [...$result, 'optional' => $this->hasConditionalArgument($expr, $className)];
     }
 
     /**
@@ -305,9 +335,31 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function enumResourceCollection(StaticCall $expr, string $className, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
-        $list = $payload === null ? null : $this->enumCollectionValue($payload, $scope, $engine);
 
-        return $list === null ? null : [...$list, 'type' => $this->response(AnonymousResourceCollection::class, $list['type'])];
+        return $payload === null ? null : $this->enumListResponse($payload, $scope, $engine);
+    }
+
+    /**
+     * What `EnumResource::collection($payload)` sends: the enum list inside the anonymous collection's wrap key.
+     *
+     * @return ValueExpressionResult|null null when no single enum resolves, as the nested value would not either
+     */
+    private function enumListResponse(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        // A resource collects `collect($items)` as it collects `$items`.
+        $list = $this->enumCollectionValue(CallArguments::collectArgument($payload) ?? $payload, $scope, $engine);
+
+        return $list === null ? null : $this->responses->enumList($list);
+    }
+
+    /**
+     * What an EnumResource collection sends over items naming no enum, whose nested value names an unpublished type.
+     *
+     * @return ValueExpressionResult
+     */
+    private function unnamedEnumListResponse(): array
+    {
+        return $this->responses->enumList([...ValueResult::unknown(), 'type' => 'unknown[]']);
     }
 
     /**
@@ -316,388 +368,47 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      * @param  class-string<ResourceCollection>  $className
      * @return ValueExpressionResult|null
      */
-    private function namedCollection(StaticCall|New_ $call, string $className, ExpressionEngine $engine): ?array
-    {
-        $result = $this->namedCollectionType(
+    private function namedCollection(
+        StaticCall|New_ $call,
+        string $className,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?ResponseExtras $added,
+    ): ?array {
+        $result = $this->responses->namedCollection(
             $className,
-            $this->payloadPaginators($this->resourcePayloadArguments($call, $className)->at(0), $engine),
+            $this->payloadPaginators($this->resourcePayloadArguments($call, $className)->at(0)?->value, $scope, $engine),
+            $added,
         );
 
         return $result === null ? null : [...$result, 'optional' => $this->payloadIsConditional($call, $className)];
     }
 
     /**
-     * A named collection's response over each paginator kind its payload may hold, and unpaginated when it may hold
-     * none: its body inside the live wrap key, beside that kind's pagination members.
-     *
-     * @param  class-string<ResourceCollection>  $className
-     * @param  PayloadPaginators  $paginators
-     * @return ValueExpressionResult|null null for a flat one over a paginator that collects no element
-     */
-    private function namedCollectionType(string $className, array $paginators): ?array
-    {
-        // The prop follows the collection's wrap, element and body, which no file the page records holds.
-        DependencyRecorder::recordClass($className);
-
-        $name = TsNaming::resourceTypeName($className);
-        $kinds = $this->paginatorKinds($paginators);
-
-        if ($kinds === []) {
-            return [...ValueResult::unknown(), 'type' => $this->response($className, $name, $className), 'resourceFqcn' => $className];
-        }
-
-        $unpaginated = in_array(null, $paginators, true) ? [$this->response($className, $name, $className)] : [];
-        $reflection = self::reflect($className);
-
-        // Without a wrap key, a collection that sends its collected list IS the paginator's data: it is the paginator.
-        if (ResourceWrapping::key($className) === null && resolve(ResourceCollectionBody::class)->sendsCollectedList($reflection)) {
-            $element = ResourceCollections::collectedElement($reflection);
-
-            if ($element === null) {
-                return null;
-            }
-
-            $paginated = $this->paginatedResourceType(ResourceCollections::elementValue($element), $reflection, null, $kinds);
-
-            return $unpaginated === [] ? $paginated : [
-                ...$paginated,
-                'type' => $this->union([...$unpaginated, $paginated['type']]),
-                'embeddedResourceFqcns' => [$className],
-            ];
-        }
-
-        $blocks = $this->paginationNames($kinds, 'blocks');
-
-        return [
-            ...ValueResult::unknown(),
-            'type' => $this->union([...$unpaginated, $this->beside($this->response($className, $name, $className, paginated: true), $blocks)]),
-            'resourceFqcn' => $className,
-            'customImports' => [TolkiTypes::MODULE => $blocks],
-        ];
-    }
-
-    /**
-     * An anonymous collection's response over each paginator kind its payload may hold, and unpaginated when it may
-     * hold none: its list inside the anonymous collection's live wrap key, or each kind's paginator response.
+     * One resource object as `new X()` or `X::make()` builds it: its response, which only filter() makes null.
      *
      * @param  class-string<JsonResource>  $className
-     * @param  PayloadPaginators  $paginators
-     * @return ValueExpressionResult
+     * @return ValueExpressionResult|null
      */
-    private function anonymousCollectionType(string $className, array $paginators): array
-    {
-        if (JsonApiResources::is($className)) {
-            return $this->jsonApiCollection($className, $paginators);
+    private function singleResource(
+        StaticCall|New_ $call,
+        string $className,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?ResponseExtras $added,
+    ): ?array {
+        $instance = $this->responses->single($className, $added);
+
+        if ($instance === null) {
+            return null;
         }
 
-        $reflection = self::reflect($className);
-        $name = TsNaming::resourceTypeName($className);
-        // The anonymous collection wraps by its own `$wrap`, `JsonResource`'s shared slot, never the collected one's.
-        $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
-        $kinds = $this->paginatorKinds($paginators);
-        $types = [];
-        $imports = [];
+        $result = [...$instance, 'optional' => $this->payloadIsConditional($call, $className)];
+        $type = $this->filteredType($call, $className, $result['type'], $scope, $engine);
 
-        if (in_array(null, $paginators, true)) {
-            if ($wrapKey === 'data' && ! ResourceCollections::preservesKeys($reflection)) {
-                $anonymous = TolkiTypes::MAP[AnonymousResourceCollection::class];
-                $types[] = "{$anonymous}<{$name}>";
-                $imports[] = $anonymous;
-            } else {
-                $types[] = $this->response(AnonymousResourceCollection::class, ResourceCollections::listType($name, $reflection));
-            }
-        }
-
-        if ($kinds !== []) {
-            $item = ResourceCollections::elementValue(['fqcn' => $className, 'model' => false]);
-            $paginated = $this->paginatedResourceType($item, $reflection, $wrapKey, $kinds);
-            $types[] = $paginated['type'];
-            $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
-        }
-
-        return [
-            ...ValueResult::unknown(),
-            'type' => $this->union($types),
-            'resourceFqcn' => $className,
-            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => $imports]]),
-        ];
-    }
-
-    /**
-     * A guessed collection's response beside the one an empty receiver sends instead: the plain collection's, its empty
-     * list inside that collection's live wrap key, or each paginator kind's response over no items.
-     *
-     * @param  ValueExpressionResult  $named
-     * @param  PayloadPaginators  $paginators
-     * @return ValueExpressionResult
-     */
-    private function besideEmptyReceiver(array $named, array $paginators): array
-    {
-        $collection = EmptyReceiverGuess::COLLECTION;
-        $kinds = $this->paginatorKinds($paginators);
-        $types = in_array(null, $paginators, true) ? [$this->response($collection, EmptyReceiverGuess::listType())] : [];
-        $imports = $named['customImports'][TolkiTypes::MODULE] ?? [];
-
-        if ($kinds !== []) {
-            $item = [...ValueResult::unknown(), 'type' => EmptyReceiverGuess::ELEMENT];
-            $paginated = $this->paginatedResourceType($item, self::reflect($collection), ResourceWrapping::key($collection), $kinds);
-            $types[] = $paginated['type'];
-            $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
-        }
-
-        return [
-            ...$named,
-            'type' => $this->union([$named['type'], ...$types]),
-            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => array_values(array_unique($imports))]]),
-        ];
-    }
-
-    /**
-     * The paginator response of an anonymous or flat collection over each kind it may wrap: its items under the
-     * response's wrap key, `data` without one, keyed when the reflected class preserves keys.
-     *
-     * @param  ValueExpressionResult  $item  what one collected item publishes as
-     * @param  ReflectionClass<object>  $reflection  the class whose preserve-keys state applies
-     * @param  non-empty-list<string>  $kinds
-     * @return ValueExpressionResult
-     */
-    private function paginatedResourceType(array $item, ReflectionClass $reflection, ?string $wrapKey, array $kinds): array
-    {
-        $list = ResourceCollections::listType($item['type'], $reflection);
-        $key = $this->paginatedKey($wrapKey);
-
-        if ($key !== 'data') {
-            $blocks = $this->paginationNames($kinds, 'blocks');
-
-            return [...$item, 'type' => $this->beside($this->nested($key, $list), $blocks), 'customImports' => [TolkiTypes::MODULE => $blocks]];
-        }
-
-        $responses = $this->paginationNames($kinds, 'response');
-        $keyed = ResourceCollections::preservesKeys($reflection);
-        $types = array_map(
-            fn (string $response): string => $keyed
-                ? $this->replacingData("{$response}<{$item['type']}>", 'data', $list)
-                : "{$response}<{$item['type']}>",
-            $responses,
-        );
-
-        return [...$item, 'type' => $this->union($types), 'customImports' => [TolkiTypes::MODULE => $responses]];
-    }
-
-    /**
-     * One resource object, as `new X()` or `X::make()` builds it: its response, an object even over a null payload.
-     *
-     * @param  class-string<JsonResource>  $className
-     * @return ValueExpressionResult
-     */
-    private function singleResource(StaticCall|New_ $call, string $className): array
-    {
-        return [...$this->instanceResult($className), 'optional' => $this->payloadIsConditional($call, $className)];
-    }
-
-    /**
-     * What one resource object's response sends, with the classes it names: a JSON:API resource's document, else its
-     * own type inside its class's live wrap key.
-     *
-     * @param  class-string<JsonResource>  $resource
-     * @return ValueExpressionResult
-     */
-    private function instanceResult(string $resource): array
-    {
-        if (JsonApiResources::is($resource)) {
-            $document = TolkiTypes::JSON_API_DOCUMENTS['single'];
-            $included = $this->jsonApiIncluded($resource);
-
-            return $this->jsonApiResult($resource, $document.$included['arguments'], [$document], $included);
-        }
-
-        return [
-            ...ValueResult::unknown(),
-            'type' => $this->response($resource, TsNaming::resourceTypeName($resource), $resource),
-            'resourceFqcn' => $resource,
-        ];
-    }
-
-    /**
-     * A JSON:API resource's collection over each paginator kind its payload may hold, and unpaginated when it may hold
-     * none: each kind's `@tolki/types` document, the bare list where the anonymous collection's live wrap key is empty
-     * and nothing is paginated, and the list under any other key beside the document's other members.
-     *
-     * @param  class-string<JsonResource>  $className
-     * @param  PayloadPaginators  $paginators
-     * @return ValueExpressionResult
-     */
-    private function jsonApiCollection(string $className, array $paginators): array
-    {
-        $reflection = self::reflect($className);
-        $list = ResourceCollections::listType(TsNaming::resourceTypeName($className), $reflection);
-        $keyed = ResourceCollections::preservesKeys($reflection);
-        // JSON:API's anonymous collection does not redeclare `$wrap`, so it shares JsonResource's slot.
-        $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
-        $keys = in_array(null, $paginators, true) ? [TolkiTypes::JSON_API_DOCUMENTS['collection'] => $wrapKey] : [];
-
-        foreach ($this->paginatorKinds($paginators) as $kind) {
-            $keys[TolkiTypes::RESOURCE_PAGINATION[$kind]['jsonApi']] = $this->paginatedKey($wrapKey);
-        }
-
-        $included = $this->jsonApiIncluded($className);
-        $types = [];
-        $documents = [];
-
-        foreach ($keys as $document => $key) {
-            if ($key === null) {
-                $types[] = $list;
-
-                continue;
-            }
-
-            $generic = $document.$included['arguments'];
-            $types[] = $key === 'data' && ! $keyed ? $generic : $this->replacingData($generic, $key, $list);
-            $documents[] = $document;
-        }
-
-        return $this->jsonApiResult($className, $this->union($types), $documents, $included);
-    }
-
-    /**
-     * The generic arguments of a JSON:API resource's `@tolki/types` documents, `<R, I>`: `I` is each resource object an
-     * include can add, a published JSON:API resource by its own type and any other by its `type` over the generic one;
-     * `never` for a resource declaring no relationship, and left to its default where an include may add one unread.
-     *
-     * @param  class-string<JsonResource>  $className
-     * @return JsonApiIncluded
-     */
-    private function jsonApiIncluded(string $className): array
-    {
-        $members = [];
-        $resources = [];
-        $imports = [];
-
-        foreach (JsonApiResources::includedResources($className) as $included) {
-            if ($included['resource'] !== null && PublishedClasses::exports($included['resource'])) {
-                $members[] = TsNaming::resourceTypeName($included['resource']);
-                $resources[] = $included['resource'];
-
-                continue;
-            }
-
-            $object = TolkiTypes::JSON_API_DOCUMENTS['resourceObject'];
-            $members[] = $included['type'] === 'string' ? $object : "{$object}<{$included['type']}>";
-            $imports[] = $object;
-        }
-
-        if ($members === [] && JsonApiResources::declaresNoRelationships($className)) {
-            $members[] = 'never';
-        }
-
-        $name = TsNaming::resourceTypeName($className);
-
-        return [
-            'arguments' => $members === [] ? "<{$name}>" : "<{$name}, ".implode(' | ', array_values(array_unique($members))).'>',
-            'resources' => $resources,
-            'imports' => array_values(array_unique($imports)),
-        ];
-    }
-
-    /**
-     * A JSON:API resource's prop type with the classes and `@tolki/types` names it spells; the included ones only
-     * where a document spells its generic arguments.
-     *
-     * @param  class-string<JsonResource>  $className
-     * @param  list<string>  $documents  the document names the type spells
-     * @param  JsonApiIncluded  $included
-     * @return ValueExpressionResult
-     */
-    private function jsonApiResult(string $className, string $type, array $documents, array $included): array
-    {
-        // The prop follows the relationships of the resource and of each one an include reaches, read off their files.
-        DependencyRecorder::recordClass($className);
-
-        $spelled = $documents === [] ? ['resources' => [], 'imports' => []] : $included;
-        $imports = [...$documents, ...$spelled['imports']];
-
-        return [
-            ...ValueResult::unknown(),
-            'type' => $type,
-            'resourceFqcn' => $className,
-            ...($spelled['resources'] === [] ? [] : ['embeddedResourceFqcns' => $spelled['resources']]),
-            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => $imports]]),
-        ];
-    }
-
-    /**
-     * What Laravel's response sends for a body, by the live wrap key of the class it wraps by: the body nested under
-     * that key unless it already holds it, both when it holds it on some paths only, and the body bare without a key,
-     * except beside a paginator's members, which nest it under `data`.
-     *
-     * @param  class-string<JsonResource>  $wrapsBy
-     * @param  class-string<JsonResource>|null  $publishedBy  the class whose own type the body is; null for a list
-     */
-    private function response(string $wrapsBy, string $body, ?string $publishedBy = null, bool $paginated = false): string
-    {
-        $key = ResourceWrapping::key($wrapsBy);
-
-        if ($key === null) {
-            return $paginated ? $this->nested(self::PAGINATED_LIST_KEY, $body) : $body;
-        }
-
-        return match ($publishedBy === null ? false : resolve(ResourceResponseBody::class)->holdsWrapKey($publishedBy, $key)) {
-            true => $body,
-            false => $this->nested($key, $body),
-            null => $body.' | '.$this->nested($key, $body),
-        };
-    }
-
-    /**
-     * A body nested under a response key: `{ <key>: <body> }`.
-     */
-    private function nested(string $key, string $body): string
-    {
-        return '{ '.JsEmitter::validJsObjectKey($key).': '.$body.' }';
-    }
-
-    /**
-     * The key a paginated response nests its list under: the live wrap key, else `data`.
-     */
-    private function paginatedKey(?string $wrapKey): string
-    {
-        return $wrapKey ?? self::PAGINATED_LIST_KEY;
-    }
-
-    /**
-     * A response type with its own `data` list replaced by the given list under the key: `Omit<T, 'data'> & { k: L }`.
-     * A list under another key, or a keyed list, cannot sit beside the `data: T[]` the type declares.
-     */
-    private function replacingData(string $response, string $key, string $list): string
-    {
-        return "Omit<{$response}, 'data'> & ".$this->nested($key, $list);
-    }
-
-    /**
-     * A body beside the pagination members of each paginator kind it may be sent over.
-     *
-     * @param  non-empty-list<string>  $blocks
-     */
-    private function beside(string $body, array $blocks): string
-    {
-        $grouped = static fn (string $type): string => count(TsTypeString::splitTopLevelUnion($type)) > 1 ? "({$type})" : $type;
-
-        return $grouped($body).' & '.$grouped(implode(' | ', $blocks));
-    }
-
-    /**
-     * Types as the arms of one union, each intersection grouped so the union reads as its arms.
-     *
-     * @param  list<string>  $types
-     */
-    private function union(array $types): string
-    {
-        $grouped = count($types) > 1;
-
-        return implode(' | ', array_map(
-            static fn (string $type): string => $grouped && count(TsTypeShape::splitTopLevel($type, ['&'])) > 1 ? "({$type})" : $type,
-            $types,
-        ));
+        return $type === 'null'
+            ? [...ValueResult::unknown(), 'type' => 'null', 'optional' => $result['optional']]
+            : [...$result, 'type' => $type];
     }
 
     /**
@@ -733,13 +444,54 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * The `@tolki/types` paginator each arm of the payload argument's type names, see paginatorsOf().
+     * The `@tolki/types` paginator kinds a collection's payload may hold, with `null` for an unpaginated one: from the
+     * classes the receiver resolver names, else the payload's type, else the paginator a paginator's step is taken on.
      *
      * @return PayloadPaginators
      */
-    private function payloadPaginators(?Arg $payload, ExpressionEngine $engine): array
+    private function payloadPaginators(?Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return $payload === null ? [null] : $this->paginatorsOf($engine->resolve($payload->value)['type']);
+        if ($payload === null) {
+            return [null];
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->resolve($payload, $scope);
+        $kinds = $held === null ? null : $this->heldPaginators($held);
+
+        if ($kinds !== null) {
+            return $kinds;
+        }
+
+        $typed = $this->paginatorsOf($engine->resolve($payload)['type']);
+        // A setter on a paginator the resolver reads only by a contract that lacks it hands back that same paginator.
+        $page = $held === null && $typed === [null] ? PaginatorSteps::steppedFrom($payload) : null;
+
+        return $page === null ? $typed : $this->payloadPaginators($page, $scope, $engine);
+    }
+
+    /**
+     * The paginator kind of each class a payload may be an instance of, in order and once each, `null` for one that is
+     * no paginator; null where a class may or may not be one, or either of two kinds, as the `Paginator` contract may.
+     *
+     * @return PayloadPaginators|null
+     */
+    private function heldPaginators(ReceiverType $held): ?array
+    {
+        $paginators = [];
+
+        foreach ($held->classes as $class) {
+            $paginator = array_find(PaginatorSteps::KINDS, static fn (string $paginator): bool => is_a($class, $paginator, true));
+
+            // A class a built paginator extends or implements may hold one of either kind, or none.
+            if ($paginator === null && array_any(PaginatorSteps::BUILT, static fn (string $built): bool => is_a($built, $class, true))) {
+                return null;
+            }
+
+            $kind = $paginator === null ? null : TolkiTypes::MAP[$paginator];
+            $paginators[$kind ?? ''] = $kind;
+        }
+
+        return array_values($paginators);
     }
 
     /**
@@ -774,29 +526,5 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         return null;
-    }
-
-    /**
-     * The paginators of a payload, without the `null` that stands for its unpaginated arms.
-     *
-     * @param  PayloadPaginators  $paginators
-     * @return list<string>
-     */
-    private function paginatorKinds(array $paginators): array
-    {
-        return array_values(array_filter($paginators, static fn (?string $paginator): bool => $paginator !== null));
-    }
-
-    /**
-     * The `@tolki/types` names of what each paginator kind sends with a resource collection: the pagination blocks a
-     * body sits beside, or the whole response.
-     *
-     * @param  non-empty-list<string>  $kinds
-     * @param  'blocks'|'response'  $part
-     * @return non-empty-list<string>
-     */
-    private function paginationNames(array $kinds, string $part): array
-    {
-        return array_map(static fn (string $kind): string => TolkiTypes::RESOURCE_PAGINATION[$kind][$part], $kinds);
     }
 }

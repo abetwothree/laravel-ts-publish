@@ -22,20 +22,26 @@ The helpers and the test that pins them live in these files:
   re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
   resource publisher and the enum-value warning.
 - [`Support\ResourceWrapping`](../../src/Support/ResourceWrapping.php): the key an API resource response wraps its
-  body in, read from the live `$wrap` of the class Laravel instantiates, and each slot the booted app changed. Static
-  and `@internal`, read by the collection analysis, the Inertia collection props and the cache header.
+  body in, read from the live `$wrap` of the class Laravel instantiates, the key it nests in beside a `with()` or
+  `additional()` key, and each slot the booted app changed. Static and `@internal`, read by the collection analysis,
+  the Inertia resource props and the cache header.
 - [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
   `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
   payload. Static and `@internal`.
+- [`Support\DottedTopLevelKeys`](../../src/Support/DottedTopLevelKeys.php): the object Inertia sends once it writes
+  each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
+  key each prints, and each signature covering a head it wrote widened to admit it. A head marked `closed`, a resource
+  or prop object Inertia replaces, prints as a scalar does. Static and `@internal`.
 - [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
-  grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
+  grammar: encode from parts, recognize, literal segments, cast spellings and the keys a signature covers. Static and
+  `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
-  and paths sorted, and the name each import binds, `X as Y` binding `Y`. Static and `@internal`. Every merge of import
-  maps added since goes through it; five older inline merges stay as they are, `ComposedClassTypes::resolveImports()`
-  among them, since it keeps key order by contract. Every reader of an import's local name goes through `localName()`
-  or `localNames()`.
+  and paths sorted, the name each import binds, `X as Y` binding `Y`, and the part of a map a type spells. Static and
+  `@internal`. Every merge of import maps added since goes through it; five older inline merges stay as they are,
+  `ComposedClassTypes::resolveImports()` among them, since it keeps key order by contract. Every reader of an import's
+  local name goes through `localName()` or `localNames()`.
 - [`Support\ClassTypeOverride`](../../src/Support/ClassTypeOverride.php): the override a class publishes, from its own
   `#[TsType]` and its traits', interfaces' and parents', and whether a `new` of the class publishes it. It reads
   attributes by reflection and never calls `toTsType()`, whose step 2 calls it. Static, memoized per run and
@@ -65,8 +71,10 @@ Ask what the helper's input domain is, not what calls it:
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
 | Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| What object does Inertia send once it unpacks these top-level dotted keys? | `DottedTopLevelKeys` |
 | What is one import map, path => names, made of these? | `ImportMaps` |
 | Which name does this import, or this import map, bind in the file? | `ImportMaps::localName()`, `localNames()` |
+| Which imports of this map does this type spell? | `ImportMaps::spelledIn()` |
 | Which override does a value of this class publish: its own, an inherited or a composed one? | `ClassTypeOverride` |
 | Does a `new` of this class publish its override, or the class itself? | `ClassTypeOverride::appliesToNew()` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
@@ -96,7 +104,7 @@ enum for the generation cache.
 `validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
 only in a type position, so every value-position caller must leave the default alone.
 [The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does. The type positions that pass it are
-the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildTypeStringWithOverrides()` methods and
+the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildMembersWithOverrides()` methods and
 `BuildsInlineObjectTypes::buildInlineObjectType()`; each prints `?` only after a key `isIndexSignatureKey()` rejects.
 
 `signatureSafeMember()` sits beside `isIndexSignatureKey()` as the one home for the optional-signature rule: each site

@@ -42,8 +42,9 @@ For each key, `#[TsCasts]` on `provide()` beats the `@return array{...}` shape, 
   `optional: true` or the docblock says `key?:`.
 - **Imports**: a docblock key follows
   [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), except
-  that a key it fails throws rather than publishing `unknown`: a model or enum named there fails the token check unless
-  a cast covers it. `mergeTypes()` keeps an override's import per key the docblock still types
+  that a key it fails throws rather than publishing `unknown`, and that an enum named there is imported, as an
+  import-less cast's is: a model named there fails the token check unless a cast covers it. `mergeTypes()` keeps an
+  override's import per key the docblock still types
   (`ModelMetadataAnalysis::$docblockImports`), and the token check reads each key no cast typed (`importFreeKeys()`)
   against the inferred imports and that key's own, so one key never passes on another key's import.
 - **Inference**: body inference keeps only the keys the payload returned and discards any type containing `unknown`.
@@ -82,21 +83,25 @@ handler profile, whose handlers mean nothing in a provider. It reads `#[TsCasts]
 Inside an `instanceof` arm `$model` holds the tested model, so its reads and relation calls type there:
 `$model instanceof Post ? $model->comments()->count() : null` infers `number | null`.
 
-### Inferred imports
+### Composed imports
 
-`ModelMetadataAnalyzer::inferredTypeImports()` passes `AnalysisImports::build()` only the channels the inferred
-types need, in four steps:
+`ModelMetadataAnalyzer::composeTypes()` hands `FileImportNames::compose()` only the channels the published types need,
+in six steps:
 
 1. It strips the `customImports` that `ResourceAstAnalyzer::applyTsCastsFromMethod()` added for `provide()`'s own
    `#[TsCasts]`, because `TsCastsImportResolver` owns and aliases those.
 2. It clears `modelFqcns` and `nestedResources`. A metadata value need not satisfy a model interface, so a model-typed
    value keeps failing the token check instead of importing a model.
-3. It prunes each enum channel whose key the docblock or a cast overrode, or the payload never returned.
-4. It keeps only the names the inferred types still spell. A companion emits `import type` lines only, so `AsEnum`
-   value imports are ignored.
+3. It prunes each enum channel whose key the payload never returned.
+4. It fits each key a cast or the docblock retypes with
+   [`CastChannels::fit()`](ts-casts.md#a-cast-is-final-for-its-key), a docblock key naming only the enums behind its
+   tokens. It puts back any custom import the fit unbinds, since the transformer throws for one name from two paths.
+5. It composes one member per key whose text no cast import owns through `FileImportNames`, so same-named enums alias
+   apart. A companion emits `import type` lines only, so `AsEnum` value imports are ignored.
+6. It leaves the cast and docblock imports to the transformer and keeps a composed class's names under its marker.
 
 Step 3 spares an entry whose key equals its value. `DispatchesFqcnResults` keys an embedded enum by its own FQCN, so a
-two-enum union has no property name to prune by, and step 4 owns those entries. Don't swap that test for
+two-enum union has no property name to prune by, and step 5 owns those entries. Don't swap that test for
 `class_exists()`, or a payload key named after a real class, such as `error`, keeps a stale channel.
 `ModelMetadataAnalyzerTest` pins both halves.
 
@@ -171,9 +176,6 @@ is independent of `models.enabled`, and `--only-functional` publishes it while i
 The barrel rules are on [BarrelWriter](barrel-writer.md#phase-ownership-of-model-barrels), and `bindingsFor()`'s other
 consumers are on [AST engine](ast-engine.md). These [known gaps](../known-gaps.md) belong to this phase:
 
-- [Two same-named enums collide instead of aliasing: a companion throws,
-  a](../known-gaps.md#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts)
-  route file ships invalid TS
 - [An empty `[]` under an imported type alias still ships as
   `[]`](../known-gaps.md#an-empty--under-an-imported-type-alias-still-ships-as-)
 - [A body-inferred metadata enum that enum publishing excludes imports a file that

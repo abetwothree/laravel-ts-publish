@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -104,7 +103,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // Reflection reports `@return mixed` here; the configured auth model is the useful answer.
         if ($method === 'user') {
-            return $this->authMethodResult($method, resolve(AuthUserResolver::class)->model());
+            return $this->authMethodResult($method);
         }
 
         $boundClass = $scope->requestVarNames[$expr->var->name];

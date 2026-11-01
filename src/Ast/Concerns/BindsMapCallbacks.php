@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -30,6 +31,8 @@ trait BindsMapCallbacks
      * Resolve a `map()` callback's body with its first parameter bound to the element: its model, or the concrete model
      * the parameter declares where the element model is not one; else its value. Null for a callable that is no
      * closure, or a variadic first parameter.
+     *
+     * The answer is each element the callback returns, as the reading sends it in an array, apart from the callback.
      *
      * $arrayed says JsonResource::filter() reaches the result as an array.
      *
@@ -61,7 +64,7 @@ trait BindsMapCallbacks
         // A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is.
         $relative = $model !== null && $model !== $elementModel && $first !== null && ParameterBinder::spellsRelativeClass($first);
 
-        return $scope->readClaimedClosure(
+        $returned = $scope->readClaimedClosure(
             $callback,
             null,
             $engine,
@@ -82,6 +85,8 @@ trait BindsMapCallbacks
                 $scope->mapResultArrayed = false;
             },
         );
+
+        return ValueResult::withoutHeldObject($engine->reading()->arrayValue(ValueResult::calledValue($returned)));
     }
 
     /**

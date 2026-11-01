@@ -5,14 +5,17 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOfParentOwnedMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOverridesParentWithTrait;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedAnonymousClassMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ShadowsTraitAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TwoClassesFirst;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TwoClassesSecond;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesClassBeforeTraitLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesInsteadofTraits;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesLabelledTrait;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesNestedTraitAlias;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -238,4 +241,37 @@ it('locate resolves a trait method PHP prefers over an inherited parent method i
     $locator = new MethodLocator(new AstParser);
 
     expect($literal($locator->locate(ChildOverridesParentWithTrait::class, 'label')))->toBe('from trait override');
+});
+
+it('finds a trait method under each alias a class gives it, an `as protected` one keeping its visibility', function (string $alias) {
+    $locator = new MethodLocator(new AstParser);
+
+    expect($locator->locate(AliasedHelperController::class, $alias)?->method->name->toString())->toBe('buildBase')
+        ->and($locator->locateDeclared(AliasedHelperController::class, $alias)?->method->name->toString())->toBe('buildBase')
+        ->and($locator->locateOwn(AliasedHelperController::class, $alias))->toBeNull();
+})->with(['props', 'PROPS', 'guardedProps']);
+
+it('locate resolves an alias of the trait method an insteadof rule excludes, beside the one it selects', function () use ($literal) {
+    require_once __DIR__.'/Fixtures/InsteadofTraitsInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locate(UsesInsteadofTraits::class, 'labelFromB')))->toBe('from B')
+        ->and($literal($locator->locate(UsesInsteadofTraits::class, 'label')))->toBe('from A');
+});
+
+it('finds the body PHP runs under an alias a used trait declares, and under the class\'s alias of it', function (string $name) use ($literal) {
+    require_once __DIR__.'/Fixtures/TraitAliasesInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+    $runs = new ReflectionMethod(UsesNestedTraitAlias::class, $name)->invoke(new UsesNestedTraitAlias);
+
+    expect($literal($locator->locate(UsesNestedTraitAlias::class, $name)))->toBe($runs)
+        ->and($literal($locator->locateOwn(UsesNestedTraitAlias::class, $name)))->toBe($runs);
+})->with(['the used trait\'s alias' => 'midLabel', 'the class\'s alias of it' => 'tag']);
+
+it('keeps a class\'s own method over the trait alias of its name', function () use ($literal) {
+    require_once __DIR__.'/Fixtures/TraitAliasesInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locate(ShadowsTraitAlias::class, 'tag')))->toBe('own')
+        ->and($literal($locator->locateOwn(ShadowsTraitAlias::class, 'tag')))->toBe('own');
 });

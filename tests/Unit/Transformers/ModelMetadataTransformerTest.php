@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableM
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ImportlessEnumCastMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InlineEnumCaseMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetadataPayloadProvider;
@@ -23,14 +24,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelM
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionListMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OverriddenUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumTypesMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnimportableMetadataTypeProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnsafeIntegerMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CircularJsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FreshObjectJsonSerializableMetadataValue;
@@ -133,17 +135,35 @@ test('aliases two same-named cast imports beside the unaliased name inference cl
     ]);
 });
 
-test('names the fix a cast import colliding with an inferred one actually has', function () {
-    // TsCastsImportResolver aliases only between cast entries, so no alias can separate these two.
+test('aliases two same-named enums a companion reads as values', function () {
+    config()->set('ts-publish.model_metadata.provider_class', SameNamedEnumTypesMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['app' => 'WorkbenchStatusType', 'crm' => 'CrmStatusType'])
+        ->and($data->typeImports)->toBe([
+            '../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../enums' => ['StatusType as WorkbenchStatusType'],
+        ]);
+});
+
+test('aliases an inferred enum beside a cast import of its name', function () {
     config()->set('ts-publish.model_metadata.provider_class', CollidingCastAndInferredEnumMetadataProvider::class);
 
-    expect(fn () => (new ModelMetadataTransformer(User::class))->data())
-        ->toThrow(
-            InvalidArgumentException::class,
-            'Model metadata for model ['.User::class.'] imports [RoleType] from both [../enums] and '
-            .'[@/types/label]; declare one of them with an import-aware #[TsCasts] whose type is a distinct '
-            .'name that module exports.',
-        );
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['label' => 'RoleType', 'role' => 'WorkbenchRoleType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['RoleType as WorkbenchRoleType'], '@/types/label' => ['RoleType']]);
+});
+
+test('imports the enum an import-less cast spells over the value that holds it', function () {
+    config()->set('ts-publish.model_metadata.provider_class', ImportlessEnumCastMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['status' => 'StatusType | null', 'other' => 'number'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType']])
+        ->and($data->properties)->toBe(['status' => Status::Draft->value, 'other' => 1]);
 });
 
 test('uses only body-inferred keys present in the concrete model payload', function () {
@@ -283,16 +303,15 @@ test('resolves the model instance through the container', function () {
         ->toBe('container_users');
 });
 
-test('requires TsCasts for inferred types whose imports cannot be inferred', function () {
-    config()->set('ts-publish.model_metadata.provider_class', UnimportableMetadataTypeProvider::class);
+test('imports the enum a docblock key names, for the model whose payload sends the key', function () {
+    config()->set('ts-publish.model_metadata.provider_class', OptionalDocblockEnumMetadataProvider::class);
 
-    expect((new ModelMetadataTransformer(Address::class))->data()->properties)->toBe(['table' => 'addresses']);
+    $user = (new ModelMetadataTransformer(User::class))->data();
 
-    expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(
-            InvalidArgumentException::class,
-            'model [Workbench\\App\\Models\\User] property [role] has type [RoleType] whose import cannot be inferred',
-        );
+    expect((new ModelMetadataTransformer(Address::class))->data()->properties)->toBe(['table' => 'addresses'])
+        ->and($user->propertyTypes)->toBe(['table' => 'string', 'role' => 'RoleType'])
+        ->and($user->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and($user->properties)->toBe(['table' => 'users', 'role' => 'Admin']);
 });
 
 test('imports an override a docblock shape names, at its top level and nested, and none for a key a cast replaces', function () {

@@ -22,24 +22,25 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
-| `Resources/` | API resource facts: backing model, collections, response body, JSON:API |
+| `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
 | `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
 
 These are the classes a change to the engine usually touches:
 
 | Class | Owns |
 | --- | --- |
-| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
-| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
+| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's held-object flags (`heldObject`, `mayHoldObject`, `heldProp`, `returnsCallable`) only from a `KeepsHeldObjects` handler; any other handler reads away from a closure's returned value (`AnalysisScope::$readsCallableReturn`) |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
-| [`ResourceExpressionHandlers`], [`ControllerExpressionHandlers`] | The ordered handler profiles |
+| [`ResourceExpressionHandlers`] | The ordered handler profiles |
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
-| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node |
+| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node, under a trait alias too |
+| [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
 | [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()` |
@@ -59,22 +60,19 @@ tests for a decline with `TsTypeString::isUnknownOnly()`, which ignores `null` a
 
 When more than one handler claims a node class, registration order decides which one answers. A reorder that changes the
 winner changes published types, so treat it as a behavior change, not a refactor.
-`ResourceExpressionHandlers::handlers()` is the one ordered list, and each profile filters it:
+`ResourceExpressionHandlers::handlers()` is the one ordered list, and three lists filter it:
 
 - **`make()`**: the resource profile, a `JsonResource` subject's.
 - **`forNonResourceSubjects()`**: drops `ConditionalMethodHandler` alone, for every other subject
-  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, shared data, model metadata or a DTO.
-- **`withoutResourceHandlers()`**: drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`.
-  Its one production caller is `ControllerExpressionHandlers::make()`.
-- **`forModelClosures()`**: drops only the first two, for `AstEngine::analyzeModelClosure()`. `RelationFilterHandler`
-  stays as the only handler that types a to-many relation's filter, a map proxy, a multi-model accessor's filter, or a
-  filter on a collection-cast column or an `Eloquent\Collection` accessor.
+  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, model metadata or a DTO.
+- **`forModelClosures()`**: drops `ConditionalMethodHandler` and `ToResourceHandler`, for
+  `AstEngine::analyzeModelClosure()`. `RelationFilterHandler` stays as the only handler that types a to-many relation's
+  filter, a map proxy, a multi-model accessor's filter, or a filter on a collection-cast column or an
+  `Eloquent\Collection` accessor.
 
-`ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
-`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. An Inertia
-middleware takes `forNonResourceSubjects()` through `invokingCallables()`, with `InertiaResourcePropHandler` before
-`ToResourceHandler` and `ModelFinderHandler` before `StaticCallHandler`, since Inertia calls every callable it shares
-and sends a shared value as it sends a page prop.
+`forInertia()` builds the [Inertia profile](#inertia-profile) over a list. `ResourceExpressionHandlers::forSubject()`
+gives a `JsonResource` subject `make()` and any other subject `forNonResourceSubjects()`, each through `forInertia()`
+where the analysis reads what Inertia sends. `ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -88,17 +86,93 @@ whose op table it shares. See [ResourceAstAnalyzer § Collection pipelines][coll
 `MethodCallOrderingMatrixTest` runs every pair of `MethodCall` claimants in both orders over a curated corpus. A pair in
 its `METHOD_CALL_PINNED` map must answer as `handlers()` orders it, and every other pair must agree. When a new
 expression shape makes an inert pair disagree, the matrix fails. Pin the pair in the direction `handlers()` lists it.
+Its Inertia half does the same for each pair with a handler only the Inertia profile runs, against
+`INERTIA_METHOD_CALL_PINNED`.
 
-### Controller profile
+### Inertia profile
 
-`ControllerExpressionHandlers::make()` inserts `ModelFinderHandler` and `InertiaResourcePropHandler` into
-`withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
-a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
-element array. Placed later, the two additions would be unreachable for those shapes. `InertiaResourcePropHandler` also
-types a JSON:API resource's single and collection props as their `@tolki/types` documents.
-`ControllerExpressionHandlersTest` pins the structure and the five orderings. `invokingCallables()` swaps in
-`FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop, at any depth, so a first-class callable
-there types as the call it stands for.
+`ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs, over the subject's own
+profile, since Inertia sends a shared value as it sends a page prop. It inserts three handlers, and throws a
+`LogicException` for a list that lacks an insertion point:
+
+- `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource as the value a nested key flattens it
+  to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
+  It also precedes `StaticCallHandler` and `NewResourceHandler`, which type a single resource as a nested key's value
+  and a `ResourceCollection` as its element array.
+- `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never
+  declines one, so a query chain types as the paginator it returns. It types a terminal against the query
+  `ReceiverClassResolver` reads its receiver as, so a step that provably leaves the query ends the chain, and a list
+  step reads a list of models that receiver holds. For a terminal every model-rooted chain was once typed by, a
+  user-defined step the engine cannot prove either way, or a collection step it does not follow that provably keeps
+  the items' kind, reads as handing the query or models on (`resolvePresumingSteps()`), and a builder a model's own
+  static returns that Eloquent does not define, such as Scout's, reads against the root model. `count()` on any
+  `Enumerable` is a number, and a keyed list a step hands on gains the object arm `json_encode()` writes.
+  A factory's `make()` or `create()` is a list once a count step or argument sets one, and a model's query with no
+  terminal is the builder object Inertia `json_encode()`s. A paginator's own setter, such as `withQueryString()`, keeps
+  the paginator it is called on, and `through()` is that paginator over what its callback returns ([`PaginatorSteps`]).
+- `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
+  either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
+  `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
+  table class, or with no native type a `@return` naming one, read against the file's use statements, or `$this`). A
+  chain past the table's own `query()` reads as that chain on `query()` of the model it queries, and past any other
+  call as the rest of the profile reads it. Where that is `unknown` on a value `InertiaPageAnalyzer` marks
+  `TYPED_AS_TABLE` (a string-keyed item of the action's first render call's props literal, the one place the reader
+  it replaced typed such a chain), the table type stands. The type is a custom import from the configured or
+  installed table package. A table naming no model falls through, to `unknown`. So a table is one more prop: the
+  render call's other props, the action's casts, a collaborator's props, shared data and a `->resolve()`d body's
+  restated keys all read it.
+
+`InertiaResourcePropHandler` also types a JSON:API resource's single and collection props as their `@tolki/types`
+documents. `forInertia()` also swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop,
+at any depth, so a first-class callable there types as the call it stands for. `InertiaProfileTest` pins that a page and
+a share middleware build this profile, and each ordering above, the method-call claimants that leave `toResource()` and
+`toResourceCollection()` `unknown` included.
+
+The [`Reading`] a body is read under, not the class that declares it, picks this profile: `Encoded` (as
+`json_encode()` sends it, the default), `EncodedUnfiltered` (the same with no `filter()` over it), `Inertia`, or
+`InertiaFiltered` (Inertia's, once a `JsonResource::filter()` ran). `analyzeMethod()`, `analyzeMethodValue()` and
+`ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()` reports it; `Reading::encodes()` groups the two encoded
+ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses an injected profile beside one.
+
+- **Who sets it**: `InertiaPageAnalyzer`, on a page's analyzer and on the collaborator method a page's props come
+  from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`, each `Reading::Inertia`.
+- **Who passes it on**: every body read below one: a helper `MethodReturnTypeResolver` reads through the caller's
+  `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
+  middleware's helper an API resource reads runs the resource's reading.
+- **Who reads `Encoded`**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`),
+  a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
+  The keys a resource's response adds beside its body (below) reach Inertia already JSON and unfiltered, so they read
+  `EncodedUnfiltered`, which `entering()` turns into `Encoded` where it enters a `JsonResource`'s `toArray()` whole.
+- **The filtered reading**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
+  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `Reading::filterReaches()` says
+  whether `filter()` reaches a value, which `ReadsNullablePayloads` asks before a resource around a nullable payload
+  takes that null: under `InertiaFiltered` in any body, a helper's or a service's included, outside Inertia only in a
+  `JsonResource` subject's own, and never inside a `map()` kept as a `Collection`, where a call's body reads
+  `Inertia` (`Reading::calledFrom()`). An `EnumResource` wrap it does not reach sends a null payload as `[]`, its
+  `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`), under every reading but `Encoded`, which keeps
+  base's rule for events and a resource's own kept maps; `ValueResult::filledArms()` and `isListShaped()` read past
+  that arm where a union's enum arms are counted or shaped. `TernaryHandler`'s `?:` rule applies only under `Inertia`.
+- **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
+  than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
+  retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
+  `PropsResolver` does not walk, so `json_encode()` sends the resources in them bare. The result's `resolvedFqcn` lets
+  a spread take R's keys, as it takes a plain `R`.
+- **A resource's response**: `InertiaResourcePropHandler` only reads the spelling. [`ResourceResponseType`] builds
+  what it sends in Laravel's order (wrap, body, pagination, extras), so the key a body sits under is decided once.
+- **A resource's response extras**: that builder sets the keys a resource's or named collection's
+  `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), joined in one step, as Laravel merges
+  them once: merged into a `{ data: R }` literal, else intersected, with the key the body sits under `unknown` beside
+  an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
+  of the other is `unknown`. `with()` is read under `EncodedUnfiltered`, and so is `additional()`'s argument, by the
+  caller's analyzer (`AstEngine::analyzeEncodedValue()`), and an empty JSON object among them is the `never[]`
+  Inertia sends once it decodes the response. So is a callable or an Inertia prop object a key or a list element holds,
+  at any depth (`Reading::arrayValue()`). Under that reading `ConditionalMethodHandler` publishes a value the
+  `when()` family leaves out as that `never[]` beside the value, not as an optional key, and a `merge()` or
+  `mergeWhen()` merges no key, since Laravel sends each MergeValue whole under a positional key. Once one is sent, a
+  body with no live wrap key nests under `data` (`ResourceWrapping::responseKey()`). A JSON:API resource or an
+  `EnumResource` collection declines `additional()`.
+
+The reading joins the memo keys ([The run memo replays what it recorded](#the-run-memo-replays-what-it-recorded)).
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -120,6 +194,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
 | `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
+| `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first where Inertia reads the value: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown`. Under `Encoded` the wrapper declines, since `json_encode()` sends the prop object as `{}` | None |
 
 `OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, sits
 after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no pair.
@@ -128,7 +203,7 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 
 - **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler` and
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
-  on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
+  on `$this->resource` itself. On a model-less scope, as on a page, `RelationCollectionChainHandler`
   declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with
   `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`. The same arm declines a method
   `ReceiverMethodReturnResolver::typesByRule()` names, and one it would answer `unknown`, so `ReceiverMethodCallHandler`
@@ -153,12 +228,13 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 `VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`. It declines
 anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
-The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
-disjoint method names on a `MethodCall`, and on a `StaticCall` disjoint classes, a model and an API resource, since both
-claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler before
-`NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()` `unknown`, and
-the matrix does not run these profiles.
+The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants,
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants, and
+`InertiaTableHandler` to the `StaticCall`, `New_` and `MethodCall` claimants, in the places
+[§ Inertia profile](#inertia-profile) gives. The first two claim disjoint method names on a `MethodCall`, and all three
+disjoint roots on a `StaticCall`, a model, an API resource and a table, though each claims `::make()`. The matrix's
+Inertia half runs each `MethodCall` pair any of them joins, over a page's model-less scope, and pins only the prop
+handler before `ToResourceHandler`.
 
 ## AnalysisScope
 
@@ -253,6 +329,19 @@ restores one name's entry. State outside the scope saves and restores itself the
 whole body by design, and `ClosureHandler` calls it inside its own `within()`. The closure writers' reads restore over
 it, so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
 
+#### One lookup for the write a read sees
+
+`AnalysisScope::writesSeenBy()` answers which writes a read of a local sees: its one top-level write, or the values the
+gap it falls in holds, a block's write or a branch join's. It answers null where a parameter's binding may still hold,
+or a gap's write assigns no value the scan reads; `soleWriteSeenBy()` answers a reader that takes one write.
+`VariableHandler`, `ReceiverClassResolver`, `FirstClassCallableHandler::heldCallable()` and `ParentCallChain` read it.
+`VariableHandler::joinedValue()` and `ReceiverClassResolver::fromGap()` type a gap's writes themselves: a parameter's
+gap joins its old binding, and a write that reads the name lifts the gap (`beforeGap()`). A reader that takes a local by
+its syntax goes through `InspectsAstNodes::spelledWrites()` or `soleSpelledWrite()`, which also decline past a
+by-reference form or a write that reads what an earlier write left in the local: the `+` operand (one union literal per
+write, joined, up to `MAX_SPELLED_LITERALS`), an `EnumResource` payload, a props local, an `array_merge()` argument and
+`ResourceAstAnalyzer`'s written local. `HeldCallables::mayHold()` still reads a local's one top-level write.
+
 #### A closure parameter owns its name
 
 Readers rank the name-keyed tables differently. `VariableHandler` reads `varDocBindings` first and `varValueBindings`
@@ -342,8 +431,8 @@ recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet bin
 keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,
 interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A call binds
 nothing for an argument that may hold a closure, whose value hangs on whether the method calls it: the closure itself,
-an arm of `?:`, `??` or `match`, or a local the caller's scope binds to one (`InspectsAstNodes::mayHoldCallable()`).
-Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`), binds it. A
+an arm of `?:`, `??` or `match`, or a local the caller's scope binds to one (`HeldCallables::mayHold()`).
+Only a caller that calls every callable it reads, as Inertia does (`ExpressionEngine::reading()`), binds it. A
 value read binds nothing for a first-class callable either; a spread binds it to the `Closure` it creates, which Laravel
 sends as `{}`.
 
@@ -421,35 +510,37 @@ statement holding the next write (`bindBlockLocals()`), as a binding gap holding
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), a bound
 name's only where a statement of its block follows the write. A block may not run and a loop runs it again, so a read
 before the write or past the block stays unbound, as does a name a reference can write through (`=&`, `use (&$x)`,
-`foreach (… as &$x)`, `global`, `static`). A name a parameter or a seeded binding holds takes its gaps from the join
-below instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own
-`$x` never reads its enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up
-to the closure's own first `$x = …` of it. `AnalysisScope::copyBindings()` passes a closure parameter the value of the
-gap one write opened, a block local's or a parameter's, and in a gap the old binding may still hold past, that binding
-joined with the gap's writes.
+`foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on every path, the join below binds it. A
+name a parameter or a seeded binding holds takes its gaps from the join below instead. A body drops the outer gaps of
+each name it writes that holds no binding, so a closure's own `$x` never reads its enclosing block's, while a bound name
+keeps its exit-block gap for the value a closure captures, up to the closure's own first `$x = …` of it.
+`AnalysisScope::copyBindings()` passes a closure parameter the value of the gap one write opened, a block local's or a
+parameter's, and in a gap the old binding may still hold past, that binding joined with the gap's writes.
 
 A name with no binding that the body writes more than once is joined statement by statement (`bindJoinedLocals()`), each
 span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all nested
-`$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A member
-read leaves out a joined `null`, as it does a ternary's `null` arm. A write in a block that always exits reaches no read
-past it. Any other write leaves the name unbound until its next top-level `$x = …;`, and a name a reference can write
-through is never joined. A parameter takes the same walk from its own binding, for values only, and walks each block a
-statement holds too, so a read there past the block's own `$x = …;` takes that value: an `if` branch starts from what
-the name held before the statement, a loop body or a `switch` case also from every value the statement writes. Its own
-`$x = …;` replaces the value it binds, alone or beside a class, and a model's where the write is a typed value naming no
-class, so `$t = json_decode($t)` reads `unknown` past it while a model's untyped write keeps the model (O11); any other
-class binding alone, or any other write, stops the walk, though in a block a write that leaves such a binding standing
-joins it, as past the block. An expression binding the receiver resolver names a class for, such
-as a relation read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no class a
-member read keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a model's own
-write of a value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine
-cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read, and an old value it
-cannot type beside writes that all type. A closure parameter nothing binds, as `transform($this->opaque(), …)` leaves
-its callback's, walks from the value its call passed, which has no type, once a nested write needs the join;
-`AnalysisScope::$passedValues` keeps that argument, which no reader binds from, for the join to name.
-`VariableWrites` classifies each write once, as its scan records it. The cycle guard,
-`AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
-value `$s` held before.
+`$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. Past an
+`if` whose every branch, `else` included, ends with its own `$x = …;` or such an `if`, or always leaves the function, a
+read takes only those branches' values, a local written once there included (`branchValues()`); a value that may be a
+callable (`HeldCallables::mayHold()`, a variable it cannot follow counted) leaves it unbound, since a returned Closure
+object reads apart. A member read leaves out a joined `null`, as it does a ternary's `null` arm. A write in a block that
+always exits reaches no read past it. Any other write leaves the name unbound until its next top-level `$x = …;`, and a
+name a reference can write through is never joined. A parameter takes the same walk from its own binding, for values
+only, and walks each block a statement holds too, so a read there past the block's own `$x = …;` takes that value: an
+`if` branch starts from what the name held before the statement, a loop body or a `switch` case also from every value
+the statement writes. Its own `$x = …;` replaces the value it binds, alone or beside a class, and a model's where the
+write is a typed value naming no class, so `$t = json_decode($t)` reads `unknown` past it while a model's untyped write
+keeps the model (O11); any other class binding alone, or any other write, stops the walk, though in a block a write that
+leaves such a binding standing joins it, as past the block. An expression binding the receiver resolver names a class
+for, such as a relation read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no
+class a member read keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a
+model's own write of a value the scan types, such as a column read, it does not. A value read leaves out a nested write
+the engine cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read, and an
+old value it cannot type beside writes that all type. A closure parameter nothing binds, as `transform($this->opaque(),
+…)` leaves its callback's, walks from the value its call passed, which has no type, once a nested write needs the join;
+`AnalysisScope::$passedValues` keeps that argument, which no reader binds from, for the join to name. `VariableWrites`
+classifies each write once, as its scan records it. The cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding
+by its name and the bound expression, so `$s = $s . 'x'` reads the value `$s` held before.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
@@ -490,7 +581,7 @@ Laravel throws on and `??` replaces. Every other callee, a flag, a named group o
 of reads it holds for, placed as a binding end or gap is: a copy taken before the call reads the value as it was.
 `VariableHandler` reads the value the forms leave, or drops a read whose value lacks one. A class binding ends there,
 since no form but `ksort()`'s is an object's. A reader that takes a local by its syntax, such as an array literal's
-keys, reads `literalLocalBindings()`, which leaves such a local out.
+keys, reads `InspectsAstNodes::spelledWrites()`, which declines a read past such a call.
 
 ### What deliberately stays unbound
 
@@ -635,6 +726,9 @@ which decides whether `__call()` runs, and adds the runtime class, whose macros 
 that only assumes its runtime class adds `@assumed` to them and to `macro:`, so a receiver's read of a body never
 shares one that knows the class. `RuntimeClass::memoKey()` spells both suffixes for all three keys. The `method-body:`
 cycle guard stays per method, so a recursion that passes a new value each time stops at its first repeat.
+A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:` and `method-return:` keys, and
+`@filtered` after it under a resource's filter; a response's extras read adds `@unfiltered`. So a helper read for a page
+never shares the answer a read for anything else gets ([Inertia profile](#inertia-profile)).
 
 A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
 computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's
@@ -719,8 +813,12 @@ array item the branch saw, never a sibling's, that it reads as `unknown`) and th
 spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
 it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
-returns that `null`, which the ternary union would keep. It unions both operands through `unionResults()`, which leaves
-an untyped one out. `applyConditionalDefault()` records a default only beside a value arm with a type.
+returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
+exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
+arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
+(`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. It unions both operands through
+`unionResults()`, which leaves an untyped one out.
+`applyConditionalDefault()` records a default only beside a value arm with a type.
 `ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
 walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole
@@ -801,7 +899,7 @@ Each consumer enters the engine at the point that fits its subject:
 | --- | --- | --- |
 | `ResourceTransformer` | `ResourceAstAnalyzer::analyze()` on the resource profile | A resource's `toArray()` is that profile's own subject |
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
-| `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
+| `InertiaPageAnalyzer` | The Inertia profile over `bindingsFor()`'s scope, a props local read as the literals its read sees or walked from its writes before the render call (`variableAnalysis()`), and `analyzeMethod()` only for props delegated whole to a collaborator, which assumes its runtime class unless that class is final | Page props are expressions in an action, not a method's return; the container may inject a subclass |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
@@ -838,7 +936,6 @@ These pages cover the engine's neighbors:
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
-[`ControllerExpressionHandlers`]: ../../src/Ast/Dispatch/ControllerExpressionHandlers.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
@@ -846,10 +943,16 @@ These pages cover the engine's neighbors:
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
+[`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
+[`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
+[`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
+[`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
+[`ResourceResponseType`]: ../../src/Ast/Resources/ResourceResponseType.php
+[`ResponseExtras`]: ../../src/Ast/Resources/ResponseExtras.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php

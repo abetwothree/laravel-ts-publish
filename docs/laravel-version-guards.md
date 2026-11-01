@@ -20,6 +20,8 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Appends` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Connection` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Scope` | `12.4.0` | none (test-only): `src/Ast/Receivers/QueryForwarding.php` calls `Model::isScopeMethodWithAttribute()`, which shipped with it, behind `method_exists()` | `tests/Unit/Ast/ReceiverClassResolverTest.php` | `12.4.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseEloquentBuilder` | `12.19.0` | none (test-only): `src/Ast/Receivers/QueryForwarding.php` calls `Model::resolveCustomBuilderClass()`, which shipped with it, where the class has it | `tests/Unit/Ast/ReceiverClassResolverTest.php` | `12.19.0` |
 | `Illuminate\Database\Eloquent\Attributes\Initialize` | `12.22.0` | `src/ModelAttributeResolver.php` (`setsKeyInCode()`) | `tests/Unit/ModelAttributeResolverTest.php` | `12.22.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
@@ -79,6 +81,11 @@ that release more reliably than changelog prose:
 - **`Collects`, `PreserveKeys`, `Table`, `Hidden`, `Visible`, `Appends` and `Connection`**: absent at `v12.0.0` and
   `v12.69.2`, present at `v13.0.0`. Recorded as `13.0.0`, the first tag proven to contain them, since no 12.x release
   was found to carry them.
+- **`Scope`**, with `Model::isScopeMethodWithAttribute()`: absent at `v12.3.0`, present from `v12.4.0`. An exact
+  minimum.
+- **`UseEloquentBuilder`**: absent at `v12.18.0`, present from `v12.19.0`. An exact minimum. Through `v12.56.0` and at
+  `v13.0.0` Laravel reads it off the model class alone; by `v13.37.0` it also walks the model's parents and traits.
+  `QueryForwarding::builderClass()` calls the installed release's own resolver, so it follows whichever applies.
 - **`Initialize`**: absent through `v12.21.0`, present from `v12.22.0`. An exact minimum.
 - **`JsonApiResource`**: absent at `v12.44.0`, present from `v12.45.0`, with `make:resource --json-api`. An exact
   minimum.

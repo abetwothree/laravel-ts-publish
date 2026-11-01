@@ -94,7 +94,7 @@ class MethodLocator
     }
 
     /**
-     * Find the named ClassMethod with a non-null body.
+     * Find the named ClassMethod with a non-null body, under the name its trait declares it where an alias reaches it.
      * Matches PHP's own reflected end line when a file declares more than one candidate under the name,
      * and rejects when $method isn't declared in $file, so locateOwn() misses a method inherited from another file.
      *
@@ -108,6 +108,7 @@ class MethodLocator
             return null;
         }
 
+        $method = $this->traitDeclaredName($declaration) ?? $method;
         [$stmts, $methods] = $this->parser->parseFileMethods($file);
         $candidates = array_values(array_filter(
             $methods[strtolower($method)] ?? [],
@@ -159,6 +160,63 @@ class MethodLocator
         }
 
         return $this->located[$key] = $resolve();
+    }
+
+    /**
+     * The name a trait declares a method under where an alias reaches it, alias by alias; null where none does.
+     */
+    private function traitDeclaredName(ReflectionMethod $declaration): ?string
+    {
+        $name = null;
+
+        while (($target = $this->aliasTarget($declaration)) !== null) {
+            $declaration = $target;
+            $name = $target->getName();
+        }
+
+        return $name;
+    }
+
+    /**
+     * The trait method an alias of the declaring class, or of a trait it uses, points at; null where none.
+     *
+     * PHP reports the using class as the declaring class of a trait's own alias, which its getTraitAliases() omits.
+     */
+    private function aliasTarget(ReflectionMethod $method): ?ReflectionMethod
+    {
+        foreach ($this->selfAndTraits($method->getDeclaringClass()) as $class) {
+            $target = array_change_key_case($class->getTraitAliases())[strtolower($method->getName())] ?? null;
+
+            if ($target === null) {
+                continue;
+            }
+
+            $original = ReflectionMethod::createFromMethodName($target);
+
+            // getTraitAliases() keeps an alias a method of the class's own shadows, so only the body PHP runs counts.
+            if ($original->getFileName() === $method->getFileName() && $original->getEndLine() === $method->getEndLine()) {
+                return $original;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The class and every trait it uses, at any depth.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return list<ReflectionClass<object>>
+     */
+    private function selfAndTraits(ReflectionClass $class): array
+    {
+        $found = [$class];
+
+        foreach ($class->getTraits() as $trait) {
+            $found = [...$found, ...$this->selfAndTraits($trait)];
+        }
+
+        return $found;
     }
 
     /**

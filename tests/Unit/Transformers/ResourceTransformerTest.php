@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
@@ -25,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthand
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
@@ -67,6 +70,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSig
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Request;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -3332,6 +3336,24 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
     });
 
+    test('publishes the AsEnum type for a local each branch of an if assigns an enum read, or its block assigns', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $post = new Post;
+        $post->forceFill(['status' => Status::Published]);
+        $sent = fn (array $query): mixed => json_decode((string) json_encode(
+            new BlockAssignedEnumLocalResource($post)->resolve(Request::create('/', 'GET', $query)),
+        ), true)['status']['value'];
+
+        $properties = new ResourceTransformer(BlockAssignedEnumLocalResource::class)->properties;
+        $asked = json_decode((string) json_encode(
+            new BlockAssignedEnumLocalResource($post)->resolve(Request::create('/', 'GET', ['asked' => 1])),
+        ), true)['asked']['value'];
+
+        expect($properties['status']['type'])->toBe('AsEnum<typeof Status>')
+            ->and([$properties['asked']['type'], $properties['asked']['optional']])->toBe(['AsEnum<typeof Status>', true])
+            ->and([$sent(['draft' => 1]), $sent([]), $asked])->toBe([0, 1, 1]);
+    });
+
     // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.
     test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
         expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
@@ -3603,4 +3625,14 @@ test('a resource built around a payload that is only null publishes null', funct
         'nested' => '{ author: null }',
     ])->and($transformer->properties['null_default']['optional'])->toBeTrue()
         ->and($transformer->typeImports)->toBe(['.' => ['UserResource']]);
+});
+
+// A page reads the body as Inertia sends it, a reading the memo keeps apart from the resource's own.
+test('a resource a page resolves keeps its own interface', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    expect(pageData(ResolvedCardController::class.'@show')['pageType'] ?? null)->toContain("Omit<PostCardResource, 'author'>")
+        ->and(resourceProps(PostCardResource::class))->toBe(['id' => 'number', 'title' => 'string', 'author' => 'UserCardResource'])
+        ->and(PostCardResource::make($post)->response()->getData()->data->author)->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
 });

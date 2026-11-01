@@ -88,6 +88,35 @@ final class IndexSignatureKey
     }
 
     /**
+     * The regex a named key matches when a template-literal signature with these literal segments covers it.
+     *
+     * @param  non-empty-list<string>  $segments
+     */
+    public static function keyPattern(array $segments): string
+    {
+        $quoted = array_map(fn (string $segment): string => preg_quote($segment, '/'), $segments);
+
+        return '/^'.implode('.*', $quoted).'$/s';
+    }
+
+    /**
+     * Whether TypeScript checks a named key against a signature.
+     *
+     * Every key for `string`, a numeric one for `number`, and one its pattern matches for a template literal.
+     */
+    public static function covers(string $signature, string $key): bool
+    {
+        $segments = self::literalSegments($signature);
+
+        return match (true) {
+            $segments !== null => preg_match(self::keyPattern($segments), $key) === 1,
+            ! self::is($signature) => false,
+            str_ends_with($signature, ': number]') => is_numeric($key),
+            default => true,
+        };
+    }
+
+    /**
      * The spellings of a signature's name, other than the name, that a #[TsCasts] key may use for it: each `\\` read
      * as `\` (a single-quoted paste), each `\r` read as a raw CR (a double-quoted paste), or both.
      *

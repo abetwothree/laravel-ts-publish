@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
@@ -52,10 +53,10 @@ function closureHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -91,10 +92,10 @@ final class ClosureHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -130,10 +131,10 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -167,10 +168,10 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -198,10 +199,10 @@ function closureHandlerBlowingUpEngine(): ExpressionEngine
             throw new RuntimeException('body resolution exploded');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -222,7 +223,7 @@ it('resolves an arrow function\'s body through the engine callback, ignoring any
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
 });
 
 it('merges a multi-return closure body into a union via ValueResult::unionResults()', function () {
@@ -236,7 +237,7 @@ it('merges a multi-return closure body into a union via ValueResult::unionResult
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string | number', 'optional' => false, 'heldObject' => true]);
 });
 
 it('reads each returned variable of a multi-return closure body through the walk over its writes', function () {
@@ -257,7 +258,7 @@ it('falls back to the native return-type annotation when the body resolves to un
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'number', 'optional' => false]);
+    expect($result)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true]);
 });
 
 it('returns the unknown body result when there is no usable return-type annotation either', function () {
@@ -269,7 +270,7 @@ it('returns the unknown body result when there is no usable return-type annotati
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
 });
 
 it('suppresses a closure param that shadows a populated localVarBindings entry, then restores it', function () {
@@ -290,7 +291,7 @@ it('suppresses a closure param that shadows a populated localVarBindings entry, 
 
     expect($engine->wasCalled)->toBeTrue()
         ->and($engine->shadowedNameWasAbsent)->toBeTrue()
-        ->and($result)->toBe(['type' => 'unknown', 'optional' => false])
+        ->and($result)->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true])
         ->and($scope->localVarBindings)->toBe(['slug' => $outerBoundExpr]);
 });
 
@@ -382,10 +383,10 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */

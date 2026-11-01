@@ -129,6 +129,14 @@ _Avoid_: wrapper, resource property
 **Inference**:
 Working out a property's type from PHP code when no override or docblock states it.
 
+**Inertia profile**:
+The handlers that read a value Inertia sends, a page prop, a shared value or a body either reads, typing it as Inertia sends it: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
+_Avoid_: controller profile, page-prop profile
+
+**Reading**:
+How the values a body returns reach the client, which decides how inference types them: as `json_encode()` sends them, as Inertia sends them, or as Inertia sends them once an API resource's `filter()` ran: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
+_Avoid_: flag, read mode
+
 **Vague type**:
 A declared PHP type too broad to publish usefully, such as `mixed` or `array`, which sends inference to look further.
 

@@ -42,6 +42,14 @@ class TsTypeString
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
+    /**
+     * A quoted string literal or a generated index signature key, whose text is a value or a key, never a name.
+     *
+     * A template literal is matched only so a quote inside it opens no string; its own text is read as usual.
+     */
+    protected const string LITERAL_PATTERN = '/('.IndexSignatureKey::PATTERN
+        .'|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
+
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
 
@@ -196,6 +204,28 @@ class TsTypeString
         $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
 
         return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+    }
+
+    /**
+     * The byte spans, end exclusive, of a type's quoted string literals and generated index signature keys.
+     *
+     * @return list<array{int, int}>
+     */
+    public function literalSpans(string $type): array
+    {
+        if (preg_match_all(self::LITERAL_PATTERN, $type, $matches, PREG_OFFSET_CAPTURE) === 0) {
+            return [];
+        }
+
+        $spans = [];
+
+        foreach ($matches[0] as [$literal, $at]) {
+            if (! str_starts_with($literal, '`')) {
+                $spans[] = [$at, $at + strlen($literal)];
+            }
+        }
+
+        return $spans;
     }
 
     /**
@@ -495,9 +525,7 @@ class TsTypeString
     protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
     {
         // A literal's text is a value, so 'Post' must stay 'Post', and a nested index signature's is a key, kept whole.
-        // A template literal is matched only so a quote inside it opens no string; its own text is qualified as usual.
-        $literal = '/('.IndexSignatureKey::PATTERN.'|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
-        $segments = preg_split($literal, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
+        $segments = preg_split(self::LITERAL_PATTERN, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
         $qualifiable = array_filter(
             $segments,
             static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),

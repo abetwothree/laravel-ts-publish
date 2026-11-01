@@ -707,14 +707,20 @@ describe('aliases an enum type that a composed name also spells', function () {
             ]);
     });
 
-    it('but not on an Inertia page, which aliases no import (a known gap)', function () use ($composed) {
+    it('on an Inertia page, beside the composed class', function () use ($composed) {
         Config::set('ts-publish.inertia.enabled', true);
         Route::get('ui-chart-kind', [UiChartKindPageController::class, 'show'])->name('ui.chart-kind');
+        $transformer = new RouteTransformer(UiChartKindPageController::class);
+        $sent = inertiaProps(new UiChartKindPageController()->show());
 
-        expect(new RouteTransformer(UiChartKindPageController::class)->typeImports)->toBe([
-            '../'.$composed => ['ChartType'],
-            '../../enums' => ['ChartType'],
-        ]);
+        expect($transformer->actions[0]['pageType'] ?? null)
+            ->toBe('Inertia.SharedData & { chart: ChartType, kind: FixturesChartType }')
+            ->and($transformer->typeImports)->toBe([
+                '../'.$composed => ['ChartType'],
+                '../../enums' => ['ChartType as FixturesChartType'],
+            ])
+            ->and($sent->chart)->toBeObject()
+            ->and($sent->kind)->toBe('bar');
     });
 });
 

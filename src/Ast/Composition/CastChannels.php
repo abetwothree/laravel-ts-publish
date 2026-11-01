@@ -12,12 +12,15 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Closure;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Fits each key a `#[TsCasts]` entry retypes to the text that entry publishes.
  *
  * A class the displaced value carried stays queued only for a token the text spells and the entry's import does not
- * bring, so no pass rebuilds the text's shape (the `AsEnum` rewrite) or aliases a name the app brings itself.
+ * bring, so no pass rebuilds the text's shape (the `AsEnum` rewrite) or aliases a name the app brings itself. An entry
+ * that names the class behind each token, as a `share()` docblock's does, keeps those and displaces every other.
  *
  * @phpstan-import-type CastInForce from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
@@ -28,14 +31,17 @@ use Closure;
 final class CastChannels
 {
     /**
-     * The names a cast's own import brings into the file, each the app's own, which no class of the package supplies.
+     * The names a cast's own imports bring into the file, each the app's own, which no class of the package supplies.
      *
      * @param  CastInForce  $cast
      * @return list<string>
      */
     public static function brings(array $cast): array
     {
-        return $cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : [];
+        return [
+            ...($cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : []),
+            ...ImportMaps::localNames($cast['customImports'] ?? []),
+        ];
     }
 
     /**
@@ -140,8 +146,9 @@ final class CastChannels
         foreach ($casts as $key => $castInForce) {
             // PHP stores a numeric-string key such as '6' as an int.
             $name = (string) $key;
+            $declared = $castInForce['tokenFqcns'] ?? null;
 
-            if (! $analysis->hasFqcnChannel($name)) {
+            if ($declared === null && ! $analysis->hasFqcnChannel($name)) {
                 continue;
             }
 
@@ -160,15 +167,27 @@ final class CastChannels
                 $analysis->casts[$name] = $cast;
             }
 
-            [$kept, $carriedEnums] = $this->divide($enums, $type, $brought, ValueResult::enumTypeName(...), $broughtOver);
+            $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));
+
+            [$kept, $carriedEnums] = $this->divide(
+                $enums, $type, $brought, ValueResult::enumTypeName(...), $broughtOver, $named['enums'] ?? null,
+            );
             $this->queue($analysis->inlineEnumFqcns, $analysis->directEnumFqcns, $name, $kept);
 
-            [$kept, $carriedModels] = $this->divide($models, $type, $brought, class_basename(...), $broughtOver);
+            [$kept, $carriedModels] = $this->divide(
+                $models, $type, $brought, class_basename(...), $broughtOver, $named['models'] ?? null,
+            );
             $this->queue($analysis->inlineModelFqcns, $analysis->modelFqcns, $name, $kept);
 
             $resourceName = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
-            [$kept, $carriedResources] = $this->divide($resources, $type, $brought, $resourceName, $broughtOver);
+            [$kept, $carriedResources] = $this->divide(
+                $resources, $type, $brought, $resourceName, $broughtOver, $named['resources'] ?? null,
+            );
             $this->queue($analysis->inlineResourceFqcns, $analysis->nestedResources, $name, $kept);
+
+            if ($declared !== null) {
+                $analysis->declaredTokenFqcns[$name] = $declared;
+            }
 
             $analysis->carry(['enums' => $carriedEnums, 'models' => $carriedModels, 'resources' => $carriedResources]);
             array_push($displaced, ...$carriedEnums, ...$carriedModels, ...$carriedResources);
@@ -251,22 +270,60 @@ final class CastChannels
      * @param  list<string>  $brought
      * @param  Closure(class-string): string  $nameOf
      * @param  list<class-string>  $broughtOver  collects each class whose name the import brings
+     * @param  list<class-string>|null  $named  the class behind each of these tokens, where the entry names them
      * @return array{list<class-string>, list<class-string>}
      */
-    private function divide(array $fqcns, string $type, array $brought, Closure $nameOf, array &$broughtOver): array
-    {
-        $kept = self::spells($fqcns, $type, $brought, $nameOf);
+    private function divide(
+        array $fqcns,
+        string $type,
+        array $brought,
+        Closure $nameOf,
+        array &$broughtOver,
+        ?array $named = null,
+    ): array {
+        $kept = $named ?? self::spells($fqcns, $type, $brought, $nameOf);
         $carried = [];
 
         foreach (array_unique($fqcns) as $fqcn) {
+            if (in_array($fqcn, $kept, true)) {
+                continue;
+            }
+
             if (in_array($nameOf($fqcn), $brought, true)) {
                 $broughtOver[] = $fqcn;
-            } elseif (! in_array($fqcn, $kept, true)) {
+            } else {
                 $carried[] = $fqcn;
             }
         }
 
         return [$kept, $carried];
+    }
+
+    /**
+     * The classes an entry names behind its tokens, by the import channel each kind is queued on; any other class has
+     * no channel.
+     *
+     * @param  list<class-string>  $fqcns
+     * @return array{enums: list<class-string>, models: list<class-string>, resources: list<class-string>}
+     */
+    private function byKind(array $fqcns): array
+    {
+        $kinds = ['enums' => [], 'models' => [], 'resources' => []];
+
+        foreach ($fqcns as $fqcn) {
+            $kind = match (true) {
+                enum_exists($fqcn) => 'enums',
+                is_a($fqcn, Model::class, true) => 'models',
+                is_a($fqcn, JsonResource::class, true) => 'resources',
+                default => null,
+            };
+
+            if ($kind !== null) {
+                $kinds[$kind][] = $fqcn;
+            }
+        }
+
+        return $kinds;
     }
 
     /**
@@ -300,7 +357,14 @@ final class CastChannels
 
         foreach ($casts as $cast) {
             if ($cast['import'] !== null) {
-                $bound[$cast['import']] = [...$bound[$cast['import']] ?? [], ...self::brings($cast)];
+                $bound[$cast['import']] = [
+                    ...$bound[$cast['import']] ?? [],
+                    ...TsTypeString::extractImportableTypes($cast['type']),
+                ];
+            }
+
+            foreach ($cast['customImports'] ?? [] as $path => $names) {
+                $bound[$path] = [...$bound[$path] ?? [], ...$names];
             }
         }
 

@@ -27,6 +27,7 @@ use ReflectionClass;
  * Shared building blocks for ExpressionHandler results.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
  *
@@ -42,6 +43,9 @@ use ReflectionClass;
  */
 final class ValueResult
 {
+    /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
+    public const array EMPTY_ARMS = ['null', 'never[]'];
+
     /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
     private static array $enumNames = [];
 
@@ -86,6 +90,24 @@ final class ValueResult
     }
 
     /**
+     * A type's top-level members except its empty ones, which an arm's shape and its enum are read past.
+     *
+     * @return list<string>
+     */
+    public static function filledArms(string $type): array
+    {
+        return array_values(array_diff(TsTypeString::splitTopLevelUnion($type), self::EMPTY_ARMS));
+    }
+
+    /**
+     * Whether a type, its empty arms aside, ends in a list, as an enum wrap's or a direct read's shape is read.
+     */
+    public static function isListShaped(string $type): bool
+    {
+        return str_ends_with(implode(' | ', self::filledArms($type)), '[]');
+    }
+
+    /**
      * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
      */
     public static function hasNullArm(string $type): bool
@@ -120,7 +142,7 @@ final class ValueResult
      */
     public static function collectionListType(string $element, bool $keepsKeys): string
     {
-        return $keepsKeys ? "Record<string, {$element}>" : $element.'[]';
+        return $keepsKeys ? "Record<string, {$element}>" : TsTypeShape::listType([$element]);
     }
 
     /**
@@ -216,6 +238,128 @@ final class ValueResult
     }
 
     /**
+     * The result as an object PHP holds until its caller resolves it: a callable, or with $prop an Inertia prop.
+     *
+     * A callable whose resolved value may itself be a callable says so, since Inertia sends that one uncalled. A prop,
+     * and a callable returning one, is closed to dotted keys: Inertia replaces it rather than opening it.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function heldObject(array $result, bool $prop = false): array
+    {
+        $returnsCallable = ! $prop && self::heldNullsOf($result) !== null && ! ($result['heldProp'] ?? false);
+        $result = self::withoutHeldObject($result);
+
+        return [
+            ...$result,
+            'heldObject' => true,
+            ...($prop ? ['heldProp' => true, 'closedToDottedKeys' => $result['type']] : []),
+            ...($returnsCallable ? ['returnsCallable' => true] : []),
+        ];
+    }
+
+    /**
+     * The value a call of a held callable returns, apart from the callable: a callable it may return marks it as one
+     * that may hold an object.
+     *
+     * @param  ValueExpressionResult  $callable
+     * @return ValueExpressionResult
+     */
+    public static function calledValue(array $callable): array
+    {
+        $value = self::withoutHeldObject($callable);
+        $nullable = self::mayBeNull($value['type']);
+
+        return ($callable['returnsCallable'] ?? false)
+            ? [...$value, 'mayHoldObject' => ['objectNull' => $nullable, 'plainNull' => $nullable]]
+            : $value;
+    }
+
+    /**
+     * Where PHP may hold the value as an object and which arms may be null.
+     *
+     * Null where no arm is such an object.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return HeldNulls|null
+     */
+    public static function heldNullsOf(array $result): ?array
+    {
+        return match (true) {
+            $result['heldObject'] ?? false => ['objectNull' => self::mayBeNull($result['type']), 'plainNull' => false],
+            default => $result['mayHoldObject'] ?? null,
+        };
+    }
+
+    /**
+     * A key's value as `json_encode()` writes it and Inertia decodes it: an object PHP holds, a callable or an Inertia
+     * prop, goes as `{}`, then `[]`, on every arm that holds one.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function heldObjectAsDecoded(array $result): array
+    {
+        if ($result['heldObject'] ?? false) {
+            return [
+                'type' => 'never[]',
+                'optional' => false,
+                'heldObject' => true,
+                ...array_intersect_key($result, ['heldProp' => true, 'returnsCallable' => true]),
+            ];
+        }
+
+        return isset($result['mayHoldObject']) && $result['type'] !== 'unknown'
+            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]], countMembers: true)
+            : $result;
+    }
+
+    /**
+     * The result marked as a value Inertia replaces before a dotted key writes under it, for as long as its type holds.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function closeToDottedKeys(array $result): array
+    {
+        return [...$result, 'closedToDottedKeys' => $result['type']];
+    }
+
+    /**
+     * Whether Inertia replaces the value before a dotted key writes under it: marked so for this type, null aside.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function closedToDottedKeys(array $result): bool
+    {
+        $closed = $result['closedToDottedKeys'] ?? null;
+
+        return $closed !== null && self::stripNullArm($closed) === self::stripNullArm($result['type']);
+    }
+
+    /**
+     * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
+     */
+    public static function mayBeNull(string $type): bool
+    {
+        return $type === 'unknown' || self::hasNullArm($type);
+    }
+
+    /**
+     * The result without either held-object flag, as a value read from such an object is.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function withoutHeldObject(array $result): array
+    {
+        unset($result['heldObject'], $result['mayHoldObject'], $result['heldProp'], $result['returnsCallable']);
+
+        return $result;
+    }
+
+    /**
      * The result as `??` or a short `?:` receives its checked operand: a field absent from the request reads `null`,
      * which the operator replaces, so only a placeholder that drops the key (a MissingValue) keeps it optional.
      *
@@ -280,7 +424,8 @@ final class ValueResult
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it.
+     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
+     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -303,9 +448,13 @@ final class ValueResult
 
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
+        $closed = array_any($results, self::closedToDottedKeys(...))
+            && array_all($results, fn (array $inner): bool => $inner['type'] === 'null' || self::closedToDottedKeys($inner));
 
         if ($types === []) {
-            return [...self::unknown(), 'optional' => $optional];
+            $unknown = [...self::unknown(), 'optional' => $optional];
+
+            return self::withArmObjects($closed ? self::closeToDottedKeys($unknown) : $unknown, $results);
         }
 
         $result = self::mergeUnion($types, $branchResults);
@@ -314,7 +463,9 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        return [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+
+        return self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
     }
 
     /**
@@ -348,7 +499,7 @@ final class ValueResult
                 return $union;
             }
 
-            $isList = str_ends_with(rtrim(str_replace('| null', '', $arm['type'])), '[]');
+            $isList = self::isListShaped($arm['type']);
 
             if ($wraps) {
                 $wrapIsList[] = $isList;
@@ -487,6 +638,44 @@ final class ValueResult
     public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
+    }
+
+    /**
+     * A union flagged `heldObject` where every arm is an object PHP holds, and `mayHoldObject` where only some are;
+     * `heldProp` where every such object is an Inertia prop, and `returnsCallable` where a callable's call may be one.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    private static function withArmObjects(array $union, array $arms): array
+    {
+        $union = self::withoutHeldObject($union);
+        $nulls = ['objectNull' => false, 'plainNull' => false];
+        $someArm = false;
+        $props = true;
+        $returnsCallable = false;
+
+        foreach ($arms as $arm) {
+            $held = self::heldNullsOf($arm);
+            $someArm = $someArm || $held !== null;
+            $props = $props && ($held === null || ($arm['heldProp'] ?? false));
+            $returnsCallable = $returnsCallable || ($arm['returnsCallable'] ?? false);
+            $nulls = [
+                'objectNull' => $nulls['objectNull'] || ($held['objectNull'] ?? false),
+                'plainNull' => $nulls['plainNull'] || ($held === null ? self::mayBeNull($arm['type']) : $held['plainNull']),
+            ];
+        }
+
+        if (! $someArm) {
+            return $union;
+        }
+
+        $kinds = [...($props ? ['heldProp' => true] : []), ...($returnsCallable ? ['returnsCallable' => true] : [])];
+
+        return array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false)
+            ? [...$union, 'heldObject' => true, ...$kinds]
+            : [...$union, 'mayHoldObject' => $nulls, ...$kinds];
     }
 
     /**

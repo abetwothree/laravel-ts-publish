@@ -257,6 +257,18 @@ it('keeps same-named closures distinct, since a closure is never memoized', func
         ->and($fromB->positionOf('alpha'))->toBeNull();
 });
 
+it('reads the value a collect() call wraps, positional or named, and nothing else', function () {
+    $items = new Variable('items');
+    $collect = fn (array $args): FuncCall => new FuncCall(new Name('collect'), $args);
+
+    expect(CallArguments::collectArgument($collect([new Arg($items)])))->toBe($items)
+        ->and(CallArguments::collectArgument($collect([new Arg($items, name: new Identifier('value'))])))->toBe($items)
+        ->and(CallArguments::collectArgument($collect([])))->toBeNull()
+        ->and(CallArguments::collectArgument($collect([new VariadicPlaceholder])))->toBeNull()
+        ->and(CallArguments::collectArgument(new FuncCall(new Name('array_values'), [new Arg($items)])))->toBeNull()
+        ->and(CallArguments::collectArgument($items))->toBeNull();
+});
+
 /**
  * Declares `shared(string $alpha)`, distinct from CallArgumentsFixtureB's `shared()`, to pin that
  * closures reflecting same-named methods on different classes are never memoized together.

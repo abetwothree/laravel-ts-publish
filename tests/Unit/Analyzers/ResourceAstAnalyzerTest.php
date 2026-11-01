@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -23,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphModelRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
@@ -7302,6 +7304,51 @@ test('a union holding an enum resource beside two same-named enums keeps the mer
             'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
             'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
         ]);
+});
+
+// JsonResource::filter() sends a resource around null as null, so a short ternary over one keeps both arms here, in a
+// helper's body the resource reads too, a share middleware's included: only a read for Inertia drops the other arm.
+test('a short ternary over a resource it builds keeps both arms in an API resource', function () {
+    $user = (new User)->forceFill(['id' => 7, 'name' => 'Ada', 'email' => 'ada@example.com']);
+    $filled = Request::create('/', 'GET', ['s' => 1]);
+    $filled->merge(['u' => $user]);
+    $full = sentAsJson(new CheckedResourceElvisResource(null)->resolve($filled));
+    $empty = sentAsJson(new CheckedResourceElvisResource(null)->resolve(Request::create('/')));
+
+    expect(resourceProps(CheckedResourceElvisResource::class))->toBe([
+        'made' => 'AsEnum<typeof Status> | StatusType',
+        'built' => 'AsEnum<typeof Status> | null',
+        'tryFrom' => 'AsEnum<typeof Status> | null',
+        'user' => 'UserResource | null',
+        'helperTryFrom' => 'AsEnum<typeof Status> | null',
+        'helperUser' => 'UserResource | null',
+        'helperInst' => 'AsEnum<typeof Status> | null',
+        'mwTryFrom' => 'AsEnum<typeof Status> | null',
+        'mwUser' => 'UserResource | null',
+    ])->and([$full->made->name, $full->built->name, $full->tryFrom->name, $full->user->name])
+        ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->name, 'Ada'])
+        ->and([$full->helperTryFrom->name, $full->helperUser->name, $full->helperInst->name])
+        ->toBe([Status::Published->name, 'Ada', Status::Published->name])
+        ->and([$full->mwTryFrom->name, $full->mwUser->name])->toBe([Status::Published->name, 'Ada'])
+        ->and([$empty->tryFrom, $empty->user, $empty->helperTryFrom, $empty->helperUser, $empty->helperInst])
+        ->toBe([null, null, null, null, null])
+        ->and([$empty->mwTryFrom, $empty->mwUser])->toBe([null, null]);
+});
+
+// Inertia sends a resource's toArray() it reads through resolve() filtered, as here, so a short ternary there, and in
+// each helper that body reads, keeps the null filter() sends, as the resource's own reading does.
+test('a short ternary keeps both arms in a resource body Inertia reads', function () {
+    $keys = array_flip(['built', 'tryFrom', 'helperTryFrom', 'helperInst', 'mwTryFrom']);
+    $read = fn (Reading $reading): array => array_intersect_key(array_column(
+        resolve(AstEngine::class)->analyzeMethod(CheckedResourceElvisResource::class, reading: $reading)->properties,
+        'type',
+        'name',
+    ), $keys);
+    $empty = sentAsJson(new CheckedResourceElvisResource(null)->resolve(Request::create('/')));
+
+    expect($read(Reading::Inertia))->toBe(array_fill_keys(array_keys($keys), 'StatusType | null'))
+        ->and($read(Reading::Inertia))->toBe($read(Reading::Encoded))
+        ->and([$empty->tryFrom, $empty->helperTryFrom, $empty->helperInst, $empty->mwTryFrom])->toBe([null, null, null, null]);
 });
 
 // The body fallback flattens a helper's shape with no import, so the case types as the value it sends.

@@ -59,6 +59,9 @@ final class ReceiverMethodReturnResolver
 
     private const array ITEMS_SUBSET = ['only', 'except'];
 
+    /** The methods, lowercased as PHP matches them, that load relations onto a model or each model of a collection. */
+    private const array LOADS = ['load', 'loadmissing'];
+
     /**
      * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
      * row of the class, each serialized as the loaded relations decide.
@@ -219,7 +222,7 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a rule types a model method from the model's class alone, such as getKey(), toArray() or all().
+     * Whether a rule types a model method from the model's class, such as getKey(), toArray(), all() or load().
      *
      * A handler that reflects a model method directly, as VariableHandler does for a model a variable holds, leaves
      * such a call to these rules.
@@ -230,7 +233,7 @@ final class ReceiverMethodReturnResolver
     {
         DependencyRecorder::recordClass($class);
 
-        return $this->modelRule($class, $methodName) !== null;
+        return $this->modelRule($class, $methodName) !== null || ($this->loads($methodName) && $this->runsModelMethod($class, $methodName));
     }
 
     /**
@@ -255,6 +258,12 @@ final class ReceiverMethodReturnResolver
         // first() and firstWhere() find the model the query builds, or null where no row matches.
         if ($receiver->relatedModel !== null && resolve(ReceiverClassResolver::class)->findsQueriedModel($class, $methodName)) {
             return $this->publishedModelOrNull($receiver->relatedModel);
+        }
+
+        $loaded = $this->loads($methodName) ? $this->loadedRelations($receiver, $class, $methodName, $scope, $call) : null;
+
+        if ($loaded !== null) {
+            return $loaded;
         }
 
         $modelRule = $this->modelRule($class, $methodName);
@@ -304,7 +313,60 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() names the same set.
+     * A `load()` or `loadMissing()` that runs Laravel's own, as the model intersected with the relations it adds.
+     *
+     * `Post & { author: User }`, or a list of such models on an Eloquent collection; null where the call adds none this
+     * types, so the model's own type stands.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function loadedRelations(
+        ReceiverType $receiver,
+        string $class,
+        string $methodName,
+        AnalysisScope $scope,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
+        if (! $scope->carriesImports || $receiver->collectedItems || ! ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)) {
+            return null;
+        }
+
+        $listed = $receiver->elementModel !== null && is_a($class, EloquentCollection::class, true);
+        $model = match (true) {
+            $listed => new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === EloquentCollection::class
+                ? $receiver->elementModel
+                : null,
+            is_a($class, Model::class, true) && $this->runsModelMethod($class, $methodName) => $class,
+            default => null,
+        };
+        $members = $model === null ? null : resolve(LoadedRelations::class)->members($model, $call, $scope, $receiver->unsaved);
+
+        if ($model === null || $members === null) {
+            return null;
+        }
+
+        $element = class_basename($model).' & '.$members['type'];
+        $result = [
+            ...ValueResult::unknown(),
+            'type' => $listed ? $this->listOrKeyed(ValueResult::arrayWrapType($element), $receiver) : $element,
+            'modelFqcn' => $model,
+            'embeddedModelFqcns' => $members['models'],
+        ];
+
+        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+    }
+
+    /**
+     * Whether a method name is `load()` or `loadMissing()`, in any case PHP calls it by.
+     */
+    private function loads(string $methodName): bool
+    {
+        return in_array(strtolower($methodName), self::LOADS, true);
+    }
+
+    /**
+     * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() also names these.
      *
      * @param  class-string  $class
      * @return (Closure(ReceiverType): (ValueExpressionResult|null))|null

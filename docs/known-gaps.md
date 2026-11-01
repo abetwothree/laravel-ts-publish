@@ -120,10 +120,14 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - The branches of an `if` chain and a loop's body join, so a key holds each branch's value, optional where a branch, or
-  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but a
-  `continue` or `break` is not followed: after `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`,
-  `a?: string` publishes, though Laravel can send `1`. A `switch` case, a `try` body and a `catch` are read in sequence
-  instead: a key first set there is optional, and a key re-set there publishes only its last write's type.
+  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but not one
+  that ends in `abort()`, and a `continue` or `break` is not followed: after
+  `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`, `a?: string` publishes, though Laravel can send
+  `1`. A `switch` case, a `try` body and a `catch` are read in sequence instead: a key first set there is optional, and
+  a key re-set there publishes only its last write's type.
+- A `??=` of a key a helper's array, a parent `toArray()` or a parameter's argument holds optionally keeps the key's
+  type, as over a `when()` value, though the key may be unset there and the default sent: after
+  `$d = $this->base(); $d['k'] ??= 'x';`, `k?: number` publishes where `base()` sets `k` only in a branch.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
@@ -133,6 +137,11 @@ A method that builds an array in a variable and returns it publishes the keys it
   reads instead, beside `[key: string]: unknown` for a helper read as a value whose base or key write the walk could
   not read; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
   variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
+
+An `Inertia::render()` props local is read by the same walk, from its writes before the render call, unless every
+write the render call sees assigns it a literal whole. It publishes no props where the walk declines, where a `+=`, a
+`try`, a `switch` or a loop with a `continue` or `break` writes it first, where a value written to it reads a key of it
+the engine cannot type, or where a callback holds the render call or the statement holding it writes the local.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -199,17 +208,37 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
-### A multi-enum or mixed `EnumResource` ternary in an Inertia prop publishes the wrong enum shape
+### With two user models, the signed-in user publishes `unknown` past `auth()`, `Auth` and `request()`
 
-With `enums.use_tolki_package` on, the default,
-`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` as a page prop or in
-`HandleInertiaRequests::share()` publishes `RoleType | StatusType`, though Inertia sends each arm's resource object.
-`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape. In shared data neither name
-is imported either, which is TS2304 twice in a consumer's build: `AnalysisImports` drops a multi-enum ternary's type
-imports, as the resource generator's own rewrite needs. A ternary of an `EnumResource` and a bare case of its enum,
-`$cond ? EnumResource::make(Status::Draft) : Status::Published`, publishes `AsEnum<typeof Status>` for both arms,
-though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
-them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
+`auth()->user()?->name`, `Auth::user()?->email`, `request()->user()?->name`, a bare `request()->user()`, and `user()` or
+`id()` on `Auth::guard()` or `auth()->guard()` take the default guard's model only while every configured guard's
+provider names that one Eloquent model. A route's `auth:admin` middleware makes the admin guard the default for that
+request, so where another guard names another model either user may be sent, and these stay `unknown` until a
+guard-aware reader lands. `$request->user()`, the bare `auth()->user()` and `Auth::user()`, `auth()->id()` and
+`Auth::id()` keep the default guard's model, so behind such a route they publish that model's type. A guard whose
+provider names no Eloquent model is not counted, though it can sign in another kind of user: Sanctum's token guard (its
+tokenable is any `HasApiTokens` model), a `viaRequest()` or `Auth::extend()` guard with no provider, or a `database`
+provider over another table. A named guard, `auth('admin')` or `Auth::guard('admin')`, publishes `unknown`. Type the
+key with `#[TsCasts]`.
+
+### Some unions of `EnumResource` arms publish the wrong enum shape
+
+With `enums.use_tolki_package` on, the default, each of these misses what Laravel sends, in an API resource as on an
+Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel that tells their arms apart, so the
+`AsEnum` rewrite cannot spell each arm as it is sent:
+
+- A wrap beside a bare case of another enum, `$c ? EnumResource::make(Role::Admin) : Status::Published`, publishes
+  `RoleType | StatusType`, though the wrap arm sends the `Role` object.
+- A wrap beside a nested nullable bare read, `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)`,
+  publishes `AsEnum<typeof Status> | null` and misses the `1` the bare arm sends.
+- A nested ternary over three enums' wraps publishes `AsEnum<typeof Role> | StatusType | VisibilityType` and imports
+  neither bare name, which is `TS2304` in a consumer's build.
+- Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
+- A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
+  publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
+
+No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
+that has an `import`.
 
 ### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
 
@@ -236,24 +265,6 @@ only when no `[]` follows either arm. `A[] | A[]` means `A[]`, so `tsc` and the 
 looks like a bug. Keep the fold's `(?![A-Za-z0-9_$\[])` lookahead when you fix it, since it stops the differing pairs
 `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` from folding, and add the both-array case as a shape of
 its own.
-
-### Two same-named enums collide instead of aliasing: a companion throws, a route file ships invalid TS
-
-Resources alias two enums that share a basename across namespaces, but model metadata and route files do not. A
-metadata companion that would import both throws at publish time ("imports [StatusType] from both [...] and [...]"),
-because its inferred imports (`ModelMetadataAnalyzer::inferredTypeImports()`) skip the alias resolver its cast imports
-use. A route file with two such page props ships two `import type { StatusType }` lines, TS2300 in the consumer's
-build, since `RouteTransformer::resolvePageTypeImports()` has no alias resolver or collision guard, and no workbench
-route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. A
-`->name` read does not: it falls back there to its literal case-name union rather than collide. The fix, carrying the
-FQCN beside the rendered name, changes the import channel, and retires that fallback (`SharedEnumKinds`).
-
-Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. In a companion you can instead
-cast one key to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' =>
-'@/types/app-status']` where that module has `export type { StatusType as AppStatusType }`. Reusing `StatusType` still
-collides, since `TsCastsImportResolver` aliases only between casts, and an inline `'Status as AppStatusType'` emits
-invalid TypeScript. A key typed by a docblock-displaced union has no such handle, because its enums are keyed by FQCN
-rather than by property name, so narrow it to one enum.
 
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 
@@ -309,12 +320,12 @@ Return `(object) []` from the provider instead.
 
 ### A body-inferred metadata enum that enum publishing excludes imports a file that is never written
 
-`ModelMetadataAnalyzer::inferredTypeImports()` imports an enum a provider body returns from the path its namespace
-implies, without checking `enums.excluded`, `#[TsExclude]` or `enums.additional_directories`. When enum publishing
-leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of `ts:publish` failing. Resources have
-`PublishedResourceRegistry` for this check. Enums have `PublishedEnums`, but only an enum's `->value` and `->name` reads
-consult it, and a raw enum read such as this one does not. Publish the enum, or cast the property with an import-aware
-`#[TsCasts]`.
+`ModelMetadataAnalyzer::composeTypes()` imports an enum a provider body returns, under an import-less cast or not, from
+the path its namespace implies, without checking `enums.excluded`, `#[TsExclude]` or `enums.additional_directories`.
+When enum publishing leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of `ts:publish`
+failing. Resources have `PublishedResourceRegistry` for this check. Enums have `PublishedEnums`, but only an enum's
+`->value` and `->name` reads consult it, and a raw enum read such as this one does not. Publish the enum, or cast the
+property with an import-aware `#[TsCasts]`.
 
 ### A model published on demand gets no metadata companion and is not watched
 
@@ -376,15 +387,6 @@ that file's import of `{Basename}Type` but not the module. When the class has ju
 or one whose ancestor gained a `#[TsType]`, neither the module nor its barrel export exists yet, and the file fails
 `tsc` with TS2305 or TS2307 until the next full publish. A route file importing a form request behaves the same way.
 Run a full `ts:publish` after adding a composed class.
-
-### A page that reads a composed type and a class named like it imports the name twice
-
-An API resource, model or broadcast event aliases an enum or model that spells a composed class's `{Basename}Type`,
-such as an enum `Chart`, whose type is `ChartType`. An Inertia page and shared data alias no import, so a page that
-reads both ships two `import type { ChartType }` lines (TS2300), and a model metadata companion throws at publish time,
-as with
-[two same-named enums](#two-same-named-enums-collide-instead-of-aliasing-a-companion-throws-a-route-file-ships-invalid-ts).
-Give the enum a distinct `#[TsEnum]` name.
 
 ### Two composed classes with one basename, read in one file, publish one name
 
@@ -486,6 +488,14 @@ A member whose override names a type with no import, such as `#[TsType('UiLocal'
 and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
 member brings for that name, or is `unknown` when none does. Give the override an `import`.
 
+### A `share()` docblock union of an override and a model spelled alike can bind both to the model
+
+In `share()`'s `@return`, `either: Person|User`, where `Person`'s override is `User` from another module, publishes
+`User | User` with only the model's import when neither the key's value nor another key brings the override's import.
+The override arm then reads as the model and `tsc` passes, though Inertia sends a `Person` as its own JSON, which the
+model's type does not describe. Type the key with an import-aware `#[TsCasts]`, or share a key that brings the
+override's import, such as `person: Person`: the arm then keeps its import and the model is aliased.
+
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
@@ -515,6 +525,26 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
+### The relations `load()` adds ride only the call's own value
+
+`$post->load('author')` publishes `Post & { author: User }` as its own value only. A model read after a `load()`
+statement (`$post->load('author'); return ['post' => $post]`), a step past the call (`->load('author')->first()`) and
+`$this->comments->load('user')` in an API resource publish the model or list alone; under the default split model
+template `post.author` then does not compile. A relation no type here admits is left out too: one a closure may narrow
+(a call other than a filter, an order or a nested load, or a scope), and a `morphTo` under columns or a child. Only a
+chain of steps known to leave relations alone is read: filters, orders and fetches on the model, its query or its
+collection, a bare `fresh()` and the signed-in user, besides the eager loads, `makeHidden()` and `setVisible()` it
+reads; after any other step, such as a callback, `fresh('author:id')`, `setRelation()` or the application's own method,
+the model keeps its own type. What happens on another line, through a variable, in a global scope, in the relation's own
+definition (`hasMany(Comment::class)->with('user:id')`) or in a route-binding override is not seen: `loadMissing()` then
+keeps a relation already loaded with fewer columns, or a hidden relation is never written, so the member is typed while
+its keys may be missing, or it may be `null` or absent, at runtime. `load()` changes the model it runs on, so where two
+props load one relation of the same model differently, both send the last load, and the other prop's typed member can be
+missing keys or `null` the same way. A loaded member meets a key the model's interface already declares: under the full
+template `Post & { author: User | null }` reads as the interface's `author: User`, and a relation named like a column
+reads as `string & Category`.
+[Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
+
 ### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list
 
 `$bag->map(fn (Post $p) => ['id' => $p->id])` publishes `{ id: number }[]` when nothing names the class `$bag` holds,
@@ -534,10 +564,13 @@ relation a name no attribute takes.
 
 ### An `EnumResource` map kept as a `Collection` publishes no arm for the `[]` a null enum sends
 
-`$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`, but a member whose
-nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null` only inside arrays,
-and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap itself. End the chain with
-`->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends.
+In an API resource, `$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`,
+but a member whose nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null`
+only inside arrays, and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap
+itself. End the chain with `->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends. On
+an Inertia page and in shared data, a resolved resource's body included, the same map publishes
+`(AsEnum<typeof Role> | never[])[]`. A resource a response's `with()` or `additional()` key holds sends its body, which
+publishes as the resource's own interface, with that interface's gaps, such as the kept map.
 
 ### An API resource wrapping a relation the engine cannot type publishes it without `| null`
 
@@ -652,14 +685,39 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
-### A resource collection prop over a paginator the engine does not type publishes no pagination
+### An Inertia prop past a query step that provably leaves the query publishes no root-model guess
 
-An Inertia prop or shared value reads its paginator's kind from a query chain rooted at a model, such as
-`Post::query()->simplePaginate()`, or a local variable assigned one. Over a query builder variable
-(`$query->paginate()`), a controller method (`$this->page()`) or an injected service's method, `new PostCollection(…)`
-publishes `PostCollection` and `PostResource::collection(…)` `AnonymousResourceCollection<PostResource>`, though
-Laravel sends `links` and `meta` too, and such a paginator passed bare publishes `unknown`. Build the paginator in the
-props, or type the prop with `#[TsCasts]`.
+An Inertia prop or shared value types a query chain rooted at a model from what each step hands on. A scope, macro or
+custom builder method whose body the package cannot read, a local macro a global scope adds, a step whose branches
+hand on different things, or a collection step the package does not follow, still reads as the root model's query before
+a terminal every such chain was once typed by. A few shapes publish `unknown`:
+
+- a step after `find($id)` of a key no literal spells, such as `Post::find($id)->comments()->get()`, since the call
+  returns a model or a list by the value Laravel is given;
+- `pluck()`, `value()`, `cursor()` or `findMany()` past a step the package cannot read, or one whose branches hand on
+  different things, since the step may hand on another model's query, whose columns differ;
+- a terminal past a collection step that replaces the models, such as a `map()` to each post's title before
+  `first()`, since the items sent are no longer the models;
+- a query a branched scope or macro hands on sent with no terminal, such as `Post::query()->latestOrTally(false)`,
+  since its other branch sends a count;
+- a property read through a step whose hand-back the package cannot prove, such as
+  `Post::query()->withArchived()->first()?->title` for a local macro, as before.
+
+Type the prop with `#[TsCasts]`.
+
+### A paginator the engine cannot name publishes no pagination, and a bare paginator publishes its items only from a model's query
+
+A resource collection prop or shared value reads its paginator's kind from the class its payload holds: a query chain,
+a builder variable's `paginate()`, or a helper's or service's declared return type or readable body. Over a payload
+none of these names, such as an untyped method whose body the engine cannot read, or one declared as the `Paginator`
+contract, which either kind implements, `PostResource::collection(…)` publishes
+`AnonymousResourceCollection<PostResource>`, though Laravel sends `links` and `meta` too. A page prop or shared value
+holding a paginator bare publishes its items only from a query chain rooted at a model or a body that returns one: from
+a query builder variable, `$query->paginate()` publishes `unknown`, and past a setter such as `->withQueryString()`
+`{ onEachSide: number }`, as `Post::query()->paginate()->setCollection(…)` does, since the collection it is given may
+hold anything. Declare the method's return type, build the paginator in the props, or type the prop with `#[TsCasts]`.
+An API resource's own `toArray()` holding a paginator from a builder variable publishes the same: `unknown`, or
+`{ onEachSide: number }` past a setter. Type the paginator through a helper's return type or with `#[TsCasts]`.
 
 ### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
@@ -682,25 +740,19 @@ differently, or drop the duplicated key from `$default` in `paginationInformatio
 `unset($default['meta']['total'])`. Do not build a block with other keys there: the package does not read
 `paginationInformation()`, so the published pagination type would no longer match.
 
-### A resource prop's `additional()` and `with()` keys are not published
+### A resource prop's `with()` or `additional()` key that its body holds too is sent as a list
 
-Inertia sends a resource prop as its whole response, beside the keys `additional()` and the resource's `with()` add.
-`R::make($x)->additional(['meta' => …])` publishes `{ data: R }` and `(new XCollection($items))->additional(…)`
-`XCollection`, without `meta`, and `R::collection($items)->additional(…)` publishes `unknown`. Such keys also make
-Laravel nest the body under `data` after `JsonResource::withoutWrapping()`, where the package publishes it bare. Type
-the prop with `#[TsCasts]`.
+A resource or collection whose own type holds its wrap key, such as a `toArray()` returning `['data' => …, 'count' =>
+1]`, is sent as it stands, and Laravel merges a key `with()` or `additional()` adds into it with
+`array_merge_recursive()`. The package intersects the two, which matches two objects, but values that are not both
+arrays are sent as a list: `->additional(['count' => 2])` sends `count` as `[1, 2]`, while the package publishes
+`number`. Name the key differently.
 
-### A `->resolve()`d resource prop publishes the API resources its body holds bare
+### A `->resolve()`d resource collection with its own `toArray()` publishes its items bare
 
-`R::make($x)->resolve()` as an Inertia prop publishes `R`, the keys `resolve()` returns. Inertia then sends each API
-resource still inside them as its response, so a key such as `'author' => new UserResource($this->user)` arrives as
-`{ data: … }` while `R` types it `UserResource`. Pass the resource itself, or type the prop with `#[TsCasts]`.
-
-### Props a collaborator builds publish their API resources bare
-
-`Inertia::render('Page', $this->props->build())` types the props from what the collaborator's method returns, where an
-API resource is the value a nested resource key holds: `'warehouse' => new WarehouseResource($w)` publishes
-`WarehouseResource`, though Inertia sends `{ data: … }`. Build the props array in the action, or type the props with
+`SomeCollection::make($items)->resolve()` as an Inertia prop publishes the collection's own type where it declares its
+own `toArray()`, such as `['items' => $this->collection]`. Inertia then sends each item as its response, so an item
+arrives as `{ data: … }` where that type gives the resource's keys. Pass the collection itself, or type the prop with
 `#[TsCasts]`.
 
 ### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
@@ -820,15 +872,16 @@ A class cast whose caster implements `SerializesCastableAttributes` publishes th
 because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
 instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 
-### A closure nothing calls, and some first-class callables Laravel or Inertia call, publish the wrong type
+### A closure nothing calls, and a first-class callable Inertia calls through a property, publish the wrong type
 
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
-as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
-helper method the action calls, are read as that method's own values, so a first-class callable there publishes
-`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. Use a closure such as
-`fn () => $this->label()` there instead. A closure held in a local and passed to a helper, read as a value or spread,
-publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns `['v' => $v]`:
-`{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
+as `strlen(...)` is read by where it sits. A property's type is the same for every reader, so a first-class callable a
+constructor writes, as in `$this->stamp = now(...)`, publishes `Record<string, never>`, and `ts:publish` warns, even
+in a page prop `'stamp' => $this->stamp`, though Inertia calls it. A closure held in a local and passed to a helper,
+read as a value or spread, publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns
+`['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Inertia calls a page prop's closure once, so a closure
+that closure returns is sent as `{}` too: `'a' => fn () => $f` publishes what `$f` returns, and `fn () => $f ?? 5`
+that less its `null`, beside `5`'s type. Type that key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 
@@ -904,6 +957,32 @@ Where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) the payload is
 on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int while the app's middleware merges
 `parent::share()`, which always adds `errors`. Use a string key.
 
+### A page prop that names a shared-data key publishes both types intersected
+
+A route file publishes each page as `Inertia.SharedData & { … }`, so a page key named like a shared-data key keeps both
+types, though Inertia merges the page's props over shared data: a page's `'auth' => 'x'` publishes `auth` as shared
+data's type and `string` at once. A dotted page key under a shared-data key, `'auth.name'`, is right only while the
+shared value is an array Inertia writes into. The other way round, shared data's own dotted key unpacks after the merge
+and writes into, or over, the page's value: shared `'auth.name'` beside a page's `'auth' => 'x'` sends
+`{ auth: { name: … } }`. A shared-data index signature that covers a page key's head intersects the same way. Name
+page keys apart from shared-data keys.
+
+### A dotted key under an object an array holds publishes the object's keys beside its own
+
+`['post' => ['card' => new PostResource($post)], 'post.card.extra' => 1]` publishes `card` as its response with
+`extra: number` beside it, though Inertia replaces a value it does not find as an array, an API resource or an Inertia
+prop object such as `Inertia::always([…])` included, and sends `{ card: { extra: 1 } }`. A top-level key publishes as
+replaced where it holds an API resource, an Inertia prop object, a `JsonSerializable` object, any other object a `new`
+builds there, or a callable returning one; another object only its declared class types is written into as published.
+Write the dotted key under a key of its own.
+
+### A props local whose branches write its int keys in different orders numbers them in the first branch's order
+
+Laravel renumbers a page's int keys from 0 in the order the array holds them, but a props local's branches are joined
+into one key order: after `if ($c) { $p[1] = 'a'; $p[2] = 5; } else { $p[2] = 5; $p[1] = 'a'; }`, `{ "0": string,
+"1": number }` publishes, though Laravel sends `5` on `"0"` from the second branch. Write int keys in one order, or
+use string keys.
+
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
@@ -927,8 +1006,8 @@ package reads the cycle once, with the first call's bindings. Type the key with 
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
-adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value, a merge
-closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
+adds nothing. A local whose read sees one write reads as the array it holds, in a method's whole `return` as in a
+value, a merge closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
 
 ### A `+` default for a key only some paths set is left out
 
@@ -1055,7 +1134,9 @@ Several handlers in [`ResourceExpressionHandlers`](../src/Ast/Dispatch/ResourceE
 registration order decides which one answers `$this->foo()`. `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs
 every pair in both orders over a corpus of expressions. A pair that disagrees is pinned in `METHOD_CALL_PINNED`, and
 every other pair is proven inert against that corpus only. A pair can still disagree on a shape the corpus lacks, so
-read the pins as the divergences found so far, not all there are.
+read the pins as the divergences found so far, not all there are. Its Inertia half runs only the pairs with a handler
+the resource profile lacks, so every other pair is proven on the resource corpus alone, never on a page's scope, and
+with the plain `FirstClassCallableHandler`, where the Inertia profile runs the `invoked: true` one.
 [The ordering inventory](./components/ast-engine.md#the-honest-ordering-inventory) lists them.
 
 ### The publish-speed gate is one-sided

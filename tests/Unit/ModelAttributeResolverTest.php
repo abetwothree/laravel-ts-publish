@@ -404,6 +404,17 @@ describe('delegatedRelationKeys()', function () {
             'unreadNotifications' => 'unread_notifications',
         ]],
     ]);
+
+    // `$visible` and `$hidden` decide a loaded relation's key whatever exclude_hidden says: toArray() writes no other.
+    it('keys a loaded relation as toArray() writes it, or not at all', function (string $model, string $relation, ?string $key) {
+        expect(resolve(ModelAttributeResolver::class)->sentRelationKey(new $model, $relation))->toBe($key);
+    })->with([
+        'snake-cased' => [User::class, 'primaryAddress', 'primary_address'],
+        '$snakeAttributes off' => [RelationKeyCaseUser::class, 'primaryAddress', 'primaryAddress'],
+        '$hidden names the method' => [RelationHiddenUser::class, 'ownedTeams', null],
+        '$visible leaves it out' => [RelationVisibilityUser::class, 'posts', null],
+        '$visible names the method' => [RelationVisibilityUser::class, 'ownedTeams', 'owned_teams'],
+    ]);
 });
 
 test('buildMorphTargetMap builds map from MorphMany inverse relations', function () {

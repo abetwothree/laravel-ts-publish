@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -18,9 +19,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Pagination\CursorPaginator;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
@@ -123,7 +121,8 @@ use ReflectionMethod;
  *      narrowedReads: list<NarrowedRead>,
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
- *      mapResultArrayed: bool
+ *      mapResultArrayed: bool,
+ *      readsCallableReturn: bool
  * }
  *
  * @internal
@@ -221,8 +220,8 @@ final class AnalysisScope
     public bool $reindexesNumericKeys = false;
 
     /**
-     * Whether JsonResource::filter() reaches the value being read, so a nested resource around null is sent as null.
-     * False while a map() body resolves whose result stays a Collection: filter() recurses into arrays only.
+     * False while a map() body resolves whose result stays a Collection, which JsonResource::filter() never enters, as
+     * it recurses into arrays only; Reading::filterReaches() adds whether a filter runs over the body at all.
      */
     public bool $filtersNestedResources = true;
 
@@ -231,6 +230,12 @@ final class AnalysisScope
      * VariableHandler's values()/all() arm sets it for its receiver, and only VariableHandler's map arm reads it.
      */
     public bool $mapResultArrayed = false;
+
+    /**
+     * Whether the value read is what a closure returns, where Inertia, having called the closure, sends a callable as
+     * `{}`. ClosureHandler sets it for its body; the dispatcher clears it below a handler that keeps no held object.
+     */
+    public bool $readsCallableReturn = false;
 
     /**
      * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
@@ -733,7 +738,7 @@ final class AnalysisScope
     {
         if ($this->subjectReflection->isSubclassOf(ResourceCollection::class)) {
             return new ReceiverType(
-                [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
+                [Collection::class, ...array_values(PaginatorSteps::BUILT)],
                 collectedItems: true,
                 collectedElement: $this->collectedElement,
             );
@@ -841,18 +846,39 @@ final class AnalysisScope
     }
 
     /**
-     * The value a local written once holds at a read, but where a by-reference call reshapes it: none where a
-     * parameter's binding or a join holds there instead, as VariableHandler::boundValue() reads it.
+     * The writes a read of a local sees.
+     *
+     * Its one write, or the values the gap it falls in holds, a block write's or a branch join's; null where a
+     * parameter's binding may still hold, or a gap's write assigns no value the scan reads.
+     *
+     * @return non-empty-list<Expr>|null
      */
-    public function literalWriteAt(Variable $read): ?Expr
+    public function writesSeenBy(Variable $read): ?array
     {
         $name = $read->name;
 
-        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read)) || $this->gapAt($read) !== null) {
+        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read))) {
             return null;
         }
 
-        return $this->literalLocalBinding($name);
+        $gap = $this->gapAt($read);
+
+        if ($gap !== null) {
+            // A gap holds an empty list only beside the old binding.
+            return $gap[3] || $gap[2] === null || $gap[2] === [] ? null : $gap[2];
+        }
+
+        return isset($this->localVarBindings[$name]) ? [$this->localVarBindings[$name]] : null;
+    }
+
+    /**
+     * The one write a read of a local sees; null where it sees none, or a join of several.
+     */
+    public function soleWriteSeenBy(Variable $read): ?Expr
+    {
+        $writes = $this->writesSeenBy($read);
+
+        return $writes !== null && count($writes) === 1 ? $writes[0] : null;
     }
 
     /**
@@ -875,6 +901,26 @@ final class AnalysisScope
             return $read();
         } finally {
             $this->restoreState($state);
+        }
+    }
+
+    /**
+     * Run a read away from a closure's returned value, as an array item or a prop's wrapped value is, then restore it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function apartFromReturn(Closure $read): mixed
+    {
+        $returned = $this->readsCallableReturn;
+        $this->readsCallableReturn = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->readsCallableReturn = $returned;
         }
     }
 
@@ -1293,25 +1339,6 @@ final class AnalysisScope
     }
 
     /**
-     * The local bindings a reader may take by their syntax, such as an array literal's keys: each but those a
-     * by-reference call keeps only in some forms, which only a read of the value's type can check.
-     *
-     * @return LocalVarBindingsMap
-     */
-    public function literalLocalBindings(): array
-    {
-        return array_diff_key($this->localVarBindings, $this->byReferenceForms);
-    }
-
-    /**
-     * The local binding of one name a reader may take by its syntax, as literalLocalBindings() lists it, or null.
-     */
-    public function literalLocalBinding(string $name): ?Expr
-    {
-        return isset($this->byReferenceForms[$name]) ? null : ($this->localVarBindings[$name] ?? null);
-    }
-
-    /**
      * A class's collection facts, `reindexesNumericKeys` and `collectedElement`, from ResourceCollections, once a run.
      *
      * @param  ReflectionClass<object>  $class
@@ -1557,6 +1584,7 @@ final class AnalysisScope
             'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
+            'readsCallableReturn' => $this->readsCallableReturn,
         ];
     }
 
@@ -1582,5 +1610,6 @@ final class AnalysisScope
         $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];
+        $this->readsCallableReturn = $state['readsCallableReturn'];
     }
 }

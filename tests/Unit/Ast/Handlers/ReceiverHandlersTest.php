@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
@@ -417,7 +417,7 @@ describe('ReceiverMethodReturnResolver', function () {
 
     test('an overridden toArray() publishes its declared shape through $this->resource and on a controller\'s property', function () {
         $resource = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), ReceiverShapedToArrayModel::class);
-        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', reading: Reading::Inertia);
 
         expect($resource->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])->toBe('{ id: number }')
             ->and($controller->resolve(receiverHandlerExpr('$this->shaped->toArray()'))['type'])->toBe('{ id: number }');
@@ -1404,7 +1404,7 @@ describe('getKey()', function () {
         ['\Workbench\App\Models\Post::create([])->getKey()', 'number'],
         ['\Workbench\App\Models\Post::query()->firstOrFail()->getKey()', 'number'],
         ['$this->resource->comments()->create([])->getKey()', 'number'],
-        ['\Workbench\App\Models\Post::find(1)->getKey()', 'unknown'],
+        ['\Workbench\App\Models\Post::find(1)->getKey()', 'number'],
         ['\Workbench\App\Models\Post::query()->get()->getKey()', 'unknown'],
         ['\Workbench\App\Models\Post::query()->getRelated()->getKey()', 'unknown'],
     ]);
@@ -1494,22 +1494,27 @@ describe('getKey()', function () {
     });
 
     // VariableHandler declines every method typesByRule() names, so a rule ruleFor() gains reaches a variable unedited.
+    // A load() is asked with a call that loads one of the model's relations, which its rule reads.
     test('typesByRule() names exactly the methods ruleFor() answers', function (string $class, array $named) {
         $rules = resolve(ReceiverMethodReturnResolver::class);
         $ruleFor = new ReflectionMethod($rules, 'ruleFor');
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), $class);
         $methods = get_class_methods($class);
+        $relation = resolve(ModelAttributeResolver::class)->getRelations($class)?->first()['name'] ?? 'none';
+        $callOf = fn (string $method): ?Expr => in_array($method, ['load', 'loadMissing'], true)
+            ? receiverHandlerExpr('$model->'.$method.'("'.$relation.'")')
+            : null;
 
         $typed = array_values(array_filter($methods, fn (string $method): bool => $rules->typesByRule($class, $method)));
         $answered = array_values(array_filter(
             $methods,
-            fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, null) !== null,
+            fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, $callOf($method)) !== null,
         ));
 
         expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except');
     })->with([
-        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding']],
-        'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding']],
+        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing']],
+        'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding', 'load']],
         'one identified by another column' => [EmailIdentifierUser::class, ['getKey', 'getAuthIdentifier']],
         'an abstract model' => [CallPathAbstractModel::class, ['getKey']],
     ]);
@@ -1613,7 +1618,7 @@ describe('a call on $this->prop types from the class the property holds, never f
     ]);
 
     test('a model-less scope types a filter on a held model by the receiver rules', function (string $php, string $type) {
-        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', reading: Reading::Inertia);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
@@ -1753,7 +1758,7 @@ describe('the resource proxy', function () {
     ]);
 
     test('a model-less subject reads $this->resource as its own property', function (string $php, string $type) {
-        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationController::class), null, '__construct', ControllerExpressionHandlers::make());
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationController::class), null, '__construct', reading: Reading::Inertia);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -15,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
@@ -45,11 +45,10 @@ use ReflectionMethod;
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
  * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
- * known or assumed runtime class, and bindings; docs/components/receiver-types.md § Following a method's return type.
+ * runtime class, bindings and Inertia reading; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
- * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type OwnReturn = array{Return_, bool}
  *
@@ -65,7 +64,8 @@ final class MethodReturnTypeResolver
      * declines one naming a model with no published file.
      *
      * @param  class-string  $class
-     * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
+     * @param  CallSite|null  $site  the call, read where it is written, whose caller's reading the body takes; null
+     *                               reads the body with its declarations only, as a value Inertia never sends
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or only assumed, as a receiver's is: what
      *                                      `static` names in the body and whose model `$this` reads, as PHP forwards it
@@ -85,12 +85,13 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
+        $reading = $site?->reading() ?? Reading::Encoded;
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime?->memoKey($class) ?? ''),
-            function () use ($class, $methodName, $passed, $backing, $runtime): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime);
+                .($runtime?->memoKey($class) ?? '').$reading->memoKey(),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $reading): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -147,6 +148,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
     ): ?array {
         $reflected = $this->reflected($class, $methodName);
 
@@ -154,8 +156,11 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime)
-            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime), $reflected)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading)
+            ?? $this->declaredOverVagueList(
+                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $reading),
+                $reflected,
+            )
             ?? $reflected;
     }
 
@@ -207,6 +212,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -235,6 +241,7 @@ final class MethodReturnTypeResolver
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
+                reading: $reading,
             );
         } finally {
             $memo->leave($key);
@@ -272,37 +279,14 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        $imports = $this->spelledImports($analysis->customImports, $type);
+        // A member left `unknown` brings no import.
+        $imports = ImportMaps::spelledIn($analysis->customImports, $type);
 
         return [
             ...ValueResult::unknown(),
             'type' => TsTypeString::hoistNull([$type, ...$otherArms]),
             ...($imports === [] ? [] : ['customImports' => $imports]),
         ];
-    }
-
-    /**
-     * The custom imports a shape spells a name of, each name once, so a member left `unknown` brings none.
-     *
-     * @param  TypesImportMap  $imports
-     * @return TypesImportMap
-     */
-    private function spelledImports(array $imports, string $type): array
-    {
-        $spelled = [];
-
-        foreach ($imports as $path => $names) {
-            $kept = array_filter(
-                array_unique($names),
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), $type),
-            );
-
-            if ($kept !== []) {
-                $spelled[$path] = array_values($kept);
-            }
-        }
-
-        return $spelled;
     }
 
     /**
@@ -319,6 +303,7 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
     ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -330,7 +315,8 @@ final class MethodReturnTypeResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime);
+            return resolve(AstEngine::class)
+                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading);
         } finally {
             $memo->leave($key);
         }

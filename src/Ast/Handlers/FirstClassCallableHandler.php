@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use PhpParser\Node\Arg;
@@ -26,7 +28,7 @@ use PhpParser\Node\Param;
  *
  * @internal
  */
-final class FirstClassCallableHandler implements ExpressionHandler
+final class FirstClassCallableHandler implements ExpressionHandler, KeepsHeldObjects
 {
     /** The parameter a callable called with one value holds it in, named as no source can spell a variable. */
     private const string PASSED_VALUE = 'passed value';
@@ -69,35 +71,21 @@ final class FirstClassCallableHandler implements ExpressionHandler
     }
 
     /**
-     * The first-class callable a variable holds where it is read, so a caller that calls its value reads the call: the
-     * write an inline `@var` spans, the one-value gap a block write opens, or the local's single write. Any other
-     * expression comes back unchanged, as does a read a parameter's own binding answers.
+     * The first-class callable a variable holds where it is read, so a caller that calls its value reads the call.
+     *
+     * The write an inline `@var` spans, or the one write the read sees. Any other expression comes back unchanged, as
+     * does a read that sees a join of writes or a parameter's own binding.
      */
     public static function heldCallable(Expr $value, AnalysisScope $scope): Expr
     {
-        if (! $value instanceof Variable || ! is_string($value->name)) {
+        if (! $value instanceof Variable) {
             return $value;
         }
 
         $span = $scope->declaredAt($value);
-        $holds = $scope->holdsBinding($value);
-        $gap = $span !== null || $holds ? null : $scope->gapAt($value);
-        $held = match (true) {
-            $span !== null => $span['expr'],
-            $gap !== null => ! $gap[3] && count($gap[2] ?? []) === 1 ? $gap[2][0] : null,
-            $holds && $scope->bindsName($value->name) => null,
-            default => $scope->localVarBindings[$value->name] ?? null,
-        };
+        $held = $span === null ? $scope->soleWriteSeenBy($value) : $span['expr'];
 
         return $held !== null && self::isFirstClassCallable($held) ? $held : $value;
-    }
-
-    /**
-     * Whether this handler reads a first-class callable as the call it stands for, as the caller invokes it.
-     */
-    public function invokesCallables(): bool
-    {
-        return $this->invoked;
     }
 
     /** @return list<class-string<Expr>> */
@@ -114,12 +102,12 @@ final class FirstClassCallableHandler implements ExpressionHandler
         }
 
         if ($this->invoked) {
-            return $engine->resolve(self::invokedCall($expr));
+            return ValueResult::heldObject($engine->resolve(self::invokedCall($expr)));
         }
 
         $this->warnOfUncalledCallable($expr, $scope);
 
-        return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
+        return ValueResult::heldObject(['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false]);
     }
 
     /**

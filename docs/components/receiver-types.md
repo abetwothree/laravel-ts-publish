@@ -14,7 +14,9 @@ These classes carry receiver inference:
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
 | [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms |
 | [`CollectionSteps`] | What a collection step does to the items and their keys, for the resolver and the relation-chain and `collect()` handlers |
+| [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
+| [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
 | [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
@@ -41,18 +43,18 @@ reflection answers, a decline included.
 | `E::Case`, `self::Case`, `static::Case` | The enum `E` when it is an enum with that case, so a local holding one, a ternary of cases and `E::from()` read as the enum; any other class constant declines |
 | `$this->m()` | The method `thisMemberClass()` reaches, the runtime class's or the declaring class's private one ([AST engine § AnalysisScope](ast-engine.md#analysisscope)), at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `DeclaredClasses::returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
-| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A builder hands itself back for a call `Builder::__call()` runs on the base query (`QueryForwarding::forwardsToBaseQuery()`) and a soft-deleting model's `withTrashed()`, `withoutTrashed()` and `onlyTrashed()`; a scope, a macro or a custom builder's method declared as no class, as `Builder` or as a parent's `self` hands on what every return of its body is, the query it is given or one other model's query, and a scope's `null` or missing return is the query; one whose returns the engine cannot read, that also returns a value no call can follow, or whose returns name different things, names nothing, except through `resolvePresumingSteps()`, where it keeps the query, as does a name only a local macro could answer. A relation hands itself back where its builder's `__call()` does. A model's own method with no declared return, or declared as a bare `Builder` or collection, names the one query, model or list its body returns. `when()`/`unless()` hand the query back where each callback, written in place or the one write of a local, returns it, `null` or nothing, and `when($value)->m()` is the query where `m()` hands it back. `find()` and `findOrFail()` name the model for one `int` or `string` literal key and an `Eloquent\Collection` of it for an array literal; a variable may be either, so it declines. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
 | `<Eloquent collection>->find(1)` | The `elementModel` for one `int` or `string` literal key and no `$default`, where the class runs `Eloquent\Collection`'s own `find()`; a list, an `Arrayable` or a variable may return a collection |
-| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
+| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()` and `LazyCollection` for `lazy()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing; so does a `merge()` or `concat()` of `[]` or a list of the same model. An Eloquent collection's `toQuery()` is its model's query. A step whose own docblock only inherits returns what `Enumerable` declares. Through `resolvePresumingSteps()`, a step the resolver does not follow keeps the models unless `CollectionSteps::changesItems()` lists it. `values()` and `shuffle()` clear `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
 | `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
 | `X::all()` | An `Eloquent\Collection` with `X` as `elementModel` on a concrete model, from `Model::all()`'s `Collection<int, static>` |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
-| `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
+| `$request->user()`, and `user()` on `auth()`, the `Auth` facade, `request()`, `Auth::guard()` or `auth()->guard()` | `AuthUserResolver::model()`, when that is not `null`, for `$request->user()`. The other spellings take `AuthUserResolver::soleModel()`, that model only while no configured guard's provider names another Eloquent model, since a route's guard middleware can make any guard the default ([known gap][gap-guards]). Only the default guard is read, so a guard named on any spelling but `$request->user()`, such as `auth('admin')`, `Auth::guard('admin')` or `request()->user('admin')`, names nothing ([`ResolvesAuthHelperCalls`]) |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method |
 | `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
-| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
+| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare, or to an attribute scope, reads as the same call on `X::query()`, since `Model::__callStatic()` runs it on a new query (`QueryForwarding::queriesStatically()`), and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
 | `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the declaring class for `self`, or its parent for `parent`, but nothing for Laravel's own JsonResource or ResourceCollection; marked unsaved, and `attributeless` for a model built with no constructor argument |
 | `resolve(X::class)`, `app(X::class)` | `X` |
@@ -244,13 +246,13 @@ Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relati
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks nine convention rules on each class before
+`ReceiverMethodReturnResolver` checks ten convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all nine loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
-`Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to `Record<string, unknown>`,
-`Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`, `Collection::all()` declares
-`array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the template `TValue|null`. Each
-rule answers only on the receiver it names:
+Laravel declares nine loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()` and
+`getAuthIdentifier()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
+`Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`,
+`Collection::all()` declares `array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the
+template `TValue|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -303,6 +305,21 @@ rule answers only on the receiver it names:
   gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
   keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
   `except(null)` keeps a `keyed` collection's keys (`CollectionSteps::eloquentKeyedAfter()`).
+- **`load()`, `loadMissing()`**: in any case PHP calls them by, on a concrete model, or an `Eloquent\Collection` with
+  `elementModel` set, that runs Laravel's own, the model intersected with the members `LoadedRelations` reads off the
+  literal argument, as Laravel's eager-load parser does: `Post & { author: User }`, or `(Post & { author: User })[]`.
+  Each member is keyed as `toArray()` writes it, by `ModelAttributeResolver::sentRelationKey()`, and typed as the
+  relation's read publishes it, nested under a dotted path. A column list is a `Pick<>` of the columns `toArray()`
+  writes. A to-one relation adds `| null` where a closure may filter its row out, or a side holds no key Laravel
+  matches the row by: its own column list, its parent's, or a model no row backs. A member whose payload no type admits
+  is left out: a closure that may change the columns (a `select()`, a scope, a builder macro), a `morphTo` under
+  columns or a child, one a `makeHidden()`, `setHidden()` or `setVisible()` earlier in the chain keeps out of
+  `toArray()`, and for `loadMissing()` one the model's `$with` or an eager load earlier in the chain loads narrowed. A
+  non-literal argument, or none left, keeps the model's own type. The chain before the call is read only through
+  `LoadedRelations::READS_THROUGH`, a `where…()` and a bare `fresh()`, each on the model, its query or its collection
+  and answered by no code of the application's own (the model's, its custom builder's or its custom collection's
+  method, a macro or a scope), through a scope for `load()`, and up to the signed-in user of Laravel's own guard or
+  request; any other step keeps the model's own type. The members ride only the call's own value.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
@@ -319,7 +336,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the nine on a resource collection's items alone:
+One more rule reads no model, and runs before the ten on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
@@ -332,8 +349,9 @@ One more rule reads no model, and runs before the nine on a resource collection'
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
-whose `__call()` sends a name its `$passthru` lists to `Query\Builder`. A macro under the name runs first, so it
-forwards nowhere, and a builder method that is not public is out of the relation's reach, so it declines.
+whose `__call()` sends a name its `$passthru` lists to `Query\Builder`, and runs any other name the base query has
+on it, handing the Eloquent builder back. A macro or a model scope under the name runs first, so it forwards nowhere,
+and a builder method that is not public is out of the relation's reach, so it declines.
 `$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`, so it stays
 `unknown`.
 
@@ -507,9 +525,11 @@ These pages cover the neighbors of receiver resolution:
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
 [`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
+[`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
@@ -518,6 +538,8 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverMethodReturnResolver`]: ../../src/Ast/Receivers/ReceiverMethodReturnResolver.php
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
+[`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
+[gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [params]: ast-engine.md#a-called-methods-parameters

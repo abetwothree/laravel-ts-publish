@@ -228,7 +228,7 @@ final class ValueResolver
         $elements = [];
 
         foreach ($items as $item) {
-            $element = $engine->resolve($item->value);
+            $element = $engine->reading()->arrayValue($engine->resolve($item->value));
 
             if ($item->unpack) {
                 $elementType = $this->spreadListElementType($element['type']);
@@ -264,7 +264,7 @@ final class ValueResolver
      *
      * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
      * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
-     * never enters, so it keeps its keys.
+     * never enters, so it keeps its keys, and which Inertia replaces under a dotted key unless it is `Arrayable`.
      *
      * @return ValueExpressionResult|null
      */
@@ -276,7 +276,13 @@ final class ValueResolver
             ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
             : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
 
-        return $result === null ? null : [...$result, 'keepsKeys' => true];
+        if ($result === null) {
+            return null;
+        }
+
+        $result = [...$result, 'keepsKeys' => true];
+
+        return $class !== null && is_a($class, Arrayable::class, true) ? $result : ValueResult::closeToDottedKeys($result);
     }
 
     /**
