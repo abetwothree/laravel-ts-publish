@@ -156,7 +156,9 @@ ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its
   `PropsResolver` does not walk, so `json_encode()` sends the resources in them bare. The result's `resolvedFqcn` lets
   a spread take R's keys, as it takes a plain `R`.
-- **A resource's response extras**: `InertiaResourcePropHandler` sets the keys a resource's or named collection's
+- **A resource's response**: `InertiaResourcePropHandler` only reads the spelling. [`ResourceResponseType`] builds
+  what it sends in Laravel's order (wrap, body, pagination, extras), so the key a body sits under is decided once.
+- **A resource's response extras**: that builder sets the keys a resource's or named collection's
   `with()` and an `additional()` call add beside the body ([`ResponseExtras`]), joined in one step, as Laravel merges
   them once: merged into a `{ data: R }` literal, else intersected, with the key the body sits under `unknown` beside
   an `Omit<>`. A key both add merges as `array_merge_recursive()` does, and beside keys one side cannot read, every key
@@ -943,6 +945,7 @@ These pages cover the engine's neighbors:
 [`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
+[`ResourceResponseType`]: ../../src/Ast/Resources/ResourceResponseType.php
 [`ResponseExtras`]: ../../src/Ast/Resources/ResponseExtras.php
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php

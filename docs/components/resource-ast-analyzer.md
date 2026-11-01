@@ -624,7 +624,8 @@ adds `never[]` beside a guessed collection's own type, and in a prop or shared v
 unless the guessed one's response is the plain list under the same wrap key.
 
 `InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
-lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
+lazy prop wrapper, as its `toResponse()` data, which [`ResourceResponseType`](../../src/Ast/Resources/ResourceResponseType.php)
+builds. A single resource and a body without the live wrap key sit inside that
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
 publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, with `| never[]` for the `[]` a null enum
