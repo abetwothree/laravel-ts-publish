@@ -54,12 +54,18 @@ class EnumInstanceTransformer
         return $this->data->cases[$index];
     }
 
-    /** @return MethodList */
+    /**
+     * Read each instance method's value for this case, by the name the case publishes.
+     *
+     * @return MethodList
+     */
     protected function resolvedMethods(): array
     {
+        $caseName = $this->matchingCase()['name'];
+
         return collect($this->data->methods)
             ->mapWithKeys(fn ($methodData) => [
-                $methodData['name'] => $methodData['returns'][$this->enum->name] ?? null,
+                $methodData['name'] => $methodData['returns'][$caseName] ?? null,
             ])
             ->all();
     }

@@ -254,16 +254,18 @@ class EnumTransformer extends CoreTransformer
             }
 
             // Stored as JSON data for every consumer; a case whose method throws, or whose value json_encode() cannot
-            // write, publishes null.
+            // write, publishes null. Keyed by the case's published name, the one `_cases` lists and a lookup reads.
             $returns = [];
             foreach ($this->reflectionEnum->getCases() as $case) {
+                $caseName = $this->tsTypeOverrides[$case->getName()]['name'] ?? $case->getName();
+
                 try {
                     $caseInstance = $case->getValue();
-                    $returns[$case->getName()] = JsEmitter::jsonValue(
+                    $returns[$caseName] = JsEmitter::jsonValue(
                         $method->invokeArgs($caseInstance, $attributeParams),
                     );
                 } catch (Throwable) {
-                    $returns[$case->getName()] = null;
+                    $returns[$caseName] = null;
                 }
             }
 

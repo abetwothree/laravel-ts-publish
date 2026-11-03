@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\SwappedCaseNames;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
@@ -112,6 +113,19 @@ describe('EnumTransformer with backed string enum and TsCase overrides', functio
         expect($data->methods)->toHaveKey('hex')->toHaveKey('rgb')
             ->and($data->methods['hex']['returns']['Red'])->toBe('#EF4444')
             ->and($data->methods['rgb']['returns']['Blue'])->toBe([59, 130, 246]);
+    });
+
+    test('keys each instance method\'s values by the case name the enum publishes', function () {
+        $data = (new EnumTransformer(Color::class))->data();
+
+        expect(array_keys($data->methods['hex']['returns']))->toBe(['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'])
+            ->and($data->methods['hex']['returns']['Yellow'])->toBe('#F59E0B')
+            ->and($data->methods['rgb']['returns']['Slate'])->toBe([100, 116, 139]);
+    });
+
+    test('two cases renamed to each other\'s PHP names keep their own values', function () {
+        expect((new EnumTransformer(SwappedCaseNames::class))->data()->methods['label']['returns'])
+            ->toBe(['Second' => 'first case', 'First' => 'second case']);
     });
 
     test('generates caseTypes for backed string enum', function () {

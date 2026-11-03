@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Caseless;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Enums\Color;
 use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
@@ -157,4 +158,14 @@ describe('the enum\'s own name as a type', function () {
     )->toContain('export type CaselessType = never;')
         ->toContain('export type CaselessKind = never;')
         ->toContain('export type Caseless = CaselessType;'));
+});
+
+describe('a renamed case\'s instance-method values', function () {
+    beforeEach(fn () => config()->set('ts-publish.output_to_files', false));
+
+    test('are keyed by the case name the enum publishes', fn () => expect(
+        (new EnumWriter(new Filesystem))->write(new EnumTransformer(Color::class)),
+    )->toContain("        Yellow: '#F59E0B',")
+        ->not->toContain('Amber:')
+        ->not->toContain('Gray:'));
 });
