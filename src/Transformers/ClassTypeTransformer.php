@@ -78,6 +78,17 @@ class ClassTypeTransformer extends CoreTransformer
         );
     }
 
+    /**
+     * The interface the composed class's module declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->typeName];
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {

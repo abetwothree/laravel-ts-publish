@@ -160,6 +160,21 @@ trait ResolvesImportConflicts
     }
 
     /**
+     * Reserve the names the file declares in each registry.
+     *
+     * Consts too, not only types: an enum's module also exports a type under its const's name, so a value import of
+     * that const beside a local declaration of the name is a TS2440.
+     *
+     * @param  list<string>  $names
+     */
+    protected function reserveDeclaredNames(array $names, ImportNameRegistry ...$registries): void
+    {
+        foreach ($registries as $registry) {
+            $registry->reserveMany(...$names);
+        }
+    }
+
+    /**
      * Resolve a type registry and its sibling const registry, then apply both, the types first.
      *
      * A type import and a const import are both local names in the file, so a const steps aside for every name a type

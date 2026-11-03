@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
@@ -3123,6 +3124,13 @@ test('an EnumResource const steps aside for a name the resource\'s own cast impo
         ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
         ->and($transformer->typeImports['@js/types/clearance'])->toBe(['ClearanceType'])
         ->and($transformer->valueImports['../../../../../../workbench/crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('an EnumResource const steps aside for the resource\'s own name', function () {
+    $transformer = new ResourceTransformer(RankNamedResource::class);
+
+    expect(array_merge(...array_values($transformer->valueImports)))->toBe(['Rank as FixturesRank'])
+        ->and($transformer->properties['rank']['type'])->toBe('AsEnum<typeof FixturesRank>');
 });
 
 test('a morph union over two resources that share a name spells each one by its own alias', function () {

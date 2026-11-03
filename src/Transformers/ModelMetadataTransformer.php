@@ -143,6 +143,17 @@ class ModelMetadataTransformer extends CoreTransformer
     }
 
     /**
+     * The metadata const the companion declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->modelName.'ModelMetadata'];
+    }
+
+    /**
      * Initialize the model metadata transformation state.
      */
     protected function initInstance(): static

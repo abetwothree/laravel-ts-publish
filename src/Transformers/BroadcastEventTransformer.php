@@ -233,6 +233,17 @@ class BroadcastEventTransformer extends CoreTransformer
             + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
+    /**
+     * The interface the event's file declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->eventName];
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {
@@ -533,7 +544,7 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function resolveImportConflicts(): self
     {
         $registry = new ImportNameRegistry(['Events', 'Enums', 'Models']);
-        $registry->reserve($this->eventName);
+        $registry->reserveMany(...$this->declaredNames());
         $registry->reserveMany(...$this->customImportNames());
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {

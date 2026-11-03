@@ -1,6 +1,6 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Grade } from '../enums';
+import { Grade as EnumsGrade } from '../enums';
 import type { GradeType } from '../enums';
 
 /**
@@ -20,5 +20,5 @@ export interface Grade
 
 export interface GradeResource extends Omit<Grade, 'grade'>
 {
-    grade: AsEnum<typeof Grade>;
+    grade: AsEnum<typeof EnumsGrade>;
 }

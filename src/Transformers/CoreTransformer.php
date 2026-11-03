@@ -60,6 +60,16 @@ abstract class CoreTransformer
         return [];
     }
 
+    /**
+     * The names this class's file declares, which every name the file imports steps aside for.
+     *
+     * @return list<string>
+     */
+    public function declaredNames(): array
+    {
+        return [];
+    }
+
     protected function resolveRelativePath(string $absolutePath): string
     {
         return TsNaming::resolveRelativePath($absolutePath);

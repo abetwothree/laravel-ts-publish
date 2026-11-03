@@ -108,6 +108,19 @@ class EnumTransformer extends CoreTransformer
         return Str::kebab($this->enumName);
     }
 
+    /**
+     * The const and the types the enum's module declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        $names = [$this->enumName, $this->enumName.'Type'];
+
+        return $this->backed ? [...$names, $this->enumName.'Kind'] : $names;
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {

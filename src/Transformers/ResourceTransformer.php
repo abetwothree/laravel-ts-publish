@@ -238,6 +238,17 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * The interface or type alias the resource's file declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->resourceName];
+    }
+
+    /**
      * Build a map of per-file enum const aliases to namespace-qualified type names, walking
      * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
      * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
@@ -1270,11 +1281,11 @@ class ResourceTransformer extends CoreTransformer
         $skip = ['Models', 'Enums', 'Http', 'Resources', 'App'];
 
         $registry = new ImportNameRegistry($skip);
-        $registry->reserve($this->resourceName);
 
         // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
         // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry($skip);
+        $this->reserveDeclaredNames($this->declaredNames(), $registry, $constRegistry);
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $registry->register($fqcn, $typeName);
