@@ -18,12 +18,13 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
 | `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
+| `Docblocks/` | Reading docblock tags: `@var`, `@param` and `@return` types, and the forms an inline `@var` may bind |
 | `Handlers/` | One handler per expression family |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
 | `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
-| `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
+| `Values/` | Value results and the readers that type a value: constants, reflection, aggregates |
 
 These are the classes a change to the engine usually touches:
 

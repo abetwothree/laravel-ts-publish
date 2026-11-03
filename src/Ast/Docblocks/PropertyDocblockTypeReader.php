@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use ReflectionClass;
 use ReflectionProperty;

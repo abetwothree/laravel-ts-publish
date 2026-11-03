@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
