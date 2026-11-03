@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
@@ -30,10 +31,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
@@ -2068,6 +2071,23 @@ describe('ResourceTransformer with a `@var` on `$resource`', function () {
         'a nullable shorthand' => [NullableShorthandWrappedResource::class, Post::class],
         'a class in the resource namespace, with no import' => [SameNamespaceWrappedResource::class, SameNamespacePost::class],
     ]);
+
+    test('a resource\'s spaced generic $resource @var names the model behind it', function () {
+        $transformer = new ResourceTransformer(SpacedGenericVarResource::class);
+
+        expect($transformer->modelClass)->toBe(Post::class)
+            ->and($transformer->properties['title']['type'])->toBe('string');
+    });
+
+    test('a same-namespace class a resource @var names without an import types its reads', function () {
+        $transformer = new ResourceTransformer(InvoiceViewResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'number' => 'string',
+            'total' => 'number | null',
+            'paid' => 'boolean',
+        ]);
+    });
 });
 
 describe('ResourceTransformer with AddressMixinResource and AddressExtendsResource', function () {
@@ -3262,6 +3282,16 @@ describe('a member typed by a docblock union whose arms render alike for two mod
         'a relation\'s only()' => [HandoverCrewResource::class, 'twin_crew', '{ crew: WorkbenchUser[] | CrmUser[] }'],
         'a variable bound to the model' => [HandoverCrewResource::class, 'bound_crew', 'WorkbenchUser[] | CrmUser[]'],
     ]);
+
+    test('a @return union of two same-basename model lists publishes both, aliased', function () {
+        $transformer = new ResourceTransformer(SameBasenameListUnionResource::class);
+
+        expect($transformer->properties['people']['type'])->toBe('WorkbenchUser[] | CrmUser[]')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
 
     test('publishes an array and a record of each model where each arm spells its model twice', function () {
         expect((new ResourceTransformer(HandoverKeyedRosterResource::class))->properties['members']['type'])

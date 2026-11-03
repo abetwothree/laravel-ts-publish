@@ -78,6 +78,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\SpacedDocblockResource;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
@@ -1384,6 +1385,12 @@ describe('docblockReturnTypes', function () {
         'an array of collections' => ['arrayOfCollections', 'OrderItem[][]'],
         'two int-keyed arrays, spaced inside' => ['spacedGenericUnion', 'OrderItem[] | StatusType[]'],
     ]);
+
+    test('docblockReturnTypes() keeps the null of a spaced @return union', function () {
+        $method = new ReflectionMethod(SpacedDocblockResource::class, 'subtitle');
+
+        expect($this->service->docblockReturnTypes($method)['type'])->toBe('string | null');
+    });
 });
 
 describe('extractReturnTypeFromDocblock', function () {
