@@ -624,17 +624,10 @@ resource at once, publishes `unknown` too. End the chain with `->all()`.
 
 ### A relation method that declares no relation class and builds it through a helper is left out
 
-A method with neither a relation return type nor a `@return` naming a relation class, whose body builds the relation
-through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders, is never read as a
-relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it publishes
-`unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
-
-### A relation method whose `@return` is vaguer than its `@phpstan-return` is left out
-
-The docblock reader takes `@return` before `@phpstan-return`, so a method declared `@return mixed` with
-`@phpstan-return HasMany<Comment, $this>`, whose body builds the relation through a helper, is read as declaring no
-relation class and is left out like the entry above. Name the relation class in `@return` too. Reading the tags as one
-grammar would fix it.
+A method with neither a relation return type nor a `@return` or `@phpstan-return` naming a relation class, whose body
+builds the relation through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders,
+is never read as a relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it
+publishes `unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
 
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 

@@ -17,7 +17,6 @@ use ReflectionProperty;
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type VarTag = array{string, string|null, bool}
- * @phpstan-type CapturedTag = array{string, string, int}
  * @phpstan-type RelativeClasses = array<string, class-string>
  *
  * @internal
@@ -61,20 +60,17 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * Capture the type expression following `@var`, stopping at the first separator that ends it.
-     *
-     * Whitespace inside `{}`/`<>`/`()` or around a union operator belongs to the type; any other
-     * whitespace starts the `$name` or the prose description. Public so ReceiverClassResolver reads the same full type.
+     * The whole type a docblock's `@phpstan-var`, `@psalm-var` or `@var` tag spells, as DocblockTags reads it.
      */
     public function extractVarType(string $docComment): ?string
     {
-        return $this->captureTag($docComment, '/(?<![\w-])@var\s+/')[0] ?? null;
+        return DocblockTags::type($docComment, 'var');
     }
 
     /**
-     * Capture an inline `@var` on a local assignment: its type, the variable it names, null when it names none, and
-     * whether it spells a `self`, `static` or `parent`. Null unless the type is a VarTypeWhitelist form that resolves
-     * with no `unknown` part but its callables'.
+     * Capture an inline `@phpstan-var`, `@psalm-var` or `@var` on a local assignment: its type, the variable it names,
+     * null when it names none, and whether it spells a `self`, `static` or `parent`. Null unless the type is a
+     * VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * Each `self`, `static` or `parent` in the type comes back as the class $relative maps it to, the one the body
      * holding the tag binds it to; one the map lacks stays as written, which no reading accepts.
@@ -85,115 +81,46 @@ final class PropertyDocblockTypeReader
      */
     public function extractVarTag(string $docComment, ReflectionClass $context, array $relative): ?array
     {
-        $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
+        $named = DocblockTags::named($docComment, 'var');
+        $name = array_key_first($named);
+        $declared = $name === null ? DocblockTags::type($docComment, 'var') : $named[$name];
 
-        if ($tag === null) {
+        if ($declared === null) {
             return null;
         }
 
-        $type = $this->spellRelativeClasses($tag[0], $relative);
+        $type = $this->spellRelativeClasses($declared, $relative);
 
         // A tag no reading accepts, such as an interface's, still names the receiver its local holds.
         if (! $this->readsInFull($type, $context, unreadAccepted: true)) {
             return null;
         }
 
-        $name = preg_match('/^\s*\$([a-zA-Z_\x80-\xff][\w\x80-\xff]*)/', $tag[1], $match) === 1 ? $match[1] : null;
-
-        return [$type, $name, $type !== $tag[0]];
+        return [$type, $name, $type !== $declared];
     }
 
     /**
-     * Capture the type a method's `@phpstan-param`, `@psalm-param` or `@param` tag gives one parameter, tried in that
-     * order. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
+     * The type a method's `@phpstan-param`, `@psalm-param` or `@param` tag gives one parameter, as DocblockTags reads
+     * it. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      */
     public function extractParamTag(string $docComment, string $name, ReflectionClass $context): ?string
     {
-        foreach (['@phpstan-param', '@psalm-param', '@param'] as $tagName) {
-            $offset = 0;
-            $pattern = '/(?<![\w-])'.preg_quote($tagName, '/').'\s+/';
+        $type = DocblockTags::named($docComment, 'param')[$name] ?? null;
 
-            while (($tag = $this->captureTag($docComment, $pattern, $offset)) !== null) {
-                [$type, $rest, $offset] = $tag;
-
-                if (preg_match('/^\s*&?\s*(?:\.\.\.)?\$'.preg_quote($name, '/').'(?![\w\x80-\xff])/', $rest) !== 1) {
-                    continue;
-                }
-
-                return $this->readsInFull($type, $context, unreadAccepted: false) ? $type : null;
-            }
-        }
-
-        return null;
+        return $type !== null && $this->readsInFull($type, $context, unreadAccepted: false) ? $type : null;
     }
 
     /**
-     * Capture the full type after a line-leading `@return`, `@phpstan-return` or `@psalm-return`, tried in that order.
+     * The whole type a docblock's `@phpstan-return`, `@psalm-return` or `@return` tag spells, as DocblockTags reads it.
      *
      * Text after a generic's closing `>`, such as `[]`, stays part of the type, so ReceiverClassResolver refuses an
      * array of a class instead of naming the class. LaravelTsPublish::extractReturnTypeFromDocblock() reads through it.
      */
     public function extractReturnType(string $docComment): ?string
     {
-        foreach (['@return', '@phpstan-return', '@psalm-return'] as $tag) {
-            $type = $this->captureTag($docComment, '/^\s*(?<![\w-])'.preg_quote($tag, '/').'\s+/m')[0] ?? null;
-
-            if ($type !== null && $type !== '') {
-                return $type;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Capture the type expression after the first match of a tag pattern at or past an offset, stopping at the
-     * separator that ends it, with the text that follows it and the offset a next search starts from.
-     *
-     * @return CapturedTag|null
-     */
-    private function captureTag(string $docComment, string $tagPattern, int $offset = 0): ?array
-    {
-        $content = trim((string) preg_replace(['#^[ \t]*/?\*+/?#m', '#\*+/\s*$#'], '', $docComment));
-
-        if (! preg_match($tagPattern, $content, $match, PREG_OFFSET_CAPTURE, $offset)) {
-            return null;
-        }
-
-        $next = (int) $match[0][1] + strlen((string) $match[0][0]);
-        $rest = ltrim(substr($content, $next));
-        $type = '';
-        $depth = 0;
-        $length = strlen($rest);
-        $end = $length;
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $rest[$i];
-            $isSpace = ctype_space($char);
-
-            if ($isSpace && $depth === 0 && ! $this->spaceContinuesType($type, substr($rest, $i + 1))) {
-                $end = $i;
-
-                break;
-            }
-
-            $depth += (int) in_array($char, ['{', '<', '('], true) - (int) in_array($char, ['}', '>', ')'], true);
-            $type .= $isSpace ? ' ' : $char;
-
-            // A quoted or unmatched closer drives depth below zero, where the depth-zero space test
-            // can never fire again — without this the walk swallows the `$name` and the prose.
-            if ($depth < 0) {
-                $end = $i + 1;
-
-                break;
-            }
-        }
-
-        $type = trim($type);
-
-        return [$type, substr($rest, $end), $next];
+        return DocblockTags::type($docComment, 'return');
     }
 
     /**
@@ -214,23 +141,6 @@ final class PropertyDocblockTypeReader
             fn (array $word): string => isset($relative[strtolower($word[0])]) ? '\\'.$relative[strtolower($word[0])] : $word[0],
             $type,
         ) ?? $type;
-    }
-
-    /**
-     * Whether a depth-zero space is inside the type rather than after it.
-     */
-    private function spaceContinuesType(string $captured, string $remaining): bool
-    {
-        $captured = rtrim($captured);
-        $remaining = ltrim($remaining);
-
-        // A `&` before a parameter name marks a by-reference `@param`, not an intersection. A `:` after a `)` opens a
-        // callable's return type.
-        return str_ends_with($captured, '|') || str_ends_with($captured, '&')
-            || str_starts_with($remaining, '|')
-            || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1)
-            || preg_match('/\)\s*:$/', $captured) === 1
-            || (str_ends_with($captured, ')') && str_starts_with($remaining, ':'));
     }
 
     /**

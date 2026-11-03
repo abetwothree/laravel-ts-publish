@@ -174,6 +174,13 @@ it('reads a table an untyped method returns by its docblock\'s short name or ali
         ->and(inertiaProps(new InertiaTableBesidePropsController()->docblockTotal())->total)->toBe(3);
 });
 
+// A method that may hand back null is no call returning the table, as a native `?static` is not, so the chain is read
+// past the table; the literal's item keeps the type the table reader before this handler gave it.
+test('a table method documented @return static | null does not read as returning the table', function () {
+    expect(pageData(InertiaTableBesidePropsController::class.'@nullableStatic')['pageType'])
+        ->toBe('Inertia.SharedData & { inline: TableResource<Post>, held: unknown, typed: unknown }');
+});
+
 it('detects direct Inertia UI Table props without calling toArray', function () {
     $result = pageData(InertiaTableController::class.'@direct');
 

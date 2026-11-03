@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -1103,7 +1104,8 @@ class ModelAttributeResolver
     }
 
     /**
-     * Attempt a refinement from a single class's own @property/@property-read docblock tag; null if none.
+     * Attempt a refinement from a single class's own `@phpstan-property`, `@psalm-property`, `@property` or
+     * `@property-read` docblock tag; null if none.
      *
      * Also matches a `$`-less `@property Type name` form some vendor traits use, but only when undescribed —
      * otherwise a trailing description's last word could be mistaken for the property name, yielding a wrong type.
@@ -1116,17 +1118,14 @@ class ModelAttributeResolver
     {
         $doc = $class->getDocComment();
 
-        // Both patterns need the name verbatim, and most attributes a run asks about go unnamed in the docblock.
+        // A tag needs the name verbatim, and most attributes a run asks about go unnamed in the docblock.
         if ($doc === false || ! str_contains($doc, $attributeName)) {
             return null;
         }
 
-        $name = preg_quote($attributeName, '/');
+        $declared = DocblockTags::named($doc, 'property')[$attributeName] ?? null;
 
-        $matched = preg_match('/@property(?:-read)?[ \t]+([^$\r\n]+?)[ \t]+\$'.$name.'\b/', $doc, $m)
-            || preg_match('/@property(?:-read)?[ \t]+((?:[^$\r\n \t,]|,[ \t]*)+)[ \t]+'.$name.'\b(?=[ \t]*(?:\r?\n|\*\/|$))/', $doc, $m);
-
-        if (! $matched) {
+        if ($declared === null) {
             return null;
         }
 
@@ -1135,7 +1134,7 @@ class ModelAttributeResolver
 
         $infos = [];
 
-        foreach (LaravelTsPublish::splitPhpDocUnionType($m[1]) as $part) {
+        foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $part) {
             $infos[] = LaravelTsPublish::resolveDocblockTypePartOrAlias($part, $useMap, $namespace, $class);
         }
 

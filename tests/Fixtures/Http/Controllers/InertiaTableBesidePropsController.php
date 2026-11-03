@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostTableCountResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\DocblockPostTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\NullableStaticTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\StaticRootTable;
@@ -96,6 +97,19 @@ class InertiaTableBesidePropsController
         return Inertia::render('Tables/Docblocked', [
             'short' => DocblockPostTable::make()->fluentShort(),
             'aliased' => DocblockPostTable::make()->fluentAliased(),
+        ]);
+    }
+
+    /** Renders table methods that may hand back null, documented and typed, inline and through locals. */
+    public function nullableStatic(): Response
+    {
+        $held = NullableStaticTable::make()->orNothing();
+        $typed = NullableStaticTable::make()->orNone();
+
+        return Inertia::render('Tables/NullableStatic', [
+            'inline' => NullableStaticTable::make()->orNothing(),
+            'held' => $held,
+            'typed' => $typed,
         ]);
     }
 

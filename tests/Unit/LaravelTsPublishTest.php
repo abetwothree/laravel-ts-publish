@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
@@ -85,6 +86,7 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Badge as UiBadge;
@@ -1560,11 +1562,11 @@ describe('phpstan-return docblock support', function () {
             ->toBe('string|null');
     });
 
-    test('@return wins over @phpstan-return', function () {
+    test('@phpstan-return wins over @return', function () {
         $doc = "/**\n * @phpstan-return int\n * @return string\n */";
 
         expect(app(LaravelTsPublish::class)->extractReturnTypeFromDocblock($doc))
-            ->toBe('string');
+            ->toBe('int');
     });
 });
 
@@ -2167,6 +2169,13 @@ describe('trait @template binding', function () {
 
         expect($result['type'])->toBe('Comment[]')
             ->and($result['classFqcns'])->toBe([Comment::class]);
+    });
+
+    test('a template declared as both @template and @phpstan-template takes one @use argument', function () {
+        $result = $this->service->docblockReturnTypes(new ReflectionMethod(KeyedItemsPost::class, 'firstItem'));
+
+        expect($result['type'])->toBe('Post | null')
+            ->and($result['classFqcns'])->toBe([Post::class]);
     });
 });
 

@@ -421,6 +421,16 @@ describe('an inline @var on a local assignment', function () {
         'a list slot holding a shape or null' => ['list<array{a: int}|null>', '({ a: number } | null)[]'],
     ]);
 
+    test('binds a local by its @phpstan-var or @psalm-var over a plain @var', function () {
+        [$scope, $returned] = inlineVarReturned("/**\n * @var array \$l\n * @phpstan-var list<string> \$l\n */ \$l = json_decode(\"\"); return \$l;");
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+            ->resolve($returned)['type'])->toBe('string[]')
+            ->and(resolve(PropertyDocblockTypeReader::class)
+                ->extractVarTag('/** @psalm-var list<int> $ids */', new ReflectionClass(DeclaredPrecedenceResource::class), []))
+            ->toBe(['list<int>', 'ids', false]);
+    });
+
     test('binds a nullable shape inside a multi-line shape, read with its lines joined', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(DeclaredPrecedenceResource::class);

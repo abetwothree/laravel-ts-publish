@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Grade as FixtureGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
@@ -2044,4 +2045,11 @@ describe('ModelTransformer with AsCollection::of() a class that has an override'
         'a model with an inherited override, each element sent by its toArray()' => [InheritingChildModel::class, 'UiNode[]', ['@js/types/ui' => ['UiNode']]],
         'a model with no override, which keeps unknown[]' => [User::class, 'unknown[]', []],
     ]);
+});
+
+// A relation method's `@phpstan-return` is read over a vaguer `@return`, as PHPStan reads it.
+test('a relation built through a helper and named only by @phpstan-return publishes', function () {
+    $data = (new ModelTransformer(PhpstanRelationPost::class))->data();
+
+    expect($data->relations['comments']['type'] ?? null)->toBe('Comment[]');
 });

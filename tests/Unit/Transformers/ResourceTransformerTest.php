@@ -3683,3 +3683,17 @@ test('a resource a page resolves keeps its own interface', function () {
         ->and(resourceProps(PostCardResource::class))->toBe(['id' => 'number', 'title' => 'string', 'author' => 'UserCardResource'])
         ->and(PostCardResource::make($post)->response()->getData()->data->author)->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
 });
+
+// PHPStan reads `@phpstan-return` over `@return` whatever their order; a vague prefixed tag yields to a precise one.
+test('a helper documented by @return and @phpstan-return publishes the prefixed tag unless only it is vague', function () {
+    require_once __DIR__.'/../../Fixtures/Stubs/DualReturnTagsResource.php.stub';
+
+    $transformer = new ResourceTransformer(DualReturnTagsResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'both' => '{ a: number; b: string }',
+        'reversed' => '{ a: number; b: string }',
+        'phpstan_only' => '{ a: number; b: string }',
+        'precise_plain' => '{ a: number }',
+    ]);
+});

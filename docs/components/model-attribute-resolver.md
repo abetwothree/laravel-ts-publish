@@ -275,7 +275,8 @@ through `propertyDeclaringFileClass()`. Reflection reports a trait's property, d
 and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
-argument of the consumer's `@use Trait<X>` tag, spelled `@use`, `@phpstan-use` or `@psalm-use`. `traitUseArguments()`
+argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-use`, `@template-use` or `@use`, the
+prefixed one first ([`DocblockTags`](../../src/Ast/Docblocks/DocblockTags.php)). `traitUseArguments()`
 reads that tag only from the doc comment of the `use` statement inside the class, never from a prose mention, and
 checks the consumer before its parents. It parses the file through `AstParser::parseFile()`, which records the file as
 a cache dependency. The trait name in the tag must resolve through a `use` import or the namespace.
@@ -286,8 +287,10 @@ a same-namespace trait with no `use` import silently fails to bind.
 
 `refineWithPropertyDocblock()` runs only when the waterfall's type is vague, so a concrete result is never
 second-guessed. It searches the class and its parents first, the child winning, then every trait in that chain,
-recursively, so a class-level tag beats one on a trait. A tag may omit the `$` before the name, as some vendor traits
-do, but only when it has no description. That keeps a description's last word from being read as a property name.
+recursively, so a class-level tag beats one on a trait. Within a docblock, `@phpstan-property` and `@psalm-property`
+are read before `@property` and `@property-read`, a vague one yielding to a precise one. A tag may omit the `$` before
+the name, as some vendor traits do, but only when it has no description. That keeps a description's last word from
+being read as a property name.
 
 `isStrictlyMoreStructured()` accepts a candidate that is not vague. It accepts a vague candidate only when the current
 type is entirely vague (`unknown`, `unknown[]`, `object` or `unknown[] | Record<string, unknown>`, optionally with

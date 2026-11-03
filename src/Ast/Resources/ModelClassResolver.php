@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
@@ -98,13 +99,12 @@ final class ModelClassResolver
 
         $resolved = null;
 
-        // The "* " lookbehind keeps prose mentions of the tags mid-description from matching.
-        if (preg_match('/(?<=\* )@mixin\s+([\w\\\\]+)/', $docComment, $matches)) {
-            $resolved = $this->resolveDocblockType($matches[1], $resource);
+        if (preg_match('/^[\w\\\\]+/', DocblockTags::type($docComment, 'mixin') ?? '', $matches) === 1) {
+            $resolved = $this->resolveDocblockType($matches[0], $resource);
         }
 
-        if (preg_match('/(?<=\* )@extends\s+([\w\\\\]+)<([\w\\\\]+)>/', $docComment, $matches)) {
-            $resolved = $this->resolveDocblockType($matches[2], $resource);
+        if (preg_match('/^[\w\\\\]+<([\w\\\\]+)>/', DocblockTags::type($docComment, 'extends') ?? '', $matches) === 1) {
+            $resolved = $this->resolveDocblockType($matches[1], $resource);
         }
 
         if ($resolved === null || ! class_exists($resolved) || ! is_a($resolved, Model::class, true)) {

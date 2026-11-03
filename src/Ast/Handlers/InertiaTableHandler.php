@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -182,11 +183,13 @@ final class InertiaTableHandler implements ExpressionHandler
             return $type instanceof ReflectionNamedType && ! $type->allowsNull() && $this->namesTable($type->getName());
         }
 
-        if (preg_match('/@return\s+(\S+)/', (string) $reflection->getDocComment(), $match) !== 1) {
+        $declared = DocblockTags::type((string) $reflection->getDocComment(), 'return');
+
+        if ($declared === null) {
             return false;
         }
 
-        if ($match[1] === '$this' || $this->namesTable($match[1])) {
+        if ($declared === '$this' || $this->namesTable($declared)) {
             return true;
         }
 
@@ -194,7 +197,7 @@ final class InertiaTableHandler implements ExpressionHandler
         $file = LaravelTsPublish::methodDeclaringFileClass($reflection);
 
         return $this->namesTable(LaravelTsPublish::resolveDocblockTypeName(
-            $match[1],
+            $declared,
             LaravelTsPublish::parseFileUseStatements($file),
             $file->getNamespaceName(),
         ));

@@ -44,6 +44,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
@@ -808,6 +809,10 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
 ]);
+
+test('a @phpstan-property tag types its column over a vaguer @property', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PhpstanPropertyPost::class, 'tags')['type'])->toBe('string[] | null');
+});
 
 test('a cast sends a NULL column as null only when it is a database type, a primitive, an enum, AsCollection or AsEnumCollection', function (?string $cast, bool $expected) {
     expect(ModelAttributeResolver::sendsNullAsIs($cast))->toBe($expected);

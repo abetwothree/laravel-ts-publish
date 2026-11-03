@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
@@ -1120,8 +1121,8 @@ class LaravelTsPublish
     }
 
     /**
-     * Extract the whole return type a docblock's `@return`, `@phpstan-return` or `@psalm-return` tag spells, whatever
-     * its spacing, including multiline `array{...}` shapes. Null when the docblock has none of those tags.
+     * Extract the whole return type a docblock's `@phpstan-return`, `@psalm-return` or `@return` tag spells, in
+     * PHPStan's order, whatever its spacing, including multiline `array{...}` shapes. Null when it has none of them.
      */
     public function extractReturnTypeFromDocblock(string $docComment): ?string
     {
@@ -2366,9 +2367,7 @@ class LaravelTsPublish
      */
     protected function traitTemplateNames(ReflectionClass $trait): array
     {
-        preg_match_all('/@(?:phpstan-|psalm-)?template(?:-covariant|-contravariant)?\s+(\w+)/', (string) $trait->getDocComment(), $m);
-
-        return $m[1];
+        return DocblockTags::templates((string) $trait->getDocComment());
     }
 
     /**
@@ -2411,22 +2410,16 @@ class LaravelTsPublish
                     continue;
                 }
 
-                $doc = $traitUse->getDocComment();
-
-                if ($doc === null
-                    || ! preg_match_all('/@(?:phpstan-|psalm-)?use\s+([\w\\\\]+)\s*<(.+?)>\s*(?:\*\/|\n)/', $doc->getText(), $matches, PREG_SET_ORDER)
-                ) {
-                    continue;
-                }
-
-                foreach ($matches as [, $name, $args]) {
-                    if (ltrim($this->resolveDocblockTypeName($name, $useMap, $namespace), '\\') !== $trait->getName()) {
+                foreach (DocblockTags::all((string) $traitUse->getDocComment()?->getText(), 'use') as $used) {
+                    if (preg_match('/^([\w\\\\]+)<(.+)>$/s', $used, $match) !== 1
+                        || ltrim($this->resolveDocblockTypeName($match[1], $useMap, $namespace), '\\') !== $trait->getName()
+                    ) {
                         continue;
                     }
 
                     return array_map(
                         fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $namespace), '\\'),
-                        $this->splitAtTopLevelCommas($args),
+                        $this->splitAtTopLevelCommas($match[2]),
                     );
                 }
             }
