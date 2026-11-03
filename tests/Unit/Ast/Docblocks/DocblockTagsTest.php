@@ -42,10 +42,11 @@ test('a quote no closer ends on its line stays an ordinary character', function 
         ->toBe(['x' => "'open", 'y' => 'int']);
 });
 
-test('a space before a generic\'s or a shape\'s opener continues the type', function () {
+test('a space before a generic\'s or a shape\'s opener continues the type, but not one before a parenthesis', function () {
     expect(DocblockTags::named('/** @property array <string, int> $counts */', 'property'))
         ->toBe(['counts' => 'array <string, int>'])
-        ->and(DocblockTags::all('/** @use HasItems <Post> */', 'use'))->toBe(['HasItems <Post>']);
+        ->and(DocblockTags::all('/** @use HasItems <Post> */', 'use'))->toBe(['HasItems <Post>'])
+        ->and(DocblockTags::type("/**\n * @return int (the count)\n */", 'return'))->toBe('int');
 });
 
 test('a family with no tag, or only prose mentions of one, reads null', function () {
