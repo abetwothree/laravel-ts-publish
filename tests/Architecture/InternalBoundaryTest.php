@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\NamespaceNameCollisions;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
@@ -74,6 +75,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         DottedTopLevelKeys::class,
         ImportMaps::class,
         IndexSignatureKey::class,
+        NamespaceNameCollisions::class,
         PhpArrayKey::class,
         ResourceReindexing::class,
         ResourceWrapping::class,

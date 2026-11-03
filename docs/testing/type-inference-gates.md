@@ -316,9 +316,9 @@ The gates miss these cases:
   emitted without its import passes every count. No workbench class has such a name.
 - **Diagnostics outside the counted codes**: the main count reads only the codes listed above. TS2307 and the TS1xxx
   syntax errors fail the gate on their own, but `tsc` can reject a file with any other code and the gate still passes.
-  An example is TS2308 (a barrel that re-exports one name from two files). Two enums in one namespace, one named like
-  the other's type name, produce TS2308, as
-  [its known gap](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) describes.
+  An example is TS2308 (a barrel that re-exports one name from two files). Two classes in one namespace that publish
+  one name, such as an enum named like another enum's type name, produce TS2308, as
+  [its known gap](../known-gaps.md#two-classes-that-publish-one-name-in-one-namespace-collide) describes.
 - **A property that disappears**: the regression gate walks only the keys present at the head, so a removed property
   produces no signal, and a property that moves to another interface is a removal plus an addition. When a change can
   remove a property, such as excluding columns, widening `$hidden` or deleting a fixture, diff the regenerated trees
