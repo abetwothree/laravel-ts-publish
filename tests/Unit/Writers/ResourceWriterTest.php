@@ -436,13 +436,15 @@ it('keeps a resource template published before this release compiling', function
     config()->set('ts-publish.output_to_files', false);
 
     try {
-        $template = View::getFinder()->find('laravel-ts-publish::resource');
+        // Both resolved: Laravel 13.39 runs a view hint through realpath(), and macOS links /var to /private/var.
+        $template = realpath(View::getFinder()->find('laravel-ts-publish::resource'));
+        $published = realpath($views.'/resource.blade.php');
         $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(OptionalSignatureCastResource::class));
     } finally {
         File::deleteDirectory($root);
     }
 
-    expect($template)->toBe($views.'/resource.blade.php')
+    expect($template)->toBeString()->toBe($published)
         ->and($content)->toContain('    [key: `${string}_tag`]: string | undefined;')
         ->and($content)->toContain('    [key: `${string}_note`]: number | undefined;')
         ->and($content)->not->toContain(']?:');

@@ -1,4 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
+@use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
 @if($metadataEnabled && $usesTolkiPackage)
 import { defineEnum } from '@tolki/ts';
 
@@ -58,8 +59,10 @@ export const {{ $data->enumName }} = {
 } as const;
 @endif
 
-export type {{ $data->enumName }}Type = {!! implode(' | ', $data->caseTypes) !!};
+export type {{ $data->enumName }}Type = {!! TsTypeString::union($data->caseTypes) !!};
 @if($data->backed)
 
-export type {{ $data->enumName }}Kind = {!! implode(' | ', $data->caseKinds) !!};
+export type {{ $data->enumName }}Kind = {!! TsTypeString::union($data->caseKinds) !!};
 @endif
+
+export type {{ $data->enumName }} = {{ $data->enumName }}Type;

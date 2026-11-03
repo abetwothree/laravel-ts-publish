@@ -13,3 +13,5 @@ export const PaymentStatus = defineEnum({
 export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';
 
 export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
+
+export type PaymentStatus = PaymentStatusType;

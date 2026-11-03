@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Grade as FixtureGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
@@ -1933,11 +1934,35 @@ describe('ModelTransformer with a const and a type that share a name', function 
             ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
     });
 
-    test('a const named like the model\'s own interface keeps its name: a value import merges with a local interface', function () {
+    test('a const named like the model\'s own interface steps aside, since the enum\'s module exports a type of that name', function () {
         $data = (new ModelTransformer(Grade::class))->data();
 
-        expect($data->valueImports['../enums'])->toBe(['Grade'])
-            ->and($data->enumColumns['grade']['constName'])->toBe('Grade');
+        expect($data->valueImports['../enums'])->toBe(['Grade as WorkbenchGrade'])
+            ->and($data->enumColumns['grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->columns['grade']['type'])->toBe('GradeType');
+    });
+
+    test('two same-named enums a model of that name casts both step aside for the model', function () {
+        $data = (new ModelTransformer(FixtureGrade::class))->data();
+        $values = array_merge(...array_values($data->valueImports));
+
+        expect($values)->toContain('Grade as WorkbenchGrade', 'Grade as FixturesGrade')
+            ->and($data->enumColumns['grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->enumColumns['subject']['constName'])->toBe('FixturesGrade')
+            ->and($data->columns['grade']['type'])->toBe('WorkbenchGradeType')
+            ->and($data->columns['subject']['type'])->toBe('FixturesGradeType');
+    });
+
+    test('declaredNames() lists every interface the split template can declare', function () {
+        expect((new ModelTransformer(Grade::class))->declaredNames())->toBe([
+            'Grade', 'GradeResource', 'GradeMutators', 'GradeMutatorsResource', 'GradeRelations', 'GradeAll', 'GradeAllResource',
+        ]);
+    });
+
+    test('declaredNames() lists the two interfaces the full template declares', function () {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+
+        expect((new ModelTransformer(Grade::class))->declaredNames())->toBe(['Grade', 'GradeResource']);
     });
 });
 

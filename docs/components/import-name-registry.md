@@ -113,7 +113,7 @@ matching the start of `UserProfile`.
 
 ## Consumers
 
-Each transformer's `resolveImportConflicts()` reserves its file's own interface name, registers the FQCNs from its own
+Each transformer's `resolveImportConflicts()` reserves the names its file declares, registers the FQCNs from its own
 maps, and passes the result to `applyResolvedImportNames()`. `AnalysisComposer` runs the same two registries as
 `ResourceTransformer`, with the same skip list, and reserves no interface name because its caller names the interface.
 `FileImportNames` runs them once for a whole route file, across its pages, and once for the shared data.
@@ -144,10 +144,12 @@ same name is aliased and the composed type never is. Nor is one composed name al
 `Runner::warnOfSharedComposedNames()` warns of a file reading two composed classes with one basename
 ([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
-The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
-name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
-collision, which no alias can settle.
-[Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records it.
+Both registries reserve the names the file declares, which `declaredNames()` lists, since an enum's module also exports
+a type under its const's name. The `Grade` model fixture pins its const's alias. For the same reason the const registry
+also reserves `ImportNameRegistry::GLOBAL_TYPES_SPELLED_BARE`, the global types the package spells without an import,
+such as `Record`. Two classes in one namespace that publish one name are a different collision, which no alias can
+settle.
+[Known gaps](../known-gaps.md#two-classes-that-publish-one-name-in-one-namespace-collide) records it.
 
 ### `ModelTransformer`
 

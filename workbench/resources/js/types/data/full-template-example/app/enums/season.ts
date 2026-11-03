@@ -35,3 +35,5 @@ export const Season = defineEnum({
 export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
 
 export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
+
+export type Season = SeasonType;

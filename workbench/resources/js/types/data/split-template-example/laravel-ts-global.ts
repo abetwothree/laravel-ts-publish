@@ -727,7 +727,7 @@ declare global {
             inspector_count: number;
             inspector_exists: boolean;
         }
-        /** Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`. */
+        /** Named like the enum it casts to, so its file declares `Grade` and imports the enum's const under an alias. */
         export interface Grade {
             // Columns
             id: number;

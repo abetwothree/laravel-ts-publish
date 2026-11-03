@@ -22,3 +22,5 @@ export const WeekDays = defineEnum({
 export type WeekDaysType = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export type WeekDaysKind = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+export type WeekDays = WeekDaysType;

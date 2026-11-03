@@ -42,6 +42,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\PrefixedM
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\SuffixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\HeaderedBarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart as ClashChart;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\ChartType as ClashChartType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
@@ -1288,9 +1290,9 @@ describe('PublishedModelRegistry run boundary', function () {
     });
 });
 
-// ─── Enum names two enums in one namespace both publish ────────────────────────
+// ─── Names two classes in one namespace both publish ────────────────────────
 
-describe('enum names that collide inside one namespace', function () {
+describe('published names that collide inside one namespace', function () {
     test('a run warns when one enum\'s const is another enum\'s type name in the same namespace', function () {
         config()->set('ts-publish.enums.additional_directories', [Access::class, AccessType::class]);
         config()->set('ts-publish.enums.included', [Access::class, AccessType::class]);
@@ -1300,7 +1302,7 @@ describe('enum names that collide inside one namespace', function () {
         expect(AnalysisWarnings::all())->toContain([
             'subject' => AccessType::class,
             'message' => 'Publishes the name [AccessType], which ['.Access::class.'] also publishes in the same namespace, '
-                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+                .'so their barrel and the globals file cannot export both. Give one of them another name, or move it to a namespace of its own.',
         ]);
     });
 
@@ -1313,7 +1315,21 @@ describe('enum names that collide inside one namespace', function () {
         expect(AnalysisWarnings::all())->toContain([
             'subject' => AccessKind::class,
             'message' => 'Publishes the name [AccessKind], which ['.Access::class.'] also publishes in the same namespace, '
-                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+                .'so their barrel and the globals file cannot export both. Give one of them another name, or move it to a namespace of its own.',
+        ]);
+    });
+
+    test('a run warns when a composed class publishes the name an enum in its namespace publishes', function () {
+        config()->set('ts-publish.enums.additional_directories', [ClashChartType::class]);
+        config()->set('ts-publish.enums.included', [ClashChartType::class]);
+        config()->set('ts-publish.class_types.additional_directories', [ClashChart::class]);
+
+        (new Runner)->run();
+
+        expect(AnalysisWarnings::all())->toContain([
+            'subject' => ClashChart::class,
+            'message' => 'Publishes the name [ChartType], which ['.ClashChartType::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file cannot export both. Give one of them another name, or move it to a namespace of its own.',
         ]);
     });
 

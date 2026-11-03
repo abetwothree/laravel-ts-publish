@@ -13,3 +13,5 @@ export const Status = defineEnum({
 export type StatusType = 'lead' | 'prospect' | 'active' | 'churned';
 
 export type StatusKind = 'Lead' | 'Prospect' | 'Active' | 'Churned';
+
+export type Status = StatusType;

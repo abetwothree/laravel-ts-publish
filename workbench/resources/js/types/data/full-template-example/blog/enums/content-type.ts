@@ -13,3 +13,5 @@ export const ContentType = defineEnum({
 export type ContentTypeType = 'post' | 'tutorial' | 'review' | 'news';
 
 export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
+
+export type ContentType = ContentTypeType;

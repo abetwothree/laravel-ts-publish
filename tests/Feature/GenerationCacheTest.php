@@ -9,12 +9,15 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\ChartType;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -742,6 +745,30 @@ test('the generators a partial run retains stay apart from the ones it published
         ->and($partial->retainedResourceGenerators)->toHaveCount($full->resourceGenerators->count())
         ->and($partial->enumGenerators)->toHaveCount($full->enumGenerators->count())
         ->and($partial->retainedEnumGenerators)->toBeEmpty();
+});
+
+test('a run that serves the enums from the cache still warns of a composed class publishing an enum\'s name', function () {
+    Config::set('ts-publish.enums.additional_directories', [ChartType::class]);
+    Config::set('ts-publish.enums.included', [ChartType::class]);
+    Config::set('ts-publish.class_types.additional_directories', [Chart::class]);
+
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    $partial = new Runner;
+    $partial->shouldPublishEnums = false;
+    $partial->useCache(CacheBootstrap::manifest());
+    $partial->run();
+
+    expect($partial->enumGenerators)->toBeEmpty()
+        ->and($partial->retainedEnumGenerators->map(fn (EnumGenerator $generator): string => $generator->findable)->all())
+        ->toBe([ChartType::class])
+        ->and(AnalysisWarnings::all())->toContain([
+            'subject' => Chart::class,
+            'message' => 'Publishes the name [ChartType], which ['.ChartType::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file cannot export both. Give one of them another name, or move it to a namespace of its own.',
+        ]);
 });
 
 test('a partial run that retains the models builds the morph map once', function (bool $laterPhases) {

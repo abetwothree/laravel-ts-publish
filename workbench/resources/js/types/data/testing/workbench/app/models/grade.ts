@@ -1,10 +1,10 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Grade } from '../enums';
+import { Grade as WorkbenchGrade } from '../enums';
 import type { GradeType } from '../enums';
 
 /**
- * Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`.
+ * Named like the enum it casts to, so its file declares `Grade` and imports the enum's const under an alias.
  *
  * @see Workbench\App\Models\Grade
  */
@@ -19,7 +19,7 @@ export interface Grade
 
 export interface GradeResource extends Omit<Grade, 'grade'>
 {
-    grade: AsEnum<typeof Grade>;
+    grade: AsEnum<typeof WorkbenchGrade>;
 }
 
 export interface GradeAllResource extends GradeResource {}

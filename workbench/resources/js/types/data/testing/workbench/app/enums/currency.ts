@@ -25,3 +25,5 @@ export const Currency = defineEnum({
 export type CurrencyType = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD';
 
 export type CurrencyKind = 'Usd' | 'Eur' | 'Gbp' | 'Jpy' | 'Cad';
+
+export type Currency = CurrencyType;

@@ -84,7 +84,7 @@ class InertiaPageAnalyzer
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
 
-    /** TypeScript's own generic heads, which a rendered type spells without naming any PHP class. */
+    /** TypeScript's own generic heads a rendered type spells without a PHP class; not ImportNameRegistry's list. */
     private const UTILITY_TYPES = ['Record', 'Omit', 'Pick', 'Partial', 'Required', 'Readonly', 'Exclude', 'Extract', 'NonNullable'];
 
     /**

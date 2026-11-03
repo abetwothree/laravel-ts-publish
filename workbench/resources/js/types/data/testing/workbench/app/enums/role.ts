@@ -10,3 +10,5 @@ export const Role = defineEnum({
 } as const);
 
 export type RoleType = 'Admin' | 'User' | 'Guest';
+
+export type Role = RoleType;

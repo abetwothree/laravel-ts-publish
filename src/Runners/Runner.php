@@ -27,7 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
-use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Runners\Concerns\WarnsOfPublishedNames;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
@@ -55,6 +55,8 @@ use Throwable;
  */
 class Runner extends BaseRunner
 {
+    use WarnsOfPublishedNames;
+
     /**
      * Each feature a flag skipped while config enables it, rehydrated from its kept entries for the globals and JSON
      * files only; empty unless the cache is on and one of those files is.
@@ -119,6 +121,7 @@ class Runner extends BaseRunner
         $this->warnOfSharedComposedNames();
         // After retaining: a skipped feature's cached files import composed modules this phase still writes.
         $this->generateClassTypes();
+        $this->warnOfCollidingPublishedNames();
         $this->generateGlobals();
         $this->generateViteEnv();
         $this->generateJson();
@@ -230,43 +233,7 @@ class Runner extends BaseRunner
         $this->enumGenerators = $enumGenerators;
 
         $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
-        $this->warnOfCollidingEnumNames();
         $this->logger?->success('Enums — '.$this->enumGenerators->count());
-    }
-
-    /**
-     * Warn when two enums in one namespace publish the same name: `Role` publishes the type `RoleType`, which an enum
-     * named `RoleType` publishes as its const, and one barrel or global namespace cannot export both.
-     */
-    protected function warnOfCollidingEnumNames(): void
-    {
-        /** @var array<string, array<string, string>> $publishers namespace path => published name => enum FQCN */
-        $publishers = [];
-
-        foreach ($this->enumGenerators as $generator) {
-            $transformer = $generator->transformer;
-            $names = [$transformer->enumName, $transformer->enumName.'Type'];
-
-            if ($transformer->backed) {
-                $names[] = $transformer->enumName.'Kind';
-            }
-
-            foreach ($names as $name) {
-                $publisher = $publishers[$transformer->namespacePath][$name] ?? null;
-
-                if ($publisher === null) {
-                    $publishers[$transformer->namespacePath][$name] = $transformer->fqcn();
-
-                    continue;
-                }
-
-                AnalysisWarnings::add($transformer->fqcn(), sprintf(
-                    'Publishes the name [%s], which [%s] also publishes in the same namespace, so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
-                    $name,
-                    $publisher,
-                ));
-            }
-        }
     }
 
     protected function generateModels(): void
@@ -751,44 +718,6 @@ class Runner extends BaseRunner
         ksort($barrels);
 
         return $barrels;
-    }
-
-    /**
-     * Warn of each module written where route controllers publish: their barrel re-exports defaults, and this phase's
-     * write keeps only `export *` lines, so the directory's barrel drops the controllers' exports.
-     *
-     * @param  Collection<int, ClassTypeGenerator>  $generators
-     */
-    protected function warnOfSharedRouteBarrels(Collection $generators): void
-    {
-        $routesBase = Config::get('ts-publish.routes.output_directory');
-        $routesBase = is_string($routesBase) && $routesBase !== '' ? $routesBase : Config::string('ts-publish.output_directory');
-
-        if (rtrim($routesBase, '/') !== rtrim(Config::string('ts-publish.output_directory'), '/')) {
-            return;
-        }
-
-        foreach ($generators as $generator) {
-            if (isset($this->routeModularBarrels[$generator->namespacePath()])) {
-                AnalysisWarnings::addOnce($generator->findable, sprintf(
-                    'Publishes its composed type in [%s], where route controllers publish too, so that directory\'s barrel drops their default exports. Move the class to a namespace of its own.',
-                    $generator->namespacePath(),
-                ));
-            }
-        }
-    }
-
-    /**
-     * Warn of each published or retained file that reaches two composed classes of one type name, which its file and
-     * its globals entry cannot tell apart. A cache hit runs no transform, so this reads what each file stored.
-     */
-    protected function warnOfSharedComposedNames(): void
-    {
-        foreach ($this->publishedGenerators() as $generators) {
-            foreach ($generators as $generator) {
-                ComposedClassTypes::warnOfSharedNames($generator->transformer->fqcn(), $generator->transformer->composedClassTypes());
-            }
-        }
     }
 
     /**

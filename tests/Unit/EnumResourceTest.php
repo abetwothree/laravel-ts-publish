@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\EnumResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HookedPropertiesEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\ReindexedValueEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\SwappedCaseNames;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalEnumResource;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Workbench\App\Enums\Color;
@@ -184,6 +185,12 @@ describe('EnumResource with TsCase overrides', function () {
         expect($result)
             ->toHaveKey('name', 'Purple')
             ->toHaveKey('value', 'purple');
+    });
+
+    it('sends the case\'s own method values when two cases swap PHP names', function () {
+        expect((new EnumResource(SwappedCaseNames::First))->toArray(request()))
+            ->toHaveKey('name', 'Second')
+            ->toHaveKey('label', 'first case');
     });
 });
 

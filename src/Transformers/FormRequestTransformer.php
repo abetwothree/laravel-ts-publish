@@ -122,6 +122,17 @@ class FormRequestTransformer extends CoreTransformer
         );
     }
 
+    /**
+     * The interface or type alias the form request's file declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->typeName];
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {

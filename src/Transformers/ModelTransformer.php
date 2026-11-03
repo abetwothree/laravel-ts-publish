@@ -216,6 +216,21 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The interfaces the model's file declares: the full template's two, else every one the split template can.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        $suffixes = Config::string('ts-publish.models.template') === 'laravel-ts-publish::model-full'
+            ? ['', 'Resource']
+            : ['', 'Resource', 'Mutators', 'MutatorsResource', 'Relations', 'All', 'AllResource'];
+
+        return array_map(fn (string $suffix): string => $this->modelName.$suffix, $suffixes);
+    }
+
+    /**
      * The columns a combined interface declares, one that holds the attributes beside the relations.
      *
      * @return ColumnsList
@@ -845,11 +860,11 @@ class ModelTransformer extends CoreTransformer
     protected function resolveImportConflicts(): self
     {
         $registry = new ImportNameRegistry;
-        $registry->reserve($this->modelName);
 
         // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
         // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry;
+        $this->reserveDeclaredNames($this->declaredNames(), $registry, $constRegistry);
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $registry->register($fqcn, $typeName);

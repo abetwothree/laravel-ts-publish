@@ -54,6 +54,9 @@ The helpers and the test that pins them live in these files:
   class, read from the router once per run. `has()` matches in any case, as PHP reads a class name, for the owned-class
   rule; `dispatchesTo()` matches exactly, as the routes publisher finds a controller's actions, for the controller
   validator. Static and `@internal`.
+- [`Support\NamespaceNameCollisions`](../../src/Support/NamespaceNameCollisions.php): which names two classes
+  publish in one namespace, from the namespace, class and names of each, the first to list a name owning it. The
+  runner's colliding-names warning reads it. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -79,6 +82,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does a `new` of this class publish its override, or the class itself? | `ClassTypeOverride::appliesToNew()` |
 | What is a composed type called, how is it carried and imported, and which classes need one? | `ComposedClassTypes` |
 | Does a registered route dispatch to this class? | `RoutedControllers` |
+| Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |

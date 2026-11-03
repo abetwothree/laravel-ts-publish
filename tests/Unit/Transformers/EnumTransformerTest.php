@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HiddenMethods;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\SwappedCaseNames;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\DroppedFirstCaseEnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\UpperCaseNamesEnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
@@ -112,6 +117,33 @@ describe('EnumTransformer with backed string enum and TsCase overrides', functio
         expect($data->methods)->toHaveKey('hex')->toHaveKey('rgb')
             ->and($data->methods['hex']['returns']['Red'])->toBe('#EF4444')
             ->and($data->methods['rgb']['returns']['Blue'])->toBe([59, 130, 246]);
+    });
+
+    test('keys each instance method\'s values by the case name the enum publishes', function () {
+        $data = (new EnumTransformer(Color::class))->data();
+
+        expect(array_keys($data->methods['hex']['returns']))->toBe(['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'])
+            ->and($data->methods['hex']['returns']['Yellow'])->toBe('#F59E0B')
+            ->and($data->methods['rgb']['returns']['Slate'])->toBe([100, 116, 139]);
+    });
+
+    test('two cases renamed to each other\'s PHP names keep their own values', function () {
+        expect((new EnumTransformer(SwappedCaseNames::class))->data()->methods['label']['returns'])
+            ->toBe(['Second' => 'first case', 'First' => 'second case']);
+    });
+
+    test('keys instance-method values by the names a custom transformCases() publishes', function () {
+        $data = (new UpperCaseNamesEnumTransformer(SwappedCaseNames::class))->data();
+
+        expect(array_column($data->cases, 'name'))->toBe(['SECOND', 'FIRST'])
+            ->and($data->methods['label']['returns'])->toBe(['SECOND' => 'first case', 'FIRST' => 'second case']);
+    });
+
+    test('keys instance-method values by the override names when a custom transformCases() drops a case', function () {
+        $data = (new DroppedFirstCaseEnumTransformer(SwappedCaseNames::class))->data();
+
+        expect(array_column($data->cases, 'name'))->toBe(['First'])
+            ->and($data->methods['label']['returns'])->toBe(['Second' => 'first case', 'First' => 'second case']);
     });
 
     test('generates caseTypes for backed string enum', function () {
@@ -540,5 +572,28 @@ describe('EnumTransformer #[TsExclude] attribute', function () {
         $data = (new EnumTransformer(ExcludableEnum::class))->data();
 
         expect($data->staticMethods)->not->toHaveKey('overriddenStatic');
+    });
+});
+
+describe('EnumTransformer non-public attributed methods', function () {
+    test('a non-public method an enum attribute marks is not published, with a warning', function () {
+        $data = (new EnumTransformer(HiddenMethods::class))->data();
+
+        expect(array_keys($data->methods))->toBe(['shown'])
+            ->and(array_keys($data->staticMethods))->toBe(['options'])
+            ->and(AnalysisWarnings::all())->toContain(
+                ['subject' => HiddenMethods::class, 'message' => 'Marks the private method [secret] with #[TsEnumMethod], so it is not published. Make the method public to publish it.'],
+                ['subject' => HiddenMethods::class, 'message' => 'Marks the protected method [internalList] with #[TsEnumStaticMethod], so it is not published. Make the method public to publish it.'],
+            );
+    });
+
+    test('transforming the enum twice warns of each non-public attributed method once', function () {
+        new EnumTransformer(HiddenMethods::class);
+        new EnumTransformer(HiddenMethods::class);
+
+        expect(AnalysisWarnings::all())->toBe([
+            ['subject' => HiddenMethods::class, 'message' => 'Marks the private method [secret] with #[TsEnumMethod], so it is not published. Make the method public to publish it.'],
+            ['subject' => HiddenMethods::class, 'message' => 'Marks the protected method [internalList] with #[TsEnumStaticMethod], so it is not published. Make the method public to publish it.'],
+        ]);
     });
 });

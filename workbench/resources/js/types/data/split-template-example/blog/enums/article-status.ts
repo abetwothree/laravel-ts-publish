@@ -13,3 +13,5 @@ export const ArticleStatus = defineEnum({
 export type ArticleStatusType = 'draft' | 'in_review' | 'published' | 'archived';
 
 export type ArticleStatusKind = 'Draft' | 'InReview' | 'Published' | 'Archived';
+
+export type ArticleStatus = ArticleStatusType;

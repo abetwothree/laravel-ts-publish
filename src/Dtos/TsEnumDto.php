@@ -11,6 +11,8 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * The data an enum publishes. Each instance method's `returns` is keyed by the case names `cases` publishes.
+ *
  * @phpstan-import-type JsonData from JsEmitter
  *
  * @phpstan-type CaseData = array{name: string, value: string|int, description: string}
