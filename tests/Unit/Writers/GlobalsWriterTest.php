@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Caseless;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiChartKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiTwoChartsResource;
@@ -160,6 +161,32 @@ test('globals content contains enum interfaces', function () {
         ->toContain('export interface Status')
         ->toContain('Draft')
         ->toContain('Published');
+});
+
+test('the globals file publishes never for a caseless enum\'s value and kind unions', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.additional_directories', [Caseless::class]);
+    config()->set('ts-publish.enums.included', [Caseless::class]);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    expect((new GlobalsWriter(new Filesystem))->write($runner))
+        ->toContain('export type CaselessType = never;')
+        ->toContain('export type CaselessKind = never;');
+});
+
+test('the globals file keeps an enum\'s case interface and publishes no alias under its name', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    expect((new GlobalsWriter(new Filesystem))->write($runner))
+        ->toContain('export interface Color')
+        ->not->toContain('export type Color =');
 });
 
 test('globals content does not contain AsEnum<typeof ...> (typeof namespace member is illegal in declare global)', function () {

@@ -4,7 +4,7 @@ import { Grade as WorkbenchGrade } from '../enums';
 import type { GradeType } from '../enums';
 
 /**
- * Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`.
+ * Named like the enum it casts to, so its file declares `Grade` and imports the enum's const under an alias.
  *
  * @see Workbench\App\Models\Grade
  */

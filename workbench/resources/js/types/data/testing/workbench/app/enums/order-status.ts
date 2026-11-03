@@ -64,3 +64,5 @@ export const OrderStatus = defineEnum({
 export type OrderStatusType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type OrderStatusKind = 'Pending' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled' | 'Refunded' | 'OnHold';
+
+export type OrderStatus = OrderStatusType;

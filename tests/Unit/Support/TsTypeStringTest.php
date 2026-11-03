@@ -742,6 +742,16 @@ describe('hoistNull', function () {
     ]);
 });
 
+describe('union', function () {
+    test('joins its members into one union, and is never when it has none', function (array $members, string $expected) {
+        expect($this->service->union($members))->toBe($expected);
+    })->with([
+        'two members' => [['1', '2'], '1 | 2'],
+        'an int-backed enum\'s values' => [[0, 1], '0 | 1'],
+        'no member' => [[], 'never'],
+    ]);
+});
+
 describe('typeNameOccursIn', function () {
     test('typeNameOccursIn() matches a bare type token and not a member access or a longer identifier', function () {
         $s = $this->service;

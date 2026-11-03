@@ -92,9 +92,9 @@ $existsKeys = $transformer->relationExistsKeys();
             {!! JsEmitter::validJsObjectKey($case['name']) !!}: {!! JsEmitter::toJsLiteral($case['value']) !!},
 @endforeach
         }
-        export type {{ $transformer->enumName }}Type = {!! implode(' | ', $transformer->caseTypes) !!};
+        export type {{ $transformer->enumName }}Type = {!! TsTypeString::union($transformer->caseTypes) !!};
 @if($transformer->backed)
-        export type {{ $transformer->enumName }}Kind = {!! implode(' | ', $transformer->caseKinds) !!};
+        export type {{ $transformer->enumName }}Kind = {!! TsTypeString::union($transformer->caseKinds) !!};
 @endif
 @if(!$loop->last)
 

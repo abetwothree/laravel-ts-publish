@@ -42,3 +42,5 @@ export const Color = defineEnum({
 export type ColorType = 'red' | 'green' | 'blue' | 'yellow' | 'slate' | 'purple';
 
 export type ColorKind = 'Red' | 'Green' | 'Blue' | 'Yellow' | 'Slate' | 'Purple';
+
+export type Color = ColorType;

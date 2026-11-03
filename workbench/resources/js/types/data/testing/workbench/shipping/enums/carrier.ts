@@ -13,3 +13,5 @@ export const Carrier = defineEnum({
 export type CarrierType = 'ups' | 'fedex' | 'usps' | 'dhl';
 
 export type CarrierKind = 'Ups' | 'FedEx' | 'Usps' | 'Dhl';
+
+export type Carrier = CarrierType;

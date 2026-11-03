@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use Workbench\App\Enums\Color;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Events\DeclaredPropsEvent;
 use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Resources\AddressExtendsResource;
@@ -21,6 +22,7 @@ use Workbench\Shipping\Enums\Status as ShipmentStatus;
 dataset('publishers', [
     'a backed enum' => [EnumGenerator::class, Color::class, null],
     'an enum #[TsEnum] renames' => [EnumGenerator::class, ShipmentStatus::class, null],
+    'a unit enum' => [EnumGenerator::class, Visibility::class, null],
     'a model named like the enum it casts, split template' => [ModelGenerator::class, Grade::class, null],
     'a model named like the enum it casts, full template' => [ModelGenerator::class, Grade::class, 'laravel-ts-publish::model-full'],
     'a model with mutators and relations, split template' => [ModelGenerator::class, User::class, null],

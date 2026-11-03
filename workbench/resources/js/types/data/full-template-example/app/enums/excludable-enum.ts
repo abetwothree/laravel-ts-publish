@@ -16,3 +16,5 @@ export const ExcludableEnum = defineEnum({
 export type ExcludableEnumType = 'alpha' | 'beta';
 
 export type ExcludableEnumKind = 'Alpha' | 'Beta';
+
+export type ExcludableEnum = ExcludableEnumType;

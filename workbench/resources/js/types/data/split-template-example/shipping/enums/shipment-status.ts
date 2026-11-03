@@ -16,3 +16,5 @@ export const ShipmentStatus = defineEnum({
 export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
 
 export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
+
+export type ShipmentStatus = ShipmentStatusType;

@@ -15,3 +15,5 @@ export const Clearance = defineEnum({
 export type ClearanceType = 'open' | 'restricted';
 
 export type ClearanceKind = 'Open' | 'Restricted';
+
+export type Clearance = ClearanceType;

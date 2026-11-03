@@ -15,3 +15,5 @@ export const ClearanceType = defineEnum({
 export type ClearanceTypeType = 'temporary' | 'permanent';
 
 export type ClearanceTypeKind = 'Temporary' | 'Permanent';
+
+export type ClearanceType = ClearanceTypeType;

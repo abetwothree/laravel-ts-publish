@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Enums\Grade as GradeEnum;
 
 /**
- * Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`.
+ * Named like the enum it casts to, so its file declares `Grade` and imports the enum's const under an alias.
  */
 class Grade extends Model
 {

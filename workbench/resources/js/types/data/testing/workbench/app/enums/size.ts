@@ -15,3 +15,5 @@ export const Size = defineEnum({
 export type SizeType = 's' | 'l';
 
 export type SizeKind = 'Small' | 'Large';
+
+export type Size = SizeType;

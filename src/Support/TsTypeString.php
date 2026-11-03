@@ -319,6 +319,16 @@ class TsTypeString
     }
 
     /**
+     * Joins members into one union: `never` when there is none, as an empty `type X = ;` does not compile.
+     *
+     * @param  list<int|string>  $members  Type strings, or the int literal types of an int-backed enum's values.
+     */
+    public function union(array $members): string
+    {
+        return $members === [] ? 'never' : implode(' | ', $members);
+    }
+
+    /**
      * The type with an `undefined` arm appended, unless it already has one at the top level: an `undefined` inside a
      * shape, a `Record` or a string literal does not admit an absent key.
      */

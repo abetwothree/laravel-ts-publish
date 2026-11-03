@@ -130,7 +130,7 @@ Key capabilities include:
 - **Your own methods**: publish them with `#[TsEnumMethod]` and `#[TsEnumStaticMethod]`, or auto-include public ones.
 - **Values as sent**: a method's value publishes as `json_encode()` writes it, objects and dates included.
 - **Renames and descriptions**: `#[TsEnum]` and `#[TsCase]` rename an enum or a case, or add a JSDoc description.
-- **Type aliases**: `{Name}Type` types a raw case value, and a backed enum's `{Name}Kind` types a case name.
+- **Type aliases**: `{Name}Type` types a raw case value, a backed enum's `{Name}Kind` types a case name, and the enum's own name works as a type for its values.
 - **PHPDoc carried over**: class, case, and method doc blocks become JSDoc comments.
 
 For every attribute option, the auto-include settings, and the runtime helpers, see the [Enums documentation](https://tolki.abe.dev/ts/enums.html).
