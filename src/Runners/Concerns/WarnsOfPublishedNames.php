@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\NamespaceNameCollisions;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Config;
  * The run's warnings of published names that one barrel, the globals file or one importing file cannot hold together.
  *
  * @phpstan-import-type Publisher from NamespaceNameCollisions
+ *
+ * @phpstan-require-extends Runner
  */
 trait WarnsOfPublishedNames
 {

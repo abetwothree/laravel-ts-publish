@@ -296,13 +296,13 @@ Consumers](./components/import-name-registry.md#consumers)). Give one class a di
 `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type, or move it to a namespace of its
 own.
 
-### An enum named like a global type a cast spells bare hides that type
+### An enum named like a global type the app spells without an import hides that type
 
 Since #149 an enum's module exports a type under its const's name, so a file importing the const also binds that name as
 a type. Const imports step aside for the global types the package writes bare (`Record`, `Pick`, `Omit`, `Partial`,
-`NonNullable`, `Date`, `File`), but not for one a `custom_ts_mappings` entry or a `#[TsCasts]` spells without an import,
-such as `Blob`: an enum of that name types the property as the enum's values with no error, and neither gate sees it.
-Give the enum another name with `#[TsEnum]`, or import the type in the cast.
+`NonNullable`, `Date`, `File`), but not for one the app spells without an import in a `custom_ts_mappings` entry, `#[TsCasts]`, a docblock shape,
+`#[TsType]` or `#[TsExtends]`, such as `Blob`: an enum of that name types the property as the enum's values with no error, and neither gate sees it.
+Give the enum another name with `#[TsEnum]`, or import the type where it is spelled.
 
 ### An overridden enum's case can publish the enum's own type
 

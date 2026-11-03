@@ -20,6 +20,9 @@ class EnumInstanceTransformer
 {
     protected string|int $value;
 
+    /** @var CaseData|null */
+    private ?array $matched = null;
+
     public function __construct(
         protected TsEnumDto $data,
         protected UnitEnum|BackedEnum $enum
@@ -48,10 +51,14 @@ class EnumInstanceTransformer
      */
     protected function matchingCase(): array
     {
-        $index = array_search($this->enum, $this->enum::cases(), true);
+        if ($this->matched === null) {
+            $index = array_search($this->enum, $this->enum::cases(), true);
 
-        /** @var int $index */
-        return $this->data->cases[$index];
+            /** @var int $index */
+            $this->matched = $this->data->cases[$index];
+        }
+
+        return $this->matched;
     }
 
     /**

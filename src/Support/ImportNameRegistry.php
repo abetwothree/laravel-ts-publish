@@ -25,6 +25,7 @@ class ImportNameRegistry
     /**
      * The global types the package's output spells without an import. An enum's module exports a type under its
      * const's name, so a const imported under one of these names would hide the global.
+     * Not InertiaPageAnalyzer::UTILITY_TYPES (generic heads naming no PHP class); a new bare global may need both.
      */
     public const GLOBAL_TYPES_SPELLED_BARE = ['Date', 'File', 'NonNullable', 'Omit', 'Partial', 'Pick', 'Record'];
 
