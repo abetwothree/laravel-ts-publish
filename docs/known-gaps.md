@@ -274,20 +274,35 @@ Laravel's error handler turns into an exception. Read `->name`, which publishes 
 
 ### Two classes that publish one name in one namespace collide
 
-A namespace's barrel re-exports every name its modules publish, and `laravel-ts-global.ts` declares them in one
-namespace, so two classes there that publish one name fail the barrel with TS2308 and the globals file with TS2300. No
-alias can settle it, because both names are the published ones. Two examples:
+A namespace's barrel re-exports every name its modules publish, so two classes there that publish one name cannot both
+be exported. Where one phase writes both modules to the barrel, as for two enums or for a composed class beside any
+other module, it fails with TS2308; where two other phases share the directory, the later one's barrel drops the earlier
+one's modules whatever their names ([§ A class beside another phase's classes loses its barrel
+export](#a-class-beside-another-phases-classes-loses-its-barrel-export)). `laravel-ts-global.ts` declares both in one
+namespace: a type alias beside another declaration of the name fails with TS2300, but two interfaces merge with no error
+into one type holding both classes' members, failing with TS2717 only where they type one member differently. No alias
+can settle it, because both names are the published ones. Two examples:
 
 - An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` beside it
   publishes a const with the same identifier. A backed enum's `…Kind` name collides the same way.
-- A composed class `Chart` publishes `ChartType`, so an enum named `ChartType` beside it collides on its const.
+- A composed class `Chart` publishes `ChartType`, so an enum named `ChartType` beside it collides on its const. In the
+  globals file both are interfaces, so they merge silently.
 
 An enum's own name is both its const and, since #149, a type in its module. `Runner::warnOfCollidingPublishedNames()`
-names each pair in a warning after the run, over every publisher but route controllers. The token gate does not count
-TS2308. Across two namespaces the barrels and globals namespaces are separate, and a file that imports both aliases an
-enum's const ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one class a
-distinct name, such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type, or move it
-to a namespace of its own.
+names each pair in a warning after the run, over every publisher but route controllers. The token gate counts neither
+TS2308 nor TS2717, and a silent merge raises nothing. Across two namespaces the barrels and globals namespaces are
+separate, and a file that imports both aliases an enum's const ([Import name registry §
+Consumers](./components/import-name-registry.md#consumers)). Give one class a distinct name, such as
+`#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type, or move it to a namespace of its
+own.
+
+### An enum named like a global type a cast spells bare hides that type
+
+Since #149 an enum's module exports a type under its const's name, so a file importing the const also binds that name as
+a type. Const imports step aside for the global types the package writes bare (`Record`, `Pick`, `Omit`, `Partial`,
+`NonNullable`, `Date`, `File`), but not for one a `custom_ts_mappings` entry or a `#[TsCasts]` spells without an import,
+such as `Blob`: an enum of that name types the property as the enum's values with no error, and neither gate sees it.
+Give the enum another name with `#[TsEnum]`, or import the type in the cast.
 
 ### An overridden enum's case can publish the enum's own type
 
@@ -361,6 +376,15 @@ The watcher lists the file of each class, trait or interface a scanned composed 
 - A contributor that is itself a routed controller publishes its route file, so the module is not republished.
 
 Run a full `ts:publish` after either edit.
+
+### A class beside another phase's classes loses its barrel export
+
+The enum, model, API resource, form request and broadcast event phases each rebuild their namespaces' `index.ts` from
+their own files, so where two of them write into one directory, such as an enum `App\Models\Status` beside the models,
+the later phase's barrel drops the earlier one's `export *` lines and importing `Status` from that barrel fails `tsc`
+with TS2305. A form request or broadcast event shares a directory only when its `output_directory` is the main one.
+Model metadata companions and composed classes keep the other phases' exports. Keep each kind of class in a namespace of
+its own.
 
 ### A composed class beside another publisher's files can lose its barrel export
 

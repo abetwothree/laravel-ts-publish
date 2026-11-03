@@ -145,8 +145,10 @@ same name is aliased and the composed type never is. Nor is one composed name al
 ([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
 Both registries reserve the names the file declares, which `declaredNames()` lists, since an enum's module also exports
-a type under its const's name. The `Grade` model fixture pins its const's alias. Two classes in one namespace that
-publish one name are a different collision, which no alias can settle.
+a type under its const's name. The `Grade` model fixture pins its const's alias. For the same reason the const registry
+also reserves `ImportNameRegistry::GLOBAL_TYPES_SPELLED_BARE`, the global types the package spells without an import,
+such as `Record`. Two classes in one namespace that publish one name are a different collision, which no alias can
+settle.
 [Known gaps](../known-gaps.md#two-classes-that-publish-one-name-in-one-namespace-collide) records it.
 
 ### `ModelTransformer`

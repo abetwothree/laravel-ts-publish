@@ -61,7 +61,9 @@ abstract class CoreTransformer
     }
 
     /**
-     * The names this class's file declares, which every name the file imports steps aside for.
+     * The names this class's file can declare, which its imports step aside for and the runner's colliding-names
+     * warning compares. Listing extra names is safe for the imports and only over-warns; leaving one out can fail the
+     * file with TS2440.
      *
      * @return list<string>
      */

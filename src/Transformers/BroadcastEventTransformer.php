@@ -544,7 +544,7 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function resolveImportConflicts(): self
     {
         $registry = new ImportNameRegistry(['Events', 'Enums', 'Models']);
-        $registry->reserveMany(...$this->declaredNames());
+        $this->reserveDeclaredNames($this->declaredNames(), $registry);
         $registry->reserveMany(...$this->customImportNames());
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {

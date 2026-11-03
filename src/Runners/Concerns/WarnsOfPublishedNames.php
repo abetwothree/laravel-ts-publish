@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Generators\ClassTypeGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\NamespaceNameCollisions;
@@ -24,21 +25,18 @@ trait WarnsOfPublishedNames
      */
     protected function warnOfCollidingPublishedNames(): void
     {
-        $generators = [
-            $this->enumGenerators, $this->retainedEnumGenerators,
-            $this->modelGenerators, $this->retainedModelGenerators,
-            $this->modelMetadataGenerators,
-            $this->resourceGenerators, $this->retainedResourceGenerators,
-            $this->formRequestGenerators, $this->retainedFormRequestGenerators,
-            $this->broadcastEventGenerators, $this->retainedBroadcastEventGenerators,
-            $this->classTypeGenerators, $this->retainedClassTypeGenerators,
-        ];
+        $generators = [...$this->publishedGenerators(), $this->classTypeGenerators, $this->retainedClassTypeGenerators];
 
         /** @var list<Publisher> $publishers */
         $publishers = [];
 
         foreach ($generators as $collection) {
             foreach ($collection as $generator) {
+                // A route barrel re-exports each file's default alone, so a route file's names reach no shared barrel.
+                if ($generator instanceof RouteGenerator) {
+                    continue;
+                }
+
                 $publishers[] = [
                     'namespace' => $generator->namespacePath(),
                     'fqcn' => $generator->transformer->fqcn(),

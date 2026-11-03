@@ -9,6 +9,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  *
  * @phpstan-type Publisher = array{namespace: string, fqcn: class-string, names: list<string>}
  * @phpstan-type Collision = array{subject: class-string, name: string, other: class-string}
+ * @phpstan-type NameOwners = array<string, array<string, class-string>>
  *
  * @internal
  */
@@ -22,7 +23,7 @@ final class NamespaceNameCollisions
      */
     public static function find(array $publishers): array
     {
-        /** @var array<string, array<string, class-string>> $owners namespace => name => owning FQCN */
+        /** @var NameOwners $owners namespace => name => owning FQCN */
         $owners = [];
         $collisions = [];
 

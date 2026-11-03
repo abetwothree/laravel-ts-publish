@@ -22,6 +22,12 @@ class ImportNameRegistry
     /** The segments a file publishing an API resource's values skips, so every such file names a class alike. */
     public const RESOURCE_SKIP_SEGMENTS = ['Models', 'Enums', 'Http', 'Resources', 'App'];
 
+    /**
+     * The global types the package's output spells without an import. An enum's module exports a type under its
+     * const's name, so a const imported under one of these names would hide the global.
+     */
+    public const GLOBAL_TYPES_SPELLED_BARE = ['Date', 'File', 'NonNullable', 'Omit', 'Partial', 'Pick', 'Record'];
+
     /** @var array<string, RegistryEntry> keyed by FQCN */
     protected array $entries = [];
 

@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewritten
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
@@ -3131,6 +3132,14 @@ test('an EnumResource const steps aside for the resource\'s own name', function 
 
     expect(array_merge(...array_values($transformer->valueImports)))->toBe(['Rank as FixturesRank'])
         ->and($transformer->properties['rank']['type'])->toBe('AsEnum<typeof FixturesRank>');
+});
+
+test('an EnumResource const steps aside for a global type the file spells bare, which keeps its meaning', function () {
+    $transformer = new ResourceTransformer(LedgerResource::class);
+
+    expect(array_merge(...array_values($transformer->valueImports)))->toBe(['Record as FixturesRecord'])
+        ->and($transformer->properties['record']['type'])->toBe('AsEnum<typeof FixturesRecord>')
+        ->and($transformer->properties['totals']['type'])->toBe('Record<string, number>');
 });
 
 test('a morph union over two resources that share a name spells each one by its own alias', function () {

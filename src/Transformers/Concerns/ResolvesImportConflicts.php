@@ -194,6 +194,8 @@ trait ResolvesImportConflicts
         $customNames = array_values(array_unique(array_merge(...array_values($customImports))));
         $types->reserveMany(...$customNames);
         $consts->reserveMany(...$customNames);
+        // Consts only: the type rewrite cannot tell a type named like a global from the global, so it renames both.
+        $consts->reserveMany(...ImportNameRegistry::GLOBAL_TYPES_SPELLED_BARE);
 
         $resolved = $types->resolve();
         $siblings = $types->resolveSiblings($resolved);
