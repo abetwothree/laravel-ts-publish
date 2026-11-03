@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionEnum;
+use ReflectionEnumUnitCase;
 use ReflectionMethod;
 use Throwable;
 use UnitEnum;
@@ -228,15 +229,17 @@ class EnumTransformer extends CoreTransformer
     {
         $autoInclude = Config::boolean('ts-publish.enums.auto_include_methods');
         $caseFormatting = Config::string('ts-publish.enums.method_case');
+        $caseKeys = $this->caseKeys();
 
         foreach ($this->publishableMethods(TsEnumMethod::class, false, $autoInclude) as $publishable) {
             $method = $publishable['method'];
 
-            // Stored as JSON data for every consumer; a case whose method throws, or whose value json_encode() cannot
-            // write, publishes null. Keyed by the name transformCases() published for the case, as `_cases` lists it.
+            // A case whose method throws, or whose value json_encode() cannot write, publishes null.
+            // Keyed as `_cases` lists the case, since transformCases() keeps one entry per case in declaration order;
+            // a subclass that drops cases falls back to the override names.
             $returns = [];
             foreach ($this->reflectionEnum->getCases() as $position => $case) {
-                $caseName = $this->cases[$position]['name'];
+                $caseName = $caseKeys[$position];
 
                 try {
                     $returns[$caseName] = JsEmitter::jsonValue(
@@ -297,7 +300,7 @@ class EnumTransformer extends CoreTransformer
      */
     protected function publishableMethods(string $attributeClass, bool $static, bool $autoInclude): array
     {
-        $publishable = [];
+        $selected = [];
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $attribute = $method->getAttributes($attributeClass)[0] ?? null;
@@ -331,7 +334,7 @@ class EnumTransformer extends CoreTransformer
 
             $description = $instance->description ?? '';
 
-            $publishable[] = [
+            $selected[] = [
                 'method' => $method,
                 'attribute' => $instance,
                 'params' => $params,
@@ -341,7 +344,7 @@ class EnumTransformer extends CoreTransformer
             ];
         }
 
-        return $publishable;
+        return $selected;
     }
 
     protected function transformCaseKindsAndTypes(): self
@@ -359,6 +362,23 @@ class EnumTransformer extends CoreTransformer
         }, $this->cases);
 
         return $this;
+    }
+
+    /**
+     * The name each case's instance-method values go under, in declaration order.
+     *
+     * @return list<string>
+     */
+    private function caseKeys(): array
+    {
+        $cases = $this->reflectionEnum->getCases();
+
+        return count($cases) === count($this->cases)
+            ? array_column($this->cases, 'name')
+            : array_values(array_map(
+                fn (ReflectionEnumUnitCase $case): string => $this->tsTypeOverrides[$case->getName()]['name'] ?? $case->getName(),
+                $cases,
+            ));
     }
 
     /**
