@@ -2411,7 +2411,7 @@ class LaravelTsPublish
                 }
 
                 foreach (DocblockTags::all((string) $traitUse->getDocComment()?->getText(), 'use') as $used) {
-                    if (preg_match('/^([\w\\\\]+)<(.+)>$/s', $used, $match) !== 1
+                    if (preg_match('/^([\w\\\\]+)\s*<(.+)>$/s', $used, $match) !== 1
                         || ltrim($this->resolveDocblockTypeName($match[1], $useMap, $namespace), '\\') !== $trait->getName()
                     ) {
                         continue;

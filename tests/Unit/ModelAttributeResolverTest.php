@@ -48,6 +48,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedPropertyTagsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
@@ -813,6 +814,13 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
 test('a @phpstan-property tag types its column over a vaguer @property', function () {
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PhpstanPropertyPost::class, 'tags')['type'])->toBe('string[] | null');
 });
+
+test('a @property tag holding a quoted literal with a space, or a generic spaced before its opener, refines its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SpacedPropertyTagsPost::class, $column)['type'])->toBe($type);
+})->with([
+    'a quoted literal with a space' => ['meta_info', 'string | Record<string, number> | null'],
+    'a generic spaced before its opener' => ['related_users', 'Record<string, number> | null'],
+]);
 
 test('a cast sends a NULL column as null only when it is a database type, a primitive, an enum, AsCollection or AsEnumCollection', function (?string $cast, bool $expected) {
     expect(ModelAttributeResolver::sendsNullAsIs($cast))->toBe($expected);

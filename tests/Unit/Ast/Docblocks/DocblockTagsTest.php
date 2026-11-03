@@ -18,12 +18,34 @@ test('a vague prefixed tag yields to a precise plain one', function (string $doc
     ["/**\n * @return array{a: int}\n * @phpstan-return array<string, mixed>\n */", 'array{a: int}'],
     ["/**\n * @return array<string, mixed>\n * @phpstan-return array{a: int, b: string}\n */", 'array{a: int, b: string}'],
     ["/**\n * @return mixed\n * @phpstan-return HasMany<Comment, \$this>\n */", 'HasMany<Comment, $this>'],
+    ["/**\n * @return list<Post>\n * @phpstan-return list\n */", 'list<Post>'],
+    ["/**\n * @return Post[]\n * @phpstan-return mixed[]\n */", 'Post[]'],
 ]);
 
 test('a tag is read whole and only at the start of a line', function () {
     expect(DocblockTags::type("/**\n * @return static | null\n */", 'return'))->toBe('static | null')
         ->and(DocblockTags::type("/**\n * Mentions @return here.\n * @return int\n */", 'return'))->toBe('int')
         ->and(DocblockTags::type('/** @phpstan-var list<int> */', 'var'))->toBe('list<int>');
+});
+
+// Task 11 moves the walk onto the shared scanner; these pins are what it must keep.
+test('a quoted literal is read whole, a backslash escaping the byte after it', function () {
+    expect(DocblockTags::type("/** @return 'foo bar'|null */", 'return'))->toBe("'foo bar'|null")
+        ->and(DocblockTags::type('/** @return "a b" */', 'return'))->toBe('"a b"')
+        ->and(DocblockTags::type("/** @return 'it\\'s here'|null The note */", 'return'))->toBe("'it\\'s here'|null")
+        ->and(DocblockTags::named("/** @property 'in review'|'draft' \$status */", 'property'))
+        ->toBe(['status' => "'in review'|'draft'"]);
+});
+
+test('a quote no closer ends on its line stays an ordinary character', function () {
+    expect(DocblockTags::named("/**\n * @param 'open \$x\n * @param int \$y The 'quoted' y\n */", 'param'))
+        ->toBe(['x' => "'open", 'y' => 'int']);
+});
+
+test('a space before a generic\'s or a shape\'s opener continues the type', function () {
+    expect(DocblockTags::named('/** @property array <string, int> $counts */', 'property'))
+        ->toBe(['counts' => 'array <string, int>'])
+        ->and(DocblockTags::all('/** @use HasItems <Post> */', 'use'))->toBe(['HasItems <Post>']);
 });
 
 test('a family with no tag, or only prose mentions of one, reads null', function () {
@@ -70,5 +92,10 @@ test('isVague() reads the PHPDoc forms that carry no element type', function (st
 })->with([
     ['mixed', true], ['array', true], ['?array', true], ['array|null', true], ['iterable', true],
     ['array<string, mixed>', true], ['list<mixed>', true], ['Collection<int, mixed>', true],
+    ['list', true], ['object', true], ['non-empty-array', true], ['non-empty-list', true], ['mixed[]', true],
+    ['?list|null', true], ['non-empty-array<string, mixed>', true], ['iterable<mixed>', true],
+    ['EloquentCollection<int, mixed>', true], ['Enumerable<int, mixed>', true],
+    ['\\Illuminate\\Support\\Collection<int, mixed>', true],
     ['array{a: int}', false], ['list<string>', false], ['Collection<int, Post>', false], ['string', false],
+    ['Post[]', false], ['array<string, list<mixed>>', false], ['list<Post>|mixed', false], ['null', false],
 ]);

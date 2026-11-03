@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedUseItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
@@ -2171,12 +2172,15 @@ describe('trait @template binding', function () {
             ->and($result['classFqcns'])->toBe([Comment::class]);
     });
 
-    test('a template declared as both @template and @phpstan-template takes one @use argument', function () {
-        $result = $this->service->docblockReturnTypes(new ReflectionMethod(KeyedItemsPost::class, 'firstItem'));
+    test('a template declared as both @template and @phpstan-template takes one @use argument', function (string $consumer) {
+        $result = $this->service->docblockReturnTypes(new ReflectionMethod($consumer, 'firstItem'));
 
         expect($result['type'])->toBe('Post | null')
             ->and($result['classFqcns'])->toBe([Post::class]);
-    });
+    })->with([
+        'a @use tag' => [KeyedItemsPost::class],
+        'a @use tag spaced before its arguments' => [SpacedUseItemsPost::class],
+    ]);
 });
 
 describe('attributeDocblockReturnTypes', function () {

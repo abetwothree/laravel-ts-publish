@@ -18,7 +18,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
 | `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
-| `Docblocks/` | Reading docblock tags: `@var`, `@param` and `@return` types, and the forms an inline `@var` may bind |
+| `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
 | `Handlers/` | One handler per expression family |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |

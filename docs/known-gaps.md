@@ -624,10 +624,11 @@ resource at once, publishes `unknown` too. End the chain with `->all()`.
 
 ### A relation method that declares no relation class and builds it through a helper is left out
 
-A method with neither a relation return type nor a `@return` or `@phpstan-return` naming a relation class, whose body
-builds the relation through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders,
-is never read as a relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it
-publishes `unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
+A method with neither a relation return type nor a `@return`, `@phpstan-return` or `@psalm-return` naming a relation
+class, whose body builds the relation through the model's own helper rather than `$this->hasMany(...)` or another of
+Laravel's builders, is never read as a relation, as in Laravel's `model:show`. Its model interface leaves it out, and
+`whenLoaded()` over it publishes `unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is
+read.
 
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 

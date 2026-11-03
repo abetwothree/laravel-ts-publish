@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
  * `@phpstan-X`, then `@psalm-X`, then `@X`. A vague tag yields to a later one of its family that is not.
  *
  * @phpstan-type Capture = array{string, string}
+ * @phpstan-type Family = key-of<self::FAMILIES>
  *
  * @internal
  */
@@ -30,12 +31,16 @@ final class DocblockTags
     /** Some vendor traits drop the `$` from `@property`, so such a name is read when no description follows it. */
     private const array BARE_NAME_FAMILIES = ['property'];
 
-    private const array VAGUE_KEYWORDS = ['mixed', 'array', 'iterable', 'object'];
+    private const array VAGUE_KEYWORDS = [
+        'mixed', 'mixed[]', 'array', 'list', 'iterable', 'object', 'non-empty-array', 'non-empty-list',
+    ];
 
     private const string NAME = '[a-zA-Z_\x80-\xff][\w\x80-\xff]*';
 
     /**
      * The type the family's first tag spells, or a later tag's where the first reads vague and that one does not.
+     *
+     * @param  Family  $family
      */
     public static function type(string $docComment, string $family): ?string
     {
@@ -56,6 +61,7 @@ final class DocblockTags
     /**
      * The type each named `param`, `property` or `var` tag gives its name, keyed in family order, then first seen.
      *
+     * @param  Family  $family
      * @return array<string, string>
      */
     public static function named(string $docComment, string $family): array
@@ -80,6 +86,7 @@ final class DocblockTags
     /**
      * Every type the family's tags spell, prefixed tags first.
      *
+     * @param  Family  $family
      * @return list<string>
      */
     public static function all(string $docComment, string $family): array
@@ -113,8 +120,8 @@ final class DocblockTags
     }
 
     /**
-     * Whether a PHPDoc type names no element type: every arm but `null` is `mixed`, `array`, `iterable` or `object`,
-     * or an `array`, `iterable`, `list` or `Collection` generic whose last argument is `mixed`.
+     * Whether a PHPDoc type names no element type: every arm but `null` is `mixed`, `mixed[]`, a bare `array`, `list`,
+     * `iterable`, `object`, `non-empty-array` or `non-empty-list`, or a generic whose last argument is `mixed`.
      */
     public static function isVague(string $phpDoc): bool
     {
@@ -175,6 +182,15 @@ final class DocblockTags
 
         for ($i = 0; $i < $length; $i++) {
             $char = $rest[$i];
+            $quoteEnd = $char === "'" || $char === '"' ? self::literalEnd($rest, $i) : null;
+
+            if ($quoteEnd !== null) {
+                $type .= substr($rest, $i, $quoteEnd - $i + 1);
+                $i = $quoteEnd;
+
+                continue;
+            }
+
             $isSpace = ctype_space($char);
 
             if ($isSpace && $depth === 0 && ! self::spaceContinuesType($type, substr($rest, $i + 1))) {
@@ -186,7 +202,7 @@ final class DocblockTags
             $depth += (int) in_array($char, ['{', '<', '('], true) - (int) in_array($char, ['}', '>', ')'], true);
             $type .= $isSpace ? ' ' : $char;
 
-            // A quoted or unmatched closer drives depth below zero, where the depth-zero space test
+            // An unmatched closer drives depth below zero, where the depth-zero space test
             // can never fire again — without this the walk swallows the `$name` and the prose.
             if ($depth < 0) {
                 $end = $i + 1;
@@ -199,6 +215,26 @@ final class DocblockTags
     }
 
     /**
+     * The offset of the quote that closes the literal opened at an offset, a backslash escaping the byte after it; null
+     * when none closes it on its line, so a lone apostrophe stays an ordinary character.
+     */
+    private static function literalEnd(string $text, int $open): ?int
+    {
+        $quote = $text[$open];
+        $length = strlen($text);
+
+        for ($i = $open + 1; $i < $length && $text[$i] !== "\n"; $i++) {
+            if ($text[$i] === '\\') {
+                $i++;
+            } elseif ($text[$i] === $quote) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Whether a depth-zero space is inside the type rather than after it.
      */
     private static function spaceContinuesType(string $captured, string $remaining): bool
@@ -207,9 +243,10 @@ final class DocblockTags
         $remaining = ltrim($remaining);
 
         // A `&` before a parameter name marks a by-reference `@param`, not an intersection. A `:` after a `)` opens a
-        // callable's return type.
+        // callable's return type; an opener after the space, as in `array <string, int>`, continues a generic.
         return str_ends_with($captured, '|') || str_ends_with($captured, '&')
             || str_starts_with($remaining, '|')
+            || preg_match('/^[<{(]/', $remaining) === 1
             || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1)
             || preg_match('/\)\s*:$/', $captured) === 1
             || (str_ends_with($captured, ')') && str_starts_with($remaining, ':'));
@@ -229,12 +266,12 @@ final class DocblockTags
     }
 
     /**
-     * Whether one union arm is a vague keyword or a generic whose last argument is `mixed`.
+     * Whether one union arm is a vague keyword or a generic, of any base name, whose last argument is `mixed`.
      */
     private static function isVagueArm(string $arm): bool
     {
         return in_array(strtolower($arm), self::VAGUE_KEYWORDS, true)
-            || preg_match('/^(?:array|iterable|list|\\\\?(?:\w+\\\\)*Collection)\s*<(?:.*,)?\s*mixed\s*>$/is', $arm) === 1;
+            || preg_match('/^[\\\\\w-]+\s*<(?:.*,)?\s*mixed\s*>$/is', $arm) === 1;
     }
 
     /**

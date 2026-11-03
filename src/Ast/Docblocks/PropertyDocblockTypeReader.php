@@ -68,9 +68,9 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * Capture an inline `@phpstan-var`, `@psalm-var` or `@var` on a local assignment: its type, the variable it names,
-     * null when it names none, and whether it spells a `self`, `static` or `parent`. Null unless the type is a
-     * VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
+     * Capture an inline `@phpstan-var`, `@psalm-var` or `@var` on a local assignment: its type in PHPStan's order, the
+     * variable the first tag naming one names, null when none does, and whether it spells a `self`, `static` or
+     * `parent`. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but callables'.
      *
      * Each `self`, `static` or `parent` in the type comes back as the class $relative maps it to, the one the body
      * holding the tag binds it to; one the map lacks stays as written, which no reading accepts.
@@ -81,9 +81,7 @@ final class PropertyDocblockTypeReader
      */
     public function extractVarTag(string $docComment, ReflectionClass $context, array $relative): ?array
     {
-        $named = DocblockTags::named($docComment, 'var');
-        $name = array_key_first($named);
-        $declared = $name === null ? DocblockTags::type($docComment, 'var') : $named[$name];
+        $declared = DocblockTags::type($docComment, 'var');
 
         if ($declared === null) {
             return null;
@@ -96,7 +94,7 @@ final class PropertyDocblockTypeReader
             return null;
         }
 
-        return [$type, $name, $type !== $declared];
+        return [$type, array_key_first(DocblockTags::named($docComment, 'var')), $type !== $declared];
     }
 
     /**

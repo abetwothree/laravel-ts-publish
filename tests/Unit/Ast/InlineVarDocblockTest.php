@@ -428,6 +428,9 @@ describe('an inline @var on a local assignment', function () {
             ->resolve($returned)['type'])->toBe('string[]')
             ->and(resolve(PropertyDocblockTypeReader::class)
                 ->extractVarTag('/** @psalm-var list<int> $ids */', new ReflectionClass(DeclaredPrecedenceResource::class), []))
+            ->toBe(['list<int>', 'ids', false])
+            ->and(resolve(PropertyDocblockTypeReader::class)
+                ->extractVarTag("/**\n * @phpstan-var list<int>\n * @var array \$ids\n */", new ReflectionClass(DeclaredPrecedenceResource::class), []))
             ->toBe(['list<int>', 'ids', false]);
     });
 

@@ -76,9 +76,11 @@ final class InertiaTableHandler implements ExpressionHandler
             return $past;
         }
 
+        $type = self::TABLE_TYPE.'<'.class_basename($model).'>';
+
         return [
             ...ValueResult::unknown(),
-            'type' => self::TABLE_TYPE.'<'.class_basename($model).'>',
+            'type' => $this->mayReturnNull($expr, $table) ? ValueResult::withNullArm($type) : $type,
             'modelFqcn' => $model,
             'customImports' => [$this->tablePackage() => [self::TABLE_TYPE]],
         ];
@@ -94,7 +96,7 @@ final class InertiaTableHandler implements ExpressionHandler
         $leaving = null;
 
         while ($expr instanceof MethodCall || $expr instanceof StaticCall) {
-            if (! $expr->name instanceof Identifier || ! $this->returnsTable($table, $expr->name->toString())) {
+            if (! $expr->name instanceof Identifier || $this->tableReturnsNull($table, $expr->name->toString()) === null) {
                 $leaving = $expr;
             }
 
@@ -166,38 +168,63 @@ final class InertiaTableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a table method declares it returns the table, natively or, with no native type, by `@return`.
+     * Whether the chain's last call is a table method that may return null, so the chain may send null.
+     *
+     * A null earlier in the chain throws at the next call, so only the last call's null reaches the response.
      *
      * @param  class-string  $table
      */
-    private function returnsTable(string $table, string $method): bool
+    private function mayReturnNull(Expr $expr, string $table): bool
+    {
+        return ($expr instanceof MethodCall || $expr instanceof StaticCall)
+            && $expr->name instanceof Identifier
+            && $this->tableReturnsNull($table, $expr->name->toString()) === true;
+    }
+
+    /**
+     * Whether a table method that returns the table may return null too, natively or, with no native type, by
+     * `@return`; null when it does not return the table.
+     *
+     * @param  class-string  $table
+     */
+    private function tableReturnsNull(string $table, string $method): ?bool
     {
         if (! method_exists($table, $method)) {
-            return false;
+            return null;
         }
 
         $reflection = new ReflectionMethod($table, $method);
         $type = $reflection->getReturnType();
 
         if ($type !== null) {
-            return $type instanceof ReflectionNamedType && ! $type->allowsNull() && $this->namesTable($type->getName());
+            return $type instanceof ReflectionNamedType && $this->namesTable($type->getName()) ? $type->allowsNull() : null;
         }
 
-        $declared = DocblockTags::type((string) $reflection->getDocComment(), 'return');
+        $declared = DocblockTags::type((string) $reflection->getDocComment(), 'return') ?? '';
+        $arms = LaravelTsPublish::splitPhpDocUnionType(ltrim($declared, '?'));
+        $named = array_values(array_filter($arms, fn (string $arm): bool => strtolower($arm) !== 'null'));
 
-        if ($declared === null) {
-            return false;
+        if (count($named) !== 1 || ! $this->namesDeclaredTable($named[0], $reflection)) {
+            return null;
         }
 
-        if ($declared === '$this' || $this->namesTable($declared)) {
+        return str_starts_with($declared, '?') || count($named) < count($arms);
+    }
+
+    /**
+     * Whether a `@return` arm names the table: `$this`, `static`, `self` or a table class, a short or aliased name read
+     * against the use statements of the file that declares the method.
+     */
+    private function namesDeclaredTable(string $arm, ReflectionMethod $method): bool
+    {
+        if ($arm === '$this' || $this->namesTable($arm)) {
             return true;
         }
 
-        // A short or aliased name is read against the use statements of the file that declares the method.
-        $file = LaravelTsPublish::methodDeclaringFileClass($reflection);
+        $file = LaravelTsPublish::methodDeclaringFileClass($method);
 
         return $this->namesTable(LaravelTsPublish::resolveDocblockTypeName(
-            $declared,
+            $arm,
             LaravelTsPublish::parseFileUseStatements($file),
             $file->getNamespaceName(),
         ));

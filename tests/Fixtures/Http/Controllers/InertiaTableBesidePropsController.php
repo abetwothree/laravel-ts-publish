@@ -100,16 +100,17 @@ class InertiaTableBesidePropsController
         ]);
     }
 
-    /** Renders table methods that may hand back null, documented and typed, inline and through locals. */
+    /** Renders table methods that may hand back null, inline and through a local, and one that may not. */
     public function nullableStatic(): Response
     {
         $held = NullableStaticTable::make()->orNothing();
-        $typed = NullableStaticTable::make()->orNone();
 
         return Inertia::render('Tables/NullableStatic', [
             'inline' => NullableStaticTable::make()->orNothing(),
             'held' => $held,
-            'typed' => $typed,
+            'unspaced' => NullableStaticTable::make()->orNull(),
+            'typed' => NullableStaticTable::make()->orNone(),
+            'always' => NullableStaticTable::make()->always(),
         ]);
     }
 
