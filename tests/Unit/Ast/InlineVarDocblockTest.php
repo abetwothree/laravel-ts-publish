@@ -329,7 +329,6 @@ describe('an inline @var on a local assignment', function () {
         'a dangling union' => ['string|'],
         'a space before a shape\'s brace' => ['array {a: int}'],
         'a space before a nested shape\'s brace' => ['array{a: array {b: int}}'],
-        'a shape member whose class the shape reader leaves unknown' => ['array{a: User}'],
         'a bare collection, which resolves to unknown elements' => ['\Illuminate\Support\Collection'],
         'a shape mixing positional and named members' => ['array{int, a: string}'],
         'an optional positional member, which PHPDoc does not allow' => ['list{int, string?}'],
@@ -396,6 +395,7 @@ describe('an inline @var on a local assignment', function () {
             '?\Workbench\App\ValueObjects\ArrayableData',
             '{ recordedAt?: string; title: string; weight: number | null } | null',
         ],
+        'a shape member naming a model' => ['array{a: User}', '{ a: User }'],
         'a callable in a shape, which reads unknown' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
         'a callable in each of two members, one nullable' => [
             'array{a: callable(int): string, b: ?callable(): int}',

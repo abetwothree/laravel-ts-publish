@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
@@ -29,6 +30,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedUseItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\AliasCacheLaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Gauge as ClashGauge;
@@ -82,6 +85,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\SpacedDocblockResource;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
@@ -1052,11 +1056,15 @@ describe('an overridden member of a docblock shape', function () {
         ]);
     });
 
-    test("keeps unknown for a model member, and the type-string readers' answers", function () {
+    test("keeps a model member with its class, and the type-string readers' answers", function () {
         $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
 
         expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiBoardShapesResource::class), 'documentedOwner'))
-            ->toMatchArray(['type' => '{ owner: unknown; panel: UiNode }', 'customImports' => ['@js/types/ui' => ['UiNode']]])
+            ->toMatchArray([
+                'type' => '{ owner: User; panel: UiNode }',
+                'classFqcns' => [User::class],
+                'customImports' => ['@js/types/ui' => ['UiNode']],
+            ])
             ->and($this->service->resolvePhpDocTypeToTs('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
             ->toBe('{ panel: unknown; nested: { panel: unknown } }')
             ->and($this->service->resolvePhpDocTypeToTs('list<array{panel: UiPanel}>', $useMap, ''))->toBe('{ panel: unknown }[]')
@@ -1697,10 +1705,24 @@ describe('docblockReturnShapeInfos', function () {
         ]);
     });
 
-    test('names no class behind a token an override spells like the model beside it', function () {
+    test('names no class behind a token an override spells like the model beside it, and keeps its import', function () {
+        $ui = ['@js/types/ui' => ['User']];
+
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithOverriddenUnionDocblock::class, 'share')))->toBe([
-            'person' => ['type' => 'User', 'customImports' => ['@js/types/ui' => ['User']]],
-            'either' => ['type' => 'User | User', 'customImports' => [], 'tokenFqcns' => [null, User::class]],
+            'person' => ['type' => 'User', 'customImports' => $ui],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
+        ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(OverrideUnionShareMiddleware::class, 'share')))->toBe([
+            'listed' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
+        ]);
+    });
+
+    test('names the class behind each token of a nested shape, a literal\'s included', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedModelMetadataProvider::class, 'provide')))->toBe([
+            'pair' => ['type' => "{ kind: 'User'; r: User }", 'customImports' => [], 'tokenFqcns' => [null, User::class]],
+        ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedEnumMetadataProvider::class, 'provide')))->toBe([
+            'pair' => ['type' => "{ kind: 'Role'; r: RoleType }", 'customImports' => [], 'tokenFqcns' => [Role::class]],
+            'top' => ['type' => 'RoleType', 'customImports' => [], 'tokenFqcns' => [Role::class]],
         ]);
     });
 });
@@ -1824,7 +1846,6 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a tuple inside a shape' => ['array{pair: list{int, string}}', '{ pair: [number, string] }'],
         'a callable inside a shape' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
         'a mixed shape, whose positional member takes the next int key' => ['array{int, a: string}', '{ 0: number; a: string }'],
-        'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
         'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
         'a quoted literal member holding a colon' => ["list{'a:b', int}", "['a:b', number]"],
         'a quoted key holding a comma' => ["array{'a,b': int, c: string}", '{ "a,b": number; c: string }'],
@@ -1832,6 +1853,73 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a quoted key holding a comma and a brace' => ["array{'a,{b': int, c: string}", '{ "a,{b": number; c: string }'],
         'a quoted literal member holding a comma' => ["list{'a,b', int}", "['a,b', number]"],
     ]);
+
+    test('reads a class inside a shape with its channels, and as unknown where a reader keeps only the type string', function () {
+        $useMap = ['User' => User::class];
+
+        expect($this->service->resolvePhpDocTypeToTs('list{User, int}', $useMap, ''))->toBe('[unknown, number]')
+            ->and($this->service->resolveDocblockTypePart('list{User, int}', $useMap, ''))->toMatchArray([
+                'type' => '[User, number]',
+                'classes' => ['User'],
+                'classFqcns' => [User::class],
+            ])
+            ->and($this->service->resolveGenericContainerType('list<list{User, int}>', $useMap, ''))->toMatchArray([
+                'type' => '[User, number][]',
+                'classFqcns' => [User::class],
+            ]);
+    });
+
+    test('spreads the class behind each token of a shape into the channels', function (string $phpType, array $channels) {
+        $useMap = ['User' => User::class, 'CrmUser' => CrmUser::class, 'Status' => Status::class];
+
+        expect($this->service->resolveDocblockTypePart($phpType, $useMap, ''))->toMatchArray($channels);
+    })->with([
+        'a model' => ['array{owner: User, n: int}', [
+            'type' => '{ owner: User; n: number }',
+            'classes' => ['User'],
+            'classFqcns' => [User::class],
+            'enumFqcns' => [],
+        ]],
+        'an enum' => ['object{s: Status}', [
+            'type' => '{ s: StatusType }',
+            'enums' => ['Status'],
+            'enumTypes' => ['StatusType'],
+            'enumFqcns' => [Status::class],
+            'classFqcns' => [],
+        ]],
+        'two models that share a name, each token naming its own' => ['array{a: User, b: CrmUser, c: User}', [
+            'type' => '{ a: User; b: User; c: User }',
+            'classes' => ['User', 'User'],
+            'classFqcns' => [User::class, CrmUser::class],
+            'classTokenFqcns' => [User::class, CrmUser::class, User::class],
+        ]],
+        'an intersection of shapes with no key in common, sent as one object' => ['array{a: int}&array{owner: User}', [
+            'type' => '{ a: number; owner: User }',
+            'classFqcns' => [User::class],
+        ]],
+    ]);
+
+    test('reads a shape its channels cannot carry with no class: an API resource, or an override spelled like a class', function (string $phpType, string $type) {
+        $useMap = [
+            'PostResource' => PostResource::class,
+            'User' => User::class,
+            'Person' => Person::class,
+            'ChartKind' => ChartKind::class,
+            'UiChart' => UiChart::class,
+        ];
+
+        expect($this->service->resolveDocblockTypePart($phpType, $useMap, ''))
+            ->toMatchArray(['type' => $type, 'classFqcns' => [], 'enumFqcns' => []]);
+    })->with([
+        'an API resource beside a model' => ['array{r: PostResource, owner: User}', '{ r: unknown; owner: unknown }'],
+        'an override spelled like a model' => ['array{either: Person|User}', '{ either: unknown }'],
+        'an override spelled like an enum' => ['array{kind: ChartKind|UiChart}', '{ kind: unknown }'],
+        'a listed override spelled like a model' => ['list<array{listed: list<Person|User>}>', '{ listed: unknown }[]'],
+    ]);
+
+    test('reads an intersection of shapes that share a key as unknown, as before', function () {
+        expect($this->service->resolveDocblockTypePart('array{a: int}&array{a: string}', [], '')['type'])->toBe('unknown');
+    });
 
     test('splits at the commas outside brackets and quoted literals', function (string $input, array $parts) {
         expect($this->service->splitAtTopLevelCommas($input))->toBe($parts);
@@ -2152,8 +2240,8 @@ describe('resolveGenericContainerType() with an intersection value', function ()
             'Workbench\\App\\Models',
         );
 
-        expect($info['type'])->toBe('(User & { pivot: unknown })[]')
-            ->and($info['classFqcns'])->toBe([User::class]);
+        expect($info['type'])->toBe('(User & { pivot: TaskAssignment })[]')
+            ->and($info['classFqcns'])->toBe([User::class, TaskAssignment::class]);
     });
 
     test('drops an unresolvable intersection member rather than the whole value', function () {
@@ -2748,6 +2836,15 @@ describe('mergeTypeScriptInfos', function () {
             'User | null | User',
         ],
     ]);
+
+    test('keeps a null for each token an override arm spells like a class beside it, with the override\'s import', function () {
+        $ui = ['@js/types/ui' => ['User']];
+        $merged = $this->service->mergeTypeScriptInfos([$this->service->toTsType(Person::class), $this->service->toTsType(User::class)]);
+        $listed = $this->service->resolveGenericContainerType('list<Person|User>', ['Person' => Person::class, 'User' => User::class], '');
+
+        expect($merged)->toMatchArray(['type' => 'User | User', 'classFqcns' => [User::class], 'classTokenFqcns' => [null, User::class], 'customImports' => $ui])
+            ->and($listed)->toMatchArray(['type' => '(User | User)[]', 'classTokenFqcns' => [null, User::class], 'customImports' => $ui]);
+    });
 
     test('queues a token for a bare class kept after an array of it, once another class shares its name', function () {
         $result = $this->service->mergeTypeScriptInfos([

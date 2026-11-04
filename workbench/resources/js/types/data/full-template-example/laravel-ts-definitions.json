@@ -6119,7 +6119,7 @@
                 },
                 {
                     "name": "assigned_users",
-                    "type": "(User & { pivot: unknown })[]"
+                    "type": "(User & { pivot: TaskAssignment })[]"
                 },
                 {
                     "name": "ability_map",

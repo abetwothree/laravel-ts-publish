@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -458,9 +459,9 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`.
-     * The body fallback drops a whole shape naming a token, so a top-level model arm, or a list of one, is spelled as
-     * the object it serializes to; any other token, such as an enum or a nested model, leaves `unknown`.
+     * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`. A
+     * top-level model arm, or a list of one, is spelled as the object it serializes to; an object arm's member naming
+     * any other token, such as an enum or a nested model, is `unknown`; any other arm naming one leaves `unknown`.
      *
      * @param  ValueExpressionResult  $result
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call whose key list shapes a returned model
@@ -492,13 +493,40 @@ final class ReceiverMethodReturnResolver
                 $shape = $this->serializedModelShape($models[$element], $keys, $methodName === 'only');
                 $arm = $element === $arm ? $shape : ValueResult::arrayWrapType($shape);
             } elseif (TsTypeString::shapeValueHasUnimportableToken($arm)) {
-                return ValueResult::unknown();
+                $arm = $this->tokenMembersUnknown($arm);
+
+                if ($arm === null) {
+                    return ValueResult::unknown();
+                }
             }
 
             $arms[] = $arm;
         }
 
         return [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull($arms)];
+    }
+
+    /**
+     * An object type with each member naming a token spelled `unknown`, a nested object's members alike, since the
+     * scope cannot import it and the members beside it still say what is sent; null for a type that is no object.
+     */
+    private function tokenMembersUnknown(string $type): ?string
+    {
+        $members = TsTypeShape::members($type);
+
+        if ($members === null || $members === []) {
+            return null;
+        }
+
+        $spelled = [];
+
+        foreach ($members as [$key, $value]) {
+            $spelled[] = $key.': '.(TsTypeString::shapeValueHasUnimportableToken($value)
+                ? $this->tokenMembersUnknown($value) ?? 'unknown'
+                : $value);
+        }
+
+        return '{ '.implode('; ', $spelled).' }';
     }
 
     /**

@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBefo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
@@ -3367,6 +3369,31 @@ describe('a member typed by a docblock union whose arms render alike for two mod
         $transformer = new ResourceTransformer(HandoverCrewResource::class);
 
         expect($transformer->properties['keyed_crew']['type'])->toBe('{ crew: WorkbenchUser[] | CrmUser[]; sender: WorkbenchUser | null }')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
+});
+
+describe('a helper whose @return shape names a model, read as a value its body cannot type', function () {
+    test('publishes the model at any depth of the shape, with its import', function (string $key, string $type, array $imports) {
+        $transformer = new ResourceTransformer(DocShapeHelpersResource::class);
+
+        expect($transformer->properties[$key]['type'])->toBe($type)
+            ->and($transformer->typeImports['../../../../../../workbench/app/models'] ?? [])->toContain(...$imports);
+    })->with([
+        'an array shape' => ['shape', '{ owner: User; n: number }', ['User']],
+        'an object shape' => ['obj', '{ owner: User }', ['User']],
+        'an intersection of shapes' => ['inter', '{ a: number; owner: User }', ['User']],
+        'a list shape' => ['tuple', '[User, number]', ['User']],
+        'a shape nesting a shape and a list' => ['nested', '{ meta: { author: User; posts: Post[] } }', ['User', 'Post']],
+    ]);
+
+    test('publishes two models that share a name, each aliased and imported', function () {
+        $transformer = new ResourceTransformer(DocShapePairResource::class);
+
+        expect($transformer->properties['pair']['type'])->toBe('{ a: WorkbenchUser; b: CrmUser }')
             ->and($transformer->typeImports)->toBe([
                 '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
                 '../../../../../../workbench/crm/models' => ['User as CrmUser'],

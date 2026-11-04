@@ -210,12 +210,19 @@ under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an imp
 included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
 test stops an enum spelled like a composed class beside it from taking that class's import.
 
-A union keeps its arms' merged imports unless an arm its own imports do not cover spells a name a sibling arm's imports
-bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
-`Panel|Status` keeps `UiNode`'s.
+A docblock shape is the exception: each member names the class behind each token of a class's name (`tokenFqcns`, one
+slot per token in print order, null for an override's), so a member naming a model, an enum or a published API resource
+keeps it at any depth, nested or in a container (`keptShapeMember()`). A value object's shape and a reader that keeps
+only the type string read with no class (`withoutShapeClasses()`).
 
-`docblockReturnShapeInfos()` also names the class behind each top-level key's tokens (`tokenFqcns`), which only shared
-data reads ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)); every reader below ignores it.
+A union keeps its arms' merged imports unless an arm its own imports and classes do not cover spells a name a sibling
+arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override spelled `User`, keeps both, its slots
+`[null, User]`, while `Panel|Status` keeps `UiNode`'s; in a container, `mergeTypeScriptInfos()` keeps the null in
+`classTokenFqcns`.
+
+A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
+other class, or holds a null, is read there with no class (`shapeChannels()`). Shared data and a metadata companion read
+`tokenFqcns` from `docblockReturnShapeInfos()` ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
 
 These readers apply it, each with the scope and the fallback its page gives:
 
@@ -239,7 +246,7 @@ These readers apply it, each with the scope and the fallback its page gives:
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So
-  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: unknown })[]`.
+  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: TaskAssignment })[]`.
 - **Key types**: a string-refinement key, such as `non-empty-string` or `class-string<Model>`, gives
   `Record<string, X>`. An `array-key` or `mixed` key gives `X[] | Record<string, X>`, because the keys may not be
   sequential.

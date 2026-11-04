@@ -642,7 +642,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             flag_default: boolean | number | string | null;
-            assigned_users: (User & { pivot: unknown })[];
+            assigned_users: (User & { pivot: TaskAssignment })[];
             ability_map: Record<string, boolean>;
             child_items: Comment[];
             // Relations

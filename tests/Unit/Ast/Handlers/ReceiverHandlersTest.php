@@ -604,7 +604,7 @@ describe('ReceiverMethodCallHandler', function () {
     ]);
 
     // Only a top-level arm that is a model, or a list of one, is spelled from its columns: a model nested in a shape
-    // key is a leaf the reflected docblock already spells `unknown`.
+    // key is a member the scope spells `unknown`, since it cannot import the model.
     test('spells a list of models an override returns as a list of their columns where the scope carries no import', function (string $model, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
 

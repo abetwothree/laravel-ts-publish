@@ -14,7 +14,7 @@ use Closure;
  * last one covering any further occurrence. Both read their tokens through TsTypeString::queuedTokenPattern() and
  * queuePosition(), so a token cannot count for one walk and not for the other.
  *
- * @phpstan-type QueuedClasses = array{classFqcns: list<class-string>, classTokenFqcns?: list<class-string>}
+ * @phpstan-type QueuedClasses = array{classFqcns: list<class-string>, classTokenFqcns?: list<class-string|null>}
  * @phpstan-type TokenSpelling = array{class-string, string}
  *
  * @internal
@@ -60,12 +60,16 @@ final class ClassTokenQueue
     /**
      * The classes aliasing walks against an info's tokens: its per-token queue when it has one, else each class once.
      *
+     * A queue's null, an override's token spelled like a class, is left out: no per-name queue can hold one.
+     *
      * @param  QueuedClasses  $info
      * @return list<class-string>
      */
     public static function fqcnsOf(array $info): array
     {
-        return $info['classTokenFqcns'] ?? $info['classFqcns'];
+        $queue = array_values(array_filter($info['classTokenFqcns'] ?? []));
+
+        return $queue === [] ? $info['classFqcns'] : $queue;
     }
 
     /**

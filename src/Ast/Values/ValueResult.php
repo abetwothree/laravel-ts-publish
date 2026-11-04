@@ -34,7 +34,7 @@ use ReflectionClass;
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string>,
+ *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool
  * }

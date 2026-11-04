@@ -28,7 +28,7 @@ use ReflectionClass;
  *      type: string,
  *      enumFqcn: class-string|null,
  *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string>,
+ *      classTokenFqcns?: list<class-string|null>,
  *      customImports: array<string, list<string>>,
  *      keepsKeys?: bool
  * }

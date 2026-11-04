@@ -41,7 +41,7 @@ use PhpParser\Node\Name;
  *      enumFqcn: class-string|null,
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string>,
+ *      classTokenFqcns?: list<class-string|null>,
  *      customImports: TypesImportMap,
  *      keepsKeys?: bool
  * }

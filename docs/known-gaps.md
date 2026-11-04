@@ -510,27 +510,32 @@ resource with no backing model for two or more models still publishes `null` for
 
 ### A shape whose values name a class loses those values, in one of two ways
 
-The method-body fallback, a docblock array shape and a value object's own shape carry an override's import, but no
-model's or enum's. Each keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value
-object whose shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body
-fallback (`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape,
-as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
-degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
-`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
-an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union spells
-a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
+The method-body fallback and a value object's own shape carry an override's import, but no model's or enum's. Each
+keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value object whose shape keeps
+one, with its imports, and loses a member naming any other class, such as a model. The body fallback
+(`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape, as
+[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A value object's
+shape degrades one leaf: a `toArray()` documented `@return array{owner: User}` publishes `{ owner: unknown }`, or a
+tuple member, `list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and
+degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names
+the class. A member whose union spells a model or enum beside an override, such as `Person|User`, is `unknown` too.
+
+A docblock shape keeps a model or an enum at any depth, with its import. Read by an API resource's helper, a property's
+`@var` or a model's accessor, though, a shape that also names any other class, such as an API resource, or spells an
+override like the model or enum beside it, such as `either: Person|User`, is read as a value object's shape is, each
+leaf naming a class `unknown`. `share()`'s `@return` keeps them, and a metadata provider's fails the publish on a model.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
 and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
 member brings for that name, or is `unknown` when none does. Give the override an `import`.
 
-### A `share()` docblock union of an override and a model spelled alike can bind both to the model
+### A docblock union of an override and a model spelled alike binds both to the model, outside `share()`
 
-In `share()`'s `@return`, `either: Person|User`, where `Person`'s override is `User` from another module, publishes
-`User | User` with only the model's import when neither the key's value nor another key brings the override's import.
-The override arm then reads as the model and `tsc` passes, though Inertia sends a `Person` as its own JSON, which the
-model's type does not describe. Type the key with an import-aware `#[TsCasts]`, or share a key that brings the
-override's import, such as `person: Person`: the arm then keeps its import and the model is aliased.
+An API resource's helper documented `@return Person|User`, where `Person`'s override is `User` from another module,
+publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Person|User>` a list of it, importing only the model. The
+override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON, which the
+model's type does not describe. `share()`'s `@return` keeps each arm with its own import. Type the key with an
+import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 

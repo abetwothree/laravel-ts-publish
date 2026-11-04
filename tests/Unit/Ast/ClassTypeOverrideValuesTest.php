@@ -355,11 +355,12 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
         'doc_shape' => "{ board: {$board}; label: string }",
         'json' => "{ board: {$board}; title: string }",
         'untyped_helper' => "{ board: {$board}; label: string }",
-        'doc_owner' => '{ owner: unknown; panel: UiNode }',
+        'doc_owner' => '{ owner: User; panel: UiNode }',
         'untyped_owner' => '{ owner: unknown; panel: UiNode }',
     ])
         ->and(new ResourceTransformer(UiBoardShapesResource::class)->typeImports)->toBe([
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+            '../../../../../../workbench/app/models' => ['User'],
             '../../../../../../workbench/app/packages/ui' => ['ChartType'],
         ])
         ->and(pageData(UiBoardShapesPageController::class.'@show')['pageType'])
