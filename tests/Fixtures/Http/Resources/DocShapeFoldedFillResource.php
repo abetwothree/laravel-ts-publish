@@ -101,7 +101,7 @@ final class DocShapeFoldedFillResource extends JsonResource
      */
     private function objectPair(): array
     {
-        return ['k' => json_decode((string) $this->content)];
+        return ['k' => json_decode('{"a":'.$this->content.',"b":'.$this->content.'}')];
     }
 
     /**

@@ -44,6 +44,33 @@ final class InlineObjectResult
     use BuildsInlineObjectTypes;
 
     /**
+     * Read class-less each member a fill typed that the object's per-name queues cannot bind: one whose slots hold a
+     * null, an override's or a literal's, then one whose class publishes under a name a sibling's custom import brings.
+     * Either way a token of that name would take the class; a value written in place keeps its own.
+     */
+    public static function readUnbindableFillsClassLess(MethodAnalysis $analysis): void
+    {
+        if ($analysis->declaredTokenFqcns === []) {
+            return;
+        }
+
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name]) && in_array(null, $slots, true)) {
+                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
+            }
+        }
+
+        // After the nulls: a member read class-less can drop the only import a sibling's class would collide with.
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name]) && $analysis->namesImportedName((string) $name)) {
+                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
+            }
+        }
+    }
+
+    /**
      * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
      *
      * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
@@ -53,7 +80,7 @@ final class InlineObjectResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
     {
-        $this->readNullSlotsClassLess($analysis);
+        self::readUnbindableFillsClassLess($analysis);
 
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
@@ -223,21 +250,6 @@ final class InlineObjectResult
         }
 
         return $result;
-    }
-
-    /**
-     * Read class-less each member whose declared slots hold an override's null: the object's per-name queues cannot
-     * hold that null, so the override's token would take the class its name spells.
-     */
-    public function readNullSlotsClassLess(MethodAnalysis $analysis): void
-    {
-        $types = array_column($analysis->properties, 'type', 'name');
-
-        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
-            if (isset($types[$name]) && in_array(null, $slots, true)) {
-                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
-            }
-        }
     }
 
     /**

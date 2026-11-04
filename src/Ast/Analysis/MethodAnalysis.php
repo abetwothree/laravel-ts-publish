@@ -608,14 +608,10 @@ class MethodAnalysis
      */
     public function forgetUnpublishableMembers(): void
     {
-        $imported = ImportMaps::localNames($this->customImports);
-
         foreach (array_unique(array_column($this->properties, 'name')) as $name) {
             $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
 
-            if (ValueResult::everyModelPublished($models)
-                && ($imported === [] || array_intersect($this->channelNames($name), $imported) === [])
-            ) {
+            if (ValueResult::everyModelPublished($models) && ! $this->namesImportedName($name)) {
                 continue;
             }
 
@@ -627,6 +623,17 @@ class MethodAnalysis
 
             $this->forgetChannels($name);
         }
+    }
+
+    /**
+     * Whether a property's import channels hold a class that publishes under a name the custom imports bring. A reader
+     * holding the members in one key aliases every token of a name alike, so that class would take the import's tokens.
+     */
+    public function namesImportedName(string $name): bool
+    {
+        $imported = ImportMaps::localNames($this->customImports);
+
+        return $imported !== [] && array_intersect($this->channelNames($name), $imported) !== [];
     }
 
     /**

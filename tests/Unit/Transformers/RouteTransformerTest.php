@@ -1059,6 +1059,19 @@ it('binds an arm\'s override and other class beside the model in another arm, jo
         ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
 });
 
+it('reads a folded fill\'s model class-less where a sibling prop member\'s override brings its name, as before', function () {
+    app(Router::class)->get('/doc-shape-split', [DocShapeFoldedPageController::class, 'split']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { split: { n: User | null; m: unknown }, two: { n: User | null; m: unknown } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->split()))->toEqual((object) [
+            'split' => (object) ['n' => null, 'm' => null],
+            'two' => (object) ['n' => null, 'm' => null],
+        ]);
+});
+
 it('reads a props helper\'s override-beside-model fill folded into a page prop class-less, as before', function () {
     app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);

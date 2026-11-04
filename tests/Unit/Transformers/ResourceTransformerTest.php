@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingL
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingMixedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedFillResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedLiteralResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedSplitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeMixedArmJoinResource;
@@ -3610,7 +3611,19 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             ->and($sent->nested->y->k->name)->toBe('Ada')
             ->and($sent->beside->m)->toBe(1)
             ->and($sent->local->k->name)->toBe('Ada')
-            ->and($sent->object_pair->k->name)->toBe('Ada');
+            ->and([$sent->object_pair->k->a->name, $sent->object_pair->k->b->name])->toBe(['Ada', 'Ada'])
+            ->and($sent->x_pair->k->b->name)->toBe('Ada');
+    });
+
+    test('reads a folded fill\'s model class-less where a sibling member\'s override brings its name, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedSplitResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'one_fill' => '{ n: User; m: unknown }',
+            'two_fills' => '{ n: User; m: unknown }',
+            'with_null' => '{ k: unknown; n: User; m: unknown }',
+            'x_split' => '{ n: User; m: unknown; z: number }',
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {
