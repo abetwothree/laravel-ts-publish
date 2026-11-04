@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -33,14 +33,14 @@ trait ResolvesCallbackValues
      */
     protected function callbackValue(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $callback = FirstClassCallableHandler::heldCallable($callback, $scope);
-        $callback = $passed === [] ? $callback : FirstClassCallableHandler::passingOneValue($callback);
+        $callback = CallableForms::heldCallable($callback, $scope);
+        $callback = $passed === [] ? $callback : CallableForms::passingOneValue($callback);
 
         return $scope->readClaimedClosure(
             $callback,
             count($passed),
             $engine,
-            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($callback)),
+            fn (): array => $engine->resolve(CallableForms::invokedCall($callback)),
             $passed === [] ? null : function () use ($callback, $passed, $scope, $engine): void {
                 if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
                     return;

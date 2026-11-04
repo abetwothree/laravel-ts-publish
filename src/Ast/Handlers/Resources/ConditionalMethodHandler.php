@@ -7,9 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ResolvesCallbackValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
@@ -18,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
@@ -254,7 +254,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $valueArg->value,
             0,
             $engine,
-            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall(FirstClassCallableHandler::heldCallable($valueArg->value, $scope))),
+            fn (): array => $engine->resolve(CallableForms::invokedCall(CallableForms::heldCallable($valueArg->value, $scope))),
             bind: fn () => $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope, $engine),
             // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
             // closure parameter named like a proven read drops its proof.
@@ -425,14 +425,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $held = FirstClassCallableHandler::heldCallable($valueArg->value, $scope);
+        $held = CallableForms::heldCallable($valueArg->value, $scope);
         $called = $stripNull ? $this->calledWithNothing($held, $scope, $engine) : null;
 
         if ($called !== null) {
             return $called;
         }
 
-        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($held));
+        $value = $engine->resolve(CallableForms::invokedCall($held));
 
         if ($stripNull) {
             $value['type'] = TsTypeString::withoutNullArm($value['type']);
@@ -461,12 +461,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($valueExpr !== null && ! $this->isNullConstFetch($valueExpr)) {
             // Laravel calls a callable with the loaded relation, so a first-class one binds it as a closure does.
-            $valueExpr = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($valueExpr, $scope));
+            $valueExpr = CallableForms::passingOneValue(CallableForms::heldCallable($valueExpr, $scope));
             $inner = $scope->readClaimedClosure(
                 $valueExpr,
                 1,
                 $engine,
-                fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($valueExpr)),
+                fn (): array => $engine->resolve(CallableForms::invokedCall($valueExpr)),
                 fn () => $this->bindLoadedRelation($valueExpr, $relationship, $scope, $engine),
             );
 
@@ -519,7 +519,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $value = $valueArg->value;
-        $callback = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($callbackArg->value, $scope));
+        $callback = CallableForms::passingOneValue(CallableForms::heldCallable($callbackArg->value, $scope));
         $resolvedValue = null;
         $model = null;
         $outer = AnalysisScope::NO_NAME_BINDINGS;
@@ -727,13 +727,13 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         // transform()'s value binds by what it held before the claim, which callbackValue() cannot carry.
-        $default = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($default, $scope));
+        $default = CallableForms::passingOneValue(CallableForms::heldCallable($default, $scope));
 
         return $scope->readClaimedClosure(
             $default,
             1,
             $engine,
-            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($default)),
+            fn (): array => $engine->resolve(CallableForms::invokedCall($default)),
             fn () => $this->bindPassedValue(
                 $default,
                 $passed['value'],

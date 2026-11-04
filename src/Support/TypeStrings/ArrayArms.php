@@ -12,6 +12,8 @@ use Closure;
  * The arms of an array's published type, read one at a time: which arm is an array and which a keyed one, the list
  * `array_values()` makes of an arm, what `array_filter()` keeps of one, and the element of a one-armed list.
  *
+ * A stateless reader; Ast\Members\ArrayArm models an arm that a write changes.
+ *
  * @internal
  */
 final class ArrayArms

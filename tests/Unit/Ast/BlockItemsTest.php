@@ -6,10 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\OffsetReadHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -92,7 +92,7 @@ function blockItemsHeldCallables(string $body, array $parameters = []): array
     return array_map(function (Node $call) use ($scope): bool {
         $read = $call instanceof MethodCall ? $call->getArgs()[1]->value : null;
 
-        return $read !== null && FirstClassCallableHandler::heldCallable($read, $scope) !== $read;
+        return $read !== null && CallableForms::heldCallable($read, $scope) !== $read;
     }, $calls);
 }
 

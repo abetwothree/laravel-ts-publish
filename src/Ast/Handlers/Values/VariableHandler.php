@@ -10,8 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\AnalyzesPluckCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
@@ -634,7 +634,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
         // The model the first parameter binds over an element nothing names: the one its declaration names.
-        $declared = ParameterBinder::elementBinding(null, null, $callback->params[0] ?? null, $scope)['model'] ?? null;
+        $declared = ParameterBinder::declaredClosureModel($callback->params[0] ?? null, $scope);
 
         // A resource collection's items are the API resources it built, or what it was given if it collects none.
         if ($receiver === null

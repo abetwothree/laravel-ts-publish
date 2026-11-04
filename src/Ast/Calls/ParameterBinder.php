@@ -82,6 +82,20 @@ final class ParameterBinder
     }
 
     /**
+     * The one concrete model a closure parameter's non-null native type names; null for any other declaration, or none.
+     *
+     * The instance declaredModel() reads a method parameter's.
+     *
+     * @return class-string<Model>|null
+     */
+    public static function declaredClosureModel(?Param $param, AnalysisScope $scope): ?string
+    {
+        $declared = $param === null ? null : self::declaredClass($param, $scope);
+
+        return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
+    }
+
+    /**
      * Whether a closure parameter's type is `self` or `parent`, alone or behind a `?`: the object may be any subclass.
      */
     public static function spellsRelativeClass(Param $param): bool
@@ -136,8 +150,7 @@ final class ParameterBinder
      */
     public static function elementBinding(?string $elementModel, ?array $elementValue, ?Param $param, AnalysisScope $scope): ?array
     {
-        $declared = $param === null ? null : self::declaredClass($param, $scope);
-        $declaredModel = $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
+        $declaredModel = self::declaredClosureModel($param, $scope);
         $model = $elementModel !== null && ($declaredModel === null || is_a($elementModel, $declaredModel, true))
             ? $elementModel
             : $declaredModel;

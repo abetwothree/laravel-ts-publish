@@ -16,7 +16,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
 | `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
-| `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
+| `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
@@ -335,7 +335,7 @@ it, so a same-named closure parameter still resolves against its own binding, as
 `AnalysisScope::writesSeenBy()` answers which writes a read of a local sees: its one top-level write, or the values the
 gap it falls in holds, a block's write or a branch join's. It answers null where a parameter's binding may still hold,
 or a gap's write assigns no value the scan reads; `soleWriteSeenBy()` answers a reader that takes one write.
-`VariableHandler`, `ReceiverClassResolver`, `FirstClassCallableHandler::heldCallable()` and `ParentCallChain` read it.
+`VariableHandler`, `ReceiverClassResolver`, `CallableForms::heldCallable()` and `ParentCallChain` read it.
 `VariableHandler::joinedValue()` and `ReceiverClassResolver::fromGap()` type a gap's writes themselves: a parameter's
 gap joins its old binding, and a write that reads the name lifts the gap (`beforeGap()`). A reader that takes a local by
 its syntax goes through `InspectsAstNodes::spelledWrites()` or `soleSpelledWrite()`, which also decline past a
@@ -378,7 +378,7 @@ model bind in `ConditionalMethodHandler`, whose value closures read through `Res
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
 
 A first-class callable in a position where Laravel passes one value binds the same way:
-`FirstClassCallableHandler::passingOneValue()` reads it as `fn ($v) => m($v)`.
+`CallableForms::passingOneValue()` reads it as `fn ($v) => m($v)`.
 
 These rules settle the cases the table leaves open:
 

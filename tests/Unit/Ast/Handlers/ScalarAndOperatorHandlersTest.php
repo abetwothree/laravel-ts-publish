@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\BinaryOpHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
@@ -162,14 +163,14 @@ it('resolves a first-class callable as the call it stands for where the caller i
 
 it('turns only a first-class callable into the zero-argument call it stands for', function () {
     $callable = new FuncCall(new Name('now'), [new VariadicPlaceholder], ['startLine' => 3]);
-    $call = FirstClassCallableHandler::invokedCall($callable);
+    $call = CallableForms::invokedCall($callable);
     $closure = new ArrowFunction(['expr' => new Int_(1)]);
 
     expect($call)->toBeInstanceOf(FuncCall::class)->not->toBe($callable)
         ->and($call instanceof FuncCall && $call->isFirstClassCallable())->toBeFalse()
         ->and($call->getStartLine())->toBe(3)
         ->and($callable->isFirstClassCallable())->toBeTrue()
-        ->and(FirstClassCallableHandler::invokedCall($closure))->toBe($closure);
+        ->and(CallableForms::invokedCall($closure))->toBe($closure);
 });
 
 // R25: a Closure nothing calls is almost always a call its author meant to write.

@@ -16,6 +16,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  * joins its value into each key it may reach, or makes each member it may remove optional; a list a write may key
  * otherwise also becomes that object, kept beside the list.
  *
+ * The write model; Support\TypeStrings\ArrayArms reads an arm without one.
+ *
  * @phpstan-type Member array{optional: bool, type: string}
  * @phpstan-type ArrayWrite array{path: list<string>, key: string|ElementKey, value: string|null}
  *

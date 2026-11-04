@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
@@ -37,7 +38,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
@@ -844,7 +844,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         [$branches, $complete] = $this->resolveProvenNonNull(
             $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
             $this->scope,
-            fn (): array => $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($value->value, $this->scope)),
+            fn (): array => $this->resolveMergedBranches(CallableForms::heldCallable($value->value, $this->scope)),
         );
 
         if (! $isMerge) {
@@ -853,7 +853,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
             [$defaultBranches, $defaultComplete] = $default === null || $this->closureRequiresArguments($default)
                 ? [[], true]
-                : $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($default, $this->scope));
+                : $this->resolveMergedBranches(CallableForms::heldCallable($default, $this->scope));
             $complete = $complete && $defaultComplete;
 
             // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
