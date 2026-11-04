@@ -11,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
@@ -170,7 +169,7 @@ class ModelAttributeResolver
     {
         return $cast === 'attribute' || $cast === 'accessor' || self::getDeclaresNonNull($cast)
             ? str_contains($type, 'null')
-            : ValueResult::hasNullArm($type);
+            : TsTypeString::hasNullArm($type);
     }
 
     /**
@@ -1176,9 +1175,9 @@ class ModelAttributeResolver
      */
     protected function isEntirelyVagueTsType(string $type): bool
     {
-        $bare = str_ends_with($type, ' | null') ? substr($type, 0, -strlen(' | null')) : $type;
-
-        return in_array($bare, ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
+        // A lone `null` is exact, though withoutNullArm() leaves `unknown` for it.
+        return $type !== 'null'
+            && in_array(TsTypeString::withoutNullArm($type), ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
     }
 
     /**

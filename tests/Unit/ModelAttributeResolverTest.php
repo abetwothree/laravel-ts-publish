@@ -800,6 +800,27 @@ describe('@property docblock refinement', function () {
 
         expect($info['type'])->toBe('Record<string, unknown> | null');
     });
+
+    test('reads a type as entirely vague past any top-level null arm, and a lone null as exact', function (string $type, bool $vague) {
+        $resolver = new class extends ModelAttributeResolver
+        {
+            /**
+             * Whether the resolver reads the type as carrying no structure at all.
+             */
+            public function readsEntirelyVague(string $type): bool
+            {
+                return $this->isEntirelyVagueTsType($type);
+            }
+        };
+
+        expect($resolver->readsEntirelyVague($type))->toBe($vague);
+    })->with([
+        'unknown with a trailing null arm' => ['unknown | null', true],
+        'unknown with a leading null arm' => ['null | unknown', true],
+        'a list or a record with a null arm between them' => ['unknown[] | null | Record<string, unknown>', true],
+        'a record alone' => ['Record<string, unknown> | null', false],
+        'a lone null' => ['null', false],
+    ]);
 });
 
 test('a @property tag spelling a tuple, an object shape, a quoted key or a nested nullable shape types its column', function (string $column, string $type) {
