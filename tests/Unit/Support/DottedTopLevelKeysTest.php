@@ -92,6 +92,10 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
         ['a' => '{ k: number; j: string }', 'a.k' => 'string?'],
         ['a' => "Omit<{ k: number; j: string }, 'k'> & { k: string | { k: number; j: string }[\"k\"] }"],
     ],
+    'over a key the object quotes and escapes' => [
+        ['a' => "{ 'it\\'s': number; \"a\\/b\": number }", "a.it's" => 'string', 'a.a/b' => 'string'],
+        ['a' => "Omit<{ 'it\\'s': number; \"a\\/b\": number }, 'it\\'s' | 'a/b'> & { \"it's\": string; \"a\\/b\": string }"],
+    ],
     'into a key of an object' => [
         ['a' => '{ b: { x: number }; y: string }', 'a.b.c' => 'number'],
         ['a' => "Omit<{ b: { x: number }; y: string }, 'b'> & { b: { b: { x: number }; y: string }[\"b\"] & { c: number } }"],
