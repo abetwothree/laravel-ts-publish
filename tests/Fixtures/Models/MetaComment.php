@@ -13,7 +13,11 @@ class MetaComment extends Model
 
     protected $guarded = [];
 
-    /** @return array<string, string> */
+    /**
+     * Casts both JSON columns to plain arrays.
+     *
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return ['meta' => 'array', 'tags' => 'array'];

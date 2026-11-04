@@ -93,6 +93,19 @@ test('a filled key queues the model its member names, as a cast naming it does',
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
 });
 
+test('a fill keeps a key whose value may be left out so, and a fill naming no class declares no slots', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+        ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+    ]);
+    $analysis->leftOutValues = ['owner' => true, 'chart' => true];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overridden'));
+
+    expect($analysis->leftOutValues)->toEqual(['owner' => true, 'chart' => true])
+        ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
+});
+
 test('an override spelled like the model beside it keeps both arms, each token with its own class', function () {
     $analysis = refinedAnalysis([['name' => 'either', 'type' => 'unknown']], 'spelledLikeModel');
 
@@ -123,6 +136,7 @@ test('a vague member fills only an exact unknown, never a vague key it would mak
 })->with([
     'a list' => ['unknown[]', 'unknown[]'],
     'a nullable record' => ['Record<string, unknown> | null', 'Record<string, unknown> | null'],
+    'unknown with a null arm' => ['unknown | null', 'unknown | null'],
     'unknown' => ['unknown', 'unknown'],
 ]);
 

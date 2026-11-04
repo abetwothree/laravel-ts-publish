@@ -71,11 +71,12 @@ final class ReturnShapeRefiner
 
             if ($resolved !== null) {
                 $imports[] = $resolved['customImports'];
+                // A member naming no class declares no slots, so the fit leaves a key with no channel as it is.
                 $filled[$name] = [
                     'type' => $property['type'],
                     'import' => null,
                     'customImports' => $resolved['customImports'],
-                    'tokenFqcns' => $resolved['tokenFqcns'] ?? [],
+                    ...(isset($resolved['tokenFqcns']) ? ['tokenFqcns' => $resolved['tokenFqcns']] : []),
                 ];
             }
 
@@ -110,13 +111,12 @@ final class ReturnShapeRefiner
     /**
      * The type to publish for one key, with the custom imports and classes it needs: the member with each arm once,
      * kept where its own custom imports and classes bring in every name it spells, else the bare name the app itself
-     * declares. Null leaves the property alone, as it does for a vague member over a key the body typed at all.
+     * declares. Null leaves the property alone, as it does for a vague member over a key not exactly `unknown`.
      *
      * @param  ShapeTypeInfo|null  $doc
-     * @param  bool  $untyped  whether the body left the key exactly `unknown`, which no docblock member can widen
      * @return ShapeTypeInfo|null
      */
-    private function resolvedType(?array $doc, bool $untyped, ReflectionMethod $method, bool $keepsUnresolvedNames): ?array
+    private function resolvedType(?array $doc, bool $exactlyUnknown, ReflectionMethod $method, bool $keepsUnresolvedNames): ?array
     {
         $member = $doc === null ? null : LaravelTsPublish::shapeMemberForKey($doc);
 
@@ -130,12 +130,12 @@ final class ReturnShapeRefiner
                 fn (string $arm): bool => TsTypeString::isVagueOnly($arm),
             );
 
-            return $untyped || ! $vague ? $member : null;
+            return $exactlyUnknown || ! $vague ? $member : null;
         }
 
         $phpDoc = $doc['phpDoc'] ?? null;
 
-        if (! $untyped || ! $keepsUnresolvedNames || $phpDoc === null || preg_match('/^[A-Z]\w*$/', $phpDoc) !== 1) {
+        if (! $exactlyUnknown || ! $keepsUnresolvedNames || $phpDoc === null || preg_match('/^[A-Z]\w*$/', $phpDoc) !== 1) {
             return null;
         }
 

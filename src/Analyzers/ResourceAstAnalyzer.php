@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
@@ -106,6 +107,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type DeclaredArm from FileImportNames
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
  *
@@ -441,9 +443,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
+        /** @var array<array-key, list<array{string, TokenFqcns}>> $declaredMap each branch's type and declared slots */
+        $declaredMap = [];
+
         foreach ($analyses as $analysis) {
             foreach ($analysis->properties as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
+                $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
             }
 
@@ -457,16 +463,31 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var AnalyzedPropertyList */
         $properties = [];
 
+        /** @var array<array-key, TokenFqcns> $slots */
+        $slots = [];
+        $unalike = [];
+
         foreach ($propertyMap as $name => $entries) {
-            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
+            $declared = $this->declaredBranches($declaredMap[$name], $dropsUntypedBranches);
+            [$type, $keySlots] = $declared === null
+                ? ['unknown', []]
+                : $this->slottedBranchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull, $declared);
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
+            $bodyType = $declared === null ? $type : $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
             // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
             // type is a fill, and a reconcile that puts it back must find it again.
             $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
-            $fillType = array_column($entries, 'fillType') === []
+            $fillType = array_column($entries, 'fillType') === [] || $declared === null
                 ? null
-                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
+                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
+
+            if ($keySlots !== []) {
+                $slots[$name] = $keySlots;
+            }
+
+            if ($declared === null) {
+                $unalike[] = (string) $name;
+            }
 
             $presentInAll = count($entries) === $branchCount;
             $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
@@ -519,8 +540,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
-        $merged->declaredTokenFqcns = $this->slotsEveryBranchAgrees($analyses, array_keys($propertyMap));
+        $merged->declaredTokenFqcns = $slots;
         $merged->queueSplitClasses($analyses);
+
+        // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.
+        foreach ($unalike as $name) {
+            $leftOut = isset($merged->leftOutValues[$name]);
+            $merged->forgetChannels($name);
+
+            if ($leftOut) {
+                $merged->leftOutValues[$name] = true;
+            }
+        }
 
         return $merged;
     }
@@ -2253,7 +2284,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 ];
             }
 
-            // The publisher fits the key's import channels to this text once it knows which cast is in force.
+            // The publisher fits the key's import channels to this text once it knows which cast is in force; the slots
+            // a fill declared described the value this text replaces.
+            unset($analysis->declaredTokenFqcns[$property]);
             $analysis->casts[$property] = $optional === null
                 ? ['type' => $type, 'import' => $import]
                 : ['type' => $type, 'import' => $import, 'optional' => $optional];
@@ -2311,36 +2344,36 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The token slots of each key every branch that sets it declares to one text alike, as the union then keeps that
-     * text and each token's class; any other key's slots no longer line up with its tokens.
+     * Each distinct text a key's branches declare token slots for, beside those slots, once branchUnion() has dropped
+     * the branches it drops; null where another branch spells such a text's own names, as no join can then say which
+     * class stands behind each of those tokens.
      *
-     * @param  list<MethodAnalysis>  $analyses
-     * @param  list<array-key>  $names
-     * @return array<array-key, TokenFqcns>
+     * @param  list<array{string, TokenFqcns}>  $entries  each branch's type for the key and the slots declared for it
+     * @return list<array{string, TokenFqcns}>|null
      */
-    private function slotsEveryBranchAgrees(array $analyses, array $names): array
+    private function declaredBranches(array $entries, bool $dropsUntypedBranches): ?array
     {
-        $slots = [];
+        if ($dropsUntypedBranches && count(array_unique(array_column($entries, 0))) > 1) {
+            $entries = array_filter($entries, static fn (array $entry): bool => $entry[0] !== 'unknown');
+        }
 
-        foreach ($names as $name) {
-            $declared = [];
+        $distinct = array_values(array_intersect_key($entries, array_unique(array_map(serialize(...), $entries))));
+        $declared = array_values(array_filter($distinct, static fn (array $entry): bool => $entry[1] !== []));
 
-            foreach ($analyses as $analysis) {
-                foreach ($analysis->properties as $property) {
-                    if ($property['name'] === (string) $name) {
-                        $declared[] = [$property['type'], $analysis->declaredTokenFqcns[$name] ?? null];
-                    }
+        foreach ($declared as $own) {
+            foreach ($distinct as $other) {
+                $spells = array_any(
+                    FileImportNames::declaredTokens($other[0], $own[1]),
+                    static fn (array $token): bool => $token['read'],
+                );
+
+                if ($other !== $own && $spells) {
+                    return null;
                 }
-            }
-
-            $alike = count(array_unique(array_map(serialize(...), $declared))) === 1;
-
-            if ($alike && $declared[0][1] !== null) {
-                $slots[$name] = $declared[0][1];
             }
         }
 
-        return $slots;
+        return $declared;
     }
 
     /**
@@ -2391,8 +2424,21 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * One property's branch types as one type: the type itself when every branch agrees.
      *
      * @param  list<string>  $types
+     * @param  list<array{string, TokenFqcns}>  $declared  declaredBranches()'s texts, whose arms join whole
      */
-    private function branchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull): string
+    private function branchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull, array $declared = []): string
+    {
+        return $this->slottedBranchUnion($types, $dropsUntypedBranches, $keepsLoneNull, $declared)[0];
+    }
+
+    /**
+     * branchUnion()'s type, beside the token slots the declared texts' arms bring to it, in print order.
+     *
+     * @param  list<string>  $types
+     * @param  list<array{string, TokenFqcns}>  $declared
+     * @return array{string, TokenFqcns}
+     */
+    private function slottedBranchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull, array $declared): array
     {
         $unique = array_values(array_unique($types));
 
@@ -2404,23 +2450,53 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $unique = $typed === [] || ($typed === ['null'] && ! $keepsLoneNull) ? ['unknown'] : $typed;
         }
 
-        return count($unique) === 1 ? $unique[0] : $this->unionBranchTypes($unique);
+        $slotted = [];
+
+        foreach ($declared as [$text, $slots]) {
+            $slotted[$text] = FileImportNames::declaredArms($text, $slots);
+        }
+
+        if (count($unique) === 1) {
+            return [$unique[0], array_merge([], ...array_column($slotted[$unique[0]] ?? [], 1))];
+        }
+
+        // `unknown` absorbs whatever it is unioned with, so one untypable branch makes the whole
+        // union `unknown` — never a `string` that the untypable branch does not actually promise.
+        if (in_array('unknown', $unique, true)) {
+            return ['unknown', []];
+        }
+
+        return $slotted === [] ? [TsTypeString::hoistNull($unique), []] : $this->unionSlottedTypes($unique, $slotted);
     }
 
     /**
-     * Union branch type strings, hoisting one trailing `| null` rather than repeating the marker each
-     * nullsafe branch already carries. Only top-level nulls move; a nested one belongs to its member.
+     * Union branch types as hoistNull() does, but for a declared text's arms whose tokens take slots: two of one
+     * spelling name different classes, as an override's and a model's do, so each is kept with its slots.
      *
      * @param  list<string>  $types
+     * @param  array<string, list<DeclaredArm>>  $slotted  each declared text's arms
+     * @return array{string, TokenFqcns}
      */
-    private function unionBranchTypes(array $types): string
+    private function unionSlottedTypes(array $types, array $slotted): array
     {
-        // `unknown` absorbs whatever it is unioned with, so one untypable branch makes the whole
-        // union `unknown` — never a `string` that the untypable branch does not actually promise.
-        if (in_array('unknown', $types, true)) {
-            return 'unknown';
+        $arms = [];
+        $slots = [];
+        $nullable = false;
+
+        foreach ($types as $type) {
+            $typeArms = $slotted[$type]
+                ?? array_map(static fn (string $arm): array => [$arm, []], TsTypeString::splitTopLevelUnion($type));
+
+            foreach ($typeArms as [$arm, $armSlots]) {
+                if ($arm === 'null') {
+                    $nullable = true;
+                } elseif ($armSlots !== [] || ! in_array($arm, $arms, true)) {
+                    $arms[] = $arm;
+                    array_push($slots, ...$armSlots);
+                }
+            }
         }
 
-        return TsTypeString::hoistNull($types);
+        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), $slots];
     }
 }

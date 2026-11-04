@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
@@ -1018,6 +1019,18 @@ it('aliases a model beside a page whose cast imports User from another module, a
             '../../../../../../app/models' => ['User as ModelsUser'],
         ])
         ->and([$sent->owner->name, $sent->author->name])->toBe(['Ada', 'Ada']);
+});
+
+it('joins a props helper\'s override-beside-model fill with a render branch\'s null, each token keeping its class', function () {
+    app(Router::class)->get('/doc-shape-branched/{id}', [DocShapeBranchedPageController::class, 'branched']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { owner: User | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->branched(1))->owner)->toBeNull();
 });
 
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {

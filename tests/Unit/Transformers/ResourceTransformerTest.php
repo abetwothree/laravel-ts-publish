@@ -13,11 +13,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBefo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
@@ -3468,6 +3471,40 @@ describe("a key toArray()'s @return shape names a class for, where its body read
 
         expect($transformer->properties['first']['type'])->toBe('{ a: User }')
             ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('joins a spread helper\'s fill with a branch spelling none of its names, each token keeping its class', function () {
+        $transformer = new ResourceTransformer(DocShapeBranchJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'text' => 'User | WorkbenchUser | string',
+            'none' => 'User | WorkbenchUser | null',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppedBranchResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User | WorkbenchUser',
+            'merged' => 'User | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('publishes unknown where another branch spells the fill\'s names with other classes, never a wrong binding', function () {
+        $transformer = new ResourceTransformer(DocShapeUnalikeBranchResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'plain' => 'unknown',
+            'declared' => 'unknown',
+            'cast' => 'string | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User as WorkbenchUser']]);
     });
 
     test('sends the model or the override under each key', function () {

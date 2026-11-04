@@ -147,9 +147,12 @@ It fills a value only where
 token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
 resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
 the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
-`merge()` carries them, and a branch join keeps them where every branch declares the key alike. `ResourceTransformer`
-reads a key's tokens from its slots where one holds an override's null, so `either: Person|User` publishes
-`User | WorkbenchUser`, each with its import; a per-name queue cannot hold that null.
+`merge()` carries them. `mergeReturnBranches()` joins a declared text's arms whole, past the branches it drops, so a
+branch spelling none of the text's own names joins beside it: `User | User | string`, its slots `[null, User]`. Where
+another branch spells those names, with other slots or none, no join can bind them, and the key publishes `unknown`
+with no class (`declaredBranches()`). `ResourceTransformer` reads a key's tokens from its slots where one holds an
+override's null, so `either: Person|User` publishes `User | WorkbenchUser`, each with its import, as an Inertia page
+does through `FileImportNames`; a per-name queue cannot hold that null.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`

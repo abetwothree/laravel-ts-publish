@@ -544,10 +544,10 @@ An API resource's helper read as a value, documented `@return Person|User`, wher
 another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Person|User>` a list of it, importing only
 the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
 which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
-`@return array{…}` of a resource's `toArray()` or spread helper filling a vague key, unless another return branch sets
-that key to a different value: the join unions the branches by type text, as
-[a merge does](#a-merge-whose-two-sides-name-same-basename-classes-publishes-only-one-of-them), so the two `User` arms
-become one, the model's. Type the key with an import-aware `#[TsCasts]`.
+`@return array{…}` of a resource's `toArray()`, a spread helper or an Inertia page's props helper filling a vague key,
+joined with any return or render branch that spells neither `User`. A branch that does spell it, such as
+`'k' => $this->user` beside the fill, leaves no join that can bind each token, so the key publishes `unknown`. Type the
+key with an import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 

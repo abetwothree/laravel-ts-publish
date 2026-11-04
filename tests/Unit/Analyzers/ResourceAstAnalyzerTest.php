@@ -7050,22 +7050,49 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });
 
-test('mergeReturnBranches() keeps a key\'s declared token slots only where every branch declares it alike', function () {
-    $user = User::class;
-    $branch = function (string $type, ?array $slots): ResourceAnalysis {
-        $analysis = new ResourceAnalysis(properties: [['name' => 'either', 'type' => $type, 'optional' => false, 'description' => '']]);
-        $analysis->declaredTokenFqcns = $slots === null ? [] : ['either' => $slots];
+/**
+ * Branches setting `either`, each a type and the token slots a declaration recorded for it, if any.
+ *
+ * @param  list<array{string, list<class-string|null>|null}>  $branches
+ */
+function slottedBranches(array $branches, bool $drops = false): ResourceAnalysis
+{
+    $analyses = array_map(function (array $branch): ResourceAnalysis {
+        $analysis = new ResourceAnalysis(properties: [['name' => 'either', 'type' => $branch[0], 'optional' => false, 'description' => '']]);
+
+        if ($branch[1] !== null) {
+            $analysis->declaredTokenFqcns = ['either' => $branch[1]];
+            $analysis->inlineModelFqcns = ['either' => [User::class]];
+        }
 
         return $analysis;
-    };
-    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+    }, $branches);
 
-    expect($analyzer->mergeReturnBranches([$branch('User | User', [null, $user]), $branch('User | User', [null, $user])])->declaredTokenFqcns)
-        ->toBe(['either' => [null, $user]])
-        ->and($analyzer->mergeReturnBranches([$branch('User | User', [null, $user]), $branch('string', null)])->declaredTokenFqcns)
-        ->toBe([])
-        ->and($analyzer->mergeReturnBranches([$branch('User', [null]), $branch('User', [$user])])->declaredTokenFqcns)
-        ->toBe([]);
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->mergeReturnBranches($analyses, $drops);
+}
+
+test('mergeReturnBranches() joins a key\'s declared token slots where no other branch spells their names unalike', function (array $branches, bool $drops, string $type, array $slots) {
+    $merged = slottedBranches($branches, $drops);
+
+    expect($merged->properties[0]['type'])->toBe($type)
+        ->and($merged->declaredTokenFqcns)->toBe($slots === [] ? [] : ['either' => $slots]);
+})->with([
+    'alike' => [[['User | User', [null, User::class]], ['User | User', [null, User::class]]], false, 'User | User', [null, User::class]],
+    'beside a string' => [[['User | User', [null, User::class]], ['string', null]], false, 'User | User | string', [null, User::class]],
+    'a string first' => [[['string', null], ['User | User', [null, User::class]]], false, 'string | User | User', [null, User::class]],
+    'beside a null' => [[['User | User', [null, User::class]], ['null', null]], false, 'User | User | null', [null, User::class]],
+    'beside a dropped unknown' => [[['User | User', [null, User::class]], ['unknown', null]], true, 'User | User', [null, User::class]],
+    'beside a kept unknown' => [[['User | User', [null, User::class]], ['unknown', null]], false, 'unknown', []],
+    'two unalike' => [[['User | User', [null, User::class]], ['User', [User::class]]], false, 'unknown', []],
+    'a plain branch spelling the name' => [[['User | User', [null, User::class]], ['User', null]], true, 'unknown', []],
+]);
+
+test('mergeReturnBranches() forgets the classes of a key whose branches spell its declared names unalike', function () {
+    $merged = slottedBranches([['User | User', [null, User::class]], ['User', [User::class]]]);
+
+    expect($merged->inlineModelFqcns)->toBe([])
+        ->and(slottedBranches([['User | User', [null, User::class]], ['string', null]])->inlineModelFqcns)
+        ->toBe(['either' => [User::class]]);
 });
 
 // merge()/mergeWhen() call their closure with no argument, so a parameter holds its default, never the outer local.

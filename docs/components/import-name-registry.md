@@ -95,9 +95,11 @@ Callers fill their queues in one of three ways:
   of that name on any channel or in `MethodAnalysis::$carried` instead: an import-less cast that spells a class another
   key holds or another cast displaced has none of its own. Neither channel reads a token inside a quoted literal or a
   generated index signature key, whose text is a value or a key, and the class channel never reads the name after
-  `typeof`, which is a const's. A key a `share()` docblock retypes reads each token of its own classes' names from
-  `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the override's `User` where
-  another key brings that import.
+  `typeof`, which is a const's. A key a `share()` docblock retypes, or a method's `@return` fills, reads each token of
+  its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the
+  override's `User` where another key brings that import. `FileImportNames::declaredTokens()` is the one reading of
+  those slots: the docblock engine's keep check and key fill, the branch join, `ResourceTransformer` and this file all
+  read them through it, and none respells a token inside a literal or after `typeof`.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter
@@ -159,7 +161,10 @@ transformed is never registered.
 
 ### `ResourceTransformer`
 
-`ResourceTransformer` adds two rules of its own:
+`ResourceTransformer` adds three rules of its own:
+
+- **A declared key's tokens**: a key whose `MethodAnalysis::$declaredTokenFqcns` hold an override's null respells each
+  token by its own slot (`aliasSlottedTokens()`), since its per-name queue cannot hold that null.
 
 - **Inline-only consts**: an enum reached only through `EnumResource::make()` inside an inline array never enters
   `$enumFqcnMap`, because it needs no bare type import. A second loop registers those leftover consts, so two with one
