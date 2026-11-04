@@ -1233,17 +1233,10 @@ class LaravelTsPublish
             return null;
         }
 
-        $arms = [];
-
-        // Arms of one text whose tokens name different classes, as an override spelled like a model's, stay apart.
-        foreach (TokenSlots::declaredArms($info['type'], $info['tokenFqcns'] ?? []) as [$arm, $armSlots]) {
-            $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
-        }
-
-        $tokens = array_merge([], ...array_column($arms, 1));
+        [$type, $tokens] = TokenSlots::uniqueArms($info['type'], $info['tokenFqcns'] ?? []);
 
         return [
-            'type' => implode(' | ', array_column($arms, 0)),
+            'type' => $type,
             'customImports' => $info['customImports'],
             ...($tokens === [] ? [] : ['tokenFqcns' => $tokens]),
         ];
@@ -2860,7 +2853,7 @@ class LaravelTsPublish
      */
     protected function borrowsImport(array $arm, array $merged): bool
     {
-        $unnamed = $this->typeLeftToImports($arm);
+        $unnamed = TokenSlots::typeLeftToImports($arm['type'], $arm['tokenFqcns'] ?? []);
 
         if (TsTypeString::importsCover($unnamed, $arm['customImports'])) {
             return false;
@@ -3222,29 +3215,9 @@ class LaravelTsPublish
     private function shapeKeeps(array $info): bool
     {
         return TsTypeString::importsCover(
-            $this->typeLeftToImports($info),
+            TokenSlots::typeLeftToImports($info['type'], $info['tokenFqcns'] ?? []),
             $this->shapesCarryImports ? $info['customImports'] : [],
         );
-    }
-
-    /**
-     * A shape member's type with each token a class stands behind blanked, leaving the names its imports must bring.
-     *
-     * @param  ShapeTypeInfo  $info
-     */
-    private function typeLeftToImports(array $info): string
-    {
-        $left = '';
-        $from = 0;
-
-        foreach (TokenSlots::declaredTokens($info['type'], $info['tokenFqcns'] ?? []) as $token) {
-            if ($token['slot'] !== null && $token['read']) {
-                $left .= substr($info['type'], $from, $token['offset'] - $from).' ';
-                $from = $token['offset'] + strlen($token['token']);
-            }
-        }
-
-        return $left.substr($info['type'], $from);
     }
 
     /**

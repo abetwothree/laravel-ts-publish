@@ -40,6 +40,26 @@ final class TokenSlots
     }
 
     /**
+     * A declaration's type with each token a class stands behind blanked, leaving the names its imports must bring.
+     *
+     * @param  TokenFqcns  $slots
+     */
+    public static function typeLeftToImports(string $type, array $slots): string
+    {
+        $left = '';
+        $from = 0;
+
+        foreach (self::declaredTokens($type, $slots) as $token) {
+            if ($token['slot'] !== null && $token['read']) {
+                $left .= substr($type, $from, $token['offset'] - $from).' ';
+                $from = $token['offset'] + strlen($token['token']);
+            }
+        }
+
+        return $left.substr($type, $from);
+    }
+
+    /**
      * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order, and
      * those names, since an arm's share of the slots may hold no class of a name it spells.
      *
@@ -59,6 +79,24 @@ final class TokenSlots
         }
 
         return $arms;
+    }
+
+    /**
+     * A declaration's type with each top-level arm once, beside its slots: arms of one text whose tokens name different
+     * classes, as an override spelled like a model's, stay apart.
+     *
+     * @param  TokenFqcns  $slots
+     * @return array{string, TokenFqcns}
+     */
+    public static function uniqueArms(string $type, array $slots): array
+    {
+        $arms = [];
+
+        foreach (self::declaredArms($type, $slots) as [$arm, $armSlots]) {
+            $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
+        }
+
+        return [implode(' | ', array_column($arms, 0)), array_merge([], ...array_column($arms, 1))];
     }
 
     /**

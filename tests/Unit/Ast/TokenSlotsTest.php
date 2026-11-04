@@ -59,6 +59,18 @@ test('joinedSlots() of a declaration\'s arms gives back its slots', function (st
     'no class' => ['string | number', []],
 ]);
 
+test('typeLeftToImports() blanks each read token a class stands behind, leaving an override\'s and a literal\'s', function () {
+    expect(TokenSlots::typeLeftToImports('User | User', [null, User::class]))->toBe('User |  ')
+        ->and(TokenSlots::typeLeftToImports("{ kind: 'User'; r: User }", [null, User::class]))->toBe("{ kind: 'User'; r:   }")
+        ->and(TokenSlots::typeLeftToImports('Post | null', []))->toBe('Post | null');
+});
+
+test('uniqueArms() keeps each arm once, two of one text whose slots name different classes apart', function () {
+    expect(TokenSlots::uniqueArms('User | User | null', [null, User::class]))->toBe(['User | User | null', [null, User::class]])
+        ->and(TokenSlots::uniqueArms('User | User', [User::class, User::class]))->toBe(['User', [User::class]])
+        ->and(TokenSlots::uniqueArms('string | string | null', []))->toBe(['string | null', []]);
+});
+
 test('classLess() reads a declared type without the classes its tokens name, member by member', function (string $type, array $slots, string $read) {
     expect(TokenSlots::classLess($type, $slots))->toBe($read);
 })->with([
