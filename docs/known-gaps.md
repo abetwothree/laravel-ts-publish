@@ -645,8 +645,9 @@ resource's own model declares `label()`, since the related model could be any. N
 [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php) publishes `unknown` for
 `$this->whenHas('title', fn ($t) => json_decode($t))`, not the `title` column's `string`, because Laravel returns what
 the value returns and a plain title decodes to `null`, as `WhenHasValueResource` pins. Give the closure a return type,
-such as `fn ($t): ?string => json_decode($t)`, and the key types from it; a `@return` docblock on the closure does not
-type it. Inside a ternary or another union the `unknown` arm is left out instead
+such as `fn ($t): ?string => json_decode($t)`, or a `@return` docblock written before the closure, and the key types
+from it; a docblock before the whole call or above the array item is not read. Inside a ternary or another union
+the `unknown` arm is left out instead
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)), so
 `$c ? $this->whenHas('title', fn ($t) => json_decode($t)) : null` publishes `null`. `whenExistsLoaded()`,
 `whenCounted()` and `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a
@@ -1066,8 +1067,8 @@ subclass writes it, whole, by a compound operator or by element, typed in the wr
 - After a whole `unset()` it publishes `unknown`, since PHP then reads it through `__get()`, which a resource forwards
   to its model.
 - A value the engine cannot type publishes `unknown`: an untyped method or closure parameter, a variable a closure
-  imports by reference, an import a closure holding the write reassigns, or a `mixed` call. A `@param` on a closure
-  passed inline, or on the statement above `$f = function ($n)`, is not read, so such a parameter counts as untyped.
+  imports by reference, an import a closure holding the write reassigns, or a `mixed` call. A `@param` on the statement
+  above `$f = function ($n)` is not read, so such a parameter counts as untyped.
 - Any other write publishes `unknown` as well: a by-reference argument, as in `array_push($this->queue, 1)` or
   `sort($this->tags)`, a `&` reference, a destructuring assignment, and `foreach (… as $this->p)`.
 - An element write publishes `unknown` where the array may be `null` or a scalar, where it compounds, as

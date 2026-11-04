@@ -5,6 +5,9 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node;
+use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Namespace_;
@@ -36,6 +39,25 @@ it('parses a file, caches it, and records it as a dependency even on a cache hit
 
     expect($second)->toBe($first)
         ->and($paths)->toContain($file);
+});
+
+// php-parser gives a positional argument's comments to the Arg, which starts on the same token as the closure.
+it('hands a closure argument\'s doc comment to the closure, and leaves a closure\'s own in place', function () {
+    $stmts = new AstParser()->parseSource('<?php f(/** @return int */ fn () => 1, /** @return list<int> */ function () '
+        .'{ return [1]; }, /** @return bool */ named: fn () => true, /** @return float */ kept: /** @return string */ '
+        .'fn () => "", /** @return null */ $value, value: /** @return array{} */ fn () => []);');
+    $closures = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof ArrowFunction
+        || $node instanceof Closure);
+    $args = new NodeFinder()->findInstanceOf($stmts, Arg::class);
+    $docs = fn (array $nodes): array => array_map(fn (Node $node): ?string => $node->getDocComment()?->getText(), $nodes);
+
+    expect($docs($closures))->toBe([
+        '/** @return int */',
+        '/** @return list<int> */',
+        '/** @return bool */',
+        '/** @return string */',
+        '/** @return array{} */',
+    ])->and($docs($args))->toBe([null, null, null, '/** @return float */', '/** @return null */', null]);
 });
 
 it('returns an empty array for unparseable source', function () {

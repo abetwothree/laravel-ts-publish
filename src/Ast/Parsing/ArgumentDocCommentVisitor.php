@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
+
+use PhpParser\Node;
+use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure;
+use PhpParser\NodeVisitorAbstract;
+
+/**
+ * Hands a call argument's comments to the closure it holds, so a docblock written before a closure argument types it.
+ *
+ * php-parser gives a comment to the first node that starts after it: a positional argument starts on its closure's
+ * token, so the argument takes the docblock, while an array value's or a named argument's lands on the closure.
+ *
+ * @internal
+ */
+final class ArgumentDocCommentVisitor extends NodeVisitorAbstract
+{
+    /**
+     * Move an argument's comments onto the closure it holds, unless the closure has a docblock of its own.
+     */
+    public function enterNode(Node $node): null
+    {
+        if ($node instanceof Arg
+            && ($node->value instanceof Closure || $node->value instanceof ArrowFunction)
+            && $node->value->getDocComment() === null
+            && $node->getDocComment() !== null
+        ) {
+            $node->value->setAttribute('comments', [...$node->getComments(), ...$node->value->getComments()]);
+            $node->setAttribute('comments', []);
+        }
+
+        return null;
+    }
+}

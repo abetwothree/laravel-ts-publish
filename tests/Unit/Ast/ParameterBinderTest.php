@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
@@ -310,6 +311,12 @@ test('binds a closure\'s parameters by the types they declare, natively or by @p
             'doc' => 'number',
             'rest' => 'number[]',
         ]);
+});
+
+test('binds a closure argument\'s parameter by the @param written before the argument', function () {
+    expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(DocumentedClosureResource::class)->properties))
+        ->toMatchArray(['doc_param' => 'string | number'])
+        ->and(json_encode(new DocumentedClosureResource(new Post)->relabel()->toArray(request())['doc_param']))->toBe('1');
 });
 
 // PHP 8.4 reflects `self` and `parent` as spelled, and 8.5 too in a trait's method.

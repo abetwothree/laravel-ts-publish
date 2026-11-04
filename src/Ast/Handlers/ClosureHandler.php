@@ -14,9 +14,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -28,8 +31,8 @@ use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
 
 /**
- * Closures and arrow functions used as a property value — resolves the body's return type(s),
- * falling back to the declared return-type annotation when the body itself resolves to `unknown`.
+ * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
+ * declared return-type annotation, or the docblock's `@return`, when the body itself resolves to `unknown`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -85,7 +88,8 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A closure's returns resolved in its own bindings, or its return-type annotation where they resolve to `unknown`.
+     * A closure's returns resolved in its own bindings, or its return-type annotation or `@return` where they read
+     * `unknown`.
      *
      * @param  non-empty-list<Expr>  $closureReturns
      * @return ValueExpressionResult
@@ -101,7 +105,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return $bodyResult;
         }
 
-        $annotationResult = $this->resolveClosureAstReturnType($closure);
+        $annotationResult = $this->resolveClosureAstReturnType($closure, $scope);
 
         return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
     }
@@ -153,13 +157,13 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Resolve an arrow function's or closure's return type annotation to a ClosureAnnotationResult.
-     * Returns null when the annotation is absent, is a union/intersection, or maps to void/mixed/never
-     * or an unresolvable class.
+     * Resolve an arrow function's or closure's return type annotation, else its docblock's `@return` where it declares
+     * none. Returns null when the annotation is a union/intersection, or maps to void/mixed/never or an unresolvable
+     * class, and when the docblock reads vague, types nothing or names a class with no published file.
      *
-     * @return ClosureAnnotationResult|null
+     * @return ClosureAnnotationResult|ValueExpressionResult|null
      */
-    private function resolveClosureAstReturnType(Expr $expr): ?array
+    private function resolveClosureAstReturnType(Expr $expr, AnalysisScope $scope): ?array
     {
         if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
             return null;
@@ -167,11 +171,21 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
         $returnType = $expr->returnType;
 
-        if ($returnType === null) {
+        if ($returnType !== null) {
+            return $this->convertAstTypeNodeToTs($returnType);
+        }
+
+        $declared = DocblockTags::type((string) $expr->getDocComment(), 'return');
+
+        if ($declared === null || DocblockTags::isVague($declared)) {
             return null;
         }
 
-        return $this->convertAstTypeNodeToTs($returnType);
+        $result = resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->declaringFileClass);
+
+        return $result !== null && ! TsTypeString::isVagueTsType($result['type']) && ValueResult::namesOnlyPublishedModels($result)
+            ? $result
+            : null;
     }
 
     /**

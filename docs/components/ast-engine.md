@@ -40,7 +40,7 @@ These are the classes a change to the engine usually touches:
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
-| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node, under a trait alias too |
+| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, with a call argument's docblock moved onto the closure it holds, and find one method's AST node, under a trait alias too |
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
@@ -415,9 +415,10 @@ other parameter puts its classes, when it names only classes, in `varDeclaredBin
 it is. `bindClosure()` binds a closure's parameters from the declaration the AST holds, and differs in two ways: its
 class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
 `Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
-closure itself. An untyped one binds nothing, since no call is read. A closure's `self` and `parent` name the classes
-`relativeClass()` names, there and in a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the
-name in `relativeParameters`, so its receiver reads members as a spelled inline `@var`'s does.
+closure itself, where `AstParser` also moves one written before the call argument holding it. An untyped one binds
+nothing, since no call is read. A closure's `self` and `parent` name the classes `relativeClass()` names, there and in
+a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the name in `relativeParameters`, so its
+receiver reads members as a spelled inline `@var`'s does.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.
 

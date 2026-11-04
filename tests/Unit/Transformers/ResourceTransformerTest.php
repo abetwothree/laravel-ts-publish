@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBefo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
@@ -2128,6 +2129,29 @@ describe('ResourceTransformer over a property docblock another file declares', f
             'warnings' => 'string[]',
             'bag' => '{ warnings: string[]; context: Record<string, unknown>; codes: number[] }',
         ]);
+    });
+});
+
+// A docblock describes a closure where it sits on the closure or on the argument holding it, never on the call.
+describe('ResourceTransformer over a value closure\'s docblock', function () {
+    test('a closure\'s docblock @return types a value closure that has no native return type', function () {
+        $transformer = new ResourceTransformer(DocumentedClosureResource::class);
+        $properties = $transformer->properties;
+
+        expect($properties['doc_arrow'])->toMatchArray(['type' => 'string | null', 'optional' => true])
+            ->and($properties['doc_fn'])->toMatchArray(['type' => 'string | null', 'optional' => true])
+            ->and($properties['doc_named']['type'])->toBe('number')
+            ->and($properties['doc_class']['type'])->toBe('Post | null')
+            ->and($properties['native_return']['type'])->toBe('string | null')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['Post']]);
+    });
+
+    test('a docblock before the whole call or the item, or a vague one, leaves the closure unknown', function () {
+        $properties = (new ResourceTransformer(DocumentedClosureResource::class))->properties;
+
+        expect($properties['doc_call']['type'])->toBe('unknown')
+            ->and($properties['doc_item']['type'])->toBe('unknown')
+            ->and($properties['doc_vague']['type'])->toBe('unknown');
     });
 });
 
