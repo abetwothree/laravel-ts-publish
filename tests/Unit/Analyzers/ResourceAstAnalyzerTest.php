@@ -62,6 +62,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
@@ -7698,6 +7699,17 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
     preg_match('/a/', 'a', $matched);
 
     expect($matched)->toBe(['a']);
+});
+
+// PHP passes the callback the value and the key, so `...$rest` holds the list `[$key]`, which no element's type admits.
+it('does not bind a variadic array_walk() parameter to one element', function () {
+    $types = publishedResourceKeyTypes(VariadicWalkResource::class, Post::class);
+
+    expect($types['listed'])->not->toBe('number[]')
+        ->and($types['keyed'])->not->toBe('{ a: string }')
+        ->and($types)->toBe(['listed' => 'unknown', 'keyed' => 'unknown'])
+        ->and(new VariadicWalkResource(new Post)->resolve(Request::create('/')))
+        ->toBe(['listed' => [[0], [1]], 'keyed' => ['a' => ['a']]]);
 });
 
 it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
