@@ -149,6 +149,27 @@ it('merges declared token slots as it merges casts', function () {
     expect($target->declaredTokenFqcns)->toBe(['kept' => [$user], 'either' => [null, $user]]);
 });
 
+it('reads a key as untyped: unknown, with no channel, and no custom import only its text spelled', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => '', 'fillType' => 'User | User'],
+            ['name' => 'chart', 'type' => 'UiNode', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode'], '@js/types/other' => ['User as Owner']],
+        inlineModelFqcns: ['either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['either' => [null, 'Workbench\\App\\Models\\User']];
+    $analysis->leftOutValues = ['either' => true];
+
+    $analysis->untype('either');
+
+    expect($analysis->properties[0])->toBe(['name' => 'either', 'type' => 'unknown', 'optional' => false, 'description' => ''])
+        ->and($analysis->inlineModelFqcns)->toBe([])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->leftOutValues)->toBe(['either' => true])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [

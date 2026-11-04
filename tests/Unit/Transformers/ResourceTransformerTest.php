@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericK
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
@@ -3495,6 +3496,15 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             '@js/types/ui' => ['User'],
             '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
         ]);
+    });
+
+    test('drops the fill where a dropping join meets the model alone, publishing the model as before', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppedClashResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User',
+            'merged' => 'User',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
     });
 
     test('publishes unknown where another branch spells the fill\'s names with other classes, never a wrong binding', function () {

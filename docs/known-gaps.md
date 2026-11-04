@@ -34,6 +34,11 @@ whole call `unknown`, or the vague type it declares. So is `$this->resource` rea
 whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
 `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
 
+A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill spells an override like a class
+another branch holds, such as `k: Person|User` beside `'k' => $this->user`: no join can say which class each `User`
+token is, so the key publishes the other branch's `User` alone, as it did before the fill, and the documented
+override's arm is left out.
+
 ### A list literal holding an element no rule types publishes `unknown[]`
 
 `[$this->id, json_decode('{}')]` publishes `unknown[]`, not `number[]`. A list element is in every response, so unlike a
@@ -545,9 +550,11 @@ another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Per
 the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
 which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
 `@return array{…}` of a resource's `toArray()`, a spread helper or an Inertia page's props helper filling a vague key,
-joined with any return or render branch that spells neither `User`. A branch that does spell it, such as
-`'k' => $this->user` beside the fill, leaves no join that can bind each token, so the key publishes `unknown`. Type the
-key with an import-aware `#[TsCasts]`.
+joined with any return or render branch that spells neither `User`. Beside a branch that does spell it, such as
+`'k' => $this->user`, no join can bind each token: `toArray()`'s and an Inertia page's branches publish the key
+`unknown`, and a spread helper's or merge call's drop the fill
+([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Type the key with an
+import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 

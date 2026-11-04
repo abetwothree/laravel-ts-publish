@@ -7084,16 +7084,20 @@ test('mergeReturnBranches() joins a key\'s declared token slots where no other b
     'beside a dropped unknown' => [[['User | User', [null, User::class]], ['unknown', null]], true, 'User | User', [null, User::class]],
     'beside a kept unknown' => [[['User | User', [null, User::class]], ['unknown', null]], false, 'unknown', []],
     'two unalike' => [[['User | User', [null, User::class]], ['User', [User::class]]], false, 'unknown', []],
-    'a plain branch spelling the name' => [[['User | User', [null, User::class]], ['User', null]], true, 'unknown', []],
+    'two unalike, both dropped' => [[['User | User', [null, User::class]], ['User', [User::class]]], true, 'unknown', []],
+    'a plain branch spelling the name' => [[['User | User', [null, User::class]], ['User', null]], false, 'unknown', []],
+    'a plain branch spelling the name, the fill dropped' => [[['User | User', [null, User::class]], ['User', null]], true, 'User', []],
 ]);
 
-test('mergeReturnBranches() forgets the classes of a key whose branches spell its declared names unalike', function () {
-    $merged = slottedBranches([['User | User', [null, User::class]], ['User', [User::class]]]);
+test('mergeReturnBranches() forgets the classes of a key whose branches spell its declared names unalike', function (bool $drops) {
+    $merged = slottedBranches([['User | User', [null, User::class]], ['User', [User::class]]], $drops);
 
     expect($merged->inlineModelFqcns)->toBe([])
-        ->and(slottedBranches([['User | User', [null, User::class]], ['string', null]])->inlineModelFqcns)
-        ->toBe(['either' => [User::class]]);
-});
+        ->and(slottedBranches([['User | User', [null, User::class]], ['string', null]], $drops)->inlineModelFqcns)
+        ->toBe(['either' => [User::class]])
+        ->and(slottedBranches([['User | User', [null, User::class]], ['User', null]], $drops)->inlineModelFqcns)
+        ->toBe([]);
+})->with(['a strict join' => [false], 'a dropping join' => [true]]);
 
 // merge()/mergeWhen() call their closure with no argument, so a parameter holds its default, never the outer local.
 test('a merge closure parameter owns its name and holds its default', function () {

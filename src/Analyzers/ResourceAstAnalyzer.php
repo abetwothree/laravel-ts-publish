@@ -429,6 +429,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
     ): ResourceAnalysis {
+        if ($dropsUntypedBranches) {
+            $analyses = $this->withUnalikeFillsUntyped($analyses);
+        }
+
         $branchCount = count($analyses);
 
         /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
@@ -468,16 +472,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $unalike = [];
 
         foreach ($propertyMap as $name => $entries) {
-            $declared = $this->declaredBranches($declaredMap[$name], $dropsUntypedBranches);
-            [$type, $keySlots] = $declared === null
-                ? ['unknown', []]
-                : $this->slottedBranchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull, $declared);
+            // A dropping join has read an unalike fill as untyped already, so only a strict one meets one here.
+            [$declared, $unalikeTexts] = $this->declaredBranches($declaredMap[$name], $dropsUntypedBranches);
+            $bound = $unalikeTexts === [];
+            [$type, $keySlots] = $bound
+                ? $this->slottedBranchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull, $declared)
+                : ['unknown', []];
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $declared === null ? $type : $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
+            $bodyType = $bound ? $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull, $declared) : $type;
             // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
             // type is a fill, and a reconcile that puts it back must find it again.
             $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
-            $fillType = array_column($entries, 'fillType') === [] || $declared === null
+            $fillType = array_column($entries, 'fillType') === [] || ! $bound
                 ? null
                 : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
 
@@ -485,7 +491,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $slots[$name] = $keySlots;
             }
 
-            if ($declared === null) {
+            if (! $bound) {
                 $unalike[] = (string) $name;
             }
 
@@ -545,12 +551,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.
         foreach ($unalike as $name) {
-            $leftOut = isset($merged->leftOutValues[$name]);
-            $merged->forgetChannels($name);
-
-            if ($leftOut) {
-                $merged->leftOutValues[$name] = true;
-            }
+            $merged->untype($name);
         }
 
         return $merged;
@@ -2344,14 +2345,56 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * The branches a dropping join reads, each fill another branch spells unalike read as the untyped value it stood
+     * in for, so the join drops it and publishes the other branches as it did before the fill.
+     *
+     * @param  list<ResourceAnalysis>  $analyses
+     * @return list<ResourceAnalysis>
+     */
+    private function withUnalikeFillsUntyped(array $analyses): array
+    {
+        /** @var array<array-key, list<array{string, TokenFqcns}>> $entries */
+        $entries = [];
+
+        foreach ($analyses as $analysis) {
+            foreach ($analysis->properties as $prop) {
+                $entries[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
+            }
+        }
+
+        foreach ($entries as $name => $keyEntries) {
+            $unalike = $this->declaredBranches($keyEntries, true)[1];
+
+            if ($unalike === []) {
+                continue;
+            }
+
+            foreach ($analyses as $index => $analysis) {
+                $slots = $analysis->declaredTokenFqcns[$name] ?? [];
+
+                foreach ($analysis->properties as $prop) {
+                    if ($prop['name'] === (string) $name && in_array([$prop['type'], $slots], $unalike, true)) {
+                        $analyses[$index] = clone $analysis;
+                        $analyses[$index]->untype((string) $name);
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $analyses;
+    }
+
+    /**
      * Each distinct text a key's branches declare token slots for, beside those slots, once branchUnion() has dropped
-     * the branches it drops; null where another branch spells such a text's own names, as no join can then say which
-     * class stands behind each of those tokens.
+     * the branches it drops: those that join, and those another branch spells the own names of, as no join can then
+     * say which class stands behind each of those tokens.
      *
      * @param  list<array{string, TokenFqcns}>  $entries  each branch's type for the key and the slots declared for it
-     * @return list<array{string, TokenFqcns}>|null
+     * @return array{list<array{string, TokenFqcns}>, list<array{string, TokenFqcns}>}
      */
-    private function declaredBranches(array $entries, bool $dropsUntypedBranches): ?array
+    private function declaredBranches(array $entries, bool $dropsUntypedBranches): array
     {
         if ($dropsUntypedBranches && count(array_unique(array_column($entries, 0))) > 1) {
             $entries = array_filter($entries, static fn (array $entry): bool => $entry[0] !== 'unknown');
@@ -2359,6 +2402,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $distinct = array_values(array_intersect_key($entries, array_unique(array_map(serialize(...), $entries))));
         $declared = array_values(array_filter($distinct, static fn (array $entry): bool => $entry[1] !== []));
+        $joined = [];
+        $unalike = [];
 
         foreach ($declared as $own) {
             foreach ($distinct as $other) {
@@ -2368,12 +2413,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 );
 
                 if ($other !== $own && $spells) {
-                    return null;
+                    $unalike[] = $own;
+
+                    continue 2;
                 }
             }
+
+            $joined[] = $own;
         }
 
-        return $declared;
+        return [$joined, $unalike];
     }
 
     /**

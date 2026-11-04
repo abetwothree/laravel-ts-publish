@@ -149,8 +149,9 @@ resource fills with its import at any depth. Each filled key goes through `CastC
 the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
 `merge()` carries them. `mergeReturnBranches()` joins a declared text's arms whole, past the branches it drops, so a
 branch spelling none of the text's own names joins beside it: `User | User | string`, its slots `[null, User]`. Where
-another branch spells those names, with other slots or none, no join can bind them, and the key publishes `unknown`
-with no class (`declaredBranches()`). `ResourceTransformer` reads a key's tokens from its slots where one holds an
+another branch spells those names, with other slots or none, no join can bind them (`declaredBranches()`): a strict join
+publishes the key `unknown` with no class, and a dropping one first reads that fill as the untyped value it stood in
+for (`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill. `ResourceTransformer` reads a key's tokens from its slots where one holds an
 override's null, so `either: Person|User` publishes `User | WorkbenchUser`, each with its import, as an Inertia page
 does through `FileImportNames`; a per-name queue cannot hold that null.
 

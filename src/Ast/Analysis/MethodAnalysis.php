@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
@@ -545,6 +546,48 @@ class MethodAnalysis
             $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
             $this->leftOutValues[$name],
         );
+    }
+
+    /**
+     * Read a key as an untyped value: `unknown`, with no import channel, and without each custom import only its text
+     * spelled. Whether the value may be left out stays, since an untyped value may be too.
+     */
+    public function untype(string $name): void
+    {
+        $spelled = [];
+        $others = [];
+
+        foreach ($this->properties as $index => $property) {
+            if ($property['name'] !== $name) {
+                $others[] = $property['type'];
+
+                continue;
+            }
+
+            $spelled[] = $property['type'];
+            $this->properties[$index]['type'] = 'unknown';
+            unset($this->properties[$index]['bodyType'], $this->properties[$index]['fillType']);
+        }
+
+        $leftOut = isset($this->leftOutValues[$name]);
+        $this->forgetChannels($name);
+
+        if ($leftOut) {
+            $this->leftOutValues[$name] = true;
+        }
+
+        $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
+            && ! TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$others);
+
+        foreach ($this->customImports as $path => $names) {
+            $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
+
+            if ($kept === []) {
+                unset($this->customImports[$path]);
+            } else {
+                $this->customImports[$path] = $kept;
+            }
+        }
     }
 
     /**
