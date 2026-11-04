@@ -99,6 +99,7 @@ it('leaves a value the member a key path names keeps, rewritten where a key-keep
     'asort() of a list member' => [ByReferenceEffect::KeepsObject, '{ x: string[]; y: number }', ['x'], '{ x: Record<number, string>; y: number }'],
     'asort() of a nested list member' => [ByReferenceEffect::KeepsObject, '{ x: { y: string[] } }', ['x', 'y'], '{ x: { y: Record<number, string> } }'],
     'asort() of a list in a Record, whose other keys keep theirs' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]>', ['k'], 'Record<string, string[] | Record<number, string>>'],
+    'asort() of a list member under a key json_encode() escapes' => [ByReferenceEffect::KeepsObject, '{ "a\\/b": string[]; y: number }', ['a/b'], '{ "a\\/b": Record<number, string>; y: number }'],
     'asort() of a list member beside a Record arm' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]> | { x: string[] }', ['x'], 'Record<string, string[] | Record<number, string>> | { x: Record<number, string> }'],
     'a member the type does not hold' => [ByReferenceEffect::KeepsList, '{ x: number[] }', ['y'], null],
     'a member of a list by a name' => [ByReferenceEffect::KeepsList, 'number[][]', ['x'], null],

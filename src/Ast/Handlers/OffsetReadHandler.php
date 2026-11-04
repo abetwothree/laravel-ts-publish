@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Scalar\Int_;
@@ -100,7 +101,7 @@ final class OffsetReadHandler implements ExpressionHandler
     private function objectMember(string $object, string $key): array
     {
         foreach (TsTypeShape::members($object) ?? [] as [$name, $value]) {
-            if (trim(rtrim($name, '?'), '\'"') === $key) {
+            if (PrintedKey::names($name, $key)) {
                 return [$value, str_ends_with($name, '?')];
             }
         }

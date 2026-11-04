@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 use ReflectionMethod;
@@ -239,14 +240,13 @@ final readonly class ResponseExtras
     private static function intersected(string $held, array $theirs, ?string $bodyKey): string
     {
         $grouped = count(TsTypeString::splitTopLevelUnion($held)) > 1 ? "({$held})" : $held;
-        $clashes = $bodyKey !== null && array_any($theirs, static fn (array $member): bool => self::keyName($member[0]) === $bodyKey);
 
-        if (! $clashes) {
+        if ($bodyKey === null || ! array_any($theirs, static fn (array $member): bool => PrintedKey::names($member[0], $bodyKey))) {
             return $grouped.' & '.self::printed($theirs);
         }
 
         $members = array_map(
-            static fn (array $member): array => self::keyName($member[0]) === $bodyKey ? [$member[0], 'unknown'] : $member,
+            static fn (array $member): array => PrintedKey::names($member[0], $bodyKey) ? [$member[0], 'unknown'] : $member,
             $theirs,
         );
 
@@ -299,11 +299,11 @@ final readonly class ResponseExtras
     }
 
     /**
-     * The key a printed member names, without its quotes or optional marker.
+     * The name a printed member merges under: the key it names, or for an index signature, which names none, its text.
      */
     private static function keyName(string $printed): string
     {
-        return trim(rtrim($printed, '?'), '\'"');
+        return PrintedKey::decode($printed) ?? $printed;
     }
 
     /**
