@@ -145,7 +145,7 @@ function analyzedKeyTypesWithin(int $seconds, string $class): array
 {
     $alarms = function_exists('pcntl_alarm');
     $async = $alarms && pcntl_async_signals(true);
-    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : SIG_DFL;
+    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : null;
 
     if ($alarms) {
         pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
