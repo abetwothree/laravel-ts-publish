@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -30,11 +31,11 @@ use Throwable;
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type ComposedTypes array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, TokenFqcns>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, Slots>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
@@ -115,7 +116,7 @@ class ModelMetadataAnalyzer
     /**
      * Fit the keys a cast or the docblock retypes, then respell every key no cast import owns, beside its imports.
      *
-     * @param  array<string, TokenFqcns>  $docblockTokens  each docblock key's class behind each token of its text
+     * @param  array<string, Slots>  $docblockTokens  each docblock key's class behind each token of its text
      * @param  list<string>  $payloadKeys
      * @return ComposedTypes
      */
@@ -364,7 +365,7 @@ class ModelMetadataAnalyzer
      *
      * A docblock key names only the enums behind its tokens, since a companion imports no model.
      *
-     * @param  array<string, TokenFqcns>  $docblockTokens
+     * @param  array<string, Slots>  $docblockTokens
      * @param  array<string, string>  $published  each payload key's type
      * @return CastMap
      */

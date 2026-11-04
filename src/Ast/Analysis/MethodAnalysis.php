@@ -25,6 +25,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -35,13 +36,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
- * @phpstan-type TokenFqcns = list<class-string|null>
  * @phpstan-type CastInForce = array{
  *     type: string,
  *     import: string|null,
  *     optional?: bool,
  *     customImports?: TypesImportMap,
- *     tokenFqcns?: TokenFqcns,
+ *     tokenFqcns?: Slots,
  * }
  * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{
@@ -84,7 +84,7 @@ class MethodAnalysis
      * where an override spells that name, recorded by CastChannels::fit(): a share() docblock entry's at publish time,
      * and a key ReturnShapeRefiner fills from a method's `@return` when the analysis reads it.
      *
-     * @var array<array-key, TokenFqcns>
+     * @var array<array-key, Slots>
      */
     public array $declaredTokenFqcns = [];
 
@@ -476,7 +476,7 @@ class MethodAnalysis
      *
      * @return list<class-string>
      */
-    public function tokenFqcns(string $name): array
+    public function channelFqcns(string $name): array
     {
         return [
             ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),

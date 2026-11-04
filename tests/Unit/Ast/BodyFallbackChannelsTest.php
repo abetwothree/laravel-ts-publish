@@ -24,7 +24,7 @@ use Workbench\App\Models\Post;
 function bodyFallbackChannelClasses(string $resource, string $key): array
 {
     $analysis = resolve(AstEngine::class)->analyzeMethod($resource);
-    $classes = array_values(array_unique([...$analysis->tokenFqcns($key), ...$analysis->wrappedEnumFqcns($key)]));
+    $classes = array_values(array_unique([...$analysis->channelFqcns($key), ...$analysis->wrappedEnumFqcns($key)]));
     sort($classes);
 
     return $classes;

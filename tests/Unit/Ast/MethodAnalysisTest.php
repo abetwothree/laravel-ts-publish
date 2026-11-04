@@ -273,8 +273,8 @@ it('publishes unknown for a member naming an unpublished model and forgets its c
 
     expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kept' => 'Post', 'nested' => '{ owner: Post }', 'lost' => 'unknown'])
         ->and($analysis->hasFqcnChannel('lost'))->toBeFalse()
-        ->and($analysis->tokenFqcns('kept'))->toBe(['Workbench\App\Models\Post'])
-        ->and($analysis->tokenFqcns('nested'))->toBe(['Workbench\App\Models\Post']);
+        ->and($analysis->channelFqcns('kept'))->toBe(['Workbench\App\Models\Post'])
+        ->and($analysis->channelFqcns('nested'))->toBe(['Workbench\App\Models\Post']);
 })->with([
     'a model the published set leaves out' => [['Workbench\App\Models\Post'], 'Workbench\App\Models\User'],
     'a framework model, with no published set' => [null, 'Illuminate\Foundation\Auth\User'],

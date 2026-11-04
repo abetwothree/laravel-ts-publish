@@ -16,7 +16,7 @@ it('reads every member a fill typed class-less, keeping a value written in place
     InlineObjectResult::readFillsClassLess($analysis);
 
     expect(array_column($analysis->properties, 'type', 'name'))->toBe(['override' => 'User', 'in_place' => 'User', 'filled' => 'unknown'])
-        ->and($analysis->tokenFqcns('in_place'))->toBe([User::class])
+        ->and($analysis->channelFqcns('in_place'))->toBe([User::class])
         ->and($analysis->hasFqcnChannel('filled'))->toBeFalse()
         ->and($analysis->declaredTokenFqcns)->toBe([])
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);

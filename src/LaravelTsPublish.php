@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
@@ -88,14 +87,14 @@ use UnitEnum;
  * @phpstan-type ShapeTypeInfo = array{
  *    type: string,
  *    customImports: array<string, list<string>>,
- *    tokenFqcns?: TokenFqcns,
+ *    tokenFqcns?: Slots,
  *    phpDoc?: string,
  * }
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right, set only where
@@ -3341,7 +3340,7 @@ class LaravelTsPublish
      * generated file exports, since leaving that class out would shift every token after it.
      *
      * @param  TypeScriptTypeInfo  $info
-     * @return TokenFqcns
+     * @return Slots
      */
     private function exportedTokenFqcns(array $info): array
     {
@@ -3377,7 +3376,7 @@ class LaravelTsPublish
      * their classes (TokenSlots::joinedSlots()).
      *
      * @param  list<ShapeTypeInfo>  $pieces
-     * @return TokenFqcns
+     * @return Slots
      */
     private function joinedTokenFqcns(array $pieces): array
     {
@@ -3462,7 +3461,7 @@ class LaravelTsPublish
      *
      * @param  TypeScriptTypeInfo  $info
      * @param  list<class-string|null>  $queue
-     * @return TokenFqcns
+     * @return Slots
      */
     private function armTokenFqcns(array $info, array $queue): array
     {

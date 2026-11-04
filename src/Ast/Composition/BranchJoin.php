@@ -12,7 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
  * casts every branch agrees on.
  *
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type DeclaredArm from TokenSlots
  *
  * @internal
@@ -30,7 +30,7 @@ final class BranchJoin
      */
     public static function withUnalikeFillsUntyped(array $analyses): array
     {
-        /** @var array<array-key, list<array{string, TokenFqcns}>> $entries */
+        /** @var array<array-key, list<array{string, Slots}>> $entries */
         $entries = [];
 
         foreach ($analyses as $analysis) {
@@ -68,8 +68,8 @@ final class BranchJoin
      * the branches it drops: those that join, and those another branch spells the own names of, as no join can then
      * say which class stands behind each of those tokens.
      *
-     * @param  list<array{string, TokenFqcns}>  $entries  each branch's type for the key and the slots declared for it
-     * @return array{list<array{string, TokenFqcns}>, list<array{string, TokenFqcns}>}
+     * @param  list<array{string, Slots}>  $entries  each branch's type for the key and the slots declared for it
+     * @return array{list<array{string, Slots}>, list<array{string, Slots}>}
      */
     public static function declaredBranches(array $entries, bool $dropsUntypedBranches): array
     {
@@ -150,7 +150,7 @@ final class BranchJoin
      * One property's branch types as one type: the type itself when every branch agrees.
      *
      * @param  list<string>  $types
-     * @param  list<array{string, TokenFqcns}>  $declared  declaredBranches()'s texts, whose arms join whole
+     * @param  list<array{string, Slots}>  $declared  declaredBranches()'s texts, whose arms join whole
      */
     public static function branchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull, array $declared = []): string
     {
@@ -161,8 +161,8 @@ final class BranchJoin
      * branchUnion()'s type, beside the token slots the declared texts' arms bring to it, in print order.
      *
      * @param  list<string>  $types
-     * @param  list<array{string, TokenFqcns}>  $declared
-     * @return array{string, TokenFqcns}
+     * @param  list<array{string, Slots}>  $declared
+     * @return array{string, Slots}
      */
     public static function slottedBranchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull, array $declared): array
     {
@@ -201,7 +201,7 @@ final class BranchJoin
      *
      * @param  list<string>  $types
      * @param  array<string, list<DeclaredArm>>  $slotted  each declared text's arms
-     * @return array{string, TokenFqcns}
+     * @return array{string, Slots}
      */
     private static function unionSlottedTypes(array $types, array $slotted): array
     {

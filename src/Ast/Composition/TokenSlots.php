@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
@@ -12,11 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
  * Reads a declaration's `tokenFqcns`: one slot per token of the names of the classes its slots hold, in print order,
  * the one reading every writer and reader of those slots shares.
  *
- * @phpstan-import-type TokenFqcns from MethodAnalysis
- *
+ * @phpstan-type Slots = list<class-string|null>
  * @phpstan-type Token = array{string, int, bool}
  * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
- * @phpstan-type DeclaredArm = array{0: string, 1: TokenFqcns, 2?: list<string>}
+ * @phpstan-type DeclaredArm = array{0: string, 1: Slots, 2?: list<string>}
  *
  * @internal
  */
@@ -30,7 +28,7 @@ final class TokenSlots
      * print order. An own name's token takes the next slot, an unread one's in a literal or after `typeof` too, and
      * any other token takes none: the one reading of `tokenFqcns` every builder and reader of it shares.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @param  list<string>  $names
      * @return list<DeclaredToken>
      */
@@ -42,7 +40,7 @@ final class TokenSlots
     /**
      * A declaration's type with each token a class stands behind blanked, leaving the names its imports must bring.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      */
     public static function typeLeftToImports(string $type, array $slots): string
     {
@@ -63,7 +61,7 @@ final class TokenSlots
      * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order, and
      * those names, since an arm's share of the slots may hold no class of a name it spells.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @return list<DeclaredArm>
      */
     public static function declaredArms(string $type, array $slots): array
@@ -85,8 +83,8 @@ final class TokenSlots
      * A declaration's type with each top-level arm once, beside its slots: arms of one text whose tokens name different
      * classes, as an override spelled like a model's, stay apart.
      *
-     * @param  TokenFqcns  $slots
-     * @return array{string, TokenFqcns}
+     * @param  Slots  $slots
+     * @return array{string, Slots}
      */
     public static function uniqueArms(string $type, array $slots): array
     {
@@ -105,7 +103,7 @@ final class TokenSlots
      * token, one another arm's class is spelled like or a literal's, takes a null.
      *
      * @param  list<DeclaredArm>  $arms
-     * @return TokenFqcns
+     * @return Slots
      */
     public static function joinedSlots(array $arms): array
     {
@@ -125,7 +123,7 @@ final class TokenSlots
      * whose tokens outside its nested objects take a class's slot is `unknown`, at any depth, and an override's or a
      * literal's token stays.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      */
     public static function classLess(string $type, array $slots): string
     {
@@ -177,7 +175,7 @@ final class TokenSlots
     /**
      * The names a declaration's tokens take slots for: those of the classes its slots hold.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @return list<string>
      */
     private static function ownNames(array $slots): array
@@ -188,7 +186,7 @@ final class TokenSlots
     /**
      * declaredTokens() of slots that belong to a declaration whose own names are `$own`.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @param  list<string>  $own
      * @param  list<string>  $names
      * @return list<DeclaredToken>
@@ -216,7 +214,7 @@ final class TokenSlots
     /**
      * classLess() of slots that belong to a declaration whose own names are `$own`.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @param  list<string>  $own
      */
     private static function classLessOf(string $type, array $slots, array $own): string
@@ -257,7 +255,7 @@ final class TokenSlots
      * An object type with each member's value read by classLessOf() against its share of the slots, or `unknown` for
      * one TsTypeShape cannot split into keys and values.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @param  list<string>  $own
      */
     private static function classLessObject(string $object, array $slots, array $own): string

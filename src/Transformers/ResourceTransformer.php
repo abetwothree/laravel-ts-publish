@@ -45,7 +45,7 @@ use ReflectionClass;
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -116,7 +116,7 @@ class ResourceTransformer extends CoreTransformer
     /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
     protected array $carried = [];
 
-    /** @var array<array-key, TokenFqcns> property name => the class behind each class token of a declaration's text */
+    /** @var array<array-key, Slots> property name => the class behind each class token of a declaration's text */
     protected array $declaredTokenFqcns = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
@@ -1444,7 +1444,7 @@ class ResourceTransformer extends CoreTransformer
      * Respell each read token of a declaration's own names in a type by the class its slot names, in order, leaving an
      * override's token, whose slot is null, as spelled.
      *
-     * @param  TokenFqcns  $slots
+     * @param  Slots  $slots
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      */
     private function aliasSlottedTokens(string $type, array $slots, array $nameMap): string

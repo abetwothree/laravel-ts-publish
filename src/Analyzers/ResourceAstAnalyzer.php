@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -106,7 +107,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
  *
@@ -446,7 +447,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
-        /** @var array<array-key, list<array{string, TokenFqcns}>> $declaredMap each branch's type and declared slots */
+        /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
         $declaredMap = [];
 
         foreach ($analyses as $analysis) {
@@ -466,7 +467,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var AnalyzedPropertyList */
         $properties = [];
 
-        /** @var array<array-key, TokenFqcns> $slots */
+        /** @var array<array-key, Slots> $slots */
         $slots = [];
         $unalike = [];
 
