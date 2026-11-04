@@ -249,6 +249,18 @@ final class FileImportNames
     }
 
     /**
+     * Whether any of the types spells a name as a token a reader binds to an import: outside a quoted literal, a
+     * generated index signature key and the const after `typeof`.
+     */
+    public static function readsName(string $name, string ...$types): bool
+    {
+        return array_any($types, static fn (string $type): bool => array_any(
+            self::tokens('classes', [$name], $type),
+            static fn (array $token): bool => $token[2],
+        ));
+    }
+
+    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void

@@ -18,8 +18,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingLiteralResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingMixedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedCousinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedFillResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedLiteralResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedOrphanResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedSplitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
@@ -3557,7 +3559,8 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             ->and(sentAsJson(new DocShapeDroppingMixedArmResource($comment)->resolve(request())))->k->toBeNull();
     });
 
-    test('reads a fill folded into a nested literal class-less where its slots hold an override\'s null, as before', function () {
+    // A folded value carries no slots, so every fill folded into it reads class-less, its model too (ledger F13).
+    test('reads a fill folded into a nested literal class-less, as before', function () {
         $transformer = new ResourceTransformer(DocShapeFoldedFillResource::class);
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
@@ -3568,26 +3571,20 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             'nested' => '{ y: { k: unknown } }',
             'beside' => '{ k: unknown; m: number }',
             'local' => '{ k: unknown }',
-            'model_only' => '{ k: WorkbenchUser }',
+            'model_only' => '{ k: unknown }',
             'object_pair' => '{ k: { a: User; b: unknown } }',
             'listed_literal' => "{ k: { kind: 'User'; r: unknown }[] }",
             'object_or_null' => "{ k: { kind: 'User'; r: unknown } | null }",
-        ])->and($transformer->typeImports)->toBe([
-            '@js/types/ui' => ['User'],
-            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
-        ]);
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
     });
 
-    test('keeps a folded fill\'s literal as written where the file aliases the model it names, and a slotted pair', function () {
+    test('keeps a folded fill\'s literal as written, and reads a folded pair of users class-less, as before', function () {
         $transformer = new ResourceTransformer(DocShapeFoldedLiteralResource::class);
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
             'literal' => "{ k: { kind: 'User'; r: unknown } }",
-            'pair' => '{ k: WorkbenchUser | CrmUser }',
-        ])->and($transformer->typeImports)->toBe([
-            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
-            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
-        ]);
+            'pair' => '{ k: unknown }',
+        ])->and($transformer->typeImports)->toBe([]);
     });
 
     test('binds the same fills spread at the top level, where their slots reach the publisher', function () {
@@ -3615,7 +3612,7 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             ->and($sent->x_pair->k->b->name)->toBe('Ada');
     });
 
-    test('reads a folded fill\'s model class-less where a sibling member\'s override brings its name, as before', function () {
+    test('reads a folded fill\'s users class-less beside an override in a sibling member, as before', function () {
         $transformer = new ResourceTransformer(DocShapeFoldedSplitResource::class);
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
@@ -3623,11 +3620,31 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             'two_fills' => '{ n: User; m: unknown }',
             'with_null' => '{ k: unknown; n: User; m: unknown }',
             'x_split' => '{ n: User; m: unknown; z: number }',
-            'crm_beside' => '{ k: unknown; c: CrmUser }',
-        ])->and($transformer->typeImports)->toBe([
-            '@js/types/ui' => ['User'],
-            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
-        ]);
+            'crm_beside' => '{ k: unknown; c: unknown }',
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+    });
+
+    test('reads a folded model fill class-less beside an override in a cousin member, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedCousinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'in_place_cousin' => '{ n: User; inner: { m: unknown } }',
+            'fill_cousins' => '{ p: { n: User }; q: { m: unknown } }',
+            'deep_cousin' => '{ p: { n: User }; q: { m: unknown } }',
+            'listed' => '({ n: User } | { m: unknown })[]',
+            'literal_cousin' => "{ n: User; lm: { kind: 'User'; m: unknown } }",
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+    });
+
+    test('imports no override a folded fill spells only in a literal once read class-less, in either member order', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedOrphanResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal_override' => "{ k: unknown; kind: 'User' }",
+            'literal_crm' => "{ k: unknown; kind: 'User'; c: unknown }",
+            'triple' => '{ k: unknown; c: unknown; m: unknown }',
+            'triple_reordered' => '{ k: unknown; m: unknown; c: unknown }',
+        ])->and($transformer->typeImports)->toBe([]);
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {

@@ -251,7 +251,7 @@ final class MethodReturnTypeResolver
         }
 
         // First: forgetUnpublishableMembers() would make a fill whose override and model share a name `unknown` whole.
-        InlineObjectResult::readUnbindableFillsClassLess($analysis);
+        InlineObjectResult::readFillsClassLess($analysis);
         $analysis->forgetUnpublishableMembers();
 
         // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.

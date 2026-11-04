@@ -82,6 +82,20 @@ test('classLess() reads a declared type without the classes its tokens name, mem
     'no class' => ['string | null', [], 'string | null'],
 ]);
 
+test('readsName() reads a name only where a reader binds it to an import', function (array $types, bool $reads) {
+    expect(FileImportNames::readsName('User', ...$types))->toBe($reads);
+})->with([
+    'a token' => [['{ k: unknown; u: User }'], true],
+    'in a list' => [['User[]'], true],
+    'in the second type' => [['unknown', 'User | null'], true],
+    'only in a literal' => [["{ k: unknown; kind: 'User' }"], false],
+    'only in a double-quoted literal' => [['"User"'], false],
+    'only after typeof' => [['typeof User'], false],
+    'only in a longer name' => [['CrmUser | Users'], false],
+    'only after a dot' => [['ui.User'], false],
+    'no type' => [[], false],
+]);
+
 test('classLess() of generated declarations reads each as the oracle says', function () {
     $cases = fileImportNamesCases(98, 500);
     $unknownMembers = 0;

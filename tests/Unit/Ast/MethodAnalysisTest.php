@@ -189,6 +189,21 @@ it('retypes a key class-less, keeping a custom import its new text still spells'
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
 });
 
+it('retypes a key class-less, dropping a custom import another key spells only in a literal', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'k', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+            ['name' => 'kind', 'type' => "'User'", 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User']],
+    );
+
+    $analysis->retypeClassLess('k', 'unknown');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['k' => 'unknown', 'kind' => "'User'"])
+        ->and($analysis->customImports)->toBe([]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [

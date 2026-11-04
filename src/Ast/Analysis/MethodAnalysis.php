@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -585,8 +586,9 @@ class MethodAnalysis
             $this->leftOutValues[$name] = true;
         }
 
+        // A literal's spelling binds no import, so only a read token elsewhere keeps one.
         $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
-            && ! TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$others);
+            && ! FileImportNames::readsName(ImportMaps::localName($import), ...$others);
 
         foreach ($this->customImports as $path => $names) {
             $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
@@ -608,10 +610,14 @@ class MethodAnalysis
      */
     public function forgetUnpublishableMembers(): void
     {
+        $imported = ImportMaps::localNames($this->customImports);
+
         foreach (array_unique(array_column($this->properties, 'name')) as $name) {
             $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
 
-            if (ValueResult::everyModelPublished($models) && $this->importedChannelNames($name) === []) {
+            if (ValueResult::everyModelPublished($models)
+                && ($imported === [] || array_intersect($this->channelNames($name), $imported) === [])
+            ) {
                 continue;
             }
 
@@ -623,17 +629,6 @@ class MethodAnalysis
 
             $this->forgetChannels($name);
         }
-    }
-
-    /**
-     * The names the classes on a property's import channels publish under that the custom imports bring. A reader
-     * holding the members in one key aliases every token of a name alike, so such a class would take the import's.
-     *
-     * @return list<string>
-     */
-    public function importedChannelNames(string $name): array
-    {
-        return array_values(array_intersect($this->channelNames($name), ImportMaps::localNames($this->customImports)));
     }
 
     /**

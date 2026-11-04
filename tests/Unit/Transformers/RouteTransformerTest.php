@@ -1059,7 +1059,7 @@ it('binds an arm\'s override and other class beside the model in another arm, jo
         ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
 });
 
-it('reads a folded fill\'s model class-less where a sibling prop member\'s override brings its name, as before', function () {
+it('reads a folded fill\'s model class-less beside an override in a sibling prop member, as before', function () {
     app(Router::class)->get('/doc-shape-split', [DocShapeFoldedPageController::class, 'split']);
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
 
@@ -1072,13 +1072,40 @@ it('reads a folded fill\'s model class-less where a sibling prop member\'s overr
         ]);
 });
 
-it('reads a props helper\'s override-beside-model fill folded into a page prop class-less, as before', function () {
+// A folded value carries no slots, so the model-only fill reads class-less too (ledger F13).
+it('reads a folded model fill class-less beside an override in a cousin prop member, as before', function () {
+    app(Router::class)->get('/doc-shape-cousin', [DocShapeFoldedPageController::class, 'cousin']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { o: { p: { n: User | null }; q: { m: unknown } } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->cousin()))->toEqual((object) [
+            'o' => (object) ['p' => (object) ['n' => null], 'q' => (object) ['m' => null]],
+        ]);
+});
+
+it('imports no override a folded page fill spells only in a literal once read class-less', function () {
+    app(Router::class)->get('/doc-shape-literal', [DocShapeFoldedPageController::class, 'literal']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { lo: { k: unknown; kind: 'User' | null }, lc: { k: unknown; kind: 'User' | null; c: unknown } }")
+        ->and($transformer->typeImports)->toBe([])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->literal()))->toEqual((object) [
+            'lo' => (object) ['k' => null, 'kind' => null],
+            'lc' => (object) ['k' => null, 'kind' => null, 'c' => null],
+        ]);
+});
+
+// A folded value carries no slots, so the model-only fill reads class-less too (ledger F13).
+it('reads props helpers\' fills folded into a page prop class-less, as before', function () {
     app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
 
     expect($transformer->actions[0]['pageType'])
-        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: User | null } }')
-        ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
+        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: unknown } }')
+        ->and($transformer->typeImports)->toBe([])
         ->and(inertiaProps(new DocShapeFoldedPageController()->folded()))->toEqual((object) [
             'prop' => (object) ['k' => null],
             'nested' => (object) ['y' => (object) ['k' => null]],

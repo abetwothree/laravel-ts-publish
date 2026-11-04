@@ -44,11 +44,10 @@ final class InlineObjectResult
     use BuildsInlineObjectTypes;
 
     /**
-     * Read class-less each member a fill typed that the object's per-name queues cannot bind: one whose slots hold a
-     * null, an override's or a literal's, then one whose class publishes under an imported name a sibling spells.
-     * Either way a token of that name would take the class; a value written in place keeps its own.
+     * Read class-less each member a declared fill typed, as before slots rode a type: the value an object folds into
+     * carries no slots, and its per-name queues would hand an override's or a literal's token, at any depth, a class.
      */
-    public static function readUnbindableFillsClassLess(MethodAnalysis $analysis): void
+    public static function readFillsClassLess(MethodAnalysis $analysis): void
     {
         if ($analysis->declaredTokenFqcns === []) {
             return;
@@ -57,20 +56,7 @@ final class InlineObjectResult
         $types = array_column($analysis->properties, 'type', 'name');
 
         foreach ($analysis->declaredTokenFqcns as $name => $slots) {
-            if (isset($types[$name]) && in_array(null, $slots, true)) {
-                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
-            }
-        }
-
-        // Only a sibling's spelling counts: after the nulls, an import may live on through this member's token alone.
-        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
-            $siblings = array_column(
-                array_filter($analysis->properties, static fn (array $property): bool => $property['name'] !== (string) $name),
-                'type',
-            );
-            $spelled = static fn (string $imported): bool => TsTypeString::typeNameOccursIn($imported, ...$siblings);
-
-            if (isset($types[$name]) && array_any($analysis->importedChannelNames((string) $name), $spelled)) {
+            if (isset($types[$name])) {
                 $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
             }
         }
@@ -86,7 +72,7 @@ final class InlineObjectResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
     {
-        self::readUnbindableFillsClassLess($analysis);
+        self::readFillsClassLess($analysis);
 
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
