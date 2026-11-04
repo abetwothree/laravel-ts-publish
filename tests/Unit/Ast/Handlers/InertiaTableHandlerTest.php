@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;

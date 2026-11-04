@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;

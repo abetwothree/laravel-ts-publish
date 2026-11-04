@@ -19,7 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;

@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PropObjectResource;
 use Illuminate\Http\Request;
 use Inertia\AlwaysProp;

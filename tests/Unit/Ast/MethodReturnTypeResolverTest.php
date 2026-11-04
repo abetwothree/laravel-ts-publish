@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;

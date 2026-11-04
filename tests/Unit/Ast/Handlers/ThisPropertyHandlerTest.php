@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SubjectProps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;

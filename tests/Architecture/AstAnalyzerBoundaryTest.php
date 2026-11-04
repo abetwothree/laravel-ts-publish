@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
 
 arch('the AST engine depends on no analyzer')
     ->expect('AbeTwoThree\LaravelTsPublish\Ast')
