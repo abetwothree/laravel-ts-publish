@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
@@ -122,7 +121,7 @@ trait ResolvesAccessorType
                 // comparing) — states that no getter exists, not what reading returns; the raw column
                 // applies instead, so this falls through to omittedTypeScriptInfo() rather than publish it.
                 $docblockReturn = LaravelTsPublish::attributeDocblockReturnTypes($method);
-                $docblockNonNullType = ValueResult::stripNullArm($docblockReturn['type']);
+                $docblockNonNullType = TsTypeString::withoutNullArm($docblockReturn['type']);
 
                 if (
                     $docblockReturn['type'] !== 'unknown'

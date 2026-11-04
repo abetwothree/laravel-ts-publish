@@ -57,9 +57,9 @@ and the models a getter returns do not depend on how its filters are spelled.
 A mutator with no getter is documented `Attribute<never, string>` by convention. The `never` says no getter exists.
 It is not the read type, since a read returns the raw, cast column, so `ResolvesAccessorType` treats a `never` Get
 like a missing docblock and returns `omittedTypeScriptInfo()`. It strips a `null` arm first with
-`ValueResult::stripNullArm()`, because `?never` and `never|null` both arrive as `never | null`. `resolveAttribute()`
-then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a name with no column.
-`OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
+`TsTypeString::withoutNullArm()`, because `?never` and `never|null` both arrive as `never | null`.
+`resolveAttribute()` then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a
+name with no column. `OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
 
 To assert that a name is left out, use `isOmittedMutator()`, which reads the accessor step's `omit` flag.
 `resolveAttribute()` returns `unknown` both for an omitted mutator and for an attribute it cannot type.
