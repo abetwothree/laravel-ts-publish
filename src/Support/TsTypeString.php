@@ -345,11 +345,42 @@ class TsTypeString
      */
     public function orUndefined(string $type): string
     {
-        $arms = $this->splitTopLevelUnion($type);
+        return $this->withArm($type, 'undefined');
+    }
 
-        return in_array('undefined', $arms, true)
-            ? $type
-            : implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)).' | undefined';
+    /**
+     * Whether a type has a top-level `null` arm; one in a shape, a generic, an element type or literal text does not.
+     */
+    public function hasNullArm(string $type): bool
+    {
+        return in_array('null', $this->splitTopLevelUnion($type), true);
+    }
+
+    /**
+     * The type with a `null` arm appended unless it has a top-level one; `unknown` already admits null, so it stays.
+     */
+    public function withNullArm(string $type): string
+    {
+        return $type === 'unknown' ? $type : $this->orNull($type);
+    }
+
+    /**
+     * The type with a `null` arm appended unless it has a top-level one, `unknown` too, as a nullable PHP type prints.
+     */
+    public function orNull(string $type): string
+    {
+        // Never hoistNull(): it de-duplicates arms, so `User | User`, two classes, would lose one.
+        return $this->withArm($type, 'null');
+    }
+
+    /**
+     * The type without its top-level `null` arms, `unknown` when no other arm is left; a nested `null` stays.
+     */
+    public function withoutNullArm(string $type): string
+    {
+        $arms = array_values(array_diff($this->splitTopLevelUnion($type), ['null']));
+
+        return $arms === [] ? 'unknown' : implode(' | ', $arms);
     }
 
     /**
@@ -667,5 +698,15 @@ class TsTypeString
         }
 
         return $type;
+    }
+
+    /**
+     * The type with an arm appended unless it has that arm at the top level, each arm grouped as it joins.
+     */
+    private function withArm(string $type, string $arm): string
+    {
+        $arms = $this->splitTopLevelUnion($type);
+
+        return in_array($arm, $arms, true) ? $type : implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)).' | '.$arm;
     }
 }

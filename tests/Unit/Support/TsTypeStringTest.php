@@ -1212,6 +1212,73 @@ describe('orUndefined', function () {
     ]);
 });
 
+describe('hasNullArm', function () {
+    test('reads only a top-level null arm', function (string $type, bool $expected) {
+        expect($this->service->hasNullArm($type))->toBe($expected);
+    })->with([
+        'a trailing null arm' => ['string | null', true],
+        'a leading null arm' => ['null | string', true],
+        'null alone' => ['null', true],
+        'a name holding null' => ['Unnullable | null', true],
+        'null spelled inside a string literal' => ["'nullify' | string", false],
+        'a quoted null' => ["'null'", false],
+        'null in template text' => ['`a | null | b`', false],
+        'null inside a shape' => ['{ a: string | null }', false],
+        'null inside a Record' => ['Record<string, number | null>', false],
+        'null inside an element type' => ['(X | null)[]', false],
+        'null in an arrow\'s return type' => ['() => A | null', false],
+        'a name that differs by case' => ['Null', false],
+    ]);
+});
+
+describe('withNullArm', function () {
+    // Two classes can share a name, so the arm is appended to the text, never merged into it.
+    test('appends a null arm only when the type has no top-level one, and leaves unknown alone', function (string $type, string $expected) {
+        expect($this->service->withNullArm($type))->toBe($expected);
+    })->with([
+        'unknown, which already admits null' => ['unknown', 'unknown'],
+        'a list of unknown' => ['unknown[]', 'unknown[] | null'],
+        'a bare type' => ['string', 'string | null'],
+        'already carrying it' => ['string | null', 'string | null'],
+        'carrying it first' => ['null | string', 'null | string'],
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null'],
+        'naming it only inside a shape' => ['{ a: string | null }', '{ a: string | null } | null'],
+        'naming it only inside an element type' => ['(X | null)[]', '(X | null)[] | null'],
+        'naming it only in template text' => ['`a | null | b`', '`a | null | b` | null'],
+        'an arrow function' => ['() => void', '(() => void) | null'],
+        'an arrow function whose return type names it' => ['() => A | null', '(() => A | null) | null'],
+        'an arrow after another arm' => ['B | () => C', 'B | (() => C) | null'],
+    ]);
+});
+
+describe('orNull', function () {
+    test('appends a null arm only when the type has no top-level one, unknown included', function (string $type, string $expected) {
+        expect($this->service->orNull($type))->toBe($expected);
+    })->with([
+        'unknown, as a nullable PHP type prints it' => ['unknown', 'unknown | null'],
+        'a bare type' => ['string', 'string | null'],
+        'already carrying it' => ['unknown | null', 'unknown | null'],
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null'],
+        'naming it only inside a shape' => ['{ a: string | null }', '{ a: string | null } | null'],
+        'an arrow function' => ['() => void', '(() => void) | null'],
+    ]);
+});
+
+describe('withoutNullArm', function () {
+    test('drops every top-level null arm and keeps a nested one', function (string $type, string $expected) {
+        expect($this->service->withoutNullArm($type))->toBe($expected);
+    })->with([
+        'a middle null arm' => ['A | null | B', 'A | B'],
+        'a trailing null arm' => ['string | null', 'string'],
+        'a leading null arm' => ['null | string', 'string'],
+        'null alone, which leaves nothing known' => ['null', 'unknown'],
+        'two classes spelled alike, never de-duplicated' => ['User | User | null', 'User | User'],
+        'null inside a shape' => ['{ a: string | null } | null', '{ a: string | null }'],
+        'null in template text' => ['`a | null` | null', '`a | null`'],
+        'no null arm' => ['string', 'string'],
+    ]);
+});
+
 describe('isUnknownOnly', function () {
     test('only a type whose non-null arms are all unknown is unknown-only', function (string $type, bool $expected) {
         expect($this->service->isUnknownOnly($type))->toBe($expected);

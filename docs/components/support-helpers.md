@@ -96,6 +96,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
+| Does this type have a top-level `null` arm, and what is it with one or without one? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()` |
 | How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
 | How does this type stand before a postfix `[]` or `?`, which binds tighter than `\|`? | `TsTypeShape::postfixOperand()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
@@ -174,11 +175,11 @@ a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave 
 `shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
 `typeNameOccursIn()` alone stays literal-blind, as its [known gap][literal-blind] says.
 
-`hoistNull()`, `orUndefined()`, `listType()`, `mergeTypeScriptInfos()`, `TokenSlots::uniqueArms()` and
-`BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join. The `[]` wrappers,
-`ValueResult::arrayWrapType()`, `ValueResult::collectionListType()` and `wrapAsArray()`, list through
-`TsTypeShape::listType()`. Other joins still append bare, such as `withNullArm()`, `TsTypeString::union()`,
-FormRequest's rule unions and a few raw `[]` suffixes.
+`hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
+`TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.
+The `[]` wrappers, `ValueResult::arrayWrapType()`, `ValueResult::collectionListType()` and `wrapAsArray()`, list
+through `TsTypeShape::listType()`. Other joins still append bare, such as `ValueResult::withNullArm()`,
+`TsTypeString::union()`, FormRequest's rule unions and a few raw `[]` suffixes.
 
 [literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 
@@ -191,8 +192,10 @@ namespaces publish resolves as that file's import does. For a name no FQCN map c
 
 The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
 point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()`,
-`isVagueOnly()` and `orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them
-rather than a local regex.
+`isVagueOnly()`, `orUndefined()` and the null-arm helpers are likewise the one home for their test or spelling, so a
+new caller uses them rather than a local regex, `str_contains()` or `in_array()` over a split. Neither appender
+de-duplicates, so `User | User`, two classes, keeps both arms. `withNullArm()` leaves `unknown` as it is, the AST's
+reading; `orNull()` prints `unknown | null`, as the engine prints a nullable PHP type.
 
 ### `TsNaming`
 
