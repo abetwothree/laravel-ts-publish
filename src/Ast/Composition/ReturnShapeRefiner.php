@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -53,8 +52,8 @@ final class ReturnShapeRefiner
                 $resolved = $this->resolvedType($doc, $property['type'] === 'unknown', $method, $keepsUnresolvedNames);
 
                 if ($resolved !== null) {
-                    $property['type'] = ValueResult::hasNullArm($property['type'])
-                        ? ValueResult::withNullArm($resolved['type'])
+                    $property['type'] = TsTypeString::hasNullArm($property['type'])
+                        ? TsTypeString::withNullArm($resolved['type'])
                         : $resolved['type'];
                 }
             } elseif ($property['type'] === $untypedSignature && $isSignature && ! isset($property['fillType'])) {
