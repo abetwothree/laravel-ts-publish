@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -191,7 +192,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         return [
             ...ValueResult::unknown(),
-            'type' => $receivers->redeclaresNullableProxy($scope) ? ValueResult::withNullArm($type) : $type,
+            'type' => $receivers->redeclaresNullableProxy($scope) ? TsTypeString::withNullArm($type) : $type,
             'modelFqcn' => $model,
         ];
     }
