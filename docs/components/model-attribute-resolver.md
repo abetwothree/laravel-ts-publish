@@ -267,12 +267,15 @@ appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `
 ### Trait-declared methods read the trait's file
 
 For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()` reports the using class, though the
-file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
-so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
-use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
-`ModelAttributeResolver::morphToGenericMembers()`. A value object's shape reads a property's `@var` the same way,
-through `propertyDeclaringFileClass()`. Reflection reports a trait's property, docblock and all, as the using class's,
-and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
+file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches
+([`DeclaringFile`](../../src/Ast/Docblocks/DeclaringFile.php)), so a class named in a trait's docblock resolves against
+the trait's imports, not the model's. The docblock readers all use it: `docblockReturnTypes()`,
+`resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and `ModelAttributeResolver::morphToGenericMembers()`.
+Every reader of a property's docblock, a value object's shape included, goes through
+`PropertyDocblockTypeReader::tag()`: it resolves the docblock in the file that declares the property, and gives a
+promoted property with no `@var` its constructor's `@param`. Reflection reports a trait's property, docblock and all,
+as the using class's, and a class's redeclaration of it the same way, so `DeclaringFile::ofProperty()` asks each file's
+source which one declares the property.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
 argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-use`, `@template-use` or `@use`, the

@@ -34,7 +34,8 @@ trait ResolvesClassNames
      *
      * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
-     * Each `@var` union member, `?` stripped, resolves through the file's imports, then the class's own namespace.
+     * Each `@var` union member, `?` stripped, resolves through the imports, then the namespace, of the file that
+     * declares the property, as PropertyDocblockTypeReader::tag() finds it, a parent's or a trait's.
      *
      * @template T of object
      *
@@ -57,12 +58,9 @@ trait ResolvesClassNames
         }
 
         // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
-        $docComment = $declaringClass->getProperty($property)->getDocComment();
-        $declared = $docComment === false
-            ? null
-            : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($declaringClass->getProperty($property));
 
-        if ($declared === null || $declared === '') {
+        if ($tag === null) {
             return null; // @codeCoverageIgnore
         }
 
@@ -70,14 +68,14 @@ trait ResolvesClassNames
         $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
             'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
 
-        foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $token) {
+        foreach (LaravelTsPublish::splitPhpDocUnionType($tag['type']) as $token) {
             $token = ltrim(trim($token), '?');
 
             if ($token === '' || in_array(strtolower($token), $skip, true)) {
                 continue;
             }
 
-            $fqcn = $this->resolveDocblockType($token, $declaringClass);
+            $fqcn = $this->resolveDocblockType($token, $tag['context']);
 
             if (class_exists($fqcn) || enum_exists($fqcn)) {
                 return $fqcn;

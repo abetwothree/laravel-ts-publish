@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
@@ -46,12 +47,9 @@ use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Error;
 use PhpParser\Node;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
-use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
-use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\GroupUse;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\TraitUse;
@@ -817,26 +815,13 @@ class LaravelTsPublish
     }
 
     /**
-     * The ReflectionClass whose file actually declares a method's body.
-     *
-     * PHP reflection quirk: for a trait-provided method, getDeclaringClass() reports the consuming
-     * class, not the trait, even though getFileName()/getDocComment() still read from the trait.
+     * The ReflectionClass whose file declares a method's body, a trait's for a method the class takes from one.
      *
      * @return ReflectionClass<object>
      */
     public function methodDeclaringFileClass(ReflectionMethod $method): ReflectionClass
     {
-        $declaringClass = $method->getDeclaringClass();
-        $methodFile = $method->getFileName();
-
-        if ($methodFile === false || $methodFile === $declaringClass->getFileName()) {
-            return $declaringClass;
-        }
-
-        return $this->traitDeclaring(
-            $declaringClass,
-            static fn (ReflectionClass $trait): bool => $trait->getFileName() === $methodFile,
-        ) ?? $declaringClass;
+        return DeclaringFile::ofMethod($method);
     }
 
     /**
@@ -2028,8 +2013,9 @@ class LaravelTsPublish
     }
 
     /**
-     * The type one public property of a value object publishes in its shape: its `@var` where that says more than its
-     * declaration, else the declaration, each kept only where its custom imports bring in every name it spells.
+     * The type one public property of a value object publishes in its shape: its docblock's, as
+     * PropertyDocblockTypeReader::tag() finds it, where that says more than its declaration, else the declaration, each
+     * kept only where its custom imports bring in every name it spells.
      *
      * Only an override brings custom imports, so a member spelling a model's, an enum's or another class's own name
      * stays `unknown`.
@@ -2040,14 +2026,13 @@ class LaravelTsPublish
     protected function shapeMemberTypes(ReflectionClass $class, ReflectionProperty $property): array
     {
         $declared = $this->propertyTypes($class, $property->getName());
-        $docComment = $property->getDocComment();
-        $var = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
-        $read = $var === null || $var === '' ? $declared : $this->declaredOrDocblockTypes(
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property);
+        $read = $tag === null ? $declared : $this->declaredOrDocblockTypes(
             $declared,
-            fn (): array => $this->resolveDocblockTypeStringAgainst($var, $this->propertyDeclaringFileClass($property)),
+            fn (): array => $this->resolveDocblockTypeStringAgainst($tag['type'], $tag['context']),
         );
 
-        // A `@var` the shape cannot import falls back to the declaration, as PropertyDocblockTypeReader::read() does.
+        // A docblock type the shape cannot import yields to the declaration, as in PropertyDocblockTypeReader::read().
         foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
             $shape = $this->shapeTypeInfo($info);
 
@@ -2229,23 +2214,13 @@ class LaravelTsPublish
     }
 
     /**
-     * The ReflectionClass whose file declares a property, as methodDeclaringFileClass() finds a method's: a trait's
-     * property reports the class using the trait as its declaring class, and the trait's docblock as its own.
+     * The ReflectionClass whose file declares a property, a trait's for a property the class takes from one.
      *
      * @return ReflectionClass<object>
      */
     protected function propertyDeclaringFileClass(ReflectionProperty $property): ReflectionClass
     {
-        $class = $property->getDeclaringClass();
-        $name = $property->getName();
-
-        // Reflection cannot tell a class's redeclaration of its trait's property from the trait's, docblock included.
-        if ($class->getTraitNames() === [] || $this->declaresProperty($class, $name)) {
-            return $class;
-        }
-
-        return $this->traitDeclaring($class, fn (ReflectionClass $trait): bool => $this->declaresProperty($trait, $name))
-            ?? $class;
+        return DeclaringFile::ofProperty($property);
     }
 
     /**
@@ -3157,41 +3132,6 @@ class LaravelTsPublish
             $fqcn = $prefix.'\\'.$item->name->toString();
             $map[$alias] = $fqcn;
         }
-    }
-
-    /**
-     * The first of a class's traits, its traits' own traits included, that declares a member by the given test.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @param  Closure(ReflectionClass<object>): bool  $declares
-     * @return ReflectionClass<object>|null
-     */
-    private function traitDeclaring(ReflectionClass $class, Closure $declares): ?ReflectionClass
-    {
-        return array_find($this->flattenTraits($class), $declares);
-    }
-
-    /**
-     * Whether a class's or trait's own source declares a property, as a property statement or a promoted parameter.
-     *
-     * @param  ReflectionClass<object>  $class
-     */
-    private function declaresProperty(ReflectionClass $class, string $name): bool
-    {
-        $file = $class->getFileName();
-        $node = $file === false ? null : new NodeFinder()->findFirst(
-            resolve(AstParser::class)->parseFile($file),
-            fn (Node $node): bool => $node instanceof ClassLike && $node->namespacedName?->toString() === $class->getName(),
-        );
-
-        if (! $node instanceof ClassLike) {
-            return false; // @codeCoverageIgnore
-        }
-
-        return $node->getProperty($name) !== null || array_any(
-            $node->getMethod('__construct')->params ?? [],
-            fn (Param $param): bool => $param->isPromoted() && $param->var instanceof Variable && $param->var->name === $name,
-        );
     }
 
     /**

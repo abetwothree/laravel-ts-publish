@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
@@ -38,6 +39,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
@@ -2086,6 +2091,42 @@ describe('ResourceTransformer with a `@var` on `$resource`', function () {
             'number' => 'string',
             'total' => 'number | null',
             'paid' => 'boolean',
+        ]);
+    });
+});
+
+// A docblock resolves its names in the file that wrote it, which reflection does not report for a trait's property.
+describe('ResourceTransformer over a property docblock another file declares', function () {
+    test('a trait property\'s `@var` names the classes the trait imports', function (string $resource) {
+        $transformer = new ResourceTransformer($resource);
+
+        expect($transformer->properties['status']['type'])->toBe('StatusType')
+            ->and($transformer->properties['post']['type'])->toBe('Post | null')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['StatusType'],
+                '../../../../../../workbench/app/models' => ['Post'],
+            ]);
+    })->with([
+        'a user importing neither' => [TraitPropertyResource::class],
+        'a user importing other classes under the same names' => [TraitPropertyClashResource::class],
+    ]);
+
+    test('a `$resource` `@var` a parent or a trait declares names the class its own file imports', function (string $resource) {
+        $transformer = new ResourceTransformer($resource);
+
+        expect($transformer->modelClass)->toBe(Post::class)
+            ->and($transformer->properties['title']['type'])->toBe('string');
+    })->with([
+        'a parent in another namespace' => [PostWrappingChildResource::class],
+        'a trait' => [TraitWrappedPostResource::class],
+    ]);
+
+    test('a promoted property takes its constructor\'s `@param`, and its own `@var` over it', function () {
+        $transformer = new ResourceTransformer(WarningBagResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'warnings' => 'string[]',
+            'bag' => '{ warnings: string[]; context: Record<string, unknown>; codes: number[] }',
         ]);
     });
 });

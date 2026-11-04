@@ -11,41 +11,58 @@ use ReflectionClass;
 use ReflectionProperty;
 
 /**
- * Resolves a `@var` docblock type, a property's or a local variable's, to a TypeScript type plus its FQCN channels.
+ * Resolves a property's docblock type, or a local variable's `@var`, to a TypeScript type plus its FQCN channels.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type VarTag = array{string, string|null, bool}
  * @phpstan-type RelativeClasses = array<string, class-string>
+ * @phpstan-type PropertyTag = array{type: string, context: ReflectionClass<object>}
  *
  * @internal
  */
 final class PropertyDocblockTypeReader
 {
     /**
-     * Read a property's `@var` type, or null when it has none the type system can use.
+     * Read a property's docblock type, as tag() finds it, or null when it has none the type system can use.
      *
-     * A `@var` whose tokens cannot be imported also reads null, so the caller can still fall back
+     * A type whose tokens cannot be imported also reads null, so the caller can still fall back
      * to the native declaration; see ReflectedTypeAcceptor::accept().
      *
      * @return ValueExpressionResult|null
      */
     public function read(ReflectionProperty $property): ?array
     {
+        $tag = $this->tag($property);
+
+        return $tag === null ? null : $this->readDeclared($tag['type'], $tag['context']);
+    }
+
+    /**
+     * The type a property's docblock gives it, with the class or trait whose file wrote it: its own `@var`, else, for a
+     * promoted property, its constructor's `@param`, as PHPStan reads them. Every reader of a property's type uses it.
+     *
+     * @return PropertyTag|null
+     */
+    public function tag(ReflectionProperty $property): ?array
+    {
         $docComment = $property->getDocComment();
+        $type = $docComment === false ? null : DocblockTags::type($docComment, 'var');
 
-        if ($docComment === false) {
+        if ($type === null && ! $property->isPromoted()) {
             return null;
         }
 
-        $declared = $this->extractVarType($docComment);
+        $context = DeclaringFile::ofProperty($property);
 
-        if ($declared === null || $declared === '') {
-            return null;
+        // Reflection gives a promoted property its parameter's own docblock, never the constructor's.
+        if ($type === null) {
+            $constructor = (string) $context->getConstructor()?->getDocComment();
+            $type = DocblockTags::named($constructor, 'param')[$property->getName()] ?? null;
         }
 
-        return $this->readDeclared($declared, $property->getDeclaringClass());
+        return $type === null ? null : ['type' => $type, 'context' => $context];
     }
 
     /**
@@ -57,14 +74,6 @@ final class PropertyDocblockTypeReader
     public function readDeclared(string $declared, ReflectionClass $context): ?array
     {
         return resolve(ReflectedTypeAcceptor::class)->accept($this->resolveInfo($context, $declared));
-    }
-
-    /**
-     * The whole type a docblock's `@phpstan-var`, `@psalm-var` or `@var` tag spells, as DocblockTags reads it.
-     */
-    public function extractVarType(string $docComment): ?string
-    {
-        return DocblockTags::type($docComment, 'var');
     }
 
     /**

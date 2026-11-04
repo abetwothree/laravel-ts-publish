@@ -63,6 +63,8 @@ reflection answers, a decline included.
 
 A type with a builtin arm names no class, such as `: string` or `@var UrlService|string`. Neither does a docblock part
 with text after its generics: `Collection<int, User>` names `Collection`, while `Collection<int, User>[]` is an array.
+A property's docblock, `$resource`'s included, resolves in the file that declares it, a parent's or a trait's, and a
+promoted property with no `@var` reads its constructor's `@param` ([`PropertyDocblockTypeReader::tag()`]).
 
 `$this->prop` and `$this->resource->prop` share one code path, because a `JsonResource` forwards what it does not
 declare through `__get()` and `__call()`, so the two are the same read at runtime. The one asymmetry is deliberate. A
@@ -530,6 +532,7 @@ These pages cover the neighbors of receiver resolution:
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
+[`PropertyDocblockTypeReader::tag()`]: ../../src/Ast/Docblocks/PropertyDocblockTypeReader.php
 [`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php

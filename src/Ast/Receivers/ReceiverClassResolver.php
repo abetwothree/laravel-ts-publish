@@ -2275,7 +2275,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * A property's classes: its native class type, else its full `@var` type.
+     * A property's classes: its native class type, else its full docblock type, as PropertyDocblockTypeReader::tag()
+     * finds it.
      *
      * @return non-empty-list<class-string>|null
      */
@@ -2288,12 +2289,11 @@ final class ReceiverClassResolver
             return $native;
         }
 
-        $docComment = $property->getDocComment();
-        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property);
 
-        return $declared === null || $declared === ''
+        return $tag === null
             ? null
-            : DeclaredClasses::docblockClasses($declared, $declaring, $receiverClass, $declaring->getName());
+            : DeclaredClasses::docblockClasses($tag['type'], $tag['context'], $receiverClass, $declaring->getName());
     }
 
     /**
@@ -2310,14 +2310,15 @@ final class ReceiverClassResolver
         $declaring = $property->getDeclaringClass();
 
         // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $docComment = FrameworkClasses::is($declaring->getName()) ? false : $property->getDocComment();
-        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = FrameworkClasses::is($declaring->getName())
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->tag($property);
 
-        if ($declared === null || $declared === '') {
+        if ($tag === null) {
             return null;
         }
 
-        $arms = DeclaredClasses::docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
+        $arms = DeclaredClasses::docblockArms($tag['type'], $tag['context'], $subject->getName(), $declaring->getName());
 
         return $arms['classes'] === [] ? null : $arms;
     }
