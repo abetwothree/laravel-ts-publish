@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
@@ -903,9 +904,9 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return FrameworkClasses::is($property->getDeclaringClass()->getName())
+        return FrameworkClasses::is(DeclaringFile::ofProperty($property, $owner)->getName())
             ? null
-            : $this->typeOf($this->propertyClasses($property, $scope->runtime->class->getName()));
+            : $this->typeOf($this->propertyClasses($property, $owner, $scope->runtime->class->getName()));
     }
 
     /**
@@ -1436,11 +1437,12 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $property = new ReflectionProperty($class, $name);
+        $subject = new ReflectionClass($class);
+        $property = $subject->getProperty($name);
 
         // A non-public property read from outside goes to __get(), not to the declaration.
         return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $class))
+            ? $this->typeOf($this->propertyClasses($property, $subject, $class))
             : null;
     }
 
@@ -2277,11 +2279,12 @@ final class ReceiverClassResolver
 
     /**
      * A property's classes: its native class type, else its full docblock type, as PropertyDocblockTypeReader::tag()
-     * finds it.
+     * finds it on the class the property was read on.
      *
+     * @param  ReflectionClass<object>  $subject
      * @return non-empty-list<class-string>|null
      */
-    private function propertyClasses(ReflectionProperty $property, string $receiverClass): ?array
+    private function propertyClasses(ReflectionProperty $property, ReflectionClass $subject, string $receiverClass): ?array
     {
         $declaring = $property->getDeclaringClass();
         $native = DeclaredClasses::nativeClasses($property->getType(), $receiverClass, $declaring->getName());
@@ -2290,7 +2293,7 @@ final class ReceiverClassResolver
             return $native;
         }
 
-        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
 
         return $tag === null
             ? null
@@ -2311,9 +2314,9 @@ final class ReceiverClassResolver
         $declaring = $property->getDeclaringClass();
 
         // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $tag = FrameworkClasses::is($declaring->getName())
+        $tag = FrameworkClasses::is(DeclaringFile::ofProperty($property, $subject)->getName())
             ? null
-            : resolve(PropertyDocblockTypeReader::class)->tag($property);
+            : resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
 
         if ($tag === null) {
             return null;

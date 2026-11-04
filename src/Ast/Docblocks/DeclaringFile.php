@@ -9,6 +9,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\Property;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionMethod;
@@ -27,10 +28,20 @@ final class DeclaringFile
     /**
      * The class or trait whose file declares a property, as a property statement or a promoted parameter.
      *
+     * $subject is the class the property was read on: a trait it or a class between it and the reported declaring class
+     * uses can redeclare the property, which PHP 8.4's reflection reports as the parent's.
+     *
+     * @param  ReflectionClass<object>|null  $subject
      * @return ReflectionClass<object>
      */
-    public static function ofProperty(ReflectionProperty $property): ReflectionClass
+    public static function ofProperty(ReflectionProperty $property, ?ReflectionClass $subject = null): ReflectionClass
     {
+        $redeclaring = $subject === null ? null : self::redeclaringTrait($property, $subject);
+
+        if ($redeclaring !== null) {
+            return $redeclaring;
+        }
+
         $class = $property->getDeclaringClass();
         $name = $property->getName();
         $holders = array_filter(self::traits($class), fn (ReflectionClass $trait): bool => $trait->hasProperty($name));
@@ -81,11 +92,61 @@ final class DeclaringFile
     }
 
     /**
+     * The trait a class from $subject up to, not including, the property's reported declaring class uses to redeclare
+     * the property, or null when none does.
+     *
+     * PHP 8.4 reports a trait's redeclaration of a parent's property as the parent's, docblock included; PHP 8.5 does
+     * not, so there the reported declaring class is already the nearest.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return ReflectionClass<object>|null
+     */
+    public static function redeclaringTrait(ReflectionProperty $property, ReflectionClass $subject): ?ReflectionClass
+    {
+        $declaring = $property->getDeclaringClass()->getName();
+        $name = $property->getName();
+
+        for ($class = $subject; $class !== false && $class->getName() !== $declaring; $class = $class->getParentClass()) {
+            $trait = array_find(
+                self::traits($class),
+                fn (ReflectionClass $trait): bool => $trait->hasProperty($name) && self::declaresProperty($trait, $name),
+            );
+
+            if ($trait !== null) {
+                return $trait;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A property's docblock as a class's or trait's own source writes it, on the property statement or the promoted
+     * parameter, or false when it has none.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    public static function propertyDocComment(ReflectionClass $class, string $name): string|false
+    {
+        return self::propertyNode($class, $name)?->getDocComment()?->getText() ?? false;
+    }
+
+    /**
      * Whether a class's or trait's own source declares a property, as a property statement or a promoted parameter.
      *
      * @param  ReflectionClass<object>  $class
      */
     private static function declaresProperty(ReflectionClass $class, string $name): bool
+    {
+        return self::propertyNode($class, $name) !== null;
+    }
+
+    /**
+     * The property statement or promoted parameter a class's or trait's own source declares a property with.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private static function propertyNode(ReflectionClass $class, string $name): Property|Param|null
     {
         $file = $class->getFileName();
         $node = $file === false ? null : new NodeFinder()->findFirst(
@@ -94,10 +155,10 @@ final class DeclaringFile
         );
 
         if (! $node instanceof ClassLike) {
-            return false; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
-        return $node->getProperty($name) !== null || array_any(
+        return $node->getProperty($name) ?? array_find(
             $node->getMethod('__construct')->params ?? [],
             fn (Param $param): bool => $param->isPromoted() && $param->var instanceof Variable && $param->var->name === $name,
         );

@@ -2036,7 +2036,7 @@ class LaravelTsPublish
     protected function shapeMemberTypes(ReflectionClass $class, ReflectionProperty $property): array
     {
         $declared = $this->propertyTypes($class, $property->getName());
-        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $class);
         $read = $tag === null ? $declared : $this->declaredOrDocblockTypes(
             $declared,
             fn (): array => $this->resolveDocblockTypeStringAgainst($tag['type'], $tag['context']),

@@ -290,7 +290,8 @@ Every reader of a property's docblock, a value object's shape included, goes thr
 `PropertyDocblockTypeReader::tag()`: it resolves the docblock in the file that declares the property, and gives a
 promoted property with no `@var` its constructor's `@param`. Reflection reports a trait's property, docblock and all,
 as the using class's, and a class's redeclaration of it the same way, so `DeclaringFile::ofProperty()` asks each file's
-source which one declares the property.
+source which one declares the property. PHP 8.4 reports a trait's redeclaration of a parent's property as the parent's,
+docblock included, so every caller passes the class it reads the property on, and the trait's source supplies both.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
 argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-use`, `@template-use` or `@use`, the

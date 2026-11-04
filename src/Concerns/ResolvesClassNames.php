@@ -58,7 +58,7 @@ trait ResolvesClassNames
         }
 
         // Without a native class type, the property's docblock type names the class.
-        $tag = resolve(PropertyDocblockTypeReader::class)->tag($declaringClass->getProperty($property));
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($declaringClass->getProperty($property), $declaringClass);
 
         if ($tag === null) {
             return null; // @codeCoverageIgnore

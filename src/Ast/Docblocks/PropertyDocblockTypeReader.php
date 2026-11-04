@@ -32,11 +32,12 @@ final class PropertyDocblockTypeReader
      * A type whose tokens cannot be imported also reads null, so the caller can still fall back
      * to the native declaration; see ReflectedTypeAcceptor::accept().
      *
+     * @param  ReflectionClass<object>|null  $subject  the class it is read on; see DeclaringFile::ofProperty()
      * @return ValueExpressionResult|null
      */
-    public function read(ReflectionProperty $property): ?array
+    public function read(ReflectionProperty $property, ?ReflectionClass $subject = null): ?array
     {
-        $tag = $this->tag($property);
+        $tag = $this->tag($property, $subject);
 
         return $tag === null ? null : $this->readDeclared($tag['type'], $tag['context']);
     }
@@ -45,18 +46,23 @@ final class PropertyDocblockTypeReader
      * The type a property's docblock gives it, with the class or trait whose file wrote it: its own `@var`, else, for a
      * promoted property, its constructor's `@param`, as PHPStan reads them. Every reader of a property's type uses it.
      *
+     * @param  ReflectionClass<object>|null  $subject  the class it is read on; see DeclaringFile::ofProperty()
      * @return PropertyTag|null
      */
-    public function tag(ReflectionProperty $property): ?array
+    public function tag(ReflectionProperty $property, ?ReflectionClass $subject = null): ?array
     {
-        $docComment = $property->getDocComment();
+        // PHP 8.4 hands a trait's redeclaration of a parent's property the parent's docblock.
+        $trait = $subject === null ? null : DeclaringFile::redeclaringTrait($property, $subject);
+        $docComment = $trait === null
+            ? $property->getDocComment()
+            : DeclaringFile::propertyDocComment($trait, $property->getName());
         $type = $docComment === false ? null : DocblockTags::type($docComment, 'var');
 
         if ($type === null && ! $property->isPromoted()) {
             return null;
         }
 
-        $context = DeclaringFile::ofProperty($property);
+        $context = $trait ?? DeclaringFile::ofProperty($property);
 
         // Reflection gives a promoted property its parameter's own docblock, never the constructor's.
         if ($type === null) {

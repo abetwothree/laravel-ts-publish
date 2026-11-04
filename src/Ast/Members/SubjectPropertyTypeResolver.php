@@ -120,7 +120,7 @@ final class SubjectPropertyTypeResolver
      */
     public function declaredType(ReflectionClass $subject, ReflectionProperty $property): ?array
     {
-        return resolve(PropertyDocblockTypeReader::class)->read($property)
+        return resolve(PropertyDocblockTypeReader::class)->read($property, $subject)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $property->getName()));
     }
 
