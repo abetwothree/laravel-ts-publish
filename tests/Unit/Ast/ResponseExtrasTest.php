@@ -22,4 +22,5 @@ test('an added key meets a response key or the body key by the key it names, how
     'another key beside the body key' => ['{ "a\/b": number }', 'UserCardResource', 'data', 'UserCardResource & { "a\/b": number }'],
     'a response key quoted the other way' => ['{ "a\/b": { x: number } }', "{ 'a/b': { y: string } }", null, '{ "a\/b": { y: string; x: number } }'],
     'a response key with an escaped quote' => ["{ 'it\\'s': number }", '{ "it\'s": string }', null, "{ 'it\\'s': unknown }"],
+    'a bare decimal key, optional on one side' => ['{ 1.5?: number }', '{ 1.5: string }', null, '{ 1.5: unknown }'],
 ]);

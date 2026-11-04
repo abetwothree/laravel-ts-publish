@@ -21,14 +21,14 @@ final class PrintedKey
     private const string QUOTED = '/^(["\'])((?:(?!\1)[^\\\\]|\\\\.)*)\1$/s';
 
     /**
-     * The key a printed key names, its optional marker dropped: a bare identifier or list index as written, a quoted
-     * key unescaped; null for an index signature or any other text.
+     * The key a printed key names, its optional marker dropped: a bare identifier, list index or decimal as written, a
+     * quoted key unescaped; null for an index signature or any other text.
      */
     public static function decode(string $printed): ?string
     {
         $key = str_ends_with($printed, '?') ? rtrim(substr($printed, 0, -1)) : $printed;
 
-        if (preg_match(self::IDENTIFIER, $key) === 1 || PhpArrayKey::listIndex($key) !== null) {
+        if (preg_match(self::IDENTIFIER, $key) === 1 || PhpArrayKey::listIndex($key) !== null || self::isOwnDecimal($key)) {
             return $key;
         }
 
@@ -41,6 +41,15 @@ final class PrintedKey
     public static function names(string $printed, string $key): bool
     {
         return self::decode($printed) === $key;
+    }
+
+    /**
+     * Whether a bare decimal fraction names its own text, as `1.5` does; TypeScript names `1.50` and `1.0` otherwise.
+     */
+    private static function isOwnDecimal(string $key): bool
+    {
+        // json_encode() writes a double's shortest round-trip digits, which JavaScript names a fraction's property by.
+        return preg_match('/^(?:0|[1-9]\d*)\.\d*[1-9]$/D', $key) === 1 && json_encode((float) $key) === $key;
     }
 
     /**

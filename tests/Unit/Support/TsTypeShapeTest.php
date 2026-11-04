@@ -133,6 +133,12 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType("{ 'it\\'s': number }", "it\\'s"))->toBeNull();
     });
 
+    test('reads a bare decimal key by the key TypeScript names, and declines a spelling it names otherwise', function () {
+        expect(TsTypeShape::memberType('{ 1.5: number }', '1.5'))->toBe('number')
+            ->and(TsTypeShape::memberType('{ 1.5?: string }', '1.5'))->toBe('string')
+            ->and(TsTypeShape::memberType('{ 01.5: number }', '01.5'))->toBeNull();
+    });
+
     test('reads a tuple member only by an index a list holds', function () {
         expect(TsTypeShape::memberType('[number, string]', '01'))->toBeNull()
             ->and(TsTypeShape::memberType('[number, string]', '-1'))->toBeNull()
