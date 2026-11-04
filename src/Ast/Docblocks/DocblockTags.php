@@ -154,7 +154,8 @@ final class DocblockTags
             return [];
         }
 
-        preg_match_all('/^[ \t]*'.preg_quote($tag, '/').'\s+/m', $content, $matches, PREG_OFFSET_CAPTURE);
+        // The type starts on the tag's line: a bare tag's next line is prose, not its type.
+        preg_match_all('/^[ \t]*'.preg_quote($tag, '/').'[ \t]+(?=\S)/m', $content, $matches, PREG_OFFSET_CAPTURE);
 
         $captures = [];
 
@@ -174,9 +175,8 @@ final class DocblockTags
      *
      * @return Capture
      */
-    private static function capture(string $text): array
+    private static function capture(string $rest): array
     {
-        $rest = ltrim($text);
         $type = '';
         $length = strlen($rest);
         $end = $length;
@@ -230,7 +230,7 @@ final class DocblockTags
      */
     private static function name(string $rest, bool $bare): ?string
     {
-        if (preg_match('/^\s*&?\s*(?:\.\.\.)?\$('.self::NAME.')/', $rest, $match) === 1) {
+        if (preg_match('/^[ \t]*&?[ \t]*(?:\.\.\.)?\$('.self::NAME.')/', $rest, $match) === 1) {
             return $match[1];
         }
 

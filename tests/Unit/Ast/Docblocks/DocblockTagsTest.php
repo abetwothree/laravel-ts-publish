@@ -63,6 +63,14 @@ test('captures a callable tag whole, up to the by-reference name after its retur
     expect(DocblockTags::type('/** @var callable(int): string &$cb */', 'var'))->toBe('callable(int): string');
 });
 
+test('reads a tag\'s type and its name only on the tag\'s line, though a type it opens there may run on', function () {
+    expect(DocblockTags::type("/**\n * @return\n * The user\n */", 'return'))->toBeNull()
+        ->and(DocblockTags::type("/**\n * @return \n * The user\n */", 'return'))->toBeNull()
+        ->and(DocblockTags::named("/**\n * @param int\n * \$x is the count\n */", 'param'))->toBe([])
+        ->and(DocblockTags::named("/**\n * @param int &\n * ...\$x\n */", 'param'))->toBe([])
+        ->and(DocblockTags::named("/**\n * @param array{\n *   a: int\n * } \$x\n */", 'param'))->toBe(['x' => 'array{    a: int  }']);
+});
+
 test('a family with no tag, or only prose mentions of one, reads null', function () {
     expect(DocblockTags::type("/**\n * Mentions @return int here.\n */", 'return'))->toBeNull()
         ->and(DocblockTags::type('/** @returns int */', 'return'))->toBeNull()
