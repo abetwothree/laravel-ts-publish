@@ -162,7 +162,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         // A `?->` here or earlier in the chain ends the whole expression as null, where a plain `->` on null throws.
         return $result !== null && $this->chainShortCircuits($call)
-            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
     }
 
@@ -297,7 +297,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function listsItemsOf(string $type, string $model): bool
     {
         return array_all(
-            TsTypeString::splitTopLevelUnion(ValueResult::stripNullArm($type)),
+            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($type)),
             fn (string $arm): bool => $arm === $model.'[]' || $arm === $this->paginatorName($arm).'<'.$model.'>',
         );
     }
@@ -506,7 +506,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $paginators = [];
 
-        foreach (TsTypeString::splitTopLevelUnion(ValueResult::stripNullArm($type)) as $arm) {
+        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($type)) as $arm) {
             $paginator = $this->paginatorName($arm);
             $paginators[$paginator ?? ''] = $paginator;
         }
