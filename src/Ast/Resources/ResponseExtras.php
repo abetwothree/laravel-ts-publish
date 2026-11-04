@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -202,14 +201,14 @@ final readonly class ResponseExtras
      */
     private static function joined(array $type, array $object, ?string $bodyKey = null): array
     {
-        $held = ValueResult::stripNullArm($type['type']);
+        $held = TsTypeString::withoutNullArm($type['type']);
         $mine = TsTypeShape::members($held);
         $theirs = TsTypeShape::members($object['type']) ?? [];
         $joined = $mine !== null && ! self::holdsSignature([...$mine, ...$theirs])
             ? self::merged($mine, $theirs)
             : self::intersected($held, $theirs, $bodyKey);
 
-        $result = [...$type, 'type' => ValueResult::hasNullArm($type['type']) ? ValueResult::withNullArm($joined) : $joined];
+        $result = [...$type, 'type' => TsTypeString::hasNullArm($type['type']) ? TsTypeString::withNullArm($joined) : $joined];
 
         foreach (self::QUEUES as $queue => $single) {
             if (($object[$queue] ?? []) === []) {
