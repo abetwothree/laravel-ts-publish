@@ -1064,9 +1064,13 @@ it('reads a props helper\'s override-beside-model fill folded into a page prop c
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
 
     expect($transformer->actions[0]['pageType'])
-        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: User } }')
+        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: User | null } }')
         ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
-        ->and(inertiaProps(new DocShapeFoldedPageController()->folded())->nested->y->k)->toBeNull();
+        ->and(inertiaProps(new DocShapeFoldedPageController()->folded()))->toEqual((object) [
+            'prop' => (object) ['k' => null],
+            'nested' => (object) ['y' => (object) ['k' => null]],
+            'model_only' => (object) ['k' => null],
+        ]);
 });
 
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {

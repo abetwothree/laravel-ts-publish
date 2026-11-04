@@ -33,9 +33,9 @@ class DocShapeFoldedPageController
     }
 
     /**
-     * The model alone.
+     * The model alone, or null.
      *
-     * @return array{k: User}
+     * @return array{k: User|null}
      */
     private function modelOnly(): array
     {
