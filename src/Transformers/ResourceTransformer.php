@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
@@ -1452,7 +1452,7 @@ class ResourceTransformer extends CoreTransformer
         $respelled = '';
         $from = 0;
 
-        foreach (FileImportNames::declaredTokens($type, $slots) as $token) {
+        foreach (TokenSlots::declaredTokens($type, $slots) as $token) {
             if ($token['slot'] === null || ! $token['read']) {
                 continue;
             }

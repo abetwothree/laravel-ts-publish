@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
@@ -1235,7 +1236,7 @@ class LaravelTsPublish
         $arms = [];
 
         // Arms of one text whose tokens name different classes, as an override spelled like a model's, stay apart.
-        foreach (FileImportNames::declaredArms($info['type'], $info['tokenFqcns'] ?? []) as [$arm, $armSlots]) {
+        foreach (TokenSlots::declaredArms($info['type'], $info['tokenFqcns'] ?? []) as [$arm, $armSlots]) {
             $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
         }
 
@@ -3236,7 +3237,7 @@ class LaravelTsPublish
         $left = '';
         $from = 0;
 
-        foreach (FileImportNames::declaredTokens($info['type'], $info['tokenFqcns'] ?? []) as $token) {
+        foreach (TokenSlots::declaredTokens($info['type'], $info['tokenFqcns'] ?? []) as $token) {
             if ($token['slot'] !== null && $token['read']) {
                 $left .= substr($info['type'], $from, $token['offset'] - $from).' ';
                 $from = $token['offset'] + strlen($token['token']);
@@ -3390,7 +3391,7 @@ class LaravelTsPublish
 
         // ClassTokenQueue cannot hold a null, so the class tokens read their slots and the enums their own queue.
         $enums = new ClassTokenQueue($info['enumFqcns'], FileImportNames::typeName(...), ValueResult::enumSiblingNames(...));
-        $tokens = FileImportNames::declaredTokens($info['type'], $classTokens, FileImportNames::namesOf('classes', $info['enumFqcns']));
+        $tokens = TokenSlots::declaredTokens($info['type'], $classTokens, FileImportNames::namesOf('classes', $info['enumFqcns']));
 
         return array_map(
             static fn (array $token): ?string => $token['own'] ? $token['slot'] : $enums->take($token['token'])[0] ?? null,
@@ -3400,14 +3401,14 @@ class LaravelTsPublish
 
     /**
      * The class behind each token of pieces joined into one type, each piece's slots read as a generated file names
-     * their classes (FileImportNames::joinedSlots()).
+     * their classes (TokenSlots::joinedSlots()).
      *
      * @param  list<ShapeTypeInfo>  $pieces
      * @return TokenFqcns
      */
     private function joinedTokenFqcns(array $pieces): array
     {
-        return FileImportNames::joinedSlots(array_map(
+        return TokenSlots::joinedSlots(array_map(
             static fn (array $piece): array => [$piece['type'], $piece['tokenFqcns'] ?? []],
             $pieces,
         ));

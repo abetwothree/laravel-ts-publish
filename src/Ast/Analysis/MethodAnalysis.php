@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -559,7 +559,7 @@ class MethodAnalysis
     }
 
     /**
-     * Retype a key with a text naming no class, as FileImportNames::classLess() reads one: with no import channel, and
+     * Retype a key with a text naming no class, as TokenSlots::classLess() reads one: with no import channel, and
      * without each custom import only its old text spelled. Whether the value may be left out stays.
      */
     public function retypeClassLess(string $name, string $type): void
@@ -588,7 +588,7 @@ class MethodAnalysis
 
         // A literal's spelling binds no import, so only a read token elsewhere keeps one.
         $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
-            && ! FileImportNames::readsName(ImportMaps::localName($import), ...$others);
+            && ! TokenSlots::readsName(ImportMaps::localName($import), ...$others);
 
         foreach ($this->customImports as $path => $names) {
             $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));

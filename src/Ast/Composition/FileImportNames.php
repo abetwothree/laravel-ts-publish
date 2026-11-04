@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -41,9 +40,6 @@ use Closure;
  *     declared?: TokenFqcns,
  * }
  * @phpstan-type SoleClasses = array<string, class-string>
- * @phpstan-type Token = array{string, int, bool}
- * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
- * @phpstan-type DeclaredArm = array{0: string, 1: TokenFqcns, 2?: list<string>}
  *
  * @internal
  */
@@ -51,9 +47,6 @@ final class FileImportNames
 {
     use BuildsImportMaps;
     use ResolvesImportConflicts;
-
-    /** The name a `typeof` reads, which is a const's and never a class channel's type. */
-    private const string AFTER_TYPEOF = '/(?<![A-Za-z0-9_$.])typeof\s+\K[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
 
     /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
     protected array $enumConstMap = [];
@@ -180,87 +173,6 @@ final class FileImportNames
     }
 
     /**
-     * Each token in a type of a declaration's own names, the names of the classes its slots hold, and of `$names`, in
-     * print order. An own name's token takes the next slot, an unread one's in a literal or after `typeof` too, and
-     * any other token takes none: the one reading of `tokenFqcns` every builder and reader of it shares.
-     *
-     * @param  TokenFqcns  $slots
-     * @param  list<string>  $names
-     * @return list<DeclaredToken>
-     */
-    public static function declaredTokens(string $type, array $slots, array $names = []): array
-    {
-        return self::declaredTokensOf($type, $slots, self::ownNames($slots), $names);
-    }
-
-    /**
-     * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order, and
-     * those names, since an arm's share of the slots may hold no class of a name it spells.
-     *
-     * @param  TokenFqcns  $slots
-     * @return list<DeclaredArm>
-     */
-    public static function declaredArms(string $type, array $slots): array
-    {
-        $own = self::ownNames($slots);
-        $arms = [];
-        $at = 0;
-
-        foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
-            $count = $own === [] ? 0 : count(self::tokens('classes', $own, $arm));
-            $arms[] = [$arm, array_slice($slots, $at, $count), $own];
-            $at += $count;
-        }
-
-        return $arms;
-    }
-
-    /**
-     * The slots of a type joined from arms: one per token of the names of the classes any arm's slots hold. An arm's
-     * slots go to the tokens of its declaration's own names, a whole declaration's read from its slots, and any other
-     * token, one another arm's class is spelled like or a literal's, takes a null.
-     *
-     * @param  list<DeclaredArm>  $arms
-     * @return TokenFqcns
-     */
-    public static function joinedSlots(array $arms): array
-    {
-        $names = self::ownNames(array_merge([], ...array_column($arms, 1)));
-        $slots = [];
-
-        foreach ($arms as $arm) {
-            $tokens = self::declaredTokensOf($arm[0], $arm[1], $arm[2] ?? self::ownNames($arm[1]), $names);
-            array_push($slots, ...array_column($tokens, 'slot'));
-        }
-
-        return $slots;
-    }
-
-    /**
-     * A declaration's type read with no class, for a reader whose per-name queues cannot hold its slots' null: a member
-     * whose tokens outside its nested objects take a class's slot is `unknown`, at any depth, and an override's or a
-     * literal's token stays.
-     *
-     * @param  TokenFqcns  $slots
-     */
-    public static function classLess(string $type, array $slots): string
-    {
-        return self::classLessOf($type, $slots, self::ownNames($slots));
-    }
-
-    /**
-     * Whether any of the types spells a name as a token a reader binds to an import: outside a quoted literal, a
-     * generated index signature key and the const after `typeof`.
-     */
-    public static function readsName(string $name, string ...$types): bool
-    {
-        return array_any($types, static fn (string $type): bool => array_any(
-            self::tokens('classes', [$name], $type),
-            static fn (array $token): bool => $token[2],
-        ));
-    }
-
-    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -273,161 +185,6 @@ final class FileImportNames
                 ? $this->localImportName($fqcn, $spelled)
                 : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
         ), $this->members);
-    }
-
-    /**
-     * The names a declaration's tokens take slots for: those of the classes its slots hold.
-     *
-     * @param  TokenFqcns  $slots
-     * @return list<string>
-     */
-    private static function ownNames(array $slots): array
-    {
-        return self::namesOf('classes', array_values(array_unique(array_filter($slots))));
-    }
-
-    /**
-     * declaredTokens() of slots that belong to a declaration whose own names are `$own`.
-     *
-     * @param  TokenFqcns  $slots
-     * @param  list<string>  $own
-     * @param  list<string>  $names
-     * @return list<DeclaredToken>
-     */
-    private static function declaredTokensOf(string $type, array $slots, array $own, array $names): array
-    {
-        $read = array_values(array_unique([...$own, ...$names]));
-
-        if ($read === []) {
-            return [];
-        }
-
-        $at = 0;
-        $tokens = [];
-
-        foreach (self::tokens('classes', $read, $type) as [$token, $offset, $isRead]) {
-            $isOwn = in_array($token, $own, true);
-            $slot = $isOwn ? $slots[$at++] ?? null : null;
-            $tokens[] = ['token' => $token, 'offset' => $offset, 'slot' => $slot, 'own' => $isOwn, 'read' => $isRead];
-        }
-
-        return $tokens;
-    }
-
-    /**
-     * classLess() of slots that belong to a declaration whose own names are `$own`.
-     *
-     * @param  TokenFqcns  $slots
-     * @param  list<string>  $own
-     */
-    private static function classLessOf(string $type, array $slots, array $own): string
-    {
-        $tokens = self::declaredTokensOf($type, $slots, $own, []);
-        $classed = static fn (array $token): bool => $token['read'] && $token['slot'] !== null;
-
-        if (! array_any($tokens, $classed)) {
-            return $type;
-        }
-
-        $spans = self::objectSpans($type);
-        $inSpan = static fn (array $token, array $span): bool => $token['offset'] >= $span[0]
-            && $token['offset'] < $span[1];
-        $outside = static fn (array $token): bool => ! array_any($spans, static fn (array $span): bool => $inSpan($token, $span));
-
-        if (array_any($tokens, static fn (array $token): bool => $classed($token) && $outside($token))) {
-            return 'unknown';
-        }
-
-        $read = '';
-        $from = 0;
-
-        foreach ($spans as [$start, $end]) {
-            $inside = array_values(array_filter($tokens, static fn (array $token): bool => $inSpan($token, [$start, $end])));
-
-            if (array_any($inside, $classed)) {
-                $object = self::classLessObject(substr($type, $start, $end - $start), array_column($inside, 'slot'), $own);
-                $read .= substr($type, $from, $start - $from).$object;
-                $from = $end;
-            }
-        }
-
-        return $read.substr($type, $from);
-    }
-
-    /**
-     * An object type with each member's value read by classLessOf() against its share of the slots, or `unknown` for
-     * one TsTypeShape cannot split into keys and values.
-     *
-     * @param  TokenFqcns  $slots
-     * @param  list<string>  $own
-     */
-    private static function classLessObject(string $object, array $slots, array $own): string
-    {
-        $members = TsTypeShape::members($object);
-
-        if ($members === null) {
-            return 'unknown';
-        }
-
-        $read = [];
-        $at = 0;
-
-        foreach ($members as [$key, $value]) {
-            $at += count(self::declaredTokensOf($key, [], $own, []));
-            $count = count(self::declaredTokensOf($value, [], $own, []));
-            $read[] = $key.': '.self::classLessOf($value, array_slice($slots, $at, $count), $own);
-            $at += $count;
-        }
-
-        return '{ '.implode('; ', $read).' }';
-    }
-
-    /**
-     * The spans, end exclusive, of each object literal a type holds outside any other, its quoted literals skipped.
-     *
-     * @return list<array{int, int}>
-     */
-    private static function objectSpans(string $type): array
-    {
-        $skip = [];
-
-        foreach (TsTypeString::literalSpans($type) as [$start, $end]) {
-            $skip[$start] = $end;
-        }
-
-        $spans = [];
-        $depth = 0;
-        $open = 0;
-        $at = 0;
-
-        while ($at < strlen($type)) {
-            if (isset($skip[$at])) {
-                $at = $skip[$at];
-
-                continue;
-            }
-
-            if ($type[$at] === '{' && $depth++ === 0) {
-                $open = $at;
-            } elseif ($type[$at] === '}' && $depth > 0 && --$depth === 0) {
-                $spans[] = [$open, $at + 1];
-            }
-
-            $at++;
-        }
-
-        return $spans;
-    }
-
-    /**
-     * The pattern a channel's tokens are read with: a const only after `typeof`.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  non-empty-list<string>  $names
-     */
-    private static function patternOf(string $channel, array $names): string
-    {
-        return TsTypeString::queuedTokenPattern($names, $channel === 'classes' ? '' : 'typeof\s+\K');
     }
 
     /**
@@ -499,7 +256,7 @@ final class FileImportNames
         $queue = [];
 
         if ($channel === 'classes' && isset($piece['declared'])) {
-            foreach (self::declaredTokens($piece['text'], $piece['declared'], $names) as $token) {
+            foreach (TokenSlots::declaredTokens($piece['text'], $piece['declared'], $names) as $token) {
                 if ($token['read'] && in_array($token['token'], $names, true)) {
                     $queue[] = $token['own'] ? $token['slot'] : $fallback[$token['token']] ?? null;
                 }
@@ -508,7 +265,7 @@ final class FileImportNames
             return $queue;
         }
 
-        $tokens = $names === [] ? [] : self::tokens($channel, $names, $piece['text']);
+        $tokens = $names === [] ? [] : TokenSlots::tokens($channel, $names, $piece['text']);
 
         $own = $channel === 'classes'
             ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))
@@ -521,36 +278,6 @@ final class FileImportNames
         }
 
         return $queue;
-    }
-
-    /**
-     * Each token of the names in the text, its offset, and whether the channel reads it.
-     *
-     * A literal's or an index signature key's text is a value or a key, and the name after `typeof` is a const's.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  non-empty-list<string>  $names
-     * @return list<Token>
-     */
-    private static function tokens(string $channel, array $names, string $text): array
-    {
-        if (preg_match_all(self::patternOf($channel, $names), $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
-            return [];
-        }
-
-        $unread = TsTypeString::literalSpans($text);
-
-        if ($channel === 'classes' && preg_match_all(self::AFTER_TYPEOF, $text, $consts, PREG_OFFSET_CAPTURE) > 0) {
-            foreach ($consts[0] as [$const, $at]) {
-                $unread[] = [$at, $at + strlen($const)];
-            }
-        }
-
-        return array_map(static fn (array $match): array => [
-            $match[0],
-            $match[1],
-            ! array_any($unread, static fn (array $span): bool => $match[1] >= $span[0] && $match[1] < $span[1]),
-        ], $matches[0]);
     }
 
     /**
@@ -574,7 +301,7 @@ final class FileImportNames
         $from = 0;
         $at = 0;
 
-        foreach (self::tokens($channel, $names, $type) as [$token, $offset, $read]) {
+        foreach (TokenSlots::tokens($channel, $names, $type) as [$token, $offset, $read]) {
             if (! $read) {
                 continue;
             }

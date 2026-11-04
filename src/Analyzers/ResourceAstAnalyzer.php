@@ -19,9 +19,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -107,7 +107,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type TokenFqcns from MethodAnalysis
- * @phpstan-import-type DeclaredArm from FileImportNames
+ * @phpstan-import-type DeclaredArm from TokenSlots
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
  *
@@ -2408,7 +2408,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         foreach ($declared as $own) {
             foreach ($distinct as $other) {
                 $spells = array_any(
-                    FileImportNames::declaredTokens($other[0], $own[1]),
+                    TokenSlots::declaredTokens($other[0], $own[1]),
                     static fn (array $token): bool => $token['read'],
                 );
 
@@ -2502,7 +2502,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $slotted = [];
 
         foreach ($declared as [$text, $slots]) {
-            $slotted[$text] = FileImportNames::declaredArms($text, $slots);
+            $slotted[$text] = TokenSlots::declaredArms($text, $slots);
         }
 
         if (count($unique) === 1) {
@@ -2547,6 +2547,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $arms = array_column($joined, 0);
 
-        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), FileImportNames::joinedSlots($joined)];
+        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), TokenSlots::joinedSlots($joined)];
     }
 }

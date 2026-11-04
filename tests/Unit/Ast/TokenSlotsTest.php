@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Models\Comment;
@@ -10,7 +10,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 test('declaredTokens() gives each own name\'s token the next slot, an unread one\'s too, and another name\'s none', function () {
-    $tokens = FileImportNames::declaredTokens("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']);
+    $tokens = TokenSlots::declaredTokens("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']);
 
     expect(array_map(fn (array $token): array => [$token['token'], $token['slot'], $token['own'], $token['read']], $tokens))->toBe([
         ['User', null, true, false],
@@ -21,35 +21,35 @@ test('declaredTokens() gives each own name\'s token the next slot, an unread one
 });
 
 test('declaredTokens() reads no token where the slots hold no class and no other name is asked for', function () {
-    expect(FileImportNames::declaredTokens('User | Post', []))->toBe([]);
+    expect(TokenSlots::declaredTokens('User | Post', []))->toBe([]);
 });
 
 test('declaredArms() gives each top-level arm the slots its own names\' tokens take, in order, and those names', function () {
-    expect(FileImportNames::declaredArms('User | User[] | string | null', [null, User::class]))->toBe([
+    expect(TokenSlots::declaredArms('User | User[] | string | null', [null, User::class]))->toBe([
         ['User', [null], ['User']],
         ['User[]', [User::class], ['User']],
         ['string', [], ['User']],
         ['null', [], ['User']],
-    ])->and(FileImportNames::declaredArms('{ a: User; p: Post } | User', [null, Post::class, User::class]))->toBe([
+    ])->and(TokenSlots::declaredArms('{ a: User; p: Post } | User', [null, Post::class, User::class]))->toBe([
         ['{ a: User; p: Post }', [null, Post::class], ['Post', 'User']],
         ['User', [User::class], ['Post', 'User']],
-    ])->and(FileImportNames::declaredArms('string | number', []))->toBe([['string', [], []], ['number', [], []]]);
+    ])->and(TokenSlots::declaredArms('string | number', []))->toBe([['string', [], []], ['number', [], []]]);
 });
 
 test('joinedSlots() gives every arm one slot per token of the names any arm\'s slots hold, a non-own token null', function () {
-    expect(FileImportNames::joinedSlots([
+    expect(TokenSlots::joinedSlots([
         ["{ kind: 'User' }", []],
         ["{ kind: 'User'; p: Post }", [Post::class]],
         ['User[]', [null]],
         ['User', [User::class]],
         ['string', []],
     ]))->toBe([null, null, Post::class, null, User::class])
-        ->and(FileImportNames::joinedSlots([['string', []], ['null', []]]))->toBe([]);
+        ->and(TokenSlots::joinedSlots([['string', []], ['null', []]]))->toBe([]);
 });
 
 test('joinedSlots() of a declaration\'s arms gives back its slots', function (string $type, array $slots) {
-    expect(FileImportNames::joinedSlots(FileImportNames::declaredArms($type, $slots)))->toBe($slots)
-        ->and(FileImportNames::joinedSlots([...FileImportNames::declaredArms($type, $slots), ['null', []]]))->toBe($slots);
+    expect(TokenSlots::joinedSlots(TokenSlots::declaredArms($type, $slots)))->toBe($slots)
+        ->and(TokenSlots::joinedSlots([...TokenSlots::declaredArms($type, $slots), ['null', []]]))->toBe($slots);
 })->with([
     'an override before a class in one arm, its model in another' => ['{ a: User; p: Post } | User', [null, Post::class, User::class]],
     'a literal before a class in one arm, its model in another' => ["{ kind: 'User'; p: Post } | User", [null, Post::class, User::class]],
@@ -60,7 +60,7 @@ test('joinedSlots() of a declaration\'s arms gives back its slots', function (st
 ]);
 
 test('classLess() reads a declared type without the classes its tokens name, member by member', function (string $type, array $slots, string $read) {
-    expect(FileImportNames::classLess($type, $slots))->toBe($read);
+    expect(TokenSlots::classLess($type, $slots))->toBe($read);
 })->with([
     'an override beside its model' => ['User | User', [null, User::class], 'unknown'],
     'the two and a null' => ['User | User | null', [null, User::class], 'unknown'],
@@ -83,7 +83,7 @@ test('classLess() reads a declared type without the classes its tokens name, mem
 ]);
 
 test('readsName() reads a name only where a reader binds it to an import', function (array $types, bool $reads) {
-    expect(FileImportNames::readsName('User', ...$types))->toBe($reads);
+    expect(TokenSlots::readsName('User', ...$types))->toBe($reads);
 })->with([
     'a token' => [['{ k: unknown; u: User }'], true],
     'in a list' => [['User[]'], true],
@@ -97,12 +97,12 @@ test('readsName() reads a name only where a reader binds it to an import', funct
 ]);
 
 test('classLess() of generated declarations reads each as the oracle says', function () {
-    $cases = fileImportNamesCases(98, 500);
+    $cases = tokenSlotsCases(98, 500);
     $unknownMembers = 0;
 
     foreach ($cases as $case => $declarations) {
         foreach ($declarations as ['type' => $type, 'slots' => $slots, 'classLess' => $read]) {
-            expect(FileImportNames::classLess($type, $slots))->toBe($read, "case {$case}: {$type} ".json_encode($slots));
+            expect(TokenSlots::classLess($type, $slots))->toBe($read, "case {$case}: {$type} ".json_encode($slots));
             $unknownMembers += substr_count($read, ': unknown');
         }
     }
@@ -112,22 +112,22 @@ test('classLess() of generated declarations reads each as the oracle says', func
 
 // Each generated declaration is built with its slots, so the oracle never reads the code under test.
 test('joinedSlots() of generated declarations\' arms gives one slot per token of their names, as the oracle says', function () {
-    $own = static fn (array $tokens): array => fileImportNamesOwn($tokens);
-    $slotsOf = static fn (array $tokens, array $ownNames): array => fileImportNamesSlots($tokens, $ownNames);
+    $own = static fn (array $tokens): array => tokenSlotsOwn($tokens);
+    $slotsOf = static fn (array $tokens, array $ownNames): array => tokenSlotsSlots($tokens, $ownNames);
     $misreadArms = 0;
 
-    foreach (fileImportNamesCases(98, 500) as $case => $declarations) {
+    foreach (tokenSlotsCases(98, 500) as $case => $declarations) {
         $joinedArms = [];
         $allTokens = [];
 
         foreach ($declarations as ['arms' => $arms, 'type' => $type, 'slots' => $slots]) {
             $tokens = array_merge([], ...array_column($arms, 1));
-            $cut = FileImportNames::declaredArms($type, $slots);
+            $cut = TokenSlots::declaredArms($type, $slots);
             $context = "case {$case}: {$type} ".json_encode($slots);
 
             expect(array_column($cut, 0))->toBe(array_column($arms, 0), $context)
                 ->and(array_column($cut, 1))->toBe(array_map(fn (array $arm): array => $slotsOf($arm[1], $own($tokens)), $arms), $context)
-                ->and(FileImportNames::joinedSlots($cut))->toBe($slots, $context);
+                ->and(TokenSlots::joinedSlots($cut))->toBe($slots, $context);
 
             // The shape a share's own classes misread: a null of a name its arm has no class of, then a class's token.
             foreach ($arms as [, $armTokens]) {
@@ -140,7 +140,7 @@ test('joinedSlots() of generated declarations\' arms gives one slot per token of
             array_push($allTokens, ...$tokens);
         }
 
-        expect(FileImportNames::joinedSlots($joinedArms))->toBe($slotsOf($allTokens, $own($allTokens)), "case {$case}");
+        expect(TokenSlots::joinedSlots($joinedArms))->toBe($slotsOf($allTokens, $own($allTokens)), "case {$case}");
     }
 
     expect($misreadArms)->toBeGreaterThan(50);
@@ -155,7 +155,7 @@ test('joinedSlots() of generated declarations\' arms gives one slot per token of
  *
  * @return list<list<array{arms: list<list<mixed>>, type: string, slots: list<class-string|null>, classLess: string}>>
  */
-function fileImportNamesCases(int $seed, int $cases): array
+function tokenSlotsCases(int $seed, int $cases): array
 {
     $random = new Randomizer(new Xoshiro256StarStar($seed));
     $classes = ['User' => User::class, 'Post' => Post::class, 'Comment' => Comment::class];
@@ -215,7 +215,7 @@ function fileImportNamesCases(int $seed, int $cases): array
             $declarations[] = [
                 'arms' => $arms,
                 'type' => implode(' | ', array_column($arms, 0)),
-                'slots' => fileImportNamesSlots($tokens, fileImportNamesOwn($tokens)),
+                'slots' => tokenSlotsSlots($tokens, tokenSlotsOwn($tokens)),
                 'classLess' => array_any(array_column($arms, 3), static fn (bool $named): bool => $named)
                     ? 'unknown'
                     : implode(' | ', array_column($arms, 2)),
@@ -234,7 +234,7 @@ function fileImportNamesCases(int $seed, int $cases): array
  * @param  list<array{string, class-string|null}>  $tokens
  * @return list<string>
  */
-function fileImportNamesOwn(array $tokens): array
+function tokenSlotsOwn(array $tokens): array
 {
     return array_values(array_unique(array_column(
         array_filter($tokens, static fn (array $token): bool => $token[1] !== null),
@@ -249,7 +249,7 @@ function fileImportNamesOwn(array $tokens): array
  * @param  list<string>  $ownNames
  * @return list<class-string|null>
  */
-function fileImportNamesSlots(array $tokens, array $ownNames): array
+function tokenSlotsSlots(array $tokens, array $ownNames): array
 {
     return array_values(array_column(
         array_filter($tokens, static fn (array $token): bool => in_array($token[0], $ownNames, true)),

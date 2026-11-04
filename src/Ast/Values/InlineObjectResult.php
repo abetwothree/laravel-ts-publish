@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -57,7 +57,7 @@ final class InlineObjectResult
 
         foreach ($analysis->declaredTokenFqcns as $name => $slots) {
             if (isset($types[$name])) {
-                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
+                $analysis->retypeClassLess((string) $name, TokenSlots::classLess($types[$name], $slots));
             }
         }
     }
