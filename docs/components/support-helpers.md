@@ -61,8 +61,8 @@ The helpers and the test that pins them live in these files:
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
   TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
 - [`Support\TypeStrings\PrintedKey`](../../src/Support/TypeStrings/PrintedKey.php): the key a printed object key
-  names, the inverse of `validJsObjectKey()`. A reader that matches a printed key against a PHP key decodes it here
-  rather than unquoting it. Static and `@internal`.
+  names, the inverse of every key printer: `validJsObjectKey()`, `shapeKey()` and `toJsLiteral()`. A reader that
+  matches a printed key against a PHP key decodes it here rather than unquoting it. Static and `@internal`.
 - [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
   template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
   keys a signature covers. Static and `@internal`.
@@ -94,7 +94,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
-| How does it join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
+| How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
 | How does this type stand before a postfix `[]` or `?`, which binds tighter than `\|`? | `TsTypeShape::postfixOperand()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
@@ -174,8 +174,9 @@ a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave 
 
 `hoistNull()`, `orUndefined()`, `listType()`, `mergeTypeScriptInfos()`, `TokenSlots::uniqueArms()` and
 `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join. The `[]` wrappers,
-`ValueResult::arrayWrapType()` and `wrapAsArray()`, list through `TsTypeShape::listType()`. Other joins still append
-bare, such as `withNullArm()`, `TsTypeString::union()`, FormRequest's rule unions and a few raw `[]` suffixes.
+`ValueResult::arrayWrapType()`, `ValueResult::collectionListType()` and `wrapAsArray()`, list through
+`TsTypeShape::listType()`. Other joins still append bare, such as `withNullArm()`, `TsTypeString::union()`,
+FormRequest's rule unions and a few raw `[]` suffixes.
 
 [literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 

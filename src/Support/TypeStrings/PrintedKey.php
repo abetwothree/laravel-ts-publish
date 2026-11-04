@@ -7,8 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 
 /**
- * The key a printed object-literal key names, the inverse of JsEmitter::validJsObjectKey(): `name`, `0`, `"a\/b"` or
- * `'it\'s'`, each optionally marked `?`. A key is compared by the name it decodes to, never by its spelling.
+ * The key a printed object-literal key names, the inverse of every key printer, JsEmitter's validJsObjectKey() and
+ * toJsLiteral() and the engine's shapeKey(): `name`, `0`, `"a\/b"` or `'it\'s'`, each optionally marked `?`. A key is
+ * compared by the name it decodes to, never by its spelling.
  *
  * @internal
  */
