@@ -220,10 +220,7 @@ final class TsTypeShape
             default => implode(' | ', array_map(self::unionArm(...), $types)),
         };
 
-        // `[]` binds tighter than `|`, `&` and `=>`, so `A | B[]` would list only B.
-        return count(self::splitTopLevel($element, ['|', '&'])) > 1
-            ? '('.$element.')[]'
-            : self::unionArm($element).'[]';
+        return self::postfixOperand($element).'[]';
     }
 
     /**
@@ -233,6 +230,23 @@ final class TsTypeShape
     public static function unionArm(string $arm): string
     {
         return self::topLevelPosition($arm, '=') === null ? $arm : '('.$arm.')';
+    }
+
+    /**
+     * One arm of a union as it joins others, an intersection parenthesized like an arrow, so the union reads as arms.
+     */
+    public static function groupedArm(string $arm): string
+    {
+        return count(self::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : self::unionArm($arm);
+    }
+
+    /**
+     * A type as the operand of a postfix `[]` or `?`, parenthesized where it holds a top-level `|`, `&` or `=>`: the
+     * postfix binds tighter, so `A | B[]` would list only `B`.
+     */
+    public static function postfixOperand(string $type): string
+    {
+        return count(self::splitTopLevel($type, ['|', '&'])) > 1 ? '('.$type.')' : self::unionArm($type);
     }
 
     /**

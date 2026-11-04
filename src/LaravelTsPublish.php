@@ -2762,10 +2762,8 @@ class LaravelTsPublish
                 $pieces[] = $member;
                 $type = $member['type'];
 
-                // `?` binds as `[]` does, tighter than `|`, `&` and `=>`.
                 if ($optional) {
-                    $grouped = count(TsTypeShape::splitTopLevel($type, ['|', '&'])) > 1;
-                    $type = ($grouped ? "({$type})" : TsTypeShape::unionArm($type)).'?';
+                    $type = TsTypeShape::postfixOperand($type).'?';
                 }
 
                 $members[] = $type;

@@ -251,12 +251,7 @@ final readonly class ArrayArm
         $held = $listed === null || (isset($arms['list']) && array_diff($listed, $arms['list']->rest) === []);
         $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
 
-        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(
-            fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1
-                ? '('.$arm.')'
-                : TsTypeShape::unionArm($arm),
-            $printed,
-        ));
+        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(TsTypeShape::groupedArm(...), $printed));
     }
 
     /**

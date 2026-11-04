@@ -94,6 +94,8 @@ Ask what the helper's input domain is, not what calls it:
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
+| How does it join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
+| How does this type stand before a postfix `[]` or `?`, which binds tighter than `\|`? | `TsTypeShape::postfixOperand()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
 | What is each member type of this tuple, and which is optional? | `TsTypeShape::tupleMembers()`, `tupleElements()` |

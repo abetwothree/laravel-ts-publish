@@ -479,14 +479,7 @@ final class ResourceResponseType
         $types = array_values(array_unique($types));
         $grouped = count($types) > 1;
 
-        return implode(' | ', array_map(
-            static fn (string $type): string => match (true) {
-                ! $grouped => $type,
-                count(TsTypeShape::splitTopLevel($type, ['&'])) > 1 => "({$type})",
-                default => TsTypeShape::unionArm($type),
-            },
-            $types,
-        ));
+        return implode(' | ', $grouped ? array_map(TsTypeShape::groupedArm(...), $types) : $types);
     }
 
     /**

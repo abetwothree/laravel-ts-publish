@@ -314,3 +314,27 @@ describe('unionArm', function () {
         'a union' => ['A | B', 'A | B'],
     ]);
 });
+
+describe('groupedArm', function () {
+    test('parenthesizes an arm holding a top-level intersection or arrow, so a union reads as its arms', function (string $arm, string $expected) {
+        expect(TsTypeShape::groupedArm($arm))->toBe($expected);
+    })->with([
+        'an intersection' => ['A & B', '(A & B)'],
+        'an arrow' => ['() => A & B', '(() => A & B)'],
+        'an intersection inside an object' => ['{ a: A & B }', '{ a: A & B }'],
+        'a plain arm' => ['A[]', 'A[]'],
+    ]);
+});
+
+describe('postfixOperand', function () {
+    test('parenthesizes a type holding a top-level union, intersection or arrow before a postfix `[]` or `?`', function (string $type, string $expected) {
+        expect(TsTypeShape::postfixOperand($type))->toBe($expected);
+    })->with([
+        'a union' => ['A | null', '(A | null)'],
+        'an intersection' => ['A & B', '(A & B)'],
+        'an arrow' => ['() => A', '(() => A)'],
+        'a union inside an object' => ['{ a: A | null }', '{ a: A | null }'],
+        'a union in a string literal' => ["'a|b'", "'a|b'"],
+        'a plain type' => ['A', 'A'],
+    ]);
+});
