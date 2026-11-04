@@ -1915,6 +1915,8 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'an override spelled like a model' => ['array{either: Person|User}', '{ either: unknown }'],
         'an override spelled like an enum' => ['array{kind: ChartKind|UiChart}', '{ kind: unknown }'],
         'a listed override spelled like a model' => ['list<array{listed: list<Person|User>}>', '{ listed: unknown }[]'],
+        'a literal spelled like the model, whose token names no class' => ["array{kind: 'User', r: User}", "{ kind: 'User'; r: unknown }"],
+        'a key spelled like the model, whose token names no class' => ['array{User: int, owner: User}', '{ User: number; owner: unknown }'],
     ]);
 
     test('reads an intersection of shapes that share a key as unknown, as before', function () {

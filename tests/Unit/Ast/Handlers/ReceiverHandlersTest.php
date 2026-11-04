@@ -611,7 +611,11 @@ describe('ReceiverMethodCallHandler', function () {
         expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
         'a list of token-free models' => [ListTypedFilterOverrideModel::class, "\$this->only(['id', 'slug'])", '{ id: number; slug: string }[]'],
-        'a model nested in a shape key' => [ListTypedFilterOverrideModel::class, "\$this->except(['id'])", '{ owner: unknown; id: number }'],
+        'a model nested in a shape key, and in a shape under one' => [
+            ListTypedFilterOverrideModel::class,
+            "\$this->except(['id'])",
+            '{ owner: unknown; meta: { author: unknown; n: number }; id: number }',
+        ],
         'a list of models whose columns name an enum' => [UserListFilterOverrideModel::class, "\$this->only(['id', 'role', 'password'])", '{ id: number; role: unknown }[]'],
     ]);
 

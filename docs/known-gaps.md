@@ -523,7 +523,10 @@ the class. A member whose union spells a model or enum beside an override, such 
 A docblock shape keeps a model or an enum at any depth, with its import. Read by an API resource's helper, a property's
 `@var` or a model's accessor, though, a shape that also names any other class, such as an API resource, or spells an
 override like the model or enum beside it, such as `either: Person|User`, is read as a value object's shape is, each
-leaf naming a class `unknown`. `share()`'s `@return` keeps them, and a metadata provider's fails the publish on a model.
+leaf naming a class `unknown`. So is one where a literal or a key spells the class's name:
+`array{kind: 'User', r: User}` publishes `{ kind: 'User'; r: unknown }`, and `array{User: int, owner: User}` publishes
+`{ User: number; owner: unknown }`. `share()`'s `@return` keeps them all, and a metadata provider's fails the publish on
+any class but an enum.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
 and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another

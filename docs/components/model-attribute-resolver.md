@@ -221,8 +221,13 @@ arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override s
 `classTokenFqcns`.
 
 A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
-other class, or holds a null, is read there with no class (`shapeChannels()`). Shared data and a metadata companion read
-`tokenFqcns` from `docblockReturnShapeInfos()` ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
+other class, or holds a null, a literal's or a key's spelled like a class's name included, is read there with no class
+(`shapeChannels()`). Shared data and a metadata companion read `tokenFqcns` from `docblockReturnShapeInfos()`
+([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
+
+`resolveDocblockTypePart()` alone reads an intersection of sealed keyed shapes with no key in common, such as
+`array{a: int}&array{owner: User}`, as the one object it sends, `{ a: number; owner: User }` (`intersectedShape()`). A
+nested one, and one in `share()`'s or a metadata provider's `@return`, read as before.
 
 These readers apply it, each with the scope and the fallback its page gives:
 
