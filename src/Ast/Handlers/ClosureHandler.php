@@ -64,7 +64,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        // Closures / arrow functions — body analysis first, return-type annotation as the fallback.
+        // Body analysis first, the native return type or the docblock's `@return` as the fallback.
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
         if ($closureReturns === []) {

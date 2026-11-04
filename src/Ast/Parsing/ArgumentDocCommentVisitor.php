@@ -13,8 +13,9 @@ use PhpParser\NodeVisitorAbstract;
 /**
  * Hands a call argument's comments to the closure it holds, so a docblock written before a closure argument types it.
  *
- * php-parser gives a comment to the first node that starts after it: a positional argument starts on its closure's
- * token, so the argument takes the docblock, while an array value's or a named argument's lands on the closure.
+ * php-parser gives a comment to the first node that starts after it. One after an array key's `=>` or a named
+ * argument's `:` lands on the closure; one before a positional argument, which starts on its closure's token, or before
+ * a named argument's name lands on the `Arg`, which this visitor moves.
  *
  * @internal
  */
