@@ -60,6 +60,7 @@ describe('decode', function () {
         'an exponent, which names 1000' => ['1e3', null],
         'a negative decimal, which is no property name' => ['-1.5', null],
         'a decimal past what a double holds' => ['0.30000000000000001', null],
+        'a decimal json_encode() writes as an exponent, declined though TypeScript names it' => ['0.00001', null],
         'a dashed name' => ['a-b', null],
         'a name with a newline after it, which TypeScript names without' => ["a\n", null],
         'a modifier' => ['readonly a', null],

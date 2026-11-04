@@ -49,7 +49,9 @@ final class PrintedKey
      */
     private static function isOwnDecimal(string $key): bool
     {
-        // json_encode() writes a double's shortest round-trip digits, which JavaScript names a fraction's property by.
+        // json_encode() writes a double's shortest round-trip digits, as JavaScript names a fraction's property, but
+        // in exponent form from 1e-5, where JavaScript waits for 1e-7: `0.00001` then declines, which fails safe,
+        // though TypeScript names it as written.
         return preg_match('/^(?:0|[1-9]\d*)\.\d*[1-9]$/D', $key) === 1 && json_encode((float) $key) === $key;
     }
 
