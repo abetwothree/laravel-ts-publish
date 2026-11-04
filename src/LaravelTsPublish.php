@@ -2203,14 +2203,7 @@ class LaravelTsPublish
      */
     protected function flattenTraits(ReflectionClass $class): array
     {
-        $traits = [];
-
-        foreach ($class->getTraits() as $trait) {
-            $traits[] = $trait;
-            array_push($traits, ...$this->flattenTraits($trait));
-        }
-
-        return $traits;
+        return DeclaringFile::traits($class);
     }
 
     /**

@@ -68,7 +68,7 @@ final class DeclaringFile
      * @param  ReflectionClass<object>  $class
      * @return list<ReflectionClass<object>>
      */
-    private static function traits(ReflectionClass $class): array
+    public static function traits(ReflectionClass $class): array
     {
         $traits = [];
 

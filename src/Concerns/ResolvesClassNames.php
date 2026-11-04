@@ -57,14 +57,14 @@ trait ResolvesClassNames
             return $info['classFqcns'][0]; // @codeCoverageIgnore
         }
 
-        // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
+        // Without a native class type, the property's docblock type names the class.
         $tag = resolve(PropertyDocblockTypeReader::class)->tag($declaringClass->getProperty($property));
 
         if ($tag === null) {
             return null; // @codeCoverageIgnore
         }
 
-        // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
+        // Split the docblock type on | to handle union types in any order (e.g. null|Type or Type|null)
         $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
             'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
 
