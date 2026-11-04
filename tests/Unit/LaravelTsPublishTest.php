@@ -342,6 +342,16 @@ describe('toTsType', function () {
         'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
     ]);
 
+    // An appended `| null` would join an arrow's return type, so the arrow is grouped; `unknown` keeps its printed null.
+    test('a nullable PHP type keeps its null arm outside an arrow and beside unknown', function (string $phpType, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', ['callable' => '() => void']);
+
+        expect($this->service->toTsType($phpType)['type'])->toBe($type);
+    })->with([
+        'a callable mapped to an arrow' => ['?callable', '(() => void) | null'],
+        'mixed, which reads unknown' => ['?mixed', 'unknown | null'],
+    ]);
+
     // Model::toArray() writes the date a class cast or new-style accessor returns as it writes a date column, so the
     // entry for the date's own class wins, and a DateTime reads the `datetime` entry.
     test('a custom_ts_mappings entry for a date class types the date a class cast returns', function (array $mappings, string $cast, string $type) {

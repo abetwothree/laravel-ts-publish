@@ -422,7 +422,7 @@ class LaravelTsPublish
 
         if ($jsonString !== null) {
             $result['type'] = is_a($phpType, DateTimeInterface::class, true) && ! str_contains($jsonString, self::DATE_TIME_OBJECT_TYPE)
-                ? $this->carbonDateType().(str_ends_with($jsonString, ' | null') ? ' | null' : '')
+                ? $this->carbonDateType().(TsTypeString::hasNullArm($jsonString) ? ' | null' : '')
                 : $jsonString;
 
             return $result;
@@ -3056,11 +3056,11 @@ class LaravelTsPublish
     }
 
     /**
-     * Append a top-level `| null` arm unless one is there: a nested `null`, as in `{ a: number | null }`, is not one.
+     * Append a top-level `| null` arm unless one is there, `unknown | null` included, as a nullable PHP type prints.
      */
     protected function withNullArm(string $type): string
     {
-        return in_array('null', TsTypeShape::splitTopLevel($type, ['|']), true) ? $type : $type.' | null';
+        return TsTypeString::orNull($type);
     }
 
     /**
