@@ -1228,6 +1228,8 @@ describe('hasNullArm', function () {
         'null inside an element type' => ['(X | null)[]', false],
         'null in an arrow\'s return type' => ['() => A | null', false],
         'a name that differs by case' => ['Null', false],
+        'two classes spelled alike' => ['User | User', false],
+        'unknown, which admits null without an arm' => ['unknown', false],
     ]);
 });
 

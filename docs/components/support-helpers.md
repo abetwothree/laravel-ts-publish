@@ -178,8 +178,8 @@ a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave 
 `hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
 `TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.
 The `[]` wrappers, `ValueResult::arrayWrapType()`, `ValueResult::collectionListType()` and `wrapAsArray()`, list
-through `TsTypeShape::listType()`. Other joins still append bare, such as `ValueResult::withNullArm()`,
-`TsTypeString::union()`, FormRequest's rule unions and a few raw `[]` suffixes.
+through `TsTypeShape::listType()`. Other joins still append bare, such as `TsTypeString::union()`, FormRequest's
+rule unions and a few raw `[]` suffixes.
 
 [literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 

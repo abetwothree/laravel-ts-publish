@@ -73,23 +73,6 @@ final class ValueResult
     }
 
     /**
-     * Drop a top-level `| null` arm from a type string — a guarded success path proves it unreachable.
-     * Nested null members (inside object shapes, generics, or array element types) are kept.
-     *
-     * The single canonical home for this helper: `CoalesceHandler` (stripping `??`'s left operand) and
-     * `ConditionalMethodHandler` (stripping `whenNotNull()`'s success arm) both call it from here now.
-     */
-    public static function stripNullArm(string $type): string
-    {
-        $members = array_values(array_filter(
-            TsTypeString::splitTopLevelUnion($type),
-            fn (string $member): bool => $member !== 'null',
-        ));
-
-        return $members === [] ? 'unknown' : implode(' | ', $members);
-    }
-
-    /**
      * A type's top-level members except its empty ones, which an arm's shape and its enum are read past.
      *
      * @return list<string>
@@ -105,24 +88,6 @@ final class ValueResult
     public static function isListShaped(string $type): bool
     {
         return str_ends_with(implode(' | ', self::filledArms($type)), '[]');
-    }
-
-    /**
-     * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
-     */
-    public static function hasNullArm(string $type): bool
-    {
-        return in_array('null', TsTypeString::splitTopLevelUnion($type), true);
-    }
-
-    /**
-     * Append a top-level `| null` arm unless the type has one; `unknown` already admits null, so it stays as is.
-     *
-     * Never TsTypeString::hoistNull(): it de-duplicates members, so `User | User`, two classes, would lose one.
-     */
-    public static function withNullArm(string $type): string
-    {
-        return $type === 'unknown' || self::hasNullArm($type) ? $type : $type.' | null';
     }
 
     /**
@@ -345,7 +310,7 @@ final class ValueResult
     {
         $closed = $result['closedToDottedKeys'] ?? null;
 
-        return $closed !== null && self::stripNullArm($closed) === self::stripNullArm($result['type']);
+        return $closed !== null && TsTypeString::withoutNullArm($closed) === TsTypeString::withoutNullArm($result['type']);
     }
 
     /**
@@ -353,7 +318,7 @@ final class ValueResult
      */
     public static function mayBeNull(string $type): bool
     {
-        return $type === 'unknown' || self::hasNullArm($type);
+        return $type === 'unknown' || TsTypeString::hasNullArm($type);
     }
 
     /**

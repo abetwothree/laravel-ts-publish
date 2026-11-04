@@ -570,20 +570,6 @@ describe('ValueResult::withEnumArmShapes()', function () {
     });
 });
 
-describe('ValueResult::withNullArm() and hasNullArm()', function () {
-    // Two classes can share a name, so the arm is appended to the text, never merged into it.
-    test('append one top-level null arm and read only a top-level one', function (string $type, string $withArm, bool $hasArm) {
-        expect(ValueResult::withNullArm($type))->toBe($withArm)
-            ->and(ValueResult::hasNullArm($type))->toBe($hasArm);
-    })->with([
-        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null', false],
-        'unknown, which already admits null' => ['unknown', 'unknown', false],
-        'a leading null arm' => ['null | string', 'null | string', true],
-        'a null inside an element type, which is not top-level' => ['(X | null)[]', '(X | null)[] | null', false],
-        'a trailing null arm' => ['string | null', 'string | null', true],
-    ]);
-});
-
 describe('ValueResult::arrayWrapType()', function () {
     test('lists a type, parenthesizing it only where a top-level union, intersection or arrow would bind the brackets', function (string $type, string $list) {
         expect(ValueResult::arrayWrapType($type))->toBe($list);
