@@ -18,7 +18,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ReadsReturnedVariables`](../../src/Ast/Concerns/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
-| [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
+| [`InspectsResourceCalls`](../../src/Ast/Concerns/Resources/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
 | [`BuildsJsonApiResourceObject`](../../src/Analyzers/Concerns/BuildsJsonApiResourceObject.php) | A JSON:API resource's resource object, composed from the analyzer's reads of the runtime class |
 | [`JsonApiResources`](../../src/Ast/Resources/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
 | [`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |

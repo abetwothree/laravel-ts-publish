@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
@@ -17,8 +17,9 @@ use ReflectionMethod;
 
 /**
  * Resource semantics over a parsed call: the `$this->when*()` family, resource construction payloads, and which
- * classes count as resources. Every member needs to know what a JsonResource is, so it stays on the analyzer side.
- * Requires the host to also use `Ast\Concerns\InspectsAstNodes` (for `isThisMethodCall()`).
+ * classes count as resources. Requires the host to also use `Ast\Concerns\InspectsAstNodes` (for `isThisMethodCall()`).
+ *
+ * @internal
  */
 trait InspectsResourceCalls
 {

@@ -58,8 +58,8 @@ use ReflectionClass;
 
 /**
  * Node-shape questions about a parsed expression: what it is, what it names, what it returns. The engine layer owns
- * it; the resource semantics it was split from live in `Analyzers\Concerns\InspectsResourceCalls`, which requires its
- * host to also use this trait.
+ * it; the resource semantics it was split from live in `Ast\Concerns\Resources\InspectsResourceCalls`, which
+ * requires its host to also use this trait.
  *
  * @internal
  */
