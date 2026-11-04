@@ -2200,6 +2200,22 @@ describe('phpstan type aliases', function () {
         expect($alias['definition'] ?? null)->toBe("array{'a{': int}");
     });
 
+    test('a multi-line alias whose quoted key holds a closing brace is walked to the brace that closes it', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'QuotedCloserAlias', new ReflectionClass(PhpstanTypeAliasQuotedCloserHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe("array{ 'c}': int, d: string, }");
+    });
+
+    test('a multi-line callable alias is walked to the parenthesis that closes its parameters', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'MultilineCallableAlias', new ReflectionClass(PhpstanTypeAliasMultilineCallableHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe('callable( int ): void');
+    });
+
     test('a two-hop @phpstan-import-type chain resolves through an intermediate re-exporting class', function () {
         // X imports from Y, which only re-imports from Z (Y defines nothing locally) — proves the
         // recursion resolves all the way to the class that actually wrote the definition.
@@ -3759,6 +3775,27 @@ class AttributeDocblockClass
  * @phpstan-type FollowingAlias array{b: string}
  */
 class PhpstanTypeAliasQuotedBraceHost {}
+
+/**
+ * A multi-line @phpstan-type whose quoted key holds a closing brace, above a second alias its capture must not take in.
+ *
+ * @phpstan-type QuotedCloserAlias array{
+ *     'c}': int,
+ *     d: string,
+ * }
+ * @phpstan-type AfterQuotedCloserAlias array{e: bool}
+ */
+class PhpstanTypeAliasQuotedCloserHost {}
+
+/**
+ * A multi-line @phpstan-type callable whose parameter sits on its own line, above a second alias.
+ *
+ * @phpstan-type MultilineCallableAlias callable(
+ *     int
+ * ): void
+ * @phpstan-type AfterMultilineCallableAlias array{f: int}
+ */
+class PhpstanTypeAliasMultilineCallableHost {}
 
 /** A method whose @return shape spells the model's name inside a quoted union literal beside the model. */
 class QuotedUnionShapeReturn
