@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -456,7 +457,7 @@ final class AstEngine
         $result = ValueResult::unionResults($results);
 
         return $this->canEndWithoutValue($function)
-            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
     }
 
