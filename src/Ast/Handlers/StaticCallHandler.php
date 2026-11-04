@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
@@ -75,7 +76,7 @@ final class StaticCallHandler implements ExpressionHandler
             $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
 
             return isset($resolved['resourceFqcn'])
-                ? $this->sentResolvedBody([...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])], $engine)
+                ? $this->sentResolvedBody([...$resolved, 'type' => TsTypeString::withoutNullArm($resolved['type'])], $engine)
                 : $resolved;
         }
 
@@ -360,7 +361,7 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         if ($this->methodReturnAllowsNull($method)) {
-            $receiverResult['type'] = ValueResult::withNullArm($receiverResult['type']);
+            $receiverResult['type'] = TsTypeString::withNullArm($receiverResult['type']);
         }
 
         return $receiverResult;
@@ -477,7 +478,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function holdsOneResource(Expr $receiver, string $type, string $resourceFqcn, AnalysisScope $scope): bool
     {
-        $held = ValueResult::stripNullArm($type);
+        $held = TsTypeString::withoutNullArm($type);
 
         if ($held === TsNaming::resourceTypeName($resourceFqcn) || $held === JsonApiResources::instanceType($resourceFqcn)) {
             return true;
