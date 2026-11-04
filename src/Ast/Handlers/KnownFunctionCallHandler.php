@@ -380,9 +380,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     private function filteredValue(string $type, bool $dropsNull): string
     {
         return match (true) {
-            ! $dropsNull || ! ValueResult::hasNullArm($type) => $type,
+            ! $dropsNull || ! TsTypeString::hasNullArm($type) => $type,
             $type === 'null' => 'never',
-            default => ValueResult::stripNullArm($type),
+            default => TsTypeString::withoutNullArm($type),
         };
     }
 
@@ -444,7 +444,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $type = $path === null ? null : $engine->resolve($path)['type'];
 
         // `unknown` admits null, which returns the UrlGenerator.
-        if ($type === null || $type === 'unknown' || ValueResult::hasNullArm($type)) {
+        if ($type === null || $type === 'unknown' || TsTypeString::hasNullArm($type)) {
             return null;
         }
 
