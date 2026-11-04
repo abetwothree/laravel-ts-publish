@@ -32,8 +32,8 @@ The helpers and the test that pins them live in these files:
   each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
   key each prints, and each signature covering a head it wrote widened to admit it. A head marked `closed`, a resource
   or prop object Inertia replaces, prints as a scalar does. Static and `@internal`.
-- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
-  `@internal`.
+- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as, and which
+  list index it names. A type reader's int-key check reads it rather than a regex. Static and `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
   and paths sorted, the name each import binds, `X as Y` binding `Y`, and the part of a map a type spells. Static and
   `@internal`. Every merge of import maps added since goes through it; five older inline merges stay as they are,
@@ -60,6 +60,9 @@ The helpers and the test that pins them live in these files:
   and `@internal`. `TsTypeShape` splits, nests and lists on it, and `TsTypeString` reads its literal spans and masks.
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
   TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
+- [`Support\TypeStrings\PrintedKey`](../../src/Support/TypeStrings/PrintedKey.php): the key a printed object key
+  names, the inverse of `validJsObjectKey()`. A reader that matches a printed key against a PHP key decodes it here
+  rather than unquoting it. Static and `@internal`.
 - [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
   template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
   keys a signature covers. Static and `@internal`.
@@ -93,9 +96,11 @@ Ask what the helper's input domain is, not what calls it:
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
-| What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
+| What is each member type of this tuple, and which is optional? | `TsTypeShape::tupleMembers()`, `tupleElements()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
+| Which key does this printed object key name, and is it this one? | `PrintedKey::decode()`, `names()` |
+| Which list index does this array key name? | `PhpArrayKey::listIndex()` |
 | How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
 | Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
 | Which class stands behind each token of a declaration's type, and what is that type read with no class? | `TokenSlots` |
@@ -155,9 +160,10 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
 `TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`
-and `ImportMaps::localNames()`; `TsTypeShape`'s only one is `TypeScanner`. That one-way dependency is what made the
-class safe to lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind
-as the [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`. That one-way
+dependency is what made the class safe to lift out. A new member that wants `toTsType()` is not a type-string helper,
+and would be in the same bind as the
+[docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
 a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and
