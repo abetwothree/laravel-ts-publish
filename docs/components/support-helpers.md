@@ -32,9 +32,6 @@ The helpers and the test that pins them live in these files:
   each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
   key each prints, and each signature covering a head it wrote widened to admit it. A head marked `closed`, a resource
   or prop object Inertia replaces, prints as a scalar does. Static and `@internal`.
-- [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
-  grammar: encode from parts, recognize, literal segments, cast spellings and the keys a signature covers. Static and
-  `@internal`.
 - [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
   `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
@@ -63,6 +60,9 @@ The helpers and the test that pins them live in these files:
   and `@internal`; nothing reads it yet.
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
   TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
+- [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
+  template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
+  keys a signature covers. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 

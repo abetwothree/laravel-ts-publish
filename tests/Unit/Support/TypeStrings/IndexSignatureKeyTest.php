@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 
 describe('fromParts', function () {
     test('literal text around a dynamic part encodes as a template-literal signature', function (array $parts, ?string $expected) {
