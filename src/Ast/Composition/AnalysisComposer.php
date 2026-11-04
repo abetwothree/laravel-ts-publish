@@ -82,7 +82,7 @@ final class AnalysisComposer
 
             $arms[$propName] = [
                 'fqcn' => $fqcn,
-                'nullable' => str_contains($type, 'null'),
+                'nullable' => TsTypeString::hasNullArm($type),
                 'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
                 'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
             ];
