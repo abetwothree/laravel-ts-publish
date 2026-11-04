@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\Cast;
@@ -68,24 +69,14 @@ final class CastHandler implements ExpressionHandler
         $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
         $literalOperand = $this->isScalarLiteral($operand);
         $result = $engine->resolve($operand);
-        $arms = [];
+        $arms = ArrayArms::arms($result['type'], fn (string $arm): ?string => match (true) {
+            $arm === 'unknown' => null,
+            $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
+            $isObject => $arm,
+            default => $this->builtObject($arm, $literalOperand),
+        }, skipNull: false);
 
-        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
-            $built = match (true) {
-                $arm === 'unknown' => null,
-                $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
-                $isObject => $arm,
-                default => $this->builtObject($arm, $literalOperand),
-            };
-
-            if ($built === null) {
-                return null;
-            }
-
-            $arms[] = $built;
-        }
-
-        if ($arms === []) {
+        if ($arms === null || $arms === []) {
             return null;
         }
 
@@ -111,7 +102,7 @@ final class CastHandler implements ExpressionHandler
             $result = $engine->resolve($operand);
             $arms = TsTypeString::splitTopLevelUnion($result['type']);
 
-            if ($arms !== [] && array_all($arms, $this->isArray(...))) {
+            if ($arms !== [] && array_all($arms, ArrayArms::isArray(...))) {
                 unset($result['keepsKeys']);
 
                 return $result;
@@ -127,7 +118,7 @@ final class CastHandler implements ExpressionHandler
      */
     private function builtObject(string $arm, bool $literalOperand): ?string
     {
-        if ($this->isKeyedArray($arm)) {
+        if (ArrayArms::isKeyed($arm)) {
             return $arm;
         }
 
@@ -163,24 +154,5 @@ final class CastHandler implements ExpressionHandler
             || $operand instanceof Int_
             || $operand instanceof Float_
             || ($operand instanceof ConstFetch && in_array($operand->name->toLowerString(), ['true', 'false'], true));
-    }
-
-    /**
-     * Whether one arm is an array: a list, a tuple, or a keyed array.
-     */
-    private function isArray(string $arm): bool
-    {
-        return TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null || $this->isKeyedArray($arm);
-    }
-
-    /**
-     * Whether one arm is a Record or an object literal, or an intersection of them.
-     */
-    private function isKeyedArray(string $arm): bool
-    {
-        return array_all(
-            TsTypeShape::splitTopLevel($arm, ['&']),
-            static fn (string $part): bool => TsTypeShape::members($part) !== null || TsTypeShape::recordArguments($part) !== null,
-        );
     }
 }

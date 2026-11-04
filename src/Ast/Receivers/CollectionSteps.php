@@ -11,14 +11,17 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
 use ReflectionMethod;
 
 /**
  * What a collection step does to the items and the keys of the collection it is called on: whether it keeps the
- * items, keeps their keys, leaves them out of 0..n-1, or hands back other values. The receiver resolver and the
- * relation-chain and `collect()` pipeline handlers read a step's keys here, so they agree on each step.
+ * items, keeps their keys, leaves them out of 0..n-1, or hands back one item or other values. The receiver resolvers
+ * and the collection handlers walk a chain and read each step here, so they agree on each step.
+ *
+ * @phpstan-type ChainStep array{name: string, node: MethodCall}
  *
  * @internal
  */
@@ -64,6 +67,60 @@ final class CollectionSteps
 
     /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
     private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];
+
+    /** The steps that hand back one item: an `element` throws where there is none, a `nullableElement` sends null. */
+    private const array ELEMENT_STEPS = [
+        'first' => 'nullableElement', 'last' => 'nullableElement', 'firstWhere' => 'nullableElement',
+        'find' => 'nullableElement', 'get' => 'nullableElement', 'sole' => 'element', 'firstOrFail' => 'element',
+    ];
+
+    /** The element steps that hand back the `$default` they are passed where no item matches. */
+    private const array DEFAULTED_ELEMENT_STEPS = ['first', 'last'];
+
+    /**
+     * A chain of method calls as its steps, root first, and the expression it is rooted at, which a call by a dynamic
+     * name also ends the walk as.
+     *
+     * @return array{0: list<ChainStep>, 1: Expr}
+     */
+    public static function chain(MethodCall $call): array
+    {
+        $steps = [];
+        $node = $call;
+
+        while ($node instanceof MethodCall && $node->name instanceof Identifier) {
+            $steps[] = ['name' => $node->name->toString(), 'node' => $node];
+            $node = $node->var;
+        }
+
+        return [array_reverse($steps), $node];
+    }
+
+    /**
+     * What a step that hands back one item hands back: `element`, or `nullableElement` where none may match; null for
+     * any other step.
+     *
+     * @return 'element'|'nullableElement'|null
+     */
+    public static function elementStep(string $method): ?string
+    {
+        return self::ELEMENT_STEPS[$method] ?? null;
+    }
+
+    /**
+     * Whether a `first()` or `last()` call hands back an item or null: not where it passes the `$default` Laravel sends
+     * when no item matches, or its arguments cannot be read.
+     */
+    public static function elementCall(MethodCall|NullsafeMethodCall|StaticCall $call, string $method): bool
+    {
+        if (! in_array($method, self::DEFAULTED_ELEMENT_STEPS, true)) {
+            return false;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
+
+        return ! $arguments->hasUnpack() && $arguments->named('default') === null;
+    }
 
     /**
      * Whether a collection step hands back the same items, or a leading run of them, under the keys they had.

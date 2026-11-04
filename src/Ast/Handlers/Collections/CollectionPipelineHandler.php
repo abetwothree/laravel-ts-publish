@@ -12,14 +12,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
 /**
@@ -48,27 +46,15 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return null;
         }
 
-        // Walk down the chain collecting op names until we reach the root call.
-        /** @var list<array{name: string, node: MethodCall}> $ops */
-        $ops = [];
-        $node = $expr;
+        [$steps, $root] = CollectionSteps::chain($expr);
+        $rootResult = $this->collectRootResult($root, $engine);
 
-        while ($node instanceof MethodCall) {
-            if (! $node->name instanceof Identifier) {
-                return null;
-            }
-
-            $ops[] = ['name' => $node->name->toString(), 'node' => $node];
-            $node = $node->var;
-        }
-
-        $rootResult = $this->collectRootResult($node, $engine);
-
-        if ($rootResult === null || ! $node instanceof FuncCall) {
+        if ($rootResult === null || ! $root instanceof FuncCall) {
             return null;
         }
 
-        $element = $this->elementTypeOf($rootResult['type']);
+        // Only a `T[]` root lists its elements here, never an `Array<T>` one.
+        $element = str_ends_with($rootResult['type'], '[]') ? ArrayArms::listElement($rootResult['type']) : null;
 
         if ($element === null) {
             return null;
@@ -80,18 +66,18 @@ final class CollectionPipelineHandler implements ExpressionHandler
         // collect() over a list starts keyed 0..n-1; each op below says whether that still holds.
         $sequentialKeys = true;
 
-        foreach (array_reverse($ops) as $op) {
-            if (in_array($op['name'], $identityOps, true)) {
-                $sequentialKeys = $op['name'] === 'all'
+        foreach ($steps as $step) {
+            if (in_array($step['name'], $identityOps, true)) {
+                $sequentialKeys = $step['name'] === 'all'
                     ? $sequentialKeys
-                    : ! CollectionSteps::keyedAfter($op['node'], $op['name'], ! $sequentialKeys, false);
+                    : ! CollectionSteps::keyedAfter($step['node'], $step['name'], ! $sequentialKeys, false);
 
                 continue;
             }
 
-            if ($op['name'] === 'map' && $mapNode === null) {
+            if ($step['name'] === 'map' && $mapNode === null) {
                 // map() preserves the receiver's keys, so it neither breaks nor restores sequentiality.
-                $mapNode = $op['node'];
+                $mapNode = $step['node'];
 
                 continue;
             }
@@ -110,24 +96,14 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         $bodyResult = $this->resolveMapCallback(
             CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value,
-            $this->elementModel($node, $rootResult, $element, $scope),
+            $this->elementModel($root, $rootResult, $element, $scope),
             ['type' => $element, 'optional' => false],
-            $ops[0]['name'] === 'all',
+            $steps[count($steps) - 1]['name'] === 'all',
             $scope,
             $engine,
         );
 
-        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
-            return null;
-        }
-
-        $mapped = ValueResult::arrayWrapType($bodyResult['type']);
-
-        return [
-            ...$bodyResult,
-            'type' => $sequentialKeys ? $mapped : $this->keyedObjectArm($mapped),
-            'optional' => false,
-        ];
+        return $this->mappedList($bodyResult, ! $sequentialKeys, false);
     }
 
     /**
@@ -140,20 +116,6 @@ final class CollectionPipelineHandler implements ExpressionHandler
         $argument = CallArguments::collectArgument($root);
 
         return $argument === null ? null : $engine->resolve($argument);
-    }
-
-    /**
-     * The element type behind an array type: one trailing `[]` stripped.
-     *
-     * A top-level `|` leaves it ambiguous which arm the elements came from, so it declines instead.
-     */
-    private function elementTypeOf(string $type): ?string
-    {
-        if (! str_ends_with($type, '[]') || count(TsTypeString::splitTopLevelUnion($type)) !== 1) {
-            return null;
-        }
-
-        return substr($type, 0, -2);
     }
 
     /**

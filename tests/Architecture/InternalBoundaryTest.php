@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
@@ -71,6 +72,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
     // This sweep is per-directory, so a class that leaves src/Ast silently leaves it too. StringSerialization and
     // ClassTokenQueue moved to src/Support and stay internal, so they are named here to keep the tag enforced.
     $alsoInternal = [
+        ArrayArms::class,
         ClassTokenQueue::class,
         ClassTypeOverride::class,
         ComposedClassTypes::class,

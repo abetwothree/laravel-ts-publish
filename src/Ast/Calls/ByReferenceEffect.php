@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use Closure;
 
@@ -67,8 +68,10 @@ enum ByReferenceEffect
         }
 
         $key = array_shift($path);
+
+        // An int key reads a nullable list's element too, which ArrayArms::listElement() declines.
         $member = TsTypeShape::memberType($type, $key)
-            ?? (is_numeric($key) ? self::listElements($type)[0] ?? null : null);
+            ?? (is_numeric($key) ? TsTypeShape::elementType($type) : null);
 
         // Whatever the call leaves in a member typed `unknown`, the type published for it still holds.
         if ($member === null || $member === 'unknown') {
@@ -85,25 +88,13 @@ enum ByReferenceEffect
     }
 
     /**
-     * The one element type of a list type such as `T[]`, or null for a tuple or any other type.
-     *
-     * @return list<string>|null
-     */
-    private static function listElements(string $arm): ?array
-    {
-        $element = TsTypeShape::isWrapped($arm, '[', ']') ? null : TsTypeShape::elementType($arm);
-
-        return $element === null ? null : [$element];
-    }
-
-    /**
      * A list's one element under an int key, or null for any other type.
      *
      * @return list<KeyedElement>|null
      */
     private static function listedElements(string $arm): ?array
     {
-        $element = self::listElements($arm)[0] ?? null;
+        $element = ArrayArms::listElement($arm);
 
         return $element === null ? null : [[$element, 'number']];
     }
@@ -320,10 +311,10 @@ enum ByReferenceEffect
     {
         return match ($this) {
             self::KeepsAny => $arm,
-            self::KeepsList => self::listElements($arm) === null ? null : $arm,
+            self::KeepsList => ArrayArms::listElement($arm) === null ? null : $arm,
             self::KeepsObject => match (true) {
                 TsTypeShape::isObjectLike($arm) => $arm,
-                $reindexed && self::listElements($arm) !== null => $arm,
+                $reindexed && ArrayArms::listElement($arm) !== null => $arm,
                 // A re-indexed tuple lists its members in sorted order, never in the declared one.
                 $reindexed && $arm !== '[]' && TsTypeShape::isWrapped($arm, '[', ']') => TsTypeShape::listType(
                     array_column(self::elements($arm) ?? [], 0),

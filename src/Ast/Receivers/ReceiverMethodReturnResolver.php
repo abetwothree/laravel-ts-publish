@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
-use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
@@ -53,8 +52,6 @@ final class ReceiverMethodReturnResolver
 
     /** What a resource collection's items answer, whichever class holds them: the held value, an item, the list. */
     private const array ITEMS_VALUE = ['toArray', 'jsonSerialize'];
-
-    private const array ITEMS_ELEMENT = ['first', 'last'];
 
     private const array ITEMS_LIST = ['items', 'getCollection'];
 
@@ -665,30 +662,13 @@ final class ReceiverMethodReturnResolver
         }
 
         return match (true) {
-            in_array($methodName, self::ITEMS_ELEMENT, true) => $this->mayReturnDefault($call, $methodName)
-                ? null
-                : [...$item, 'type' => "{$name} | null"],
+            $call !== null && CollectionSteps::elementCall($call, $methodName) => [...$item, 'type' => "{$name} | null"],
             in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => $this->heldItems(
                 new ReceiverType([Collection::class], collectedItems: true, collectedElement: $element),
                 $scope,
             ),
             default => null,
         };
-    }
-
-    /**
-     * Whether a first() or last() call may return its `$default`, which Laravel sends when no item matches; a call
-     * whose arguments cannot be read counts.
-     */
-    private function mayReturnDefault(MethodCall|NullsafeMethodCall|StaticCall|null $call, string $methodName): bool
-    {
-        if ($call === null) {
-            return true;
-        }
-
-        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $methodName));
-
-        return $arguments->hasUnpack() || $arguments->named('default') !== null;
     }
 
     /**

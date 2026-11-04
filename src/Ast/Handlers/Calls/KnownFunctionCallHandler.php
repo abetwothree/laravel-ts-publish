@@ -17,8 +17,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
 use PhpParser\ConstExprEvaluationException;
@@ -261,23 +261,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $callback = $args->named('callback')?->value;
         $dropsNull = $callback === null || ($callback instanceof ConstFetch && $callback->name->toLowerString() === 'null');
         $result = $engine->resolve($array);
-        $arms = [];
+        $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => ArrayArms::filtered($arm, $dropsNull));
 
-        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
-            if ($arm === 'null') {
-                continue;
-            }
-
-            $kept = $this->filteredArm($arm, $dropsNull);
-
-            if ($kept === null) {
-                return null;
-            }
-
-            $arms[] = $kept;
-        }
-
-        if ($arms === []) {
+        if ($arms === null || $arms === []) {
             return null;
         }
 
@@ -302,88 +288,15 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         }
 
         $result = $engine->resolve($array);
-        $arms = [];
+        $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
 
-        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
-            if ($arm === 'null') {
-                continue;
-            }
-
-            $values = $this->valuesOfArm($arm);
-
-            if ($values === null) {
-                return null;
-            }
-
-            $arms[] = $values;
-        }
-
-        if ($arms === []) {
+        if ($arms === null || $arms === []) {
             return null;
         }
 
         unset($result['keepsKeys']);
 
         return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
-    }
-
-    /**
-     * What array_values() makes of one arm of its array; null for an arm it cannot read.
-     */
-    private function valuesOfArm(string $arm): ?string
-    {
-        if ($arm === 'never[]' || TsTypeShape::isWrapped($arm, '[', ']')) {
-            return $arm;
-        }
-
-        $record = TsTypeShape::recordArguments($arm);
-
-        if ($record !== null) {
-            return TsTypeShape::listType([$record[1]]);
-        }
-
-        $members = TsTypeShape::members($arm);
-
-        if ($members !== null) {
-            return TsTypeShape::listType(array_column($members, 1));
-        }
-
-        return TsTypeShape::elementType($arm) === null ? null : $arm;
-    }
-
-    /**
-     * What array_filter() leaves of one arm of its array: a Record as itself, a list as itself or the object its gaps
-     * make, each value without its `null` arm where the filter drops nulls; null for any other arm.
-     */
-    private function filteredArm(string $arm, bool $dropsNull): ?string
-    {
-        $record = TsTypeShape::recordArguments($arm);
-
-        if ($record !== null) {
-            return 'Record<'.$record[0].', '.$this->filteredValue($record[1], $dropsNull).'>';
-        }
-
-        $element = TsTypeShape::isWrapped($arm, '[', ']') ? null : TsTypeShape::elementType($arm);
-
-        if ($element === null) {
-            return null;
-        }
-
-        $value = $this->filteredValue($element, $dropsNull);
-
-        return TsTypeShape::listType([$value]).' | Record<number, '.$value.'>';
-    }
-
-    /**
-     * A value array_filter() keeps: without its `null` arm where the filter drops nulls, `never` where null is all.
-     */
-    private function filteredValue(string $type, bool $dropsNull): string
-    {
-        return match (true) {
-            ! $dropsNull || ! TsTypeString::hasNullArm($type) => $type,
-            $type === 'null' => 'never',
-            default => TsTypeString::withoutNullArm($type),
-        };
     }
 
     /**

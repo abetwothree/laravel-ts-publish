@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Contracts\Pagination\CursorPaginator as CursorPaginatorContract;
 use Illuminate\Contracts\Pagination\Paginator as PaginatorContract;
 use Illuminate\Database\Eloquent\Builder;
@@ -102,12 +104,8 @@ final class ModelFinderHandler implements ExpressionHandler
     /** A row of a base query: the selected columns, which no model casts, hides or appends to. */
     private const ROW = 'Record<string, unknown>';
 
-    /** Collection steps after a list => what they hand back: its element or null, its element, the list, or a count. */
-    private const LIST_STEPS = [
-        'first' => 'nullableElement', 'last' => 'nullableElement', 'firstWhere' => 'nullableElement',
-        'sole' => 'element', 'firstOrFail' => 'element', 'find' => 'nullableElement',
-        'get' => 'nullableElement', 'all' => 'list', 'values' => 'list', 'count' => 'count', 'pluck' => 'column',
-    ];
+    /** Collection steps after a list => what they hand back other than one element: the list, a count or a column. */
+    private const LIST_STEPS = ['all' => 'list', 'values' => 'list', 'count' => 'count', 'pluck' => 'column'];
 
     /**
      * The terminals and list steps every chain rooted at a model was typed by before its steps were read.
@@ -175,7 +173,7 @@ final class ModelFinderHandler implements ExpressionHandler
     {
         return $this->isTerminal($name)
             || in_array($name, self::FACTORY_SINGLES, true)
-            || ($call instanceof MethodCall && isset(self::LIST_STEPS[$name]));
+            || ($call instanceof MethodCall && $this->listStepKind($name) !== null);
     }
 
     /**
@@ -467,7 +465,7 @@ final class ModelFinderHandler implements ExpressionHandler
      */
     private function listStep(MethodCall $call, string $step, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $kind = self::LIST_STEPS[$step] ?? null;
+        $kind = $this->listStepKind($step);
         $inner = $kind === null ? null : $this->read($call->var, $scope, $engine) ?? $this->heldList($call->var, $step, $scope);
         $element = $inner['element'] ?? null;
 
@@ -488,6 +486,17 @@ final class ModelFinderHandler implements ExpressionHandler
             'count' => ['result' => ['type' => 'number', 'optional' => false], 'element' => null],
             'column' => $this->keptKeys($this->pluckedColumn($call, $element, $scope), $inner['keyed'] ?? false),
         };
+    }
+
+    /**
+     * What a collection step on a list hands back: its element or null, its element, the list, a count or a column;
+     * null for a step this handler does not type.
+     *
+     * @return 'nullableElement'|'element'|'list'|'count'|'column'|null
+     */
+    private function listStepKind(string $step): ?string
+    {
+        return CollectionSteps::elementStep($step) ?? self::LIST_STEPS[$step] ?? null;
     }
 
     /**
@@ -677,17 +686,8 @@ final class ModelFinderHandler implements ExpressionHandler
         }
 
         $list = $this->analyzeVariablePluckCall($call, $scope, $model);
+        $column = ArrayArms::listElement($list['type']);
 
-        return ['result' => $list, 'element' => [...$list, 'type' => $this->listElement($list['type'])]];
-    }
-
-    /**
-     * The element type of a list type `T[]` or `(A | B)[]`.
-     */
-    private function listElement(string $list): string
-    {
-        $element = substr($list, 0, -2);
-
-        return str_starts_with($element, '(') && str_ends_with($element, ')') ? substr($element, 1, -1) : $element;
+        return ['result' => $list, 'element' => $column === null ? null : [...$list, 'type' => $column]];
     }
 }

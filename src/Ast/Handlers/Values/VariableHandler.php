@@ -27,7 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\AbstractCursorPaginator;
@@ -667,17 +667,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             $engine,
         );
 
-        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
-            return null;
-        }
-
-        // ValueResult::arrayWrapType(), not a raw '[]' suffix: a union body (e.g. a mixed AsEnum/direct-enum
-        // ternary) must be parenthesized before the array suffix binds.
-        $list = ValueResult::arrayWrapType($bodyResult['type']);
-        $type = $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list;
-
-        // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
-        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? TsTypeString::withNullArm($type) : $type, 'optional' => false];
+        return $this->mappedList($bodyResult, $receiver?->keyed === true, $receiver?->shortCircuits === true);
     }
 
     /**
@@ -688,7 +678,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function listElement(array $list): ?array
     {
-        $element = count(TsTypeString::splitTopLevelUnion($list['type'])) === 1 ? TsTypeShape::elementType($list['type']) : null;
+        $element = ArrayArms::listElement($list['type']);
 
         return $element === null || $element === 'unknown' || $element === 'never'
             ? null

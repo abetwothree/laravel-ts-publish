@@ -134,30 +134,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             'load', 'loadMissing', 'all',
         ];
 
-        // Walk down the chain collecting op names until we reach the model member it is rooted at.
-        /** @var list<array{name: string, node: MethodCall}> $ops */
-        $ops = [];
-        $node = $call;
-
-        while ($node instanceof MethodCall) {
-            if (! $node->name instanceof Identifier) {
-                return null;
-            }
-
-            $ops[] = ['name' => $node->name->toString(), 'node' => $node];
-            $node = $node->var;
-        }
+        [$steps, $root] = CollectionSteps::chain($call);
 
         // `$this->resource?->relation`: the `?->` ends the chain as null where the resource wraps none.
-        $rootsAtMember = $node instanceof PropertyFetch
-            ? $this->isModelMemberFetch($node, $scope)
-            : $node instanceof NullsafePropertyFetch && $this->isProxyFetch($node->var, $scope);
+        $rootsAtMember = $root instanceof PropertyFetch
+            ? $this->isModelMemberFetch($root, $scope)
+            : $root instanceof NullsafePropertyFetch && $this->isProxyFetch($root->var, $scope);
 
-        if (! ($node instanceof PropertyFetch || $node instanceof NullsafePropertyFetch) || ! $rootsAtMember || ! $node->name instanceof Identifier) {
+        if (! ($root instanceof PropertyFetch || $root instanceof NullsafePropertyFetch) || ! $rootsAtMember || ! $root->name instanceof Identifier) {
             return null;
         }
 
-        $relationInfo = $this->resolveModelRelationTypeInfo($node->name->toString(), $scope);
+        $relationInfo = $this->resolveModelRelationTypeInfo($root->name->toString(), $scope);
 
         if (! str_ends_with($relationInfo['type'], '[]') || $relationInfo['modelFqcn'] === null) {
             return null;
@@ -165,16 +153,16 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         $elementModel = $relationInfo['modelFqcn'];
 
-        // first()/last() as the outermost op terminate the chain with a single element or null. $ops[0]
-        // is the outermost call because the walk above collects outside-in, and always exists here: the
-        // while loop above ran at least once, since $call is typed as MethodCall.
-        $terminalOp = $ops[0]['name'];
-        $isTerminal = ($terminalOp === 'first' || $terminalOp === 'last')
-            && ! $ops[0]['node']->isFirstClassCallable()
-            && $this->collectionArguments($ops[0]['node'], $terminalOp)->isEmpty();
+        // An argless first()/last() as the outermost step ends the chain with a single element or null. The chain holds
+        // a step here: one by a dynamic name roots it at that call, which the member check above declines.
+        $outermost = $steps[count($steps) - 1];
+        $terminalOp = $outermost['name'];
+        $isTerminal = CollectionSteps::elementCall($outermost['node'], $terminalOp)
+            && ! $outermost['node']->isFirstClassCallable()
+            && $this->collectionArguments($outermost['node'], $terminalOp)->isEmpty();
 
         if ($isTerminal) {
-            array_shift($ops);
+            array_pop($steps);
         }
 
         $mapNode = null;
@@ -183,33 +171,33 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         // A relation collection starts keyed 0..n-1; each op below says whether that still holds.
         $sequentialKeys = true;
 
-        foreach (array_reverse($ops) as $op) {
-            if (in_array($op['name'], $identityOps, true)) {
-                $sequentialKeys = $op['name'] === 'all' || CollectionSteps::keepsKeys($op['name'])
+        foreach ($steps as $step) {
+            if (in_array($step['name'], $identityOps, true)) {
+                $sequentialKeys = $step['name'] === 'all' || CollectionSteps::keepsKeys($step['name'])
                     ? $sequentialKeys
-                    : ! CollectionSteps::keyedAfter($op['node'], $op['name'], ! $sequentialKeys, true);
+                    : ! CollectionSteps::keyedAfter($step['node'], $step['name'], ! $sequentialKeys, true);
 
                 continue;
             }
 
-            if ($op['name'] === 'map' && $mapNode === null && $pluckNode === null) {
+            if ($step['name'] === 'map' && $mapNode === null && $pluckNode === null) {
                 // map() preserves the receiver's keys, so it neither breaks nor restores sequentiality.
-                $mapNode = $op['node'];
+                $mapNode = $step['node'];
 
                 continue;
             }
 
-            if ($op['name'] === 'pluck' && $pluckNode === null && $mapNode === null) {
-                $pluckNode = $op['node'];
-                $sequentialKeys = $this->collectionArguments($op['node'], 'pluck')->named('key') === null;
+            if ($step['name'] === 'pluck' && $pluckNode === null && $mapNode === null) {
+                $pluckNode = $step['node'];
+                $sequentialKeys = $this->collectionArguments($step['node'], 'pluck')->named('key') === null;
 
                 continue;
             }
 
             // concat() is identity only when it appends the very same collection type; a different
             // element type makes a genuinely different collection, so that declines instead.
-            if ($op['name'] === 'concat') {
-                $argument = $this->collectionArguments($op['node'], 'concat')->named('source')?->value;
+            if ($step['name'] === 'concat') {
+                $argument = $this->collectionArguments($step['node'], 'concat')->named('source')?->value;
 
                 if ($argument !== null && $engine->resolve($argument)['type'] === $relationInfo['type']) {
                     continue;
@@ -271,20 +259,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $engine,
         );
 
-        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
-            return null;
-        }
-
-        // A map body entirely `EnumResource::make(...)` carries a live 'enumFqcn' through; the
-        // transformer's substitution-based rewrite reproduces whatever shape results, including
-        // the keyed Record arm a non-sequential filter()/sortBy() introduces.
-        $mapped = ValueResult::arrayWrapType($bodyResult['type']);
-
-        return [
-            ...$bodyResult,
-            'type' => $sequentialKeys ? $mapped : $this->keyedObjectArm($mapped),
-            'optional' => false,
-        ];
+        return $this->mappedList($bodyResult, ! $sequentialKeys, false);
     }
 
     /**
