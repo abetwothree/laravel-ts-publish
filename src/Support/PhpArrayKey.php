@@ -18,4 +18,14 @@ final class PhpArrayKey
     {
         return (string) (int) $key === $key ? (int) $key : null;
     }
+
+    /**
+     * The list index this key names, such as `'12'`, or null for a key PHP keeps a string or stores negative.
+     */
+    public static function listIndex(string $key): ?int
+    {
+        $stored = self::storedInt($key);
+
+        return $stored !== null && $stored >= 0 ? $stored : null;
+    }
 }
