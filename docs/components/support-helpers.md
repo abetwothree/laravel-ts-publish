@@ -168,8 +168,12 @@ and would be in the same bind as the
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
 a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and
 `shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
-`typeNameOccursIn()` alone stays literal-blind, as its [known gap][literal-blind] says. A joiner that unions arms passes
-each through `unionArm()` once there are two or more, and every list goes through `TsTypeShape::listType()`.
+`typeNameOccursIn()` alone stays literal-blind, as its [known gap][literal-blind] says.
+
+`hoistNull()`, `orUndefined()`, `listType()`, `mergeTypeScriptInfos()`, `TokenSlots::uniqueArms()` and
+`BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join. The `[]` wrappers,
+`ValueResult::arrayWrapType()` and `wrapAsArray()`, list through `TsTypeShape::listType()`. Other joins still append
+bare, such as `withNullArm()`, `TsTypeString::union()`, FormRequest's rule unions and a few raw `[]` suffixes.
 
 [literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 
