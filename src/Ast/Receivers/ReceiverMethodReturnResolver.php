@@ -416,7 +416,7 @@ final class ReceiverMethodReturnResolver
     {
         return $type === null
             ? null
-            : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? ValueResult::withNullArm($type) : $type];
+            : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? TsTypeString::withNullArm($type) : $type];
     }
 
     /**
@@ -718,8 +718,8 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        if ($nullable && ! in_array('null', TsTypeString::splitTopLevelUnion($result['type']), true)) {
-            $result['type'] .= ' | null';
+        if ($nullable) {
+            $result['type'] = TsTypeString::withNullArm($result['type']);
         }
 
         return $result;
