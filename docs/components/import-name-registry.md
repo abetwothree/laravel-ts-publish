@@ -105,7 +105,7 @@ Callers fill their queues in one of three ways:
   engine's keep check, key fill and container slots, `ResourceTransformer`, `FileImportNames`), `joinedSlots()` arms
   joined into one type (a docblock union, shape or container's union, the branch join), a cut arm against its whole
   text's own names, and `classLess()` a fill `InlineObjectResult::of()` folds into a value, which carries no slots.
-  Each names a token by `FileImportNames::typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot.
+  Each names a token by `TokenSlots::typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot.
   None respells a token inside a literal or after `typeof`.
   [Support helpers](support-helpers.md#token-slots-and-the-branch-join-live-in-srcastcomposition) tells these slots
   apart from the other per-token lists.

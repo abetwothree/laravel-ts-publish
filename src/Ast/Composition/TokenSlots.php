@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
@@ -178,6 +181,34 @@ final class TokenSlots
     }
 
     /**
+     * The name each class's token is spelled with: a `@tolki/types` class's, an enum's type or a resource's or model's.
+     */
+    public static function typeName(string $fqcn): string
+    {
+        return TolkiTypes::MAP[$fqcn]
+            ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
+    }
+
+    /**
+     * Every name a channel's classes are spelled with: a type name and a backed enum's `…Kind`, or an enum's const.
+     *
+     * @param  'classes'|'consts'  $channel
+     * @param  list<class-string>  $fqcns
+     * @return list<string>
+     */
+    public static function namesOf(string $channel, array $fqcns): array
+    {
+        $names = $channel === 'classes'
+            ? array_merge([], ...array_map(
+                static fn (string $fqcn): array => [self::typeName($fqcn), ...ValueResult::enumSiblingNames($fqcn)],
+                $fqcns,
+            ))
+            : array_map(ValueResult::enumConstName(...), $fqcns);
+
+        return array_values(array_unique($names));
+    }
+
+    /**
      * The names a declaration's tokens take slots for: those of the classes its slots hold.
      *
      * @param  Slots  $slots
@@ -185,7 +216,7 @@ final class TokenSlots
      */
     private static function ownNames(array $slots): array
     {
-        return FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        return self::namesOf('classes', array_values(array_unique(array_filter($slots))));
     }
 
     /**

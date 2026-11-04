@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
@@ -3252,7 +3251,7 @@ class LaravelTsPublish
 
             return $fqcns === []
                 ? []
-                : new ClassTokenQueue($fqcns, FileImportNames::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
+                : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
         }
 
         $classes = array_values(array_unique(array_filter($classTokens)));
@@ -3262,8 +3261,8 @@ class LaravelTsPublish
         }
 
         // ClassTokenQueue cannot hold a null, so the class tokens read their slots and the enums their own queue.
-        $enums = new ClassTokenQueue($info['enumFqcns'], FileImportNames::typeName(...), ValueResult::enumSiblingNames(...));
-        $tokens = TokenSlots::declaredTokens($info['type'], $classTokens, FileImportNames::namesOf('classes', $info['enumFqcns']));
+        $enums = new ClassTokenQueue($info['enumFqcns'], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...));
+        $tokens = TokenSlots::declaredTokens($info['type'], $classTokens, TokenSlots::namesOf('classes', $info['enumFqcns']));
 
         return array_map(
             static fn (array $token): ?string => $token['own'] ? $token['slot'] : $enums->take($token['token'])[0] ?? null,

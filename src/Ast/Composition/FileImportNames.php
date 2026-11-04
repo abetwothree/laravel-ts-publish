@@ -145,34 +145,6 @@ final class FileImportNames
     }
 
     /**
-     * The name each class's token is spelled with: a `@tolki/types` class's, an enum's type or a resource's or model's.
-     */
-    public static function typeName(string $fqcn): string
-    {
-        return TolkiTypes::MAP[$fqcn]
-            ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
-    }
-
-    /**
-     * Every name a channel's classes are spelled with: a type name and a backed enum's `…Kind`, or an enum's const.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  list<class-string>  $fqcns
-     * @return list<string>
-     */
-    public static function namesOf(string $channel, array $fqcns): array
-    {
-        $names = $channel === 'classes'
-            ? array_merge([], ...array_map(
-                static fn (string $fqcn): array => [self::typeName($fqcn), ...ValueResult::enumSiblingNames($fqcn)],
-                $fqcns,
-            ))
-            : array_map(ValueResult::enumConstName(...), $fqcns);
-
-        return array_values(array_unique($names));
-    }
-
-    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -181,7 +153,7 @@ final class FileImportNames
             $member['type'],
             $member['classes'],
             'classes',
-            fn (string $fqcn, string $spelled): string => $spelled === self::typeName($fqcn)
+            fn (string $fqcn, string $spelled): string => $spelled === TokenSlots::typeName($fqcn)
                 ? $this->localImportName($fqcn, $spelled)
                 : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
         ), $this->members);
@@ -200,7 +172,7 @@ final class FileImportNames
         $byName = [];
 
         foreach ($fqcns as $fqcn) {
-            foreach (self::namesOf($channel, [$fqcn]) as $name) {
+            foreach (TokenSlots::namesOf($channel, [$fqcn]) as $name) {
                 $byName[$name][] = $fqcn;
             }
         }
@@ -224,11 +196,11 @@ final class FileImportNames
 
         foreach ($pieces as $piece) {
             $fallback = $piece['typed'] ? $sole : [];
-            $names = array_values(array_unique([...self::namesOf($channel, $piece[$channel]), ...array_keys($fallback)]));
+            $names = array_values(array_unique([...TokenSlots::namesOf($channel, $piece[$channel]), ...array_keys($fallback)]));
             $claimed = [...$claimed, ...self::walk($piece, $channel, $names, $fallback)];
         }
 
-        $names = self::namesOf($channel, array_values(array_filter($claimed)));
+        $names = TokenSlots::namesOf($channel, array_values(array_filter($claimed)));
         $queue = [];
 
         foreach ($pieces as $piece) {
@@ -268,7 +240,7 @@ final class FileImportNames
         $tokens = $names === [] ? [] : TokenSlots::tokens($channel, $names, $piece['text']);
 
         $own = $channel === 'classes'
-            ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))
+            ? new ClassTokenQueue($piece[$channel], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))
             : new ClassTokenQueue($piece[$channel], ValueResult::enumConstName(...));
 
         foreach ($tokens as [$token, , $read]) {
@@ -291,7 +263,7 @@ final class FileImportNames
      */
     private static function respell(string $type, array $queue, string $channel, Closure $localName): string
     {
-        $names = self::namesOf($channel, array_values(array_filter($queue)));
+        $names = TokenSlots::namesOf($channel, array_values(array_filter($queue)));
 
         if ($names === []) {
             return $type;
@@ -307,7 +279,7 @@ final class FileImportNames
             }
 
             $fqcn = $queue[$at++] ?? null;
-            $spelled = $fqcn !== null && in_array($token, self::namesOf($channel, [$fqcn]), true)
+            $spelled = $fqcn !== null && in_array($token, TokenSlots::namesOf($channel, [$fqcn]), true)
                 ? $localName($fqcn, $token)
                 : $token;
             $respelled .= substr($type, $from, $offset - $from).$spelled;
