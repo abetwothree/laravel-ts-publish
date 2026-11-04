@@ -1441,32 +1441,32 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Respell each token of a declaration's classes' names in a type by the class its own slot names, in order, leaving
-     * a null slot's token, an override's, as spelled.
+     * Respell each read token of a declaration's own names in a type by the class its slot names, in order, leaving an
+     * override's token, whose slot is null, as spelled.
      *
      * @param  TokenFqcns  $slots
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      */
     private function aliasSlottedTokens(string $type, array $slots, array $nameMap): string
     {
-        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        $respelled = '';
+        $from = 0;
 
-        if ($names === []) {
-            return $type; // @codeCoverageIgnore
+        foreach (FileImportNames::declaredTokens($type, $slots) as $token) {
+            if ($token['slot'] === null || ! $token['read']) {
+                continue;
+            }
+
+            $respelled .= substr($type, $from, $token['offset'] - $from).TsTypeString::aliasPropertyType(
+                $token['token'],
+                [$token['slot']],
+                $nameMap,
+                $this->importAliases,
+                $this->siblingImportNames,
+            );
+            $from = $token['offset'] + strlen($token['token']);
         }
 
-        $at = 0;
-
-        return preg_replace_callback(
-            TsTypeString::queuedTokenPattern($names),
-            function (array $token) use ($slots, $nameMap, &$at): string {
-                $fqcn = $slots[$at++] ?? null;
-
-                return $fqcn === null
-                    ? $token[0]
-                    : TsTypeString::aliasPropertyType($token[0], [$fqcn], $nameMap, $this->importAliases, $this->siblingImportNames);
-            },
-            $type,
-        ) ?? $type;
+        return $respelled.substr($type, $from);
     }
 }

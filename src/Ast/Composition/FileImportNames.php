@@ -41,6 +41,8 @@ use Closure;
  * }
  * @phpstan-type SoleClasses = array<string, class-string>
  * @phpstan-type Token = array{string, int, bool}
+ * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
+ * @phpstan-type DeclaredArm = array{string, TokenFqcns}
  *
  * @internal
  */
@@ -177,6 +179,57 @@ final class FileImportNames
     }
 
     /**
+     * Each token in a type of a declaration's own names, the names of the classes its slots hold, and of `$names`, in
+     * print order. An own name's token takes the next slot, an unread one's in a literal or after `typeof` too, and
+     * any other token takes none: the one reading of `tokenFqcns` every builder and reader of it shares.
+     *
+     * @param  TokenFqcns  $slots
+     * @param  list<string>  $names
+     * @return list<DeclaredToken>
+     */
+    public static function declaredTokens(string $type, array $slots, array $names = []): array
+    {
+        $own = self::ownNames($slots);
+        $read = array_values(array_unique([...$own, ...$names]));
+
+        if ($read === []) {
+            return [];
+        }
+
+        $at = 0;
+        $tokens = [];
+
+        foreach (self::tokens('classes', $read, $type) as [$token, $offset, $isRead]) {
+            $isOwn = in_array($token, $own, true);
+            $slot = $isOwn ? $slots[$at++] ?? null : null;
+            $tokens[] = ['token' => $token, 'offset' => $offset, 'slot' => $slot, 'own' => $isOwn, 'read' => $isRead];
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order.
+     *
+     * @param  TokenFqcns  $slots
+     * @return list<DeclaredArm>
+     */
+    public static function declaredArms(string $type, array $slots): array
+    {
+        $own = self::ownNames($slots);
+        $arms = [];
+        $at = 0;
+
+        foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
+            $count = $own === [] ? 0 : count(self::tokens('classes', $own, $arm));
+            $arms[] = [$arm, array_slice($slots, $at, $count)];
+            $at += $count;
+        }
+
+        return $arms;
+    }
+
+    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -189,6 +242,17 @@ final class FileImportNames
                 ? $this->localImportName($fqcn, $spelled)
                 : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
         ), $this->members);
+    }
+
+    /**
+     * The names a declaration's tokens take slots for: those of the classes its slots hold.
+     *
+     * @param  TokenFqcns  $slots
+     * @return list<string>
+     */
+    private static function ownNames(array $slots): array
+    {
+        return self::namesOf('classes', array_values(array_unique(array_filter($slots))));
     }
 
     /**
@@ -268,25 +332,19 @@ final class FileImportNames
      */
     private static function walk(array $piece, string $channel, array $names, array $fallback): array
     {
-        $tokens = $names === [] ? [] : self::tokens($channel, $names, $piece['text']);
         $queue = [];
 
         if ($channel === 'classes' && isset($piece['declared'])) {
-            $declared = $piece['declared'];
-            $own = self::namesOf($channel, array_values(array_filter($declared)));
-            $at = 0;
-
-            // The declaration holds an entry for every token of its classes' names, one the channel leaves unread too.
-            foreach ($tokens as [$token, , $read]) {
-                $fqcn = in_array($token, $own, true) ? $declared[$at++] ?? null : $fallback[$token] ?? null;
-
-                if ($read) {
-                    $queue[] = $fqcn;
+            foreach (self::declaredTokens($piece['text'], $piece['declared'], $names) as $token) {
+                if ($token['read'] && in_array($token['token'], $names, true)) {
+                    $queue[] = $token['own'] ? $token['slot'] : $fallback[$token['token']] ?? null;
                 }
             }
 
             return $queue;
         }
+
+        $tokens = $names === [] ? [] : self::tokens($channel, $names, $piece['text']);
 
         $own = $channel === 'classes'
             ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))

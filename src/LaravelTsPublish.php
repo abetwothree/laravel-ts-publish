@@ -1209,6 +1209,8 @@ class LaravelTsPublish
     /**
      * docblockReturnTypes() as a docblock shape's member carries it, with the class behind each token of a class name.
      *
+     * @internal
+     *
      * @return ShapeTypeInfo
      */
     public function docblockReturnTypeInfo(ReflectionMethod $method): array
@@ -1220,6 +1222,8 @@ class LaravelTsPublish
      * A docblock shape's member as a key it types publishes it, each union arm once beside the class behind each of its
      * tokens; null where its own custom imports leave a name it spells unbrought, as keptShapeMember() reads it.
      *
+     * @internal
+     *
      * @param  ShapeTypeInfo  $info
      * @return ShapeTypeInfo|null
      */
@@ -1229,15 +1233,10 @@ class LaravelTsPublish
             return null;
         }
 
-        $slots = $info['tokenFqcns'] ?? [];
-        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
         $arms = [];
-        $at = 0;
 
         // Arms of one text whose tokens name different classes, as an override spelled like a model's, stay apart.
-        foreach (TsTypeString::splitTopLevelUnion($info['type']) as $arm) {
-            $armSlots = array_column($this->slottedTokens($arm, $names, array_slice($slots, $at), $names), 2);
-            $at += count($armSlots);
+        foreach (FileImportNames::declaredArms($info['type'], $info['tokenFqcns'] ?? []) as [$arm, $armSlots]) {
             $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
         }
 
@@ -3235,14 +3234,14 @@ class LaravelTsPublish
      */
     private function typeLeftToImports(array $info): string
     {
-        $slots = $info['tokenFqcns'] ?? [];
-        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
         $left = '';
         $from = 0;
 
-        foreach ($this->slottedTokens($info['type'], $names, $slots, $names) as [$token, $at, $fqcn]) {
-            $left .= substr($info['type'], $from, $at - $from).($fqcn === null ? $token : ' ');
-            $from = $at + strlen($token);
+        foreach (FileImportNames::declaredTokens($info['type'], $info['tokenFqcns'] ?? []) as $token) {
+            if ($token['slot'] !== null && $token['read']) {
+                $left .= substr($info['type'], $from, $token['offset'] - $from).' ';
+                $from = $token['offset'] + strlen($token['token']);
+            }
         }
 
         return $left.substr($info['type'], $from);
