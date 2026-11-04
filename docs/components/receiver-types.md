@@ -411,10 +411,10 @@ then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the l
 
 The analysis folds through `InlineObjectResult::of()`, as an inline literal does, so each member keeps its type and the
 import channels of the classes it names: a model, an API resource, an enum or its `EnumResource` wrap, a filter's
-`Pick<>`. `BodyFallbackChannelsTest` pins each against the same literal written in place. A member whose `@return`
-fill holds an override's null in its slots first reads with no class (`InlineObjectResult::readNullSlotsClassLess()`),
-as `of()` reads one. Then `MethodAnalysis::forgetUnpublishableMembers()` publishes `unknown` for two kinds of member and
-forgets their channels, while their siblings keep their types:
+`Pick<>`. `BodyFallbackChannelsTest` pins each against the same literal written in place. A member a `@return` fill
+typed that no per-name queue can bind first reads with no class, as `of()` reads one
+(`InlineObjectResult::readUnbindableFillsClassLess()`). Then `MethodAnalysis::forgetUnpublishableMembers()` publishes
+`unknown` for two kinds of member and forgets their channels, while their siblings keep their types:
 
 - One naming a model with no published file, which `resolve()`'s check would decline the whole shape for.
 - One whose class publishes under a name a custom import brings. The reader holds the shape as one key, which aliases
