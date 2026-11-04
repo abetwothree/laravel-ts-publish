@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -1474,7 +1475,7 @@ final class ReceiverClassResolver
         $held = $type['classFqcns'];
 
         // A list of the model, or a union of it with another type, holds no single model.
-        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+( \| null)?$/', $type['type']) === 1
+        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+$/', TsTypeString::withoutNullArm($type['type'])) === 1
             ? ReceiverType::of($held[0])
             : null;
     }
