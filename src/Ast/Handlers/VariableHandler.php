@@ -246,8 +246,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
     {
-        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && ValueResult::hasNullArm($value['type'])
-            ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
+        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && TsTypeString::hasNullArm($value['type'])
+            ? [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])]
             : $value;
     }
 
@@ -677,7 +677,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $type = $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list;
 
         // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
-        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? ValueResult::withNullArm($type) : $type, 'optional' => false];
+        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? TsTypeString::withNullArm($type) : $type, 'optional' => false];
     }
 
     /**
