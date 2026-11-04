@@ -123,6 +123,13 @@ it('reads a bare or quoted number key as its string', function () {
     expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['0' => false, '1' => true]);
 });
 
+it('reads a single-quoted or escaped key back as the key it names', function () {
+    $analysis = ObjectMembers::analysis(['type' => "{ 'a-b': number; \"a\\/b\"?: string; 'it\\'s': boolean }", 'optional' => false]);
+
+    expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['a-b' => false, 'a/b' => true, "it's" => false])
+        ->and(new InlineObjectResult()->of($analysis)['type'])->toBe('{ "a-b": number; "a\\/b"?: string; "it\'s": boolean }');
+});
+
 it('carries the custom imports and the carried classes whole', function () {
     $analysis = ObjectMembers::analysis([
         'type' => '{ a: Money; b: string }',
@@ -141,7 +148,7 @@ it('declines what is not one object literal', function (string $type) {
 
 it('declines an object with no key or a key it cannot read back', function (string $type) {
     expect(ObjectMembers::analysis(['type' => $type, 'optional' => false]))->toBeNull();
-})->with(['{}', '{ a }', "{ 'a-b': number }", '{ [key: `${string}_tag`]: string | undefined }']);
+})->with(['{}', '{ a }', '{ -1: number }', '{ "\\x41": number }', '{ [key: `${string}_tag`]: string | undefined }']);
 
 it('declines a value carrying an EnumResource wrap', function () {
     expect(ObjectMembers::analysis(['type' => '{ s: AsEnum<typeof Status> }', 'optional' => false, 'enumFqcn' => Status::class]))

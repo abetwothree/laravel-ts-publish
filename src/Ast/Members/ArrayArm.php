@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 
 /**
  * One list or object arm of an array's published type, as its named members and the keys it leaves unnamed. A write
@@ -195,7 +196,9 @@ final readonly class ArrayArm
      */
     private static function intKey(string $name): ?int
     {
-        return PhpArrayKey::storedInt(trim($name, '"\''));
+        $key = PrintedKey::decode($name);
+
+        return $key === null ? null : PhpArrayKey::storedInt($key);
     }
 
     /**
