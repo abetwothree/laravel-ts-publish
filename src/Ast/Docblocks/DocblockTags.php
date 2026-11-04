@@ -215,10 +215,10 @@ final class DocblockTags
 
         // A `&` before a parameter name marks a by-reference `@param`, not an intersection. A `:` after a `)` opens a
         // callable's return type. A `<` or `{` after the space, as in `array <string, int>`, continues a generic or a
-        // shape, but a `(` does not: `@return int (the count)` is prose.
+        // shape, but neither a `(` nor an inline tag's `{@` does: `@return int (the count)` is prose.
         return str_ends_with($captured, '|') || str_ends_with($captured, '&')
             || str_starts_with($remaining, '|')
-            || preg_match('/^[<{]/', $remaining) === 1
+            || preg_match('/^(?:<|\{(?!@))/', $remaining) === 1
             || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1)
             || preg_match('/\)\s*:$/', $captured) === 1
             || (str_ends_with($captured, ')') && str_starts_with($remaining, ':'));

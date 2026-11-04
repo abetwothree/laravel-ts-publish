@@ -53,6 +53,12 @@ test('a space before a generic\'s or a shape\'s opener continues the type, but n
         ->and(DocblockTags::type("/**\n * @return int (the count)\n */", 'return'))->toBe('int');
 });
 
+test('ends a type before an inline tag, though a space before a shape\'s brace continues it', function () {
+    expect(DocblockTags::type('/** @return string {@inheritdoc} */', 'return'))->toBe('string')
+        ->and(DocblockTags::type('/** @return array{a: int} {@see Foo} */', 'return'))->toBe('array{a: int}')
+        ->and(DocblockTags::type('/** @return array {a: int} */', 'return'))->toBe('array {a: int}');
+});
+
 test('captures a callable tag whole, up to the by-reference name after its return type', function () {
     expect(DocblockTags::type('/** @var callable(int): string &$cb */', 'var'))->toBe('callable(int): string');
 });
