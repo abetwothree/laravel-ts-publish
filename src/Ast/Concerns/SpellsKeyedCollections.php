@@ -34,7 +34,7 @@ trait SpellsKeyedCollections
         $lists = [];
 
         foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
-            $record = str_starts_with($arm, 'Record<') ? TsTypeShape::memberType($arm, '') : null;
+            $record = TsTypeShape::recordArguments($arm)[1] ?? null;
 
             $list = match (true) {
                 $arm === 'null', TsTypeShape::elementType($arm) !== null => $arm,

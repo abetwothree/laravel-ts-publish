@@ -140,10 +140,7 @@ enum ByReferenceEffect
         }
 
         if (TsTypeShape::isWrapped($arm, '[', ']')) {
-            return array_map(
-                static fn (string $member): array => [rtrim($member, '?'), 'number'],
-                TsTypeShape::splitTopLevel(substr($arm, 1, -1), [',']),
-            );
+            return array_map(static fn (string $member): array => [$member, 'number'], TsTypeShape::tupleMembers($arm));
         }
 
         $record = TsTypeShape::recordArguments($arm);

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use PhpParser\Node\Expr;
@@ -117,20 +118,9 @@ final class OffsetReadHandler implements ExpressionHandler
      */
     private function tupleMember(string $tuple, string $key): array
     {
-        $element = preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
-            ? TsTypeShape::splitTopLevel(substr($tuple, 1, -1), [','])[(int) $key] ?? null
-            : null;
+        $index = PhpArrayKey::listIndex($key);
+        [$element, $optional] = $index === null ? [null, false] : TsTypeShape::tupleElements($tuple)[$index] ?? [null, false];
 
-        if ($element === null || str_starts_with($element, '...')) {
-            return [null, false];
-        }
-
-        if (! str_ends_with($element, '?')) {
-            return [$element, false];
-        }
-
-        $member = trim(substr($element, 0, -1));
-
-        return [TsTypeShape::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member, true];
+        return $element === null || str_starts_with($element, '...') ? [null, false] : [$element, $optional];
     }
 }
