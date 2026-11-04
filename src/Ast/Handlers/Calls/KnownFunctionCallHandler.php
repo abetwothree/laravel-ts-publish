@@ -23,6 +23,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -391,8 +393,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $parameters[] = [...ValueResult::elementOf($input, $element), 'type' => $element];
         }
 
+        // Each element's channels ride along, so the tuples import the enums and classes their arms name.
         if ($zips) {
-            return ['type' => '['.implode(', ', array_column($parameters, 'type')).'][]', 'optional' => false];
+            return [...ValueResult::unionResults($parameters), 'type' => '['.implode(', ', array_column($parameters, 'type')).'][]', 'optional' => false];
         }
 
         $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine);
@@ -479,6 +482,12 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     private function collectRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $items = $args->named('value')?->value;
+
+        // Laravel's filter never recurses into a Collection, so a `when*()` item encodes as `{}`.
+        if ($items instanceof Array_ && array_any($items->items, fn (ArrayItem $item): bool => $engine->resolve($item->value)['optional'])) {
+            return null;
+        }
+
         $result = $items === null ? ['type' => 'never[]', 'optional' => false] : $this->collectedItems($items, $scope, $engine);
 
         // The value is a Collection, whose keys json_encode() writes as they are, so a resource's re-index skips it.

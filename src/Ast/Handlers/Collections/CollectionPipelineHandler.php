@@ -102,7 +102,12 @@ final class CollectionPipelineHandler implements ExpressionHandler
             $this->elementModel($items, $scope),
         );
 
-        return $mapped === null || $sequentialKeys ? $mapped : [...$mapped, 'type' => $this->keyedObjectArm($mapped['type'])];
+        if ($mapped === null || ! $listed) {
+            // A kept Collection's keys reach json_encode() as they are, since a resource's filter never enters one.
+            return $mapped === null || $steps[count($steps) - 1]['name'] === 'all' ? $mapped : [...$mapped, 'keepsKeys' => true];
+        }
+
+        return $sequentialKeys ? $mapped : [...$mapped, 'type' => $this->keyedObjectArm($mapped['type'])];
     }
 
     /**

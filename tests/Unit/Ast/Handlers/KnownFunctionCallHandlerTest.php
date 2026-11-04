@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -184,6 +186,14 @@ it('publishes the workbench array_map() keys as the JSON the resource sends', fu
         '{"messages":["first","second"],"doubled":{"low":2,"high":4},"zipped":[["a",1],["b",2],[null,3]],'
         .'"names":["FIRST","SECOND"]}',
     );
+});
+
+it('imports the enum a null-callback zip of an enum list names', function () {
+    $analysis = resolve(AstEngine::class)->analyze(CollectPipelineRootsResource::class, 'toArray', Post::class);
+    $zipped = array_values(array_filter($analysis->properties, fn (array $property): bool => $property['name'] === 'zipped_grades'));
+
+    expect($zipped[0]['type'])->toBe('[GradeType | null, number | null][]')
+        ->and(array_merge(...array_values($analysis->typeImports)))->toContain('GradeType');
 });
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.

@@ -10,8 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHand
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Models\Post;
@@ -171,3 +173,21 @@ test('a map() over any other collection calls any callable form', function (stri
     'a first-class method' => ["\$this->comments->pluck('content')->map(\$this->shoutUntyped(...))->all()", 'string[]'],
     'a closure' => ["\$this->comments->pluck('content')->map(fn (\$c) => strtoupper(\$c))->all()", 'string[]'],
 ]);
+
+// A pipeline root keeps a literal holding a `when*()` value, as Laravel's filter never reaches into the Collection; a
+// kept Collection writes its keys as they are, where `all()` hands the resource an array it re-indexes.
+test('a collect() pipeline keeps a root holding a when() value, and a kept map its int keys', function () {
+    expect(publishedResourceKeyTypes(CollectPipelineRootsResource::class, Post::class))->toMatchArray([
+        'when_all' => 'number[]',
+        'when_values' => 'number[]',
+        'when_map_identity' => 'number[]',
+        'when_map_const' => 'string[]',
+        'when_filter' => 'number[] | Record<string, number>',
+        'when_loaded_map' => 'number[]',
+        'gapped_kept' => '{ "1": string; "3": string }',
+        'gapped_all' => 'string[]',
+    ])->and(json_encode(new CollectPipelineRootsResource(new Post)->resolve(Request::create('/'))))->toContain(
+        '"when_all":[1],"when_values":[2],"when_map_identity":[2],"when_map_const":["x","x"],"when_filter":[2],'
+        .'"when_loaded_map":[1],"gapped_kept":{"1":"A","3":"B"},"gapped_all":["A","B"]',
+    );
+});

@@ -12,8 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 
 /**
  * The one read of the items `collect($items)` holds, shared by KnownFunctionCallHandler's `collect()` and
@@ -28,7 +26,7 @@ trait ReadsCollectedItems
     /**
      * The array `collect($items)` holds: null as no items, a constant array typed as a parameter default is, and an
      * expression typed as one list, tuple, Record or object shape as itself, the empty tuple as the empty list; a value
-     * nothing types as `unknown`. Null for any other value, or a literal holding a `when*()` value.
+     * nothing types as `unknown`. Null for any other value.
      *
      * @return ValueExpressionResult|null
      */
@@ -46,11 +44,6 @@ trait ReadsCollectedItems
                 default => null,
             };
         } catch (ConstExprEvaluationException) {
-        }
-
-        // Laravel's filter never recurses into a Collection, so a `when*()` item encodes as `{}`.
-        if ($items instanceof Array_ && array_any($items->items, fn (ArrayItem $item): bool => $engine->resolve($item->value)['optional'])) {
-            return null;
         }
 
         $result = $engine->resolve($items);
