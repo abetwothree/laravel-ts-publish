@@ -2762,13 +2762,13 @@ declare global {
         }
         /**
          * Reads Bulletin's accessors through a typed closure parameter and a nullsafe relation chain, beside a model method
-         * body that reads them without imports. Keys differ from BulletinBoard's own accessors, so no name lookup imports them.
+         * body making the same reads. Keys differ from BulletinBoard's own accessors, so no name lookup imports them.
          */
         export interface BulletinBoardResource {
             id: number;
             lists: app.models.Comment[][];
             lead_pick: Pick<app.models.User, 'id' | 'name'> | null;
-            summary: { comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number };
+            summary: { comment_lists: app.models.Comment[][]; lead_author: Pick<app.models.User, 'id' | 'name'> | null; id: number };
         }
         /**
          * Overrides two reads of Bulletin's accessors, so neither `Comment` nor the `User` of `lead_pick` survives in their
@@ -3150,14 +3150,14 @@ declare global {
         /**
          * Relation filters written inside the model itself: a method body the resource forwards to, and an accessor it reads.
          *
-         * The method body's shape carries no import, so its filters publish types that name no model or enum.
+         * The method body's filters publish what the accessor's do, naming the models they hold.
          */
         export interface CommentRelationFiltersResource {
             id: number;
-            summary: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
-            summary_via_resource: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
+            summary: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
+            summary_via_resource: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
             picks: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
-            picks_summary: { id: number; picks: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] } };
+            picks_summary: { id: number; picks: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] } };
         }
         export interface CommentResource {
             id: number;
@@ -4635,8 +4635,8 @@ declare global {
             headline_id: number;
             headline: string;
             maybe: { maybe_title: string | null };
-            status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
-            status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
+            status_label: { label: app.enums.StatusKind; value: app.enums.StatusType };
+            status_payload: { payload_status: app.enums.StatusType; payload_name: app.enums.StatusKind };
             payload_status: app.enums.StatusType;
             payload_name: app.enums.StatusKind;
         }
@@ -5105,7 +5105,7 @@ declare global {
         /** Filters written inside the model itself: a method body the resource forwards to, and an accessor it reads. */
         export interface ReleaseColumnsResource {
             id: number;
-            columns: { named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> };
+            columns: { named: Pick<app.models.Release, 'major' | 'minor'>; rest: Pick<app.models.Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
             picks: { named: Pick<app.models.Release, 'major' | 'minor'>; rest: Pick<app.models.Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
         }
         /** Nests a resource from a multi-word namespace segment, so the globals file qualifies it across namespaces. */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
     expect(new ResourceAnalysis)->toBeInstanceOf(MethodAnalysis::class)
@@ -181,6 +182,41 @@ it('forgets every channel keyed by a property another value took over, and nothi
             'Workbench\App\Http\Resources\TagResource' => 'Workbench\App\Http\Resources\TagResource',
             'kept' => 'Workbench\App\Http\Resources\PostResource',
         ]);
+});
+
+it('publishes unknown for a member naming an unpublished model and forgets its channels, its siblings kept', function (?array $published, string $unpublished) {
+    if ($published !== null) {
+        PublishedModelRegistry::register($published);
+    }
+
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kept', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+    $analysis->addProperty('nested', ['type' => '{ owner: Post }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\App\Models\Post']]);
+    $analysis->properties[] = ['name' => 'lost', 'type' => '{ m: User }', 'optional' => false, 'description' => ''];
+    $analysis->inlineModelFqcns['lost'] = [$unpublished];
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kept' => 'Post', 'nested' => '{ owner: Post }', 'lost' => 'unknown'])
+        ->and($analysis->hasFqcnChannel('lost'))->toBeFalse()
+        ->and($analysis->tokenFqcns('kept'))->toBe(['Workbench\App\Models\Post'])
+        ->and($analysis->tokenFqcns('nested'))->toBe(['Workbench\App\Models\Post']);
+})->with([
+    'a model the published set leaves out' => [['Workbench\App\Models\Post'], 'Workbench\App\Models\User'],
+    'a framework model, with no published set' => [null, 'Illuminate\Foundation\Auth\User'],
+]);
+
+// The key holding these members aliases every token of a name alike, so the enum would take the composed class's.
+it('publishes unknown for a member whose class publishes under a name a custom import brings, its siblings kept', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kind', ['type' => 'ChartType', 'optional' => false, 'directEnumFqcn' => ChartEnum::class]);
+    $analysis->addProperty('chart', ['type' => 'ChartType', 'optional' => false, 'customImports' => ['@ui' => ['ChartType']]]);
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kind' => 'unknown', 'chart' => 'ChartType'])
+        ->and($analysis->hasFqcnChannel('kind'))->toBeFalse()
+        ->and($analysis->customImports)->toBe(['@ui' => ['ChartType']]);
 });
 
 it('appends inlineModelFqcns per property WITHOUT deduping, unlike its sibling inline maps', function () {

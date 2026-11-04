@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -538,6 +539,36 @@ class MethodAnalysis
             $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
             $this->leftOutValues[$name],
         );
+    }
+
+    /**
+     * Publish `unknown` for each member whose own channels name a model with no published file, or a class publishing
+     * under a name the custom imports bring, and forget its channels; the other members keep theirs.
+     *
+     * A reader holding these members in one key declines it for such a model (ValueResult::namesOnlyPublishedModels())
+     * and aliases every token of one name alike, so such a class would take the custom import's tokens with it.
+     */
+    public function forgetUnpublishableMembers(): void
+    {
+        $imported = ImportMaps::localNames($this->customImports);
+
+        foreach (array_unique(array_column($this->properties, 'name')) as $name) {
+            $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
+
+            if (ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'embeddedModelFqcns' => $models])
+                && ($imported === [] || array_intersect($this->channelNames($name), $imported) === [])
+            ) {
+                continue;
+            }
+
+            foreach ($this->properties as $index => $property) {
+                if ($property['name'] === $name) {
+                    $this->properties[$index]['type'] = 'unknown';
+                }
+            }
+
+            $this->forgetChannels($name);
+        }
     }
 
     /**

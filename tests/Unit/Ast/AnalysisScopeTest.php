@@ -436,7 +436,7 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 function analysisScopeSetOnceFields(): array
 {
     return [
-        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys',
+        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'casesAsLiterals', 'reindexesNumericKeys',
     ];
 }
 

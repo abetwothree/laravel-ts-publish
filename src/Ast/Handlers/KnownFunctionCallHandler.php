@@ -489,7 +489,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes.
             return match (true) {
                 $value === null => ['type' => 'never[]', 'optional' => false],
-                is_array($value) => $resolver->resolveConstantValue($value),
+                is_array($value) => $resolver->resolveConstantValue($value, $scope->casesAsLiterals),
                 default => null,
             };
         } catch (ConstExprEvaluationException) {

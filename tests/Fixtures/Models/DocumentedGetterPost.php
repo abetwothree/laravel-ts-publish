@@ -11,7 +11,7 @@ use Workbench\App\Models\Post;
 
 /**
  * A model on the `posts` table whose getters' bodies type nothing, typed by the `@return` docblock written before the
- * getter closure, and methods whose vague `: array` return reads them without imports.
+ * getter closure, and methods whose vague `: array` return reads them.
  */
 final class DocumentedGetterPost extends Model
 {

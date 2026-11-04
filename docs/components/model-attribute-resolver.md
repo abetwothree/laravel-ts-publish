@@ -236,7 +236,8 @@ These readers apply it, each with the scope and the fallback its page gives:
 - the `@return` an API resource's method fills from
   ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));
 - a model metadata payload, which throws instead ([Model metadata](model-metadata.md#type-precedence));
-- the body fallback, per method ([Receiver types](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)).
+- the body fallback, which carries FQCN channels and so keeps only the collision test, per method
+  ([Receiver types](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does)).
 
 ## Docblock types
 

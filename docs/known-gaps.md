@@ -148,17 +148,16 @@ Return a literal on each path, or state the keys in `#[TsCasts]`.
 A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of a
 declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a value
 and alone where its result is the method's own return, when the argument is not one object literal (a `Record`, a list,
-a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an `EnumResource`
-wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less read cannot
-import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference
-call of the parameter leaves only the helper's own writes, and so does a rewrite of its values in place, `array_walk()`,
-a by-reference `foreach` or `Arr::set()`, inside a block too; a `??=`, a key-keeping sort such as `ksort()`,
-`array_push()` and `array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the
-walk cannot read, makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape
-open, unless it keeps every key, as those calls, a local's rewrite in place and an `=` of `array_merge()` or
-`array_replace()`, either recursive, or `Arr::add()` taking the array first, or of a `+` it leads, do. A local rewritten
-in place keeps its earlier value types, though `array_walk()` may turn a number into a string. Declare
-`@return array{…}` on the helper to publish the exact shape.
+a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, or holds an
+`EnumResource` wrap or two same-named enums a level apart. An assignment inside another expression, a top-level
+`unset()`, destructuring, `foreach` target or by-reference call of the parameter leaves only the helper's own writes,
+and so does a rewrite of its values in place, `array_walk()`, a by-reference `foreach` or `Arr::set()`, inside a block
+too; a `??=`, a key-keeping sort such as `ksort()`, `array_push()` and `array_unshift()` keep the argument's keys.
+Inside a block, such a write, or an `=` of a value the walk cannot read, makes each key held before it optional, a
+local's too, and, but for an `unset()`, publishes the shape open, unless it keeps every key, as those calls, a local's
+rewrite in place and an `=` of `array_merge()` or `array_replace()`, either recursive, or `Arr::add()` taking the array
+first, or of a `+` it leads, do. A local rewritten in place keeps its earlier value types, though `array_walk()` may
+turn a number into a string. Declare `@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
@@ -510,15 +509,20 @@ resource with no backing model for two or more models still publishes `null` for
 
 ### A shape whose values name a class loses those values, in one of two ways
 
-The method-body fallback and a value object's own shape carry an override's import, but no model's or enum's. Each
-keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value object whose shape keeps
-one, with its imports, and loses a member naming any other class, such as a model. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape, as
-[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A value object's
-shape degrades one leaf: a `toArray()` documented `@return array{owner: User}` publishes `{ owner: unknown }`, or a
-tuple member, `list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and
-degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names
-the class. A member whose union spells a model or enum beside an override, such as `Person|User`, is `unknown` too.
+A value object's own shape carries an override's import, but no model's or enum's. It keeps a member naming a class or
+an enum with an override, such as `chart: Chart`, or a value object whose shape keeps one, with its imports, and
+degrades one leaf naming any other class, such as a model: a `toArray()` documented `@return array{owner: User}`
+publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` → `[unknown, number]`, while `Record<string, User>`
+has nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method
+a native return type that names the class. A member whose union spells a model or enum beside an override, such as
+`Person|User`, is `unknown` too.
+
+A helper read as a value publishes what the same literal publishes in place, but for a member whose class publishes
+under a name another member's override imports, such as an enum typed `ChartType` beside a composed `Chart`: the key
+holding the helper would spell both alike, so that member is `unknown`
+([Receiver types](./components/receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does)).
+Written in place, the literal spells both with the enum's alias, which types the composed class's value as the enum's.
+Put the two under different keys.
 
 A docblock shape keeps a model or an enum at any depth, with its import. Read by an API resource's helper, a property's
 `@var` or a model's accessor, though, a shape that also names any other class, such as an API resource, or spells an
@@ -529,8 +533,7 @@ leaf naming a class `unknown`. So is one where a literal or a key spells the cla
 any class but an enum.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
-and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
-member brings for that name, or is `unknown` when none does. Give the override an `import`.
+and a value object's shape, though it publishes as written elsewhere. Give the override an `import`.
 
 ### A docblock union of an override and a model spelled alike binds both to the model, outside `share()`
 

@@ -469,8 +469,8 @@ describe('ReceiverMethodCallHandler', function () {
     ]);
 
     // In a model's own method or accessor body `$this` is the model, and the chain handler declines its filters.
-    // A method body reached by the body fallback carries no import, so a literal list there names no token: a key whose
-    // type names one, such as an enum column, is `unknown`, and the rest of the shape keeps its types.
+    // A scope that carries no import, as an accessor's import-less read is, names no token from a literal list: a key
+    // whose type names one, such as an enum column, is `unknown`, and the rest of the shape keeps its types.
     test('types a filter on a model subject\'s own $this, naming no token where the scope carries no import', function () {
         $getter = new AnalysisScope(new ReflectionClass(Release::class), Release::class);
         $method = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
@@ -547,9 +547,9 @@ describe('ReceiverMethodCallHandler', function () {
         'docblock array<string, mixed>, getter body' => [DocblockFilterOverrideModel::class, DocblockFilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, "\$this->only(['id'])", "Pick<DocblockFilterOverrideModel, 'id'>"],
     ]);
 
-    // The body fallback carries no FQCN channel and drops a shape naming a token. Where the scope imports nothing, a
-    // model the override returns is spelled as the object it serializes to, narrowed to the call's literal keys, and an
-    // override returning any other token, such as an enum, publishes unknown; the enclosing shape survives either way.
+    // Where the scope imports nothing, as an accessor's import-less read does, a model the override returns is spelled
+    // as the object it serializes to, narrowed to the call's literal keys, and an override returning any other token,
+    // such as an enum, publishes unknown; the enclosing shape survives either way.
     test('publishes a class-typed only()/except() override with no token where the scope carries no import', function (?array $profile, bool $carriesImports, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass(ClassTypedFilterOverrideModel::class), ClassTypedFilterOverrideModel::class, 'toArray', $profile, carriesImports: $carriesImports);
 
@@ -570,10 +570,13 @@ describe('ReceiverMethodCallHandler', function () {
         'getter body, multi-model accessor' => [ResourceExpressionHandlers::forModelClosures(), true, "\$this->counterpart->only(['id'])", "ClassTypedFilterOverrideModel | Pick<User, 'id'> | null"],
     ]);
 
-    test('keeps a method body\'s shape around a class-typed only()/except() override', function () {
+    test('keeps a method body\'s shape around a class-typed only()/except() override, with the classes it returns', function () {
         expect(resolve(MethodReturnTypeResolver::class)->resolve(ClassTypedFilterOverrideModel::class, 'filterFields'))->toBe([
-            'type' => '{ own: { id: number; name: string } | null; twin: { id: number } | null; rest: unknown; id: number }',
+            'type' => '{ own: ClassTypedFilterOverrideModel | null; twin: ClassTypedFilterOverrideModel | null; rest: PriorityType; id: number }',
             'optional' => false,
+            'keepsKeys' => true,
+            'embeddedEnumFqcns' => [Priority::class],
+            'embeddedModelFqcns' => [ClassTypedFilterOverrideModel::class, ClassTypedFilterOverrideModel::class],
         ]);
     });
 
@@ -676,7 +679,7 @@ describe('ReceiverMethodCallHandler', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CollectionMemberModel::class, 'option_picks')['type'])
             ->toBe('{ options: Record<string, unknown>; id: number }')
             ->and(resolve(MethodReturnTypeResolver::class)->resolve(CollectionMemberModel::class, 'optionFields'))
-            ->toBe(['type' => '{ options: Record<string, unknown>; id: number }', 'optional' => false]);
+            ->toBe(['type' => '{ options: Record<string, unknown>; id: number }', 'optional' => false, 'keepsKeys' => true]);
     });
 
     // Model::only() keys a name it cannot find to null, so a literal list naming nothing typed still returns an

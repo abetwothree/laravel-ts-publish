@@ -222,8 +222,8 @@ those handlers. It also records the controller scope, which has no model, where 
 
 A model's own method or accessor body is analyzed with the model as its subject. There `$this->resource` is the
 model's own member, because only an API resource has the proxy (`AnalysisScope::hasResourceProxy()`). How filters
-answer in that body, and in a body that carries no imports, is in
-[receiver types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+answer in that body, and in a reader that carries no imports, is in
+[receiver types § The body fallback carries channels as an inline literal does](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does).
 
 The relation arm publishes by member kind, adds `| null` through `?->`, and declines (`null`, so a later handler
 answers) on anything else:

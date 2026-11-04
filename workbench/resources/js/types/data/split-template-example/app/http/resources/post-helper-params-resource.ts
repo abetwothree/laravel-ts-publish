@@ -18,8 +18,8 @@ export interface PostHelperParamsResource
     headline_id: number;
     headline: string;
     maybe: { maybe_title: string | null };
-    status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
-    status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
+    status_label: { label: StatusKind; value: StatusType };
+    status_payload: { payload_status: StatusType; payload_name: StatusKind };
     payload_status: StatusType;
     payload_name: StatusKind;
 }

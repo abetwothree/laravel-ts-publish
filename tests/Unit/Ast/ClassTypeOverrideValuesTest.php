@@ -345,6 +345,7 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
     expect(resolve(MethodReturnTypeResolver::class)->resolve(UiBoardShapesResource::class, 'untypedHelper'))->toBe([
         'type' => "{ board: {$board}; label: string }",
         'optional' => false,
+        'keepsKeys' => true,
         'customImports' => [
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
             ComposedClassTypes::marker(Chart::class) => ['ChartType'],
@@ -356,7 +357,7 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
         'json' => "{ board: {$board}; title: string }",
         'untyped_helper' => "{ board: {$board}; label: string }",
         'doc_owner' => '{ owner: User; panel: UiNode }',
-        'untyped_owner' => '{ owner: unknown; panel: UiNode }',
+        'untyped_owner' => '{ owner: User; panel: UiNode }',
     ])
         ->and(new ResourceTransformer(UiBoardShapesResource::class)->typeImports)->toBe([
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],

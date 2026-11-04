@@ -2505,17 +2505,14 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
 });
 
 describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the model itself)', function () {
-    test('a model method body publishes token-free filters and an accessor getter publishes the Pick<>', function () {
-        // `$this` is the model in both bodies. The method body's shape carries no import, so its literal filters inline
-        // the columns; the getter's channels reach the model file, so it keeps the Pick<> references.
-        $method = '{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
-            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }';
+    test('a model method body and an accessor getter both publish the Pick<>', function () {
+        // `$this` is the model in both bodies, and each carries the model's channel, so each keeps the Pick<>.
         $getter = "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | "
             ."'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }";
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReleaseColumnsResource::class), Release::class)->analyze()->properties)->keyBy('name');
         $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks');
 
-        expect($props['columns']['type'])->toBe($method)
+        expect($props['columns']['type'])->toBe($getter)
             ->and($props['picks']['type'])->toBe($getter)
             ->and($accessor['type'])->toBe($getter)
             ->and($accessor['classFqcns'])->toBe([Release::class]);
@@ -2523,14 +2520,14 @@ describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the mo
 });
 
 describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filters inside the model itself)', function () {
-    test('a model method body publishes token-free relation filters beside its typed keys', function () {
+    test('a model method body publishes its relation filters as the accessor reading them does', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
 
         expect($props['summary']['type'])->toBe(
-            '{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; '
-            .'post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; '
+            "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; "
+            .'post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; '
             .'reply_previews: { id: number; content: string }[] }',
-        );
+        )->and($props['summary']['type'])->toBe($props['picks']['type']);
     });
 
     test('a model method body reading that accessor publishes the filters its own body would', function () {
@@ -2625,10 +2622,10 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
             ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
 
-    test('a model method body making the same reads publishes them without a class', function () {
+    test('a model method body making the same reads publishes them with their classes', function () {
         $props = collect(resolve(AstEngine::class)->analyze(BulletinBoardResource::class)->properties)->keyBy('name');
 
-        expect($props['summary']['type'])->toBe('{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }');
+        expect($props['summary']['type'])->toBe("{ comment_lists: Comment[][]; lead_author: Pick<User, 'id' | 'name'> | null; id: number }");
     });
 });
 
@@ -7353,7 +7350,7 @@ test('a short ternary keeps both arms in a resource body Inertia reads', functio
         ->and([$empty->tryFrom, $empty->helperTryFrom, $empty->helperInst, $empty->mwTryFrom])->toBe([null, null, null, null]);
 });
 
-// The body fallback flattens a helper's shape with no import, so the case types as the value it sends.
+// The body fallback reads a plain backed case as the value it sends, which its enum's type is vaguer than.
 test('an enum case in a vague helper\'s body fallback publishes the value it sends, beside its typed siblings', function () {
     $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
 

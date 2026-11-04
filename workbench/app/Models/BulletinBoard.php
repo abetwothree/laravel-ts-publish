@@ -29,7 +29,7 @@ class BulletinBoard extends Model
         return $this->belongsTo(Bulletin::class, 'user_id');
     }
 
-    /** The same reads in a method body, which carries no import and so publishes them without a class. */
+    /** The same reads in a method body, which publishes them with the classes they name. */
     public function summary(): array
     {
         return [

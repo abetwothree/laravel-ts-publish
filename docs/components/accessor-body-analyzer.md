@@ -86,12 +86,13 @@ in a closure.
 
 ## A reader that carries no import
 
-A method body reached by the body fallback carries no FQCN channel, so it drops any shape that names a model or an enum;
-see [The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel). When such
-a scope reads an accessor, `analyze()` takes `carriesImports: false`, and `analyzeModelClosure()` sets it on the
-getter's scope. The getter's filters then publish what they would inside the method body: an inline shape with `unknown`
+A reader that keeps no FQCN channel reads an accessor with `carriesImports: false`: `analyze()` takes the flag, and
+`analyzeModelClosure()` sets it on the getter's scope. The getter's filters then publish an inline shape with `unknown`
 for a member naming a token, `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
-The model file and every resource still publish the analysis with imports.
+The model file and every resource publish the analysis with imports. A method body the body fallback reads carries
+imports, as [Receiver types](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does) says, so
+it reads an accessor as the model file publishes it; no reader in a publish run seeds the flag since then, and the
+import-less path is reached only from its own unit tests.
 
 `ResolvesAccessorType::resolveAccessorBodyType()` then chooses between that spelling and the annotation. Without
 imports, a spelling can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
@@ -105,9 +106,8 @@ naming a class where the published type is not vague. The tag never refines `Com
 `unknown[]` back into `Comment[]` either. A token-free tag applies as it does to any vague type.
 
 Those two steps are the only places the flag decides anything. An accessor typed by its signature, its docblock or an
-`@property` tag reads the same in both modes, so `Attribute<User, never>` or `fn () => $this->author` still costs a
-reading method its shape. `FilteringAccessorModel` in the unit fixtures pins each getter kind and read position, and
-`Comment::picksSummary()` pins the rule end to end.
+`@property` tag reads the same in both modes. `FilteringAccessorModel` in the unit fixtures pins each getter kind and
+read position in both modes.
 
 ## Cycles
 
@@ -118,8 +118,9 @@ key memoizes the answer for the run, a cut-short one with the guards that cut it
 
 `AccessorBodyAnalyzer` keys its own guard because `analyzeModelClosure()` guards and memoizes nothing, unlike
 `AstEngine::analyzeMethod()` with its `analysis:` key. The two keys are not interchangeable, so don't merge them. Each
-import mode has its own key because a getter analyzed with imports can call a method that reads the same accessor
-without them. A shared key would cut that read short and make the published type depend on which was read first.
+import mode has its own key, so an import-less read never stands in for the published one or cuts it short. A getter
+that calls a method reading the same accessor back, as `FilteringAccessorModel::selfReport()` does, is cut at that read
+in either read order: the method publishes the getter's own reading, and the getter publishes that read as `unknown`.
 
 ## What stays vague
 

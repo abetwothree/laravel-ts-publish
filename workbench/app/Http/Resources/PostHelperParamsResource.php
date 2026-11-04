@@ -100,7 +100,7 @@ final class PostHelperParamsResource extends JsonResource
     }
 
     /**
-     * The status itself, which a value read cannot import, beside its name.
+     * The status itself beside its name.
      *
      * @return array<string, mixed>
      */

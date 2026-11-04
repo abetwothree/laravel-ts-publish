@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\PostHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
@@ -45,18 +47,18 @@ test('a self-recursive vague method declines instead of looping', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(RecursiveVagueFixture::class, 'again'))
         ->toBe(['type' => 'unknown[]', 'optional' => false])
         ->and(resolve(MethodReturnTypeResolver::class)->resolve(RecursiveVagueFixture::class, 'againKeyed'))
-        ->toBe(['type' => '{ again: unknown[] }', 'optional' => false]);
+        ->toBe(['type' => '{ again: unknown[] }', 'optional' => false, 'keepsKeys' => true]);
 });
 
 test('a constant key resolves through parent, self and a foreign class', function () {
     // `parent::PARENT_TIER` is 7, kept as the quoted key JSON writes.
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyFixture::class, 'shape'))
-        ->toBe(['type' => '{ "7": string; label: string; external: string }', 'optional' => false]);
+        ->toBe(['type' => '{ "7": string; label: string; external: string }', 'optional' => false, 'keepsKeys' => true]);
 });
 
 test('a numeric constant key is kept when the analyzed subject is a resource', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyResource::class, 'shape'))
-        ->toBe(['type' => '{ "8": string; external: string }', 'optional' => false]);
+        ->toBe(['type' => '{ "8": string; external: string }', 'optional' => false, 'keepsKeys' => true]);
 });
 
 // The body's shape stands in for the declaration's array arm only: every other arm it names stays, and a return the
@@ -166,82 +168,94 @@ test('a precise declaration is kept, and an absent method declines', function ()
         ->toBeNull();
 });
 
-// The flattened body keeps no FQCN channel, so its filters publish no token; an analysis whose caller keeps the
-// channels is cached apart and keeps the Pick<>.
-test('a body fallback analyzes its method without imports, apart from an analysis that keeps them', function () {
-    $withImports = resolve(AstEngine::class)->analyzeMethod(Release::class, 'columnSummary', Release::class);
-    $withoutImports = resolve(AstEngine::class)->analyzeMethod(Release::class, 'columnSummary', Release::class, carriesImports: false);
+// The body fallback carries import channels as a literal does, so its filters keep their Pick<>, and it reads a plain
+// enum case as the literal it sends; an analysis that reads the case as its enum is cached apart.
+test('a body fallback reads its enum cases as literals, apart from an analysis that reads them as their enum', function () {
+    $engine = resolve(AstEngine::class);
+    $asEnum = $engine->analyzeMethod(PostHelperResource::class, 'withSingleCase');
+    $asLiteral = $engine->analyzeMethod(PostHelperResource::class, 'withSingleCase', casesAsLiterals: true);
+    $filtered = $engine->analyzeMethod(Release::class, 'columnSummary', Release::class, casesAsLiterals: true);
 
-    expect(collect($withImports->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>")
-        ->and(collect($withoutImports->properties)->keyBy('name')['named']['type'])->toBe('{ major: number; minor: number }');
+    expect(array_column($asEnum->properties, 'type', 'name'))->toBe(['v' => 'StatusType'])
+        ->and(array_column($asLiteral->properties, 'type', 'name'))->toBe(['v' => '0'])
+        ->and(collect($filtered->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>");
 });
 
-test('a body the model inherits is analyzed without imports too', function () {
+test('a body the model inherits filters the model it runs on', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(InheritedFilterRelease::class, 'columnSummary')['type'] ?? null)
-        ->toBe('{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
-            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }');
+        ->toBe("{ named: Pick<InheritedFilterRelease, 'major' | 'minor'>; rest: Pick<InheritedFilterRelease, 'id' | 'major' | "
+            ."'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }");
 });
 
-// The getter a method body reads is analyzed without imports too, so its filters publish the answer the same call
-// written in the method body would, and the method keeps its shape.
-test('a method body reading an accessor whose getter filters keeps its shape', function (string $method, string $expected) {
+// The getter a method body reads publishes there what the model file publishes for its accessor, filters included.
+test('a method body reading an accessor publishes the type the model publishes for it', function (string $method, string $expected) {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $method)['type'] ?? null)
         ->toBe($expected);
 })->with([
-    'bare $this, literal keys' => ['readOwnPicks', '{ v: { v: { id: number; title: string }; id: number }; id: number }'],
+    'bare $this, literal keys' => ['readOwnPicks', "{ v: { v: Pick<FilteringAccessorModel, 'id' | 'title'>; id: number }; id: number }"],
     'bare $this, runtime keys' => ['readOwnRuntime', '{ v: { v: Record<string, unknown>; id: number }; id: number }'],
     'runtime keys returned whole, which the model publishes as unknown' => ['readRuntimeFields', '{ v: unknown; id: number }'],
     'a vague getter its @property-read tag types' => ['readTaggedFields', '{ v: { id: number }[]; id: number }'],
-    'bare $this through ?->' => ['readOwnNullsafe', '{ v: { v: { id: number; content: string }; id: number }; id: number }'],
-    'a single relation' => ['readAuthorPicks', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
-    'a to-many relation' => ['readCommentPicks', '{ v: { v: unknown[]; id: number }; id: number }'],
-    'a to-many relation returned whole, beside a @property-read tag naming the model' => ['readCommentList', '{ v: unknown[]; id: number }'],
-    'a relation to an untyped override' => ['readLoosePicks', '{ v: { v: { id: number; title: string }; id: number }; id: number }'],
-    'a multi-model accessor' => ['readCounterpartPicks', '{ v: { v: { id: number } | { id: number } | null; id: number }; id: number }'],
-    'an old-style accessor' => ['readLegacyPicks', '{ v: { v: { id: number; name: string }; id: number }; id: number }'],
-    'a camelCase alias' => ['readCamelAlias', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
-    'through a relation' => ['readThroughRelation', '{ v: { v: { id: number; role: unknown } | null; id: number } | null; id: number }'],
-    'through a local variable' => ['readThroughLocal', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
-    'through a closure parameter' => ['readThroughVariable', '{ v: unknown[][]; id: number }'],
-    'as a filtered key' => ['readAsFilteredKey', '{ v: { id: number; author_picks: { v: { id: number; role: unknown } | null; id: number } }; id: number }'],
-    'as a spread key' => ['readAsSpreadKey', '{ id: number; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
-    'as a spread camelCase key' => ['readAsSpreadAlias', '{ id: number; authorPicks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
+    'bare $this through ?->' => ['readOwnNullsafe', "{ v: { v: Pick<FilteringAccessorModel, 'id' | 'content'>; id: number }; id: number }"],
+    'a single relation' => ['readAuthorPicks', "{ v: { v: Pick<User, 'id' | 'role'> | null; id: number }; id: number }"],
+    'a to-many relation' => ['readCommentPicks', '{ v: { v: Comment[]; id: number }; id: number }'],
+    'a to-many relation returned whole, beside a @property-read tag naming the model' => ['readCommentList', '{ v: Comment[]; id: number }'],
+    'a relation to an untyped override' => ['readLoosePicks', "{ v: { v: Pick<UntypedFilterOverrideModel, 'id' | 'title'>; id: number }; id: number }"],
+    'a multi-model accessor' => ['readCounterpartPicks', "{ v: { v: Pick<Comment, 'id'> | Pick<User, 'id'> | null; id: number }; id: number }"],
+    'an old-style accessor' => ['readLegacyPicks', "{ v: { v: Pick<User, 'id' | 'name'>; id: number }; id: number }"],
+    'a camelCase alias' => ['readCamelAlias', "{ v: { v: Pick<User, 'id' | 'role'> | null; id: number }; id: number }"],
+    'through a relation' => ['readThroughRelation', "{ v: { v: Pick<User, 'id' | 'role'> | null; id: number } | null; id: number }"],
+    'through a local variable' => ['readThroughLocal', "{ v: { v: Pick<User, 'id' | 'role'> | null; id: number }; id: number }"],
+    'through a closure parameter' => ['readThroughVariable', '{ v: Comment[][]; id: number }'],
+    'as a filtered key' => ['readAsFilteredKey', "{ v: { id: number; author_picks: { v: Pick<User, 'id' | 'role'> | null; id: number } }; id: number }"],
+    'as a spread key' => ['readAsSpreadKey', "{ id: number; author_picks: { v: Pick<User, 'id' | 'role'> | null; id: number }; x: number }"],
+    'as a spread camelCase key' => ['readAsSpreadAlias', "{ id: number; authorPicks: { v: Pick<User, 'id' | 'role'> | null; id: number }; x: number }"],
     'a literal getter' => ['readLiteral', '{ v: { a: number; b: string }; id: number }'],
-    'a docblock-typed getter keeps the shape, its member unknown' => ['readOwner', '{ v: unknown; id: number }'],
+    'a docblock-typed getter' => ['readOwner', '{ v: User; id: number }'],
+    'a list docblock' => ['readDocRecords', '{ v: Comment[]; id: number }'],
+    'a nullable list docblock through ?->' => ['readDocRecordsNullsafe', '{ v: Comment[] | null; id: number }'],
+    'a list docblock over runtime keys' => ['readDocRecordsRuntime', '{ v: Comment[]; id: number }'],
+    'a nested list docblock' => ['readDocNestedRecords', '{ v: Comment[][]; id: number }'],
+    'a keyed docblock' => ['readDocKeyed', '{ v: Comment[]; id: number }'],
+    'a docblock with an unknown arm' => ['readDocIntMixed', '{ v: Comment[]; id: number }'],
+    'a keyed-or-list docblock' => ['readDocRecordOrList', '{ v: Comment[]; id: number }'],
+    'a docblock naming a class' => ['readDocClassList', '{ v: Comment[]; id: number }'],
+    'a token-free tag over a vague signature' => ['readSignedTagRows', '{ v: Comment[]; id: number }'],
+    'a token-free tag over an old-style getter' => ['readLegacyTagRows', '{ v: Comment[]; id: number }'],
 ]);
 
-test('a vague helper whose member names a class keeps its shape, that member unknown', function (string $method, string $expected) {
+test('a vague helper whose member names a class keeps that class', function (string $method, string $expected) {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ClassNamingMemberModel::class, $method)['type'] ?? null)
         ->toBe($expected);
 })->with([
-    'a toResource() member' => ['withResource', '{ r: unknown; title: string }'],
-    'an EnumResource::make() member' => ['withEnumResource', '{ s: unknown; title: string }'],
+    'a toResource() member' => ['withResource', '{ r: UserResource; title: string }'],
+    'an EnumResource::make() member' => ['withEnumResource', '{ s: AsEnum<typeof ArticleStatus>; title: string }'],
 ]);
 
 // Without imports a to-many filter spells `unknown[]`. As when the body itself is vague, a fallback annotation or tag
 // types the reader unless it is `unknown` or names a class, which would cost the reader its shape.
-test('a vague spelling without imports gives way to a fallback that is not unknown and names no class', function (string $method, string $expected) {
-    expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $method)['type'] ?? null)
+test('a vague spelling without imports gives way to a fallback that is not unknown and names no class', function (string $attribute, string $expected) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, $attribute, carriesImports: false)['type'])
         ->toBe($expected);
 })->with([
-    'a list docblock' => ['readDocRecords', '{ v: Record<string, unknown>[]; id: number }'],
-    'a nullable list docblock through ?->' => ['readDocRecordsNullsafe', '{ v: Record<string, unknown>[] | null; id: number }'],
-    'a list docblock over runtime keys' => ['readDocRecordsRuntime', '{ v: Record<string, unknown>[]; id: number }'],
-    'a nested list docblock over a nested vague spelling' => ['readDocNestedRecords', '{ v: Record<string, unknown>[][]; id: number }'],
+    'a list docblock' => ['doc_records', 'Record<string, unknown>[]'],
+    'a nullable list docblock through ?->' => ['doc_records_nullsafe', 'Record<string, unknown>[] | null'],
+    'a list docblock over runtime keys' => ['doc_records_runtime', 'Record<string, unknown>[]'],
+    'a nested list docblock over a nested vague spelling' => ['doc_nested_records', 'Record<string, unknown>[][]'],
     // The value is a list, but the reader trusts the annotation's keyed object, as it did before the getter body typed
     // the accessor: the waterfall never checks an annotation against the body.
-    'a keyed docblock' => ['readDocKeyed', '{ v: Record<string, unknown>; id: number }'],
-    'a docblock with an unknown arm' => ['readDocIntMixed', '{ v: number | unknown; id: number }'],
-    'a keyed-or-list docblock' => ['readDocRecordOrList', '{ v: Record<string, unknown> | unknown[]; id: number }'],
-    'a docblock naming a class' => ['readDocClassList', '{ v: unknown[]; id: number }'],
-    'no annotation' => ['readCommentList', '{ v: unknown[]; id: number }'],
-    'a token-free tag over a vague signature' => ['readSignedTagRows', '{ v: { id: number }[]; id: number }'],
-    'a token-free tag over an old-style getter' => ['readLegacyTagRows', '{ v: { id: number; content: string }[]; id: number }'],
+    'a keyed docblock' => ['doc_keyed', 'Record<string, unknown>'],
+    'a docblock with an unknown arm' => ['doc_int_mixed', 'number | unknown'],
+    'a keyed-or-list docblock' => ['doc_record_or_list', 'Record<string, unknown> | unknown[]'],
+    'a docblock naming a class' => ['doc_class_list', 'unknown[]'],
+    'no annotation' => ['comment_list', 'unknown[]'],
+    'a token-free tag over a vague signature' => ['signed_tag_rows', '{ id: number }[]'],
+    'a token-free tag over an old-style getter' => ['legacy_tag_rows', '{ id: number; content: string }[]'],
 ]);
 
-test('a spread model reads its appended filtering accessor without imports', function () {
+test('a spread model reads its appended filtering accessor as the model publishes it', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAsSpreadAppend')['type'] ?? null)
-        ->toContain('; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }');
+        ->toContain("; author_picks: { v: Pick<User, 'id' | 'role'> | null; id: number }; x: number }");
 });
 
 // The caller's keys reach the return unseen, so the written keys publish beside a signature that admits them.
@@ -298,7 +312,7 @@ test('keeps a parent:: helper that writes keys into its parameter open through t
 
 test('lets a seeded shape win over a vague @return array<string, mixed>', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'declared'))
-        ->toBe(['type' => '{ id: number; name: string; extra: boolean }', 'optional' => false])
+        ->toBe(['type' => '{ id: number; name: string; extra: boolean }', 'optional' => false, 'keepsKeys' => true])
         ->and(json_encode(new GuardedLinkPayload()->values()['declared']))->toBe('{"id":1,"name":"x","extra":true}');
 });
 

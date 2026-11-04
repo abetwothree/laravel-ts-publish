@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Workbench\App\Enums\ArticleStatus;
 use Workbench\App\Models\User;
+use Workbench\Blog\Enums\ArticleStatus;
 
 /**
  * Vague `: array` helpers whose body names a class in one member, beside a member that does not.

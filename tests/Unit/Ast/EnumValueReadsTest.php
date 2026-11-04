@@ -109,9 +109,9 @@ it('spells an overridden enum\'s value and name by the names its own file export
         ->toBe(['type' => 'ShadeKind', 'optional' => false, 'directEnumFqcn' => RenamedTone::class]);
 });
 
-it('reads an enum value in an import-less shape as the literal union', function () {
+it('reads an enum value in a helper read as a value by the enum\'s aliases, as in place', function () {
     expect(publishedResourceKeyTypes(PostHelperParamsResource::class, Post::class)['status_label'])
-        ->toBe("{ label: 'Draft' | 'Published'; value: 0 | 1 }");
+        ->toBe('{ label: StatusKind; value: StatusType }');
 });
 
 it('publishes number for an enum with a case past the safe integer range', function () {

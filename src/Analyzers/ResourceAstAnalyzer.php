@@ -173,6 +173,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
      * @param  Reading  $reading  how the values read reach the client: an Inertia reading runs the subject's profile
      *                            through ResourceExpressionHandlers::forInertia(), and every body it reads the same way
+     * @param  bool  $casesAsLiterals  seeds AnalysisScope::$casesAsLiterals; a supplied scope keeps its own
      *
      * @throws LogicException for a $handlerProfile under an Inertia reading, whose CallSite binds a callable as called
      */
@@ -188,6 +189,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
         private readonly Reading $reading = Reading::Encoded,
+        bool $casesAsLiterals = false,
     ) {
         if ($handlerProfile !== null && ! $reading->encodes()) {
             throw new LogicException('An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
@@ -200,6 +202,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
+            $this->scope->casesAsLiterals = $casesAsLiterals;
         }
 
         if ($runtime !== null) {
@@ -2084,6 +2087,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             carriesImports: $this->scope->carriesImports,
             runtime: $this->scope->runtime,
             reading: $this->reading,
+            casesAsLiterals: $this->scope->casesAsLiterals,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];

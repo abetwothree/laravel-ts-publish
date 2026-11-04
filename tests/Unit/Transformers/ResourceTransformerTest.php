@@ -3493,10 +3493,9 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             ->and([$sent(['draft' => 1]), $sent([]), $asked])->toBe([0, 1, 1]);
     });
 
-    // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.
-    test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
+    test('publishes a wrap over a local in a helper the body fallback reads as it publishes in place', function () {
         expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
-            ->toBe('{ s: unknown; title: string }');
+            ->toBe('{ s: AsEnum<typeof Status>; title: string }');
     });
 
     test('publishes an untyped helper that can run off its end with its null', function () {

@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
@@ -23,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -50,7 +50,6 @@ use ReflectionNamedType;
  */
 final class StaticCallHandler implements ExpressionHandler
 {
-    use BuildsInlineObjectTypes;
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
@@ -357,7 +356,7 @@ final class StaticCallHandler implements ExpressionHandler
                 return null;
             }
 
-            return ['type' => $this->buildInlineObjectType($analysis), 'optional' => false];
+            return new InlineObjectResult()->of($analysis);
         }
 
         if ($this->methodReturnAllowsNull($method)) {
