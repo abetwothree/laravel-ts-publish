@@ -61,6 +61,7 @@ describe('decode', function () {
         'a negative decimal, which is no property name' => ['-1.5', null],
         'a decimal past what a double holds' => ['0.30000000000000001', null],
         'a dashed name' => ['a-b', null],
+        'a name with a newline after it, which TypeScript names without' => ["a\n", null],
         'a modifier' => ['readonly a', null],
         'a number index signature' => ['[key: number]', null],
         'a template index signature' => ['[key: `${string}_tag`]', null],
@@ -84,6 +85,7 @@ describe('decode', function () {
         'two quoted keys' => ['"a" "b"', null],
         'mismatched quotes' => ["'a\"", null],
         'an unterminated key' => ['"a', null],
+        'a newline past the closing quote' => ["\"a\"\n", null],
         'an escape JSON does not read' => ['"\x41"', null],
         'a lone surrogate' => ['"\ud83d"', null],
     ]);
@@ -91,6 +93,14 @@ describe('decode', function () {
     test('reads back every key validJsObjectKey() prints', function (string $key) {
         expect(PrintedKey::decode(JsEmitter::validJsObjectKey($key)))->toBe($key);
     })->with(['a/b', 'é', "it's", 'a": b', '1', 'x y', "line\nbreak", '😀']);
+
+    test('prints a key ending in a newline quoted, and reads it back with and without its marker', function () {
+        $printed = JsEmitter::validJsObjectKey("a\n");
+
+        expect($printed)->toBe('"a\\n"')
+            ->and(PrintedKey::decode($printed))->toBe("a\n")
+            ->and(PrintedKey::decode($printed.'?'))->toBe("a\n");
+    });
 
     test('reads back every generated key validJsObjectKey() and toJsLiteral() print, as an optional key too', function () {
         $escaped = 0;

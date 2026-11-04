@@ -15,10 +15,10 @@ use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 final class PrintedKey
 {
     /** A bare identifier as TypeScript reads one, in the categories Unicode's ID_Start and ID_Continue are made of. */
-    private const string IDENTIFIER = '/^[\p{L}\p{Nl}$_][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$\x{200C}\x{200D}]*$/u';
+    private const string IDENTIFIER = '/^[\p{L}\p{Nl}$_][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$\x{200C}\x{200D}]*$/uD';
 
     /** One string literal, whole: its quote appears inside it only escaped. */
-    private const string QUOTED = '/^(["\'])((?:(?!\1)[^\\\\]|\\\\.)*)\1$/s';
+    private const string QUOTED = '/^(["\'])((?:(?!\1)[^\\\\]|\\\\.)*)\1$/sD';
 
     /**
      * The key a printed key names, its optional marker dropped: a bare identifier, list index or decimal as written, a
