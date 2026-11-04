@@ -174,7 +174,8 @@ and would be in the same bind as the
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
 a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and
 `shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
-`typeNameOccursIn()` alone stays literal-blind, as its [known gap][literal-blind] says.
+Two readers stay literal-blind: `typeNameOccursIn()`, as its [known gap][literal-blind] says, and
+`extractImportableTypes()`, which still splits an override's or cast's type on every `|`.
 
 `hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
 `TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.
