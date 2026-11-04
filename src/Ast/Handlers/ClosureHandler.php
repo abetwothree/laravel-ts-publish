@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -202,7 +203,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
                 return null;
             }
 
-            return [...$inner, 'type' => ValueResult::withNullArm($inner['type'])];
+            return [...$inner, 'type' => TsTypeString::withNullArm($inner['type'])];
         }
 
         if ($typeNode instanceof Identifier) {
