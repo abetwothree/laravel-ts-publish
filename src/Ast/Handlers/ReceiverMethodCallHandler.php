@@ -92,11 +92,9 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
             return null;
         }
 
-        // `$this` is never null, so `$this?->m()` short-circuits nothing. `unknown` already holds `null`.
-        $nullable = ($expr instanceof NullsafeMethodCall && ! $onThis) || $receiver->shortCircuits;
-
-        if ($nullable && ! TsTypeString::isUnknownOnly($result['type']) && ! in_array('null', TsTypeString::splitTopLevelUnion($result['type']), true)) {
-            $result['type'] .= ' | null';
+        // `$this` is never null, so `$this?->m()` short-circuits nothing.
+        if (($expr instanceof NullsafeMethodCall && ! $onThis) || $receiver->shortCircuits) {
+            $result['type'] = TsTypeString::withNullArm($result['type']);
         }
 
         return $result;
