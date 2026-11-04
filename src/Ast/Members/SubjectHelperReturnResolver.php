@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -94,7 +95,7 @@ final class SubjectHelperReturnResolver
         }
 
         if ($this->canEndWithoutValue($declaration)) {
-            $result['type'] = ValueResult::withNullArm($result['type']);
+            $result['type'] = TsTypeString::withNullArm($result['type']);
         }
 
         return $result;
