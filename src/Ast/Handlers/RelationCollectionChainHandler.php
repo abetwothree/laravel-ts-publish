@@ -295,11 +295,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      */
     private function withNull(array $result): array
     {
-        if (! in_array('null', TsTypeString::splitTopLevelUnion($result['type']), true)) {
-            $result['type'] .= ' | null';
-        }
-
-        return $result;
+        return [...$result, 'type' => TsTypeString::withNullArm($result['type'])];
     }
 
     /**
