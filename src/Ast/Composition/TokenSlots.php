@@ -119,9 +119,9 @@ final class TokenSlots
     }
 
     /**
-     * A declaration's type read with no class, for a reader whose per-name queues cannot hold its slots' null: a member
-     * whose tokens outside its nested objects take a class's slot is `unknown`, at any depth, and an override's or a
-     * literal's token stays.
+     * A declaration's type read with no class, as every fill a value folds in is read, since a value carries no slots:
+     * a member whose tokens outside its nested objects take a class's slot is `unknown`, at any depth, and an
+     * override's or a literal's token stays.
      *
      * @param  Slots  $slots
      */

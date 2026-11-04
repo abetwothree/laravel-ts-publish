@@ -3559,7 +3559,8 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             ->and(sentAsJson(new DocShapeDroppingMixedArmResource($comment)->resolve(request())))->k->toBeNull();
     });
 
-    // A folded value carries no slots, so every fill folded into it reads class-less, its model too (ledger F13).
+    // A folded value carries no slots, so every fill folded into it reads class-less, its model too.
+    // Known gap: "A docblock fill spread inside a nested literal keeps no class".
     test('reads a fill folded into a nested literal class-less, as before', function () {
         $transformer = new ResourceTransformer(DocShapeFoldedFillResource::class);
 

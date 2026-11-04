@@ -106,6 +106,8 @@ Callers fill their queues in one of three ways:
   text's own names, and `classLess()` a fill `InlineObjectResult::of()` folds into a value, which carries no slots.
   Each names a token by `FileImportNames::typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot.
   None respells a token inside a literal or after `typeof`.
+  [Support helpers](support-helpers.md#token-slots-and-the-branch-join-live-in-srcastcomposition) tells these slots
+  apart from the other per-token lists.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter

@@ -550,8 +550,9 @@ class MethodAnalysis
     }
 
     /**
-     * Read a key as an untyped value: `unknown`, with no import channel, and without each custom import only its text
-     * spelled. Whether the value may be left out stays, since an untyped value may be too.
+     * Read a key as an untyped value: `unknown`, with no import channel, and without each custom import its text
+     * spelled that no other key reads outside a literal. Whether the value may be left out stays, since an untyped
+     * value may be too.
      */
     public function untype(string $name): void
     {
@@ -560,7 +561,8 @@ class MethodAnalysis
 
     /**
      * Retype a key with a text naming no class, as TokenSlots::classLess() reads one: with no import channel, and
-     * without each custom import only its old text spelled. Whether the value may be left out stays.
+     * without each custom import its old text spelled that neither the new text nor another key reads outside a
+     * literal. Whether the value may be left out stays.
      */
     public function retypeClassLess(string $name, string $type): void
     {

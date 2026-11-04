@@ -97,6 +97,8 @@ Ask what the helper's input domain is, not what calls it:
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
 | Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
+| Which class stands behind each token of a declaration's type, and what is that type read with no class? | `TokenSlots` |
+| What is one key's type joined from its branches, beside its slots? | `BranchJoin` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
@@ -220,6 +222,24 @@ reads their info siblings instead.
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical
 move, so the sub-engine was left whole. Treat "break the cycle" as the task, and moving the methods as its consequence.
+
+## Token slots and the branch join live in `src/Ast/Composition`
+
+The class behind each token of a declaration's text, its slots, is read only through
+[`TokenSlots`](../../src/Ast/Composition/TokenSlots.php), and one key's branch types join only through
+[`BranchJoin`](../../src/Ast/Composition/BranchJoin.php), never on `LaravelTsPublish` or `ResourceAstAnalyzer`. Neither
+is a Support helper, since both call the engine, which `SupportBoundaryTest` forbids there. Four lists share
+"token…Fqcns" names and count different things:
+
+| Space | The list | One entry per |
+| --- | --- | --- |
+| A | `TypeScriptTypeInfo['classTokenFqcns']` | class token, by the `classes` labels; one holding a null is in space B |
+| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's and one after `typeof` too; null for an override's |
+| C | `FileImportNames`' `TokenQueue` | token a channel reads |
+| D | `MethodAnalysis::channelFqcns($name)` | class on a key's channels, by kind, not per token |
+
+A, B and C count in print order but over different tokens, so a walk built for one misaligns on another: slots hold
+an entry for a literal's token, and a `TokenQueue` none.
 
 ## The delegation rule
 

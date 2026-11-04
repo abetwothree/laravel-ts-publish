@@ -1072,7 +1072,8 @@ it('reads a folded fill\'s model class-less beside an override in a sibling prop
         ]);
 });
 
-// A folded value carries no slots, so the model-only fill reads class-less too (ledger F13).
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
 it('reads a folded model fill class-less beside an override in a cousin prop member, as before', function () {
     app(Router::class)->get('/doc-shape-cousin', [DocShapeFoldedPageController::class, 'cousin']);
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
@@ -1098,7 +1099,8 @@ it('imports no override a folded page fill spells only in a literal once read cl
         ]);
 });
 
-// A folded value carries no slots, so the model-only fill reads class-less too (ledger F13).
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
 it('reads props helpers\' fills folded into a page prop class-less, as before', function () {
     app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
     $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
