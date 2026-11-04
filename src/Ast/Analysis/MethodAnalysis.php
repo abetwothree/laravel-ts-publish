@@ -555,7 +555,7 @@ class MethodAnalysis
         foreach (array_unique(array_column($this->properties, 'name')) as $name) {
             $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
 
-            if (ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'embeddedModelFqcns' => $models])
+            if (ValueResult::everyModelPublished($models)
                 && ($imported === [] || array_intersect($this->channelNames($name), $imported) === [])
             ) {
                 continue;

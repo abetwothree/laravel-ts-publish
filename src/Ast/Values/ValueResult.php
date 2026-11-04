@@ -154,13 +154,7 @@ final class ValueResult
      */
     public static function namesOnlyExportedClasses(array $result): bool
     {
-        foreach (self::modelChannelFqcns($result) as $fqcn) {
-            if (! PublishedClasses::exports($fqcn)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all(self::modelChannelFqcns($result), PublishedClasses::exports(...));
     }
 
     /**
@@ -171,7 +165,17 @@ final class ValueResult
      */
     public static function namesOnlyPublishedModels(array $result): bool
     {
-        if (! self::namesOnlyExportedClasses($result)) {
+        return self::everyModelPublished(self::modelChannelFqcns($result));
+    }
+
+    /**
+     * Whether every model of a list gets a published file, as namesOnlyPublishedModels() asks of a result's channels.
+     *
+     * @param  list<class-string>  $models
+     */
+    public static function everyModelPublished(array $models): bool
+    {
+        if (! array_all($models, PublishedClasses::exports(...))) {
             return false;
         }
 
@@ -179,13 +183,10 @@ final class ValueResult
             return true;
         }
 
-        foreach (self::modelChannelFqcns($result) as $model) {
-            if (FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract()) {
-                return false;
-            }
-        }
-
-        return true;
+        return ! array_any(
+            $models,
+            static fn (string $model): bool => FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract(),
+        );
     }
 
     /**

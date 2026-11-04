@@ -265,12 +265,15 @@ final class MethodReturnTypeResolver
 
         $object = new InlineObjectResult()->of($analysis);
         $object['type'] = TsTypeString::hoistNull([$object['type'], ...$otherArms]);
-        unset($object['customImports']);
 
         // A member left `unknown` brings no import.
-        $imports = ImportMaps::spelledIn($analysis->customImports, $object['type']);
+        $object['customImports'] = ImportMaps::spelledIn($object['customImports'] ?? [], $object['type']);
 
-        return $imports === [] ? $object : [...$object, 'customImports' => $imports];
+        if ($object['customImports'] === []) {
+            unset($object['customImports']);
+        }
+
+        return $object;
     }
 
     /**
