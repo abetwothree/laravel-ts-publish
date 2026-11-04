@@ -28,6 +28,8 @@ use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AllowDynamicProperties;
 use ArrayObject;
 use Carbon\Carbon;
@@ -1127,39 +1129,13 @@ class LaravelTsPublish
     }
 
     /**
-     * Split a PHPDoc type string on `|` at the top level (depth 0),
-     * respecting nested `{}`, `<>`, and `()`.
+     * Split a PHPDoc type at each `|` outside its brackets and quoted literals, as the type scanner reads PHPDoc.
      *
-     * @return list<string>
+     * @return list<string> Trimmed, non-empty arms.
      */
     public function splitPhpDocUnionType(string $type): array
     {
-        $parts = [];
-        $depth = 0;
-        $current = '';
-
-        for ($i = 0; $i < strlen($type); $i++) {
-            $char = $type[$i];
-
-            if ($char === '{' || $char === '<' || $char === '(') {
-                $depth++;
-            } elseif ($char === '}' || $char === '>' || $char === ')') {
-                $depth--;
-            } elseif ($char === '|' && $depth === 0) {
-                $parts[] = trim($current);
-                $current = '';
-
-                continue;
-            }
-
-            $current .= $char;
-        }
-
-        if (trim($current) !== '') {
-            $parts[] = trim($current);
-        }
-
-        return $parts;
+        return TypeScanner::split($type, ['|'], ScanDialect::PhpDoc);
     }
 
     /**
@@ -1336,50 +1312,14 @@ class LaravelTsPublish
     }
 
     /**
-     * Split a string on commas at the top level (depth 0),
-     * respecting nested `{}`, `<>`, and `()`, and `'…'` or `"…"` literals, such as a quoted shape key.
+     * Split a PHPDoc string at each comma outside its brackets and quoted literals, such as a quoted shape key, as the
+     * type scanner reads PHPDoc.
      *
-     * @return list<string>
+     * @return list<string> Trimmed, non-empty parts.
      */
     public function splitAtTopLevelCommas(string $input): array
     {
-        $parts = [];
-        $depth = 0;
-        $current = '';
-        $quote = null;
-
-        for ($i = 0; $i < strlen($input); $i++) {
-            $char = $input[$i];
-
-            if ($quote !== null) {
-                if ($char === '\\' && $i + 1 < strlen($input)) {
-                    $current .= $char.$input[++$i];
-
-                    continue;
-                }
-
-                $quote = $char === $quote ? null : $quote;
-            } elseif ($char === '\'' || $char === '"') {
-                $quote = $char;
-            } elseif ($char === '{' || $char === '<' || $char === '(') {
-                $depth++;
-            } elseif ($char === '}' || $char === '>' || $char === ')') {
-                $depth--;
-            } elseif ($char === ',' && $depth === 0) {
-                $parts[] = trim($current);
-                $current = '';
-
-                continue;
-            }
-
-            $current .= $char;
-        }
-
-        if (trim($current) !== '') {
-            $parts[] = trim($current);
-        }
-
-        return $parts;
+        return TypeScanner::split($input, [','], ScanDialect::PhpDoc);
     }
 
     /**
@@ -2207,16 +2147,14 @@ class LaravelTsPublish
     }
 
     /**
-     * Extend a single-line `@phpstan-type`/`@psalm-type` capture across further docblock lines when
-     * its `{}`/`<>` depth is unbalanced — a multi-line `array{...}` shape — stripping each line's
-     * leading `*` comment marker as it goes.
+     * Extend a single-line `@phpstan-type`/`@psalm-type` capture across further docblock lines while a bracket it
+     * opens stays open — a multi-line `array{...}` shape — stripping each line's leading `*` comment marker.
      */
     protected function balanceTypeDefinition(string $firstLine, string $doc, int $offsetAfterFirstLine): string
     {
         $definition = trim(rtrim($firstLine, " \t*/"));
-        $depth = $this->braceAngleDepth($definition);
 
-        if ($depth <= 0) {
+        if ($this->braceAngleDepth($definition) <= 0) {
             return $definition;
         }
 
@@ -2227,11 +2165,9 @@ class LaravelTsPublish
                 continue;
             }
 
-            $stripped = rtrim($stripped, " \t*/");
-            $definition .= ' '.$stripped;
-            $depth += $this->braceAngleDepth($stripped);
+            $definition .= ' '.rtrim($stripped, " \t*/");
 
-            if ($depth <= 0) {
+            if ($this->braceAngleDepth($definition) <= 0) {
                 break;
             }
         }
@@ -2240,11 +2176,12 @@ class LaravelTsPublish
     }
 
     /**
-     * Net `{`/`<` nesting depth added by a string, used to detect an unbalanced type capture.
+     * The bracket depth a PHPDoc type leaves open at its end, quoted literals skipped, as the type scanner reads it.
      */
     protected function braceAngleDepth(string $s): int
     {
-        return substr_count($s, '{') + substr_count($s, '<') - substr_count($s, '}') - substr_count($s, '>');
+        // A PHPDoc literal never runs past its line, so a space after the type is always read, at the depth left open.
+        return TypeScanner::depths($s.' ', ScanDialect::PhpDoc)[strlen($s)] ?? 0;
     }
 
     /**
@@ -2648,36 +2585,13 @@ class LaravelTsPublish
     }
 
     /**
-     * Split a PHPDoc type at top-level `&`, ignoring any inside `<>`, `{}` or `()`.
+     * Split a PHPDoc type at each `&` outside its brackets and quoted literals, as the type scanner reads PHPDoc.
      *
-     * @return list<string>
+     * @return list<string> Trimmed, non-empty members.
      */
     protected function splitPhpDocIntersectionType(string $type): array
     {
-        $parts = [];
-        $depth = 0;
-        $current = '';
-
-        foreach (str_split($type) as $char) {
-            $depth += match ($char) {
-                '<', '{', '(' => 1,
-                '>', '}', ')' => -1,
-                default => 0,
-            };
-
-            if ($char === '&' && $depth === 0) {
-                $parts[] = $current;
-                $current = '';
-
-                continue;
-            }
-
-            $current .= $char;
-        }
-
-        $parts[] = $current;
-
-        return array_values(array_filter(array_map(trim(...), $parts), fn (string $p): bool => $p !== ''));
+        return TypeScanner::split($type, ['&'], ScanDialect::PhpDoc);
     }
 
     /**
@@ -3021,15 +2935,16 @@ class LaravelTsPublish
     {
         // A `?` with no space after it makes a type nullable, as `?string`, which the split below would take for a `?`
         // ending the test.
-        if (! TsTypeShape::isWrapped($type, '(', ')') || preg_match('/\?(?!\s)/', $type) === 1) {
+        if (! $this->isParenthesized($type)
+            || preg_match('/\?(?!\s)/', TypeScanner::maskLiterals($type, ScanDialect::PhpDoc)) === 1) {
             return false;
         }
 
-        $test = TsTypeShape::splitTopLevel(substr($type, 1, -1), ['?']);
-        $branches = count($test) === 2 ? TsTypeShape::splitTopLevel($test[1], [':']) : [];
+        $test = TypeScanner::split(substr($type, 1, -1), ['?'], ScanDialect::PhpDoc);
+        $branches = count($test) === 2 ? TypeScanner::split($test[1], [':'], ScanDialect::PhpDoc) : [];
 
         return count($branches) === 2 && array_all($branches, fn (string $branch): bool => $this->isStringConditional($branch)
-            || array_all(TsTypeShape::splitTopLevel($branch, ['|', '&']), $this->isPhpDocStringType(...)));
+            || array_all(TypeScanner::split($branch, ['|', '&'], ScanDialect::PhpDoc), $this->isPhpDocStringType(...)));
     }
 
     /**
@@ -3072,7 +2987,7 @@ class LaravelTsPublish
      */
     protected function isParenthesizedGroup(string $phpType): bool
     {
-        return TsTypeShape::isWrapped($phpType, '(', ')') && ! str_starts_with($phpType, '($');
+        return $this->isParenthesized($phpType) && ! str_starts_with($phpType, '($');
     }
 
     /**
@@ -3080,29 +2995,8 @@ class LaravelTsPublish
      */
     protected function closesAtEnd(string $type): bool
     {
-        $depth = 0;
-        $length = strlen($type);
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $type[$i];
-
-            if ($char === '\'' || $char === '"') {
-                // An escaped quote stays inside the literal, as in `'it\'s'`.
-                while (++$i < $length && $type[$i] !== $char) {
-                    $i += (int) ($type[$i] === '\\');
-                }
-
-                continue;
-            }
-
-            $depth += (int) str_contains('{<(', $char) - (int) str_contains('}>)', $char);
-
-            if ($depth === 0) {
-                return $i === $length - 1;
-            }
-        }
-
-        return false;
+        return $type !== '' && str_contains('{[(<', $type[0])
+            && array_keys(TypeScanner::depths($type, ScanDialect::PhpDoc), 0, true) === [0, strlen($type) - 1];
     }
 
     /**
@@ -3579,5 +3473,13 @@ class LaravelTsPublish
             : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType()];
 
         return [...$info, 'type' => $info['type'].($date['nullable'] ? ' | null' : '')];
+    }
+
+    /**
+     * Whether a PHPDoc type is one pair of parentheses whole, as a group or a conditional's `($… ? … : …)` is.
+     */
+    private function isParenthesized(string $phpType): bool
+    {
+        return str_ends_with($phpType, ')') && str_starts_with($phpType, '(') && $this->closesAtEnd($phpType);
     }
 }

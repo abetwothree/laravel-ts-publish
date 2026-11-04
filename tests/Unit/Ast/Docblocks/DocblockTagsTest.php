@@ -28,7 +28,6 @@ test('a tag is read whole and only at the start of a line', function () {
         ->and(DocblockTags::type('/** @phpstan-var list<int> */', 'var'))->toBe('list<int>');
 });
 
-// Task 11 moves the walk onto the shared scanner; these pins are what it must keep.
 test('a quoted literal is read whole, a backslash escaping the byte after it', function () {
     expect(DocblockTags::type("/** @return 'foo bar'|null */", 'return'))->toBe("'foo bar'|null")
         ->and(DocblockTags::type('/** @return "a b" */', 'return'))->toBe('"a b"')
@@ -40,6 +39,11 @@ test('a quoted literal is read whole, a backslash escaping the byte after it', f
 test('a quote no closer ends on its line stays an ordinary character', function () {
     expect(DocblockTags::named("/**\n * @param 'open \$x\n * @param int \$y The 'quoted' y\n */", 'param'))
         ->toBe(['x' => "'open", 'y' => 'int']);
+});
+
+test('a quoted closer or space inside a multi-line shape neither ends the shape nor the type', function () {
+    expect(DocblockTags::type("/**\n * @return array{\n *   'a} b': int,\n *   c: string\n * } The pair\n */", 'return'))
+        ->toBe("array{    'a} b': int,    c: string  }");
 });
 
 test('a space before a generic\'s or a shape\'s opener continues the type, but not one before a parenthesis', function () {

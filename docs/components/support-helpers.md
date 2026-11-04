@@ -57,9 +57,11 @@ The helpers and the test that pins them live in these files:
 - [`Support\TypeStrings\TypeScanner`](../../src/Support/TypeStrings/TypeScanner.php): the type scanner. It reads a
   type string's bracket depths, its parts between top-level separators, and its string and template literals.
   `TypeScannerCorpusTest` proves it against TypeScript's parser on golden, hand-written and generated types. Static
-  and `@internal`. `TsTypeShape` splits, nests and lists on it, and `TsTypeString` reads its literal spans and masks.
+  and `@internal`. `TsTypeShape` splits, nests and lists on it, `TsTypeString` reads its literal spans and masks, and
+  the docblock engine and `DocblockTags` read PHPDoc through it.
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
-  TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
+  TypeScript type or a PHPDoc type, where a backtick is plain text, no arrow owns a union, and a quote with no closer
+  on its line is plain text, as PHPStan's lexer reads it. `@internal`.
 - [`Support\TypeStrings\PrintedKey`](../../src/Support/TypeStrings/PrintedKey.php): the key a printed object key
   names, the inverse of every key printer: `validJsObjectKey()`, `shapeKey()` and `toJsLiteral()`. A reader that
   matches a printed key against a PHP key decodes it here rather than unquoting it. Static and `@internal`.
@@ -241,6 +243,10 @@ remaining block and the obvious next candidate, but it cannot move the way the t
 they read through `withoutShapeImports()`: a shape, a docblock's or a value object's, keeps no member only an import
 makes valid (`shapeKeeps()`), and each answers as before shapes carried custom imports. Every caller in the package
 reads their info siblings instead.
+
+The PHPDoc splitters stay on the engine too, `splitPhpDocUnionType()`, `splitAtTopLevelCommas()` and
+`splitPhpDocIntersectionType()` among them, but each reads the type through `TypeScanner`'s PHPDoc dialect, as do the
+shape and group bracket checks, the alias balancer and `DocblockTags`' tag capture. None walks depth or quotes itself.
 
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical

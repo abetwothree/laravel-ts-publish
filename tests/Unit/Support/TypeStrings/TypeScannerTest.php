@@ -93,6 +93,21 @@ test('lists a literal nested in an interpolation between its template segments',
         ->and(TypeScanner::maskLiterals("`\${'x'}`"))->toBe('        ');
 });
 
+// PHPStan's lexer ends no literal past its line, so a PHPDoc quote with no closer before a line break is plain text.
+test('reads a PHPDoc quote with no closer on its line as plain text', function (string $type, string $map) {
+    expect(typeScannerDepthMap($type, ScanDialect::PhpDoc))->toBe($map);
+})->with([
+    'never closed' => ["'a|{", '0000'],
+    'closed only past a line break' => ["'a\n'{", '00000'],
+    'closed past an escaped line break' => ["'a\\\n'{", '000000'],
+    'closed on its line, after a lone quote' => ["'a\n'b'{", '000...0'],
+]);
+
+test('reads an unclosed TypeScript quote to the end of the type, past a line break too', function () {
+    expect(typeScannerDepthMap("'a\n'{"))->toBe('....0')
+        ->and(typeScannerDepthMap("'a|{"))->toBe('....');
+});
+
 test('reads only quotes as literals in PHPDoc', function () {
     expect(TypeScanner::literalSpans("`a` | 'b'", ScanDialect::PhpDoc))->toBe([[6, 9]])
         ->and(TypeScanner::maskLiterals("array{'a|b': `c`}", ScanDialect::PhpDoc))->toBe('array{     : `c`}')

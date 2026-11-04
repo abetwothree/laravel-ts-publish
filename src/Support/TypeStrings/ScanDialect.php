@@ -14,6 +14,9 @@ enum ScanDialect
     /** A TypeScript type: quotes and template literals are literal text, and an arrow owns the union after it. */
     case TypeScript;
 
-    /** A PHPDoc type: only quotes are literal text, and neither a backtick nor `=>` means anything. */
+    /**
+     * A PHPDoc type: only quotes are literal text, each ending on its line as PHPStan's lexer reads it, and neither a
+     * backtick nor `=>` means anything.
+     */
     case PhpDoc;
 }

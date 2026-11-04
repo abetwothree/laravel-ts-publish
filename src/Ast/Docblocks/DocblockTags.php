@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 
 /**
  * Reads a docblock's tags by family, each tag captured whole from the start of its line, in PHPStan's order:
@@ -176,62 +178,31 @@ final class DocblockTags
     {
         $rest = ltrim($text);
         $type = '';
-        $depth = 0;
         $length = strlen($rest);
         $end = $length;
+        $depths = [];
+        $scanned = 0;
 
         for ($i = 0; $i < $length; $i++) {
-            $char = $rest[$i];
-            $quoteEnd = $char === "'" || $char === '"' ? self::literalEnd($rest, $i) : null;
-
-            if ($quoteEnd !== null) {
-                $type .= substr($rest, $i, $quoteEnd - $i + 1);
-                $i = $quoteEnd;
-
-                continue;
+            // A PHPDoc literal ends on its line, so each line the type reaches only adds depths to those already read.
+            if ($i === $scanned) {
+                $scanned = ($newline = strpos($rest, "\n", $i)) === false ? $length : $newline + 1;
+                $depths = TypeScanner::depths(substr($rest, 0, $scanned), ScanDialect::PhpDoc);
             }
 
-            $isSpace = ctype_space($char);
+            $char = $rest[$i];
+            $isSpace = isset($depths[$i]) && ctype_space($char);
 
-            if ($isSpace && $depth === 0 && ! self::spaceContinuesType($type, substr($rest, $i + 1))) {
+            if ($isSpace && $depths[$i] === 0 && ! self::spaceContinuesType($type, substr($rest, $i + 1))) {
                 $end = $i;
 
                 break;
             }
 
-            $depth += (int) in_array($char, ['{', '<', '('], true) - (int) in_array($char, ['}', '>', ')'], true);
             $type .= $isSpace ? ' ' : $char;
-
-            // An unmatched closer drives depth below zero, where the depth-zero space test
-            // can never fire again — without this the walk swallows the `$name` and the prose.
-            if ($depth < 0) {
-                $end = $i + 1;
-
-                break;
-            }
         }
 
         return [trim($type), substr($rest, $end)];
-    }
-
-    /**
-     * The offset of the quote that closes the literal opened at an offset, a backslash escaping the byte after it; null
-     * when none closes it on its line, so a lone apostrophe stays an ordinary character.
-     */
-    private static function literalEnd(string $text, int $open): ?int
-    {
-        $quote = $text[$open];
-        $length = strlen($text);
-
-        for ($i = $open + 1; $i < $length && $text[$i] !== "\n"; $i++) {
-            if ($text[$i] === '\\') {
-                $i++;
-            } elseif ($text[$i] === $quote) {
-                return $i;
-            }
-        }
-
-        return null;
     }
 
     /**

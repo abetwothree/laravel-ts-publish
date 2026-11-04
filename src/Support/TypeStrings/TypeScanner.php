@@ -12,6 +12,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
  * backslash escapes the next byte of a literal. In TypeScript an interpolation is code one level in, and an arrow owns
  * each `|` and `&` after it on its level until a `,` or `;` there or the level ends; the `>` of `=>` closes nothing.
  *
+ * In PHPDoc a quote with no closer on its line is plain text, as PHPStan's lexer reads it.
+ *
  * @phpstan-type LiteralSpan = array{int, int}
  * @phpstan-type Scan = array{depths: array<int, int>, spans: list<LiteralSpan>}
  *
@@ -158,9 +160,14 @@ final class TypeScanner
             $textAt = null;
 
             if ($byte === '\'' || $byte === '"') {
-                $end = self::stringEnd($type, $offset, $byte);
-                $spans[] = [$offset, $end];
-                $offset = $end - 1;
+                $end = self::stringEnd($type, $offset, $byte, $dialect);
+
+                if ($end === null) {
+                    $depths[$offset] = $depth;
+                } else {
+                    $spans[] = [$offset, $end];
+                    $offset = $end - 1;
+                }
             } elseif ($byte === '`') {
                 $textAt = $offset + 1;
             } elseif ($byte === '}' && $templateDepths !== [] && $depth === $floor) {
@@ -219,12 +226,14 @@ final class TypeScanner
     }
 
     /**
-     * The offset just past a quoted string's closing quote, or the type's length when it never closes.
+     * The offset just past a quoted string's closing quote. One that never closes runs to the type's end in TypeScript;
+     * in PHPDoc, where PHPStan's lexer ends no literal past its line, a quote with no closer there is plain text: null.
      */
-    private static function stringEnd(string $type, int $open, string $quote): int
+    private static function stringEnd(string $type, int $open, string $quote, ScanDialect $dialect): ?int
     {
         $length = strlen($type);
-        $stops = '\\'.$quote;
+        $lineBound = $dialect === ScanDialect::PhpDoc;
+        $stops = $lineBound ? "\\\r\n".$quote : '\\'.$quote;
 
         for ($offset = $open + 1; $offset < $length; $offset += 2) {
             $offset += strcspn($type, $stops, $offset);
@@ -232,9 +241,14 @@ final class TypeScanner
             if ($offset < $length && $type[$offset] === $quote) {
                 return $offset + 1;
             }
+
+            // The type's end, a line break, or a backslash before one or before the end.
+            if ($lineBound && strcspn($type, "\r\n", $offset, 2) < 2) {
+                return null;
+            }
         }
 
-        return $length;
+        return $lineBound ? null : $length;
     }
 
     /**

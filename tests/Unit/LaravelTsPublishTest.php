@@ -1538,6 +1538,7 @@ describe('extractReturnTypeFromDocblock', function () {
         'an intersection of string types' => ["/** @return (\$value is '' ? '' : non-empty-string&uppercase-string) */"],
         'a nested conditional' => ["/** @return (\$value is '' ? (\$cap is '' ? '' : non-empty-string) : non-empty-string) */"],
         'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
+        'a literal holding a question mark' => ["/** @return (\$value is 'a?b' ? 'c:d' : string) */"],
     ]);
 
     test('keeps the first-token reading of a conditional return type it cannot read as all strings', function (string $doc, string $reading) {
@@ -1659,6 +1660,27 @@ describe('splitPhpDocUnionType', function () {
         $result = $this->service->splitPhpDocUnionType($type);
 
         expect($result)->toBe(['array{name: string|null}', 'null']);
+    });
+
+    test('keeps a quoted literal whole, an escaped quote or a bracket inside it included', function () {
+        expect($this->service->splitPhpDocUnionType("'a|b'|'c'"))->toBe(["'a|b'", "'c'"])
+            ->and($this->service->splitPhpDocUnionType("'it\\'s|x'|null"))->toBe(["'it\\'s|x'", 'null'])
+            ->and($this->service->splitPhpDocUnionType('"a)|b"|int'))->toBe(['"a)|b"', 'int']);
+    });
+
+    test('splits an offset access type only outside its brackets', function () {
+        expect($this->service->splitPhpDocUnionType("T['a'|'b']|null"))->toBe(["T['a'|'b']", 'null']);
+    });
+
+    // PHPStan's lexer reads a quote with no closer on its line as no literal, and a backtick as plain text.
+    test('reads PHPDoc rather than TypeScript: a backtick and an unclosed quote are plain text', function () {
+        expect($this->service->splitPhpDocUnionType('`a|b`'))->toBe(['`a', 'b`'])
+            ->and($this->service->splitPhpDocUnionType("'a|b"))->toBe(["'a", 'b']);
+    });
+
+    test('floors depth at zero, so a stray closer still splits what follows, and keeps no empty arm', function () {
+        expect($this->service->splitPhpDocUnionType('int>|string'))->toBe(['int>', 'string'])
+            ->and($this->service->splitPhpDocUnionType('|int||string'))->toBe(['int', 'string']);
     });
 });
 
@@ -1943,8 +1965,14 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'an override spelled like an enum' => ['array{kind: ChartKind|UiChart}', '{ kind: unknown }'],
         'a listed override spelled like a model' => ['list<array{listed: list<Person|User>}>', '{ listed: unknown }[]'],
         'a literal spelled like the model, whose token names no class' => ["array{kind: 'User', r: User}", "{ kind: 'User'; r: unknown }"],
+        'a quoted union spelling the model, read as one literal' => ["array{kind: 'A|User', r: User}", "{ kind: 'A|User'; r: unknown }"],
         'a key spelled like the model, whose token names no class' => ['array{User: int, owner: User}', '{ User: number; owner: unknown }'],
     ]);
+
+    test('splits an intersection of shapes only outside a member\'s quoted literal', function () {
+        expect($this->service->resolveDocblockTypePart("array{a: 'x}&y'}&array{b: int}", [], '')['type'])
+            ->toBe("{ a: 'x}&y'; b: number }");
+    });
 
     test('reads an intersection of shapes that share a key as unknown, as before', function () {
         expect($this->service->resolveDocblockTypePart('array{a: int}&array{a: string}', [], '')['type'])->toBe('unknown');
@@ -1958,7 +1986,26 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a double-quoted literal' => ['"a,b": int, c', ['"a,b": int', 'c']],
         'an escaped quote inside a literal' => ["'it\\'s, x': int, c", ["'it\\'s, x': int", 'c']],
         'a quote of the other kind inside a literal' => ["'say \"hi, there\"', c", ["'say \"hi, there\"'", 'c']],
+        'a literal before a plain type' => ["'a,b', int", ["'a,b'", 'int']],
+        'a quote with no closer, which is plain text' => ["'a, b", ["'a", 'b']],
     ]);
+
+    test('reads a quoted literal whole in a @return union, intersection, group or shape key', function (string $doc, string $type) {
+        expect($this->service->resolvePhpDocTypeToTs((string) $this->service->extractReturnTypeFromDocblock($doc), [], ''))
+            ->toBe($type);
+    })->with([
+        'an ampersand in a literal beside null' => ["/** @return 'x&y'|null */", "'x&y' | null"],
+        'a pipe in a shape key' => ["/** @return array{'a|b': int} */", '{ "a|b": number }'],
+        'a brace and a pipe in a shape key' => ["/** @return array{'a}|b': int} */", '{ "a}|b": number }'],
+        'a parenthesis in a grouped literal' => ["/** @return ('a)'|int) */", "'a)' | number"],
+    ]);
+
+    test('reads a quoted union spelling a class name as one literal arm, the class beside it keeping its slot', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(QuotedUnionShapeReturn::class, 'kindAndUser')))->toBe([
+            'kind' => ['type' => "'A|User'", 'customImports' => [], 'phpDoc' => "'A|User'"],
+            'r' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'User'],
+        ]);
+    });
 
     test('reads a parenthesized group as the union it holds', function (string $phpType, string $expected) {
         expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
@@ -2133,6 +2180,14 @@ describe('phpstan type aliases', function () {
         expect($alias)->not->toBeNull()
             ->and($alias['definition'])->toContain('first: string')
             ->and($alias['definition'])->toContain('second: int');
+    });
+
+    test('an alias whose quoted key holds a brace ends on its own line', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'QuotedBraceAlias', new ReflectionClass(PhpstanTypeAliasQuotedBraceHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe("array{'a{': int}");
     });
 
     test('a two-hop @phpstan-import-type chain resolves through an intermediate re-exporting class', function () {
@@ -3684,6 +3739,24 @@ class AttributeDocblockClass
     public function withBareAttribute()
     {
         return null;
+    }
+}
+
+/**
+ * A @phpstan-type whose quoted key holds a brace, above a second alias its capture must not take in.
+ *
+ * @phpstan-type QuotedBraceAlias array{'a{': int}
+ * @phpstan-type FollowingAlias array{b: string}
+ */
+class PhpstanTypeAliasQuotedBraceHost {}
+
+/** A method whose @return shape spells the model's name inside a quoted union literal beside the model. */
+class QuotedUnionShapeReturn
+{
+    /** @return array{kind: 'A|User', r: User} */
+    public function kindAndUser(): array
+    {
+        return ['kind' => 'A|User', 'r' => new User];
     }
 }
 

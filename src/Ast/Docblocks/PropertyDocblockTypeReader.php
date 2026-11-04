@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -132,8 +134,8 @@ final class PropertyDocblockTypeReader
 
     /**
      * A type with each `self`, `static` and `parent` it names spelled as the fully qualified class $relative maps it
-     * to; a quoted string, a shape's key and a `self::` constant keep the word, as does a conditional type's `? self :`
-     * arm, so the tag declines as it did before.
+     * to; a string literal the type scanner reads, a shape's key and a `self::` constant keep the word, as does a
+     * conditional type's `? self :` arm, so the tag declines as it did before.
      *
      * @param  RelativeClasses  $relative
      */
@@ -143,10 +145,19 @@ final class PropertyDocblockTypeReader
             return $type;
         }
 
+        $spans = TypeScanner::literalSpans($type, ScanDialect::PhpDoc);
+        $inLiteral = static fn (int $at): bool => array_any(
+            $spans,
+            static fn (array $span): bool => $at >= $span[0] && $at < $span[1],
+        );
+
         return preg_replace_callback(
-            '/\'[^\']*\'|"[^"]*"|(?<![\w\x80-\xff\\\\$-])(?:self|static|parent)(?![\w\x80-\xff\\\\-]|\s*\??\s*:)/i',
-            fn (array $word): string => isset($relative[strtolower($word[0])]) ? '\\'.$relative[strtolower($word[0])] : $word[0],
+            '/(?<![\w\x80-\xff\\\\$-])(?:self|static|parent)(?![\w\x80-\xff\\\\-]|\s*\??\s*:)/i',
+            fn (array $word): string => ! $inLiteral($word[0][1]) && isset($relative[strtolower($word[0][0])])
+                ? '\\'.$relative[strtolower($word[0][0])]
+                : $word[0][0],
             $type,
+            flags: PREG_OFFSET_CAPTURE,
         ) ?? $type;
     }
 
