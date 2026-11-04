@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
 use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
@@ -101,7 +102,7 @@ test('a collect() root whose keys broke carries the keyed Record arm', function 
         ->toBe('number[] | Record<string, number>');
 });
 
-// elementTypeOf() declines a top-level union: sortBy() leaves `Comment[] | Record<string, Comment>`,
+// A root read as a top-level union declines: sortBy() leaves `Comment[] | Record<string, Comment>`,
 // and which arm the elements came from is exactly what a union does not say.
 test('a collect() root resolving to a top-level union declines', function () {
     $scope = collectionPipelineScope();
@@ -114,6 +115,19 @@ test('a collect() root resolving to a top-level union declines', function () {
             $scope,
             $engine,
         ))->toBeNull();
+});
+
+// A `list{}` return types as the empty tuple `[]`, which holds no element: the pipeline reads it as the empty list.
+test('a collect() root typed as the empty tuple pipes the empty list', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(EmptyListPipelineResource::class)->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+    expect($props->all())->toBe([
+        'values' => 'never[]',
+        'all' => 'never[]',
+        'mapped_const' => 'number[]',
+        'mapped_same' => 'never[]',
+    ]);
 });
 
 // Where the receiver resolver names no element for the root's argument, such as an array of models, the model its value

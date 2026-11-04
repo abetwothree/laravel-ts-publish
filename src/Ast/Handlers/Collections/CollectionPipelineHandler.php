@@ -114,8 +114,10 @@ final class CollectionPipelineHandler implements ExpressionHandler
     private function collectRootResult(Expr $root, ExpressionEngine $engine): ?array
     {
         $argument = CallArguments::collectArgument($root);
+        $result = $argument === null ? null : $engine->resolve($argument);
 
-        return $argument === null ? null : $engine->resolve($argument);
+        // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
+        return $result !== null && $result['type'] === '[]' ? [...$result, 'type' => 'never[]'] : $result;
     }
 
     /**
