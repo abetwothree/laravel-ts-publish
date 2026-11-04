@@ -57,6 +57,12 @@ The helpers and the test that pins them live in these files:
 - [`Support\NamespaceNameCollisions`](../../src/Support/NamespaceNameCollisions.php): which names two classes
   publish in one namespace, from the namespace, class and names of each, the first to list a name owning it. The
   runner's colliding-names warning reads it. Static and `@internal`.
+- [`Support\TypeStrings\TypeScanner`](../../src/Support/TypeStrings/TypeScanner.php): the type scanner. It reads a
+  type string's bracket depths, its parts between top-level separators, and its string and template literals.
+  `TypeScannerCorpusTest` proves it against TypeScript's parser on golden, hand-written and generated types. Static
+  and `@internal`; nothing reads it yet.
+- [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
+  TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -89,6 +95,8 @@ Ask what the helper's input domain is, not what calls it:
 | What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
+| How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
+| Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
