@@ -523,7 +523,7 @@ class ModelTransformer extends CoreTransformer
             if ($enumFqcn !== null) {
                 $enumInfo = [
                     'fqcn' => $enumFqcn,
-                    'nullable' => str_contains($resolved['type'], 'null'),
+                    'nullable' => TsTypeString::hasNullArm($resolved['type']),
                     ...$this->enumListFlags($resolved['type']),
                 ];
 
