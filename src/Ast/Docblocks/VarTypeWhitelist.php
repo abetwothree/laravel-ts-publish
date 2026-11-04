@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -281,8 +282,7 @@ final readonly class VarTypeWhitelist
      */
     private function isTextLiteral(string $token): bool
     {
-        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1
-            && preg_match('/^(?:0|-?[1-9]\d*)$/', $quoted[2]) !== 1;
+        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1 && PhpArrayKey::storedInt($quoted[2]) === null;
     }
 
     /**

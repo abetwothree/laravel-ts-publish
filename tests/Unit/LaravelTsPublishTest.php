@@ -1998,7 +1998,27 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'an optional member before a required one, which no list holds' => ['list{0?: int, 1: string}', '[number?, string?]'],
         'an optional union member, parenthesized for its marker' => ['list{0: int, 1?: string|null}', '[number, (string | null)?]'],
         'an optional member before a required one in an array' => ['array{0?: int, 1: string}', '{ 0?: number; 1: string }'],
+        'a key past PHP_INT_MAX, which PHP keeps a string, before a positional member taking 0' => [
+            'array{"9223372036854775808": int, string}',
+            '{ "9223372036854775808": number; 0: string }',
+        ],
     ]);
+
+    // PHP keeps an overflowing int key and `-0` as strings, so neither publishes bare as an int key would.
+    test('publishes a @return shape key PHP keeps a string quoted, past PHP_INT_MAX or -0', function () {
+        $method = new ReflectionMethod(new class
+        {
+            /** @return array{"9223372036854775808": int, "-0": int} */
+            public function keys(): array
+            {
+                return [];
+            }
+        }, 'keys');
+
+        expect($this->service->docblockReturnTypes($method)['type'])->toBe('{ "9223372036854775808": number; "-0": number }')
+            ->and($this->service->resolvePhpDocTypeToTs("array<'9223372036854775808', int>", [], ''))
+            ->toBe('{ "9223372036854775808"?: number }');
+    });
 
     // A shape keeps no arrow member, since its `=>` reads as a name no import brings; a subclass that keeps one prints
     // its marker outside the arrow's return type.

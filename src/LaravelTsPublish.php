@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -1310,8 +1311,10 @@ class LaravelTsPublish
             }
 
             // PHP casts a decimal int string key, quoted or not, to an int.
-            if (preg_match('/^(?:0|-?[1-9]\d*)$/', $name) === 1) {
-                $nextIndex = max($nextIndex, (int) $name + 1);
+            $stored = PhpArrayKey::storedInt($name);
+
+            if ($stored !== null) {
+                $nextIndex = max($nextIndex, $stored + 1);
             }
 
             $entries[] = ['key' => $name, 'implicit' => false, 'optional' => $m[2] === '?', 'type' => trim($m[3])];
@@ -2979,9 +2982,9 @@ class LaravelTsPublish
             return JsEmitter::toJsLiteral($string);
         }
 
-        if (preg_match('/^-?(?:0|[1-9]\d*)$/', $phpType) === 1) {
-            // A literal past PHP_INT_MAX would publish a different number.
-            return (string) (int) $phpType === $phpType ? $phpType : null;
+        // PHP's int-key rule is the canonical-int test: a literal past PHP_INT_MAX would publish a different number.
+        if (PhpArrayKey::storedInt($phpType) !== null) {
+            return $phpType;
         }
 
         if (preg_match('/^-?\d+\.\d+$/', $phpType) !== 1) {
@@ -3134,7 +3137,7 @@ class LaravelTsPublish
      */
     protected function shapeKey(string $key): string
     {
-        return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1 ? $key : JsEmitter::validJsObjectKey($key);
+        return PhpArrayKey::listIndex($key) !== null ? $key : JsEmitter::validJsObjectKey($key);
     }
 
     /**
@@ -3150,7 +3153,7 @@ class LaravelTsPublish
             $key = $this->phpDocStringLiteral($part);
 
             // PHP casts a decimal int string key to an int, so the array may be a list.
-            if ($key === null || preg_match('/^(?:0|-?[1-9]\d*)$/', $key) === 1) {
+            if ($key === null || PhpArrayKey::storedInt($key) !== null) {
                 return null;
             }
 

@@ -374,6 +374,10 @@ describe('an inline @var on a local assignment', function () {
         'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
         'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
         'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
+        'a string literal key past PHP_INT_MAX, which PHP keeps a string' => [
+            "array<'9223372036854775808'|'-0', int>",
+            '{ "9223372036854775808"?: number; "-0"?: number }',
+        ],
         'quoted shape keys' => ["array{'a': int, \"b-c\": string}", '{ a: number; "b-c": string }'],
         'int shape keys from 0, which PHP lists' => ['array{0: int, 1: string}', '[number, string]'],
         'a negative int shape key' => ['array{-1: int}', '{ "-1": number }'],
