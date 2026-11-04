@@ -71,8 +71,8 @@ describe('decode', function () {
     test('reads a quoted key through the escapes the printers write, and nothing past its closing quote', function (string $printed, ?string $key) {
         expect(PrintedKey::decode($printed))->toBe($key);
     })->with([
-        'a JSON unicode escape' => ['"é"', 'é'],
-        'a surrogate pair' => ['"😀"', '😀'],
+        'a JSON unicode escape' => ['"\u00e9"', 'é'],
+        'a surrogate pair' => ['"\ud83d\ude00"', '😀'],
         'a single-quoted unicode escape' => ["'\\u00e9'", 'é'],
         'a single-quoted double quote, bare' => ["'say \"hi\"'", 'say "hi"'],
         'a single-quoted double quote, escaped' => ["'say \\\"hi\\\"'", 'say "hi"'],
