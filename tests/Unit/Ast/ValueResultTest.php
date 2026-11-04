@@ -91,6 +91,21 @@ describe('ValueResult::namesOnlyPublishedModels()', function () {
     });
 });
 
+describe('ValueResult::isPublishableReading()', function () {
+    test('a reading publishes when there is one, it is not vague, and every model it names gets a file', function (?array $reading, bool $publishable) {
+        expect(ValueResult::isPublishableReading($reading))->toBe($publishable);
+    })->with([
+        'a precise type' => [['type' => 'string | null', 'optional' => false], true],
+        'a published model' => [['type' => 'User', 'optional' => false, 'modelFqcn' => User::class], true],
+        'a shape holding unknown' => [['type' => '{ a: unknown }', 'optional' => false], true],
+        'no reading' => [null, false],
+        'unknown' => [['type' => 'unknown', 'optional' => false], false],
+        'a list of unknown' => [['type' => 'unknown[]', 'optional' => false], false],
+        'object' => [['type' => 'object', 'optional' => false], false],
+        'a framework model' => [['type' => 'Model', 'optional' => false, 'modelFqcn' => Model::class], false],
+    ]);
+});
+
 describe('ValueResult::unionResults() over arms that spell one name for two classes', function () {
     test('two models sharing a name are two members, each queued in the order the type spells them', function () {
         $result = ValueResult::unionResults([

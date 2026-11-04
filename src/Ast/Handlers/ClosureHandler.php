@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -183,9 +182,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
         $result = resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->declaringFileClass);
 
-        return $result !== null && ! TsTypeString::isVagueTsType($result['type']) && ValueResult::namesOnlyPublishedModels($result)
-            ? $result
-            : null;
+        return ValueResult::isPublishableReading($result) ? $result : null;
     }
 
     /**

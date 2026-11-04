@@ -486,9 +486,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
-        return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
-            ? [...$declared, 'optional' => $reading['optional'] ?? false]
-            : null;
+        return ValueResult::isPublishableReading($declared) ? [...$declared, 'optional' => $reading['optional'] ?? false] : null;
     }
 
     /**

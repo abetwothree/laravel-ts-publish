@@ -189,6 +189,18 @@ final class ValueResult
     }
 
     /**
+     * Whether a reading can publish: there is one, it is not vague, and every model it names gets a published file.
+     *
+     * @param  ValueExpressionResult|null  $result
+     *
+     * @phpstan-assert-if-true !null $result
+     */
+    public static function isPublishableReading(?array $result): bool
+    {
+        return $result !== null && ! TsTypeString::isVagueTsType($result['type']) && self::namesOnlyPublishedModels($result);
+    }
+
+    /**
      * Carry a model attribute's FQCN channels onto the result that reads it, so every class, enum and `#[TsType]` name
      * the attribute's type spells keeps its import wherever the read is published.
      *

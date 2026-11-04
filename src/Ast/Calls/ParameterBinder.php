@@ -470,7 +470,7 @@ final class ParameterBinder
             $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
         }
 
-        if ($value === null || TsTypeString::isVagueTsType($value['type']) || ! ValueResult::namesOnlyPublishedModels($value)) {
+        if (! ValueResult::isPublishableReading($value)) {
             return null;
         }
 
