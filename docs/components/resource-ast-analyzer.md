@@ -31,6 +31,7 @@ These are the classes a change to resource analysis usually touches:
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
 | [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
+| [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
@@ -127,7 +128,7 @@ handlers to the subject's own. In every profile, the order handlers run in decid
 ### A spread helper drops an untypable branch
 
 `analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, as do a merge call's sides (`merge()`,
-`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `branchUnion()` leaves out a branch that
+`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `BranchJoin::branchUnion()` leaves out a branch that
 resolved to `unknown` and unions the rest, as a ternary drops its untypable arm. A key still publishes `unknown` when
 every branch is `unknown`, or, for a spread helper alone, when only `null` is left, since that `null` says nothing
 about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a ternary does.
@@ -154,11 +155,12 @@ whole, past the branches it drops, so a branch spelling none of the text's own n
 literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the
 slots against the whole text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as
 `{ a: User; p: Post }`'s `[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with
-other slots or none, no join can bind them (`declaredBranches()`): a strict join publishes the key `unknown` with no
-class, and a dropping one first reads that fill as the untyped value it stood in for (`MethodAnalysis::untype()`), so it
-drops the fill and publishes the other branches, as before the fill. `ResourceTransformer` reads a key's tokens from its
-slots where one holds an override's null, so `either: Person|User` publishes `User | WorkbenchUser`, each with its
-import, as an Inertia page does through `FileImportNames`; a per-name queue cannot hold that null.
+other slots or none, no join can bind them (`BranchJoin::declaredBranches()`): a strict join publishes the key `unknown`
+with no class, and a dropping one first reads that fill as the untyped value it stood in for
+(`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill.
+`ResourceTransformer` reads a key's tokens from its slots where one holds an override's null, so `either: Person|User`
+publishes `User | WorkbenchUser`, each with its import, as an Inertia page does through `FileImportNames`; a per-name
+queue cannot hold that null.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`
@@ -885,7 +887,8 @@ up unused; see
 `mergeReturnBranches()` stays on the analyzer, off `MethodAnalysis`, because it needs a per-branch property map to
 union a key that several branches set, which a field-by-field merge cannot express. It takes every channel from
 `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to `merge()` reaches
-branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it.
+branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it. The join
+of each key's branch types and casts is `BranchJoin`'s, so the engine owns that type-string composition.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)

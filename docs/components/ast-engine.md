@@ -821,7 +821,7 @@ arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCalla
 (`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. It unions both operands through
 `unionResults()`, which leaves an untyped one out.
 `applyConditionalDefault()` records a default only beside a value arm with a type.
-`ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
+`BranchJoin::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
 walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole
 under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
