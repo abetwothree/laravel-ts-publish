@@ -91,9 +91,9 @@ like a class's name names none, which no per-name queue can hold, so the namer, 
 key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. By
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a key there
 that names a model or an enum, at any depth, is imported, and an override spelled like it keeps its own import. A value
-carries no slots, so `InlineObjectResult::of()` first reads with no class (`FileImportNames::classLess()`) a member
-whose slots hold a null, then one whose class publishes under an imported name a sibling member spells, as before
-slots: a leaf a class's token names is `unknown`, an override's or a literal's token stays.
+carries no slots, so `InlineObjectResult::of()` first reads every member a fill typed with no class
+(`FileImportNames::classLess()`), as before slots: a leaf a class's token names is `unknown`, an override's or a
+literal's token stays ([known gap](../known-gaps.md#a-docblock-fill-spread-inside-a-nested-literal-keeps-no-class)).
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.

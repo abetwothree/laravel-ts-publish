@@ -556,11 +556,19 @@ classes, `User` and `Post` there, nowhere but inside a literal, such as `'User'`
 elsewhere, such as `'k' => $this->user` or `'k' => $this->post`, no join can bind each token: `toArray()`'s and an
 Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Spread into a nested
-literal, a local or a helper read as a value, such as `'meta' => [...$this->fill()]`, no value carries the class behind
-each token. So a member spelling an override or a literal like a class it names, and a member whose class an override
-in a sibling member is spelled like, read as a value object's shape does: each leaf naming a class is `unknown`, and
-the override or literal keeps its text. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, while a member
-naming only classes, such as `array{k: User}`, keeps them. Type the key with an import-aware `#[TsCasts]`.
+literal, the fill reads with no class ([below](#a-docblock-fill-spread-inside-a-nested-literal-keeps-no-class)). Type
+the key with an import-aware `#[TsCasts]`.
+
+### A docblock fill spread inside a nested literal keeps no class
+
+A key a spread helper's or props helper's `@return array{…}` fills keeps the class behind each token only where the
+helper is spread at the top level of `toArray()` or of an Inertia page's props. Spread inside a nested literal, a local
+or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads as a value object's shape does:
+each leaf naming a model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a
+literal's text stays. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, and `array{k: User}` to
+`{ k: unknown }`, as before fills carried classes. A value has no channel for the class behind each token, so a model
+beside an override spelled like it, in the same object or a nested one, would publish as that model; the fix is such a
+channel. Spread the helper at the top level, or type the key with an import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 

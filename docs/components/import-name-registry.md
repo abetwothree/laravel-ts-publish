@@ -101,7 +101,7 @@ Callers fill their queues in one of three ways:
   those slots, and every writer and reader goes through it: `declaredTokens()` reads a whole declaration (the docblock
   engine's keep check, key fill and container slots, `ResourceTransformer`, this file), `joinedSlots()` arms joined
   into one type (a docblock union, shape or container's union, the branch join), a cut arm against its whole text's
-  own names, and `classLess()` a member `InlineObjectResult::of()` folds into a value, which carries no slots. Each
+  own names, and `classLess()` a fill `InlineObjectResult::of()` folds into a value, which carries no slots. Each
   names a token by `typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot. None respells a token
   inside a literal or after `typeof`.
 
