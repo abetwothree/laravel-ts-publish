@@ -7,12 +7,13 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ReadsCollectedItems;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -21,10 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
-use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -38,8 +36,8 @@ use ReflectionMethod;
 use stdClass;
 
 /**
- * A call to a known PHP built-in function typed from its reflected return type, `array_filter()` and `array_values()`
- * as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`,
+ * A call to a known PHP built-in function typed from its reflected return type, `array_filter()`, `array_values()` and
+ * `array_map()` as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`,
  * `request()->user()`, `now()`, `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -48,6 +46,8 @@ use stdClass;
  */
 final class KnownFunctionCallHandler implements ExpressionHandler
 {
+    use BindsMapCallbacks;
+    use ReadsCollectedItems;
     use ResolvesAuthHelperCalls;
 
     /** @return list<class-string<Expr>> */
@@ -80,6 +80,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'array_values') {
                 return $this->arrayValuesRule(CallArguments::for($expr, new ReflectionFunction('array_values')), $engine);
+            }
+
+            if ($name === 'array_map') {
+                return $this->arrayMapRule($expr, $scope, $engine);
             }
 
             $helper = $this->valueHelperRule($name, $expr, $scope, $engine);
@@ -300,6 +304,105 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
+     * `array_map($callback, $array, ...$arrays)` as the array it returns: one array keeps its keys arm by arm, and two
+     * or more re-index into a list. A `null` callback returns the one array, or zips several into tuples.
+     *
+     * Null for an object, which PHP throws on, a value no arm of which is an array, or a callback that cannot be read.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function arrayMapRule(FuncCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $args = CallArguments::for($call, new ReflectionFunction('array_map'));
+        $callback = $args->named('callback')?->value;
+        $arrays = [];
+
+        for ($position = 1; $position < $args->passedCount(); $position++) {
+            $arrays[] = $args->at($position)?->value;
+        }
+
+        if ($callback === null || $arrays === [] || $args->hasUnpack() || in_array(null, $arrays, true)) {
+            return null;
+        }
+
+        $inputs = [];
+
+        foreach ($arrays as $array) {
+            if (resolve(ReceiverClassResolver::class)->resolve($array, $scope) !== null) {
+                return null;
+            }
+
+            $inputs[] = $engine->resolve($array);
+        }
+
+        $zips = $callback instanceof ConstFetch && $callback->name->toLowerString() === 'null';
+        $result = count($inputs) === 1
+            ? $this->mappedOneArray($callback, $inputs[0], $zips, $scope, $engine)
+            : $this->mappedArrays($callback, $inputs, $zips, $scope, $engine);
+
+        if ($result === null) {
+            return null;
+        }
+
+        // The result is a plain array, so a resource re-indexes it as it does any other.
+        unset($result['keepsKeys']);
+
+        return $result;
+    }
+
+    /**
+     * What array_map() returns for one array: the array itself for a `null` callback, else each arm mapped with its
+     * keys kept.
+     *
+     * @param  ValueExpressionResult  $input
+     * @return ValueExpressionResult|null
+     */
+    private function mappedOneArray(Expr $callback, array $input, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (! $zips) {
+            return $this->mappedArrayResult($callback, $input, true, $scope, $engine);
+        }
+
+        $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::isArray($arm) ? $arm : null);
+
+        return $arms === null || $arms === [] ? null : [...$input, 'type' => implode(' | ', $arms), 'optional' => false];
+    }
+
+    /**
+     * What array_map() returns for two or more arrays, re-indexed into a list: tuples of each array's element for a
+     * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it.
+     *
+     * @param  non-empty-list<ValueExpressionResult>  $inputs
+     * @return ValueExpressionResult|null
+     */
+    private function mappedArrays(Expr $callback, array $inputs, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $parameters = [];
+
+        foreach ($inputs as $input) {
+            $elements = ArrayArms::arms($input['type'], ArrayArms::elementOf(...));
+            $elements = $elements === null ? [] : array_values(array_diff(array_unique($elements), ['never']));
+
+            if ($elements === [] || in_array('unknown', $elements, true)) {
+                return null;
+            }
+
+            $element = TsTypeString::withNullArm(implode(' | ', $elements));
+            $parameters[] = [...ValueResult::elementOf($input, $element), 'type' => $element];
+        }
+
+        if ($zips) {
+            return ['type' => '['.implode(', ', array_column($parameters, 'type')).'][]', 'optional' => false];
+        }
+
+        $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine);
+
+        return $body === null || $body['type'] === 'unknown'
+            ? null
+            : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
+    }
+
+    /**
      * Resolve `now()`, `today()`, `str()`, `url()` or `collect()` as json_encode() writes what it returns.
      *
      * `str($s)` is the string its Stringable serializes to, and `collect($items)` the list or object its items encode
@@ -367,60 +470,19 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     /**
      * Resolve `collect($items)` as the list or object its items encode as.
      *
-     * None or null is `never[]`, a constant array is typed as a parameter default is, and an expression typed as a list
-     * or an object shape keeps that type. A literal holding a `when*()` value declines: Laravel's filter never recurses
-     * into a Collection, so the value encodes as `{}`.
+     * None or null is `never[]`, a constant array is typed as a parameter default is, and an expression typed as a
+     * list, a Record or an object shape keeps that type. A literal holding a `when*()` value declines: Laravel's filter
+     * never recurses into a Collection, so the value encodes as `{}`.
      *
      * @return ValueExpressionResult|null
      */
     private function collectRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $result = $this->collectedItemsResult($args, $scope, $engine);
+        $items = $args->named('value')?->value;
+        $result = $items === null ? ['type' => 'never[]', 'optional' => false] : $this->collectedItems($items, $scope, $engine);
 
         // The value is a Collection, whose keys json_encode() writes as they are, so a resource's re-index skips it.
-        return $result === null ? null : [...$result, 'keepsKeys' => true];
-    }
-
-    /**
-     * The list or object `collect($items)` encodes as, before it is marked as a Collection's.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function collectedItemsResult(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
-        $items = $args->named('value')?->value;
-
-        if ($items === null) {
-            return ['type' => 'never[]', 'optional' => false];
-        }
-
-        $resolver = new ValueResolver;
-
-        try {
-            $value = $resolver->evaluateConstantExpression($items, $scope);
-
-            // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes.
-            return match (true) {
-                $value === null => ['type' => 'never[]', 'optional' => false],
-                is_array($value) => $resolver->resolveConstantValue($value, $scope->casesAsLiterals),
-                default => null,
-            };
-        } catch (ConstExprEvaluationException) {
-        }
-
-        if ($items instanceof Array_ && array_any($items->items, fn (ArrayItem $item): bool => $engine->resolve($item->value)['optional'])) {
-            return null;
-        }
-
-        $result = $engine->resolve($items);
-
-        if (count(TsTypeString::splitTopLevelUnion($result['type'])) !== 1) {
-            return null;
-        }
-
-        return str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{')
-            ? [...$result, 'optional' => false]
-            : null;
+        return $result === null || $result['type'] === 'unknown' ? null : [...$result, 'keepsKeys' => true];
     }
 
     /**

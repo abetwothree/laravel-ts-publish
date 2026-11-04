@@ -4,19 +4,28 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Workbench\App\Http\Resources\ArrayMapResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 
-/** The type one expression resolves to through the resource profile of PostResource over a Post. */
-function knownFunctionCallType(string $php): string
+/**
+ * The type one expression resolves to through the resource profile of a resource, PostResource by default, over a Post.
+ *
+ * @param  class-string  $resource
+ */
+function knownFunctionCallType(string $php, string $resource = PostResource::class): string
 {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
-    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'];
+    return new ResourceAstAnalyzer(new ReflectionClass($resource), Post::class)->resolve($expr)['type'];
 }
 
 /**
@@ -99,3 +108,94 @@ it('keeps the element type through array_values()', function () {
     ])->and(json_encode(new ReshapedListsPayload()->toArray()))
         ->toContain('"tags":["a"],"count_values":[1],"size_values":[1,"x"],"kept_tags":["a"]');
 });
+
+// array_map() keeps one array's keys, as collect()->map()->all() does, and lists what two or more arrays map to, each
+// shorter array padded with null. A null callback hands back the one array, or zips several into tuples.
+it('types array_map() as collect()->map()->all() does, keeping one array\'s keys and listing two or more', function (string $php, string $expected) {
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe($expected);
+})->with([
+    'typed arrow over a typed list' => ['array_map(fn (array $r): string => $r[\'message\'], $this->rows())', 'string[]'],
+    'untyped arrow over an @var list' => ['array_map(fn ($r) => $r[\'message\'], $this->records)', 'string[]'],
+    'typed function closure' => ['array_map(function (array $r): string { return $r[\'message\']; }, $this->rows())', 'string[]'],
+    'untyped function closure' => ['array_map(function ($r) { return $r[\'message\']; }, $this->records)', 'string[]'],
+    'string callable' => ["array_map('strtoupper', \$this->names())", 'string[]'],
+    'first-class callable' => ['array_map(strtoupper(...), $this->names())', 'string[]'],
+    'first-class method' => ['array_map($this->shout(...), $this->names())', 'string[]'],
+    'first-class untyped method' => ['array_map($this->shoutUntyped(...), $this->names())', 'string[]'],
+    'method callable' => ['array_map([$this, \'shout\'], $this->names())', 'string[]'],
+    'static first-class method' => ['array_map(self::twice(...), $this->counts())', 'number[]'],
+    'static method callable' => ['array_map([self::class, \'twice\'], $this->counts())', 'number[]'],
+    'static method string' => [
+        "array_map('AbeTwoThree\\\\LaravelTsPublish\\\\Tests\\\\Fixtures\\\\Http\\\\Resources\\\\ArrayMapSourcesResource::twice', \$this->counts())",
+        'number[]',
+    ],
+    'null callback, one array' => ['array_map(null, $this->names())', 'string[]'],
+    'null callback, two arrays' => ['array_map(null, $this->names(), $this->counts())', '[string | null, number | null][]'],
+    'two arrays' => ['array_map(fn ($a, $b) => $a.$b, $this->names(), $this->counts())', 'string[]'],
+    'two nullable parameters' => ['array_map(fn (?string $n, ?int $i): string => $n.$i, $this->names(), $this->counts())', 'string[]'],
+    'two string-keyed arrays' => ['array_map(fn (int $v, int $w): int => $v + $w, $this->scores, $this->scores)', 'number[]'],
+    'string-keyed literal' => ["array_map(fn (\$n) => \$n * 2, ['a' => 1, 'b' => 2])", '{ a: number; b: number }'],
+    'array<string, int> property' => ['array_map(fn (int $n) => $n * 2, $this->scores)', 'Record<string, number>'],
+    'array<string, int> property, untyped body' => ['array_map(fn ($v) => $v > 1, $this->scores)', 'Record<string, boolean>'],
+    'tuple literal' => ["array_map(fn (string \$v): int => strlen(\$v), ['ab', 'c'])", 'number[]'],
+    'model attribute rows' => ["array_map(fn (array \$r): string => \$r['message'], [['message' => \$this->title]])", 'string[]'],
+    'shape rows' => ["array_map(fn (array \$r): array => ['m' => \$r['message']], \$this->rows())", '{ m: string }[]'],
+    'untyped shape rows' => ["array_map(fn (\$r) => ['m' => \$r['message'], 'n' => strlen(\$r['message'])], \$this->rows())", '{ m: string; n: number }[]'],
+    'untyped models' => ['array_map(fn ($c) => $c->content, $this->comments->all())', 'string[]'],
+    'typed models' => ['array_map(fn (\\Workbench\\App\\Models\\Comment $c) => $c->content, $this->comments->all())', 'string[]'],
+    'vague root, typed callback' => [
+        "array_map(fn (\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ValueObjects\\MapOption \$c) => ['id' => \$c->itemId], \$this->opaque())",
+        '{ id: number }[] | Record<string, { id: number }>',
+    ],
+]);
+
+it('publishes array_map() over an @var local and int-keyed arrays as the lists a resource sends', function () {
+    expect(publishedResourceKeyTypes(ArrayMapSourcesResource::class, Post::class))->toMatchArray([
+        'typed_local' => 'string[]',
+        'untyped_local' => 'string[]',
+        'gap_keyed' => 'string[]',
+        'filtered' => 'string[]',
+    ]);
+});
+
+it('publishes array_map() outside a resource with the keys json_encode() writes', function () {
+    expect(analyzedKeyTypes(ArrayMapKeysEvent::class, 'broadcastWith'))->toBe([
+        'typed_arrow' => 'string[]',
+        'string_keyed_literal' => '{ a: number; b: number }',
+        'string_keyed_prop' => 'Record<string, number>',
+        'gap_keyed_literal' => '{ "1": string; "3": string }',
+        'two_arrays_string_keyed' => 'number[]',
+    ])->and(json_encode(new ArrayMapKeysEvent()->broadcastWith()))->toBe(
+        '{"typed_arrow":["a","b"],"string_keyed_literal":{"a":2,"b":4},"string_keyed_prop":{"x":2,"y":4},'
+        .'"gap_keyed_literal":{"1":"A","3":"B"},"two_arrays_string_keyed":[2,4]}',
+    );
+});
+
+it('publishes the workbench array_map() keys as the JSON the resource sends', function () {
+    $post = new Post;
+    $post->setRelation('comments', new EloquentCollection([new Comment(['content' => 'first']), new Comment(['content' => 'second'])]));
+
+    expect(publishedResourceKeyTypes(ArrayMapResource::class, Post::class))->toBe([
+        'messages' => 'string[]',
+        'doubled' => '{ low: number; high: number }',
+        'zipped' => '[string | null, number | null][]',
+        'names' => 'string[]',
+    ])->and(json_encode(new ArrayMapResource($post)->resolve(Request::create('/'))))->toBe(
+        '{"messages":["first","second"],"doubled":{"low":2,"high":4},"zipped":[["a",1],["b",2],[null,3]],'
+        .'"names":["FIRST","SECOND"]}',
+    );
+});
+
+// PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.
+it('leaves array_map() over a Collection, or a callable it cannot read, to unknown', function (string $php) {
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe('unknown');
+})->with([
+    'a relation\'s collection' => ['array_map(fn ($c) => $c->content, $this->comments)'],
+    'a collect() value' => ["array_map('strtoupper', collect(\$this->names()))"],
+    'no array' => ['array_map(fn ($v) => $v)'],
+    'a spread' => ['array_map(fn ($v) => $v, ...$this->counts())'],
+    'a string' => ['array_map(fn ($v) => $v, $this->title)'],
+    'a callable variable nothing reads' => ['array_map($callback, $this->names())'],
+    'a function no one declares' => ["array_map('no_such_function_anywhere', \$this->names())"],
+    'an untyped body over a vague root' => ['array_map(fn ($v) => $v, $this->opaque())'],
+]);

@@ -2704,7 +2704,7 @@ it('types a paginator past its own steps as the same paginator', function () {
 
     expect(pageData(PaginatorSourcesController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
         .'withQueryString: LengthAwarePaginator<Post>, onEachSide: LengthAwarePaginator<Post>, fragment: SimplePaginator<Post>, '
-        .'base: CursorPaginator<Record<string, unknown>>, titles: LengthAwarePaginator<string>, unread: LengthAwarePaginator<unknown> }')
+        .'base: CursorPaginator<Record<string, unknown>>, titles: LengthAwarePaginator<string>, unread: LengthAwarePaginator<string> }')
         ->and([$sent->withQueryString->data[0]->title, $sent->onEachSide->total, $sent->fragment->data[0]->title])
         ->toBe(['First', 1, 'First'])
         ->and([$sent->fragment->next_page_url, $sent->base->data[0]->title, $sent->titles->data, $sent->unread->data])

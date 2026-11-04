@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
@@ -594,9 +595,12 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         return $scope->within(function () use ($callback, $element, $key, $scope, $engine): void {
             $scope->enterClosureBody($callback);
 
-            foreach ([$element, $key] as $position => $type) {
-                ParameterBinder::bindCallbackArgument($callback, $position, ['type' => $type, 'optional' => false], $scope, $engine);
-            }
+            ParameterBinder::bindCallbackArguments(
+                $callback,
+                [['type' => $element, 'optional' => false], ['type' => $key, 'optional' => false]],
+                $scope,
+                $engine,
+            );
 
             if ($callback instanceof ClosureExpr) {
                 $this->seedBody($callback->stmts, $scope);
@@ -615,9 +619,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Analyze `$receiver->map(fn (Item $item) => [...])` with the first param bound to its element: the type hint's
-     * model, else the element model or the list element of the collection the receiver resolver names. The body wraps
-     * as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
+     * Analyze `$receiver->map(fn (Item $item) => [...])`, or any callable form, with the first param bound to its
+     * element: the hint's model, else the element model or list element of the collection the resolver names. The body
+     * wraps as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
      *
      * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), a resource collection's
      * items, an unnamed one but a variable a model hint binds, and a receiver whose element nothing names.
@@ -627,8 +631,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     private function analyzeReceiverMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $callback = $this->mapArguments($call)->named('callback')?->value;
+        $callback = $callback === null ? null : CallableForms::asOneValueClosure(CallableForms::heldCallable($callback, $scope));
 
-        if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
+        if ($callback === null) {
             return null;
         }
 

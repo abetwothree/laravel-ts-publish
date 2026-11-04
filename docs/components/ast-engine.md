@@ -367,7 +367,7 @@ model bind in `ConditionalMethodHandler`, whose value closures read through `Res
 
 | Writer | Laravel passes | First parameter bound to |
 | --- | --- | --- |
-| `BindsMapCallbacks::resolveMapCallback()`, for every `map()` | `($value, $key)` | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value. The second holds the key only where the caller passes one |
+| `BindsMapCallbacks::resolveArrayCallback()`, for every `map()` and `array_map()` | `($value, $key)`, or one element of each array | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value, and nothing for an element nothing types. The second holds the key only where the caller passes one |
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
@@ -378,7 +378,8 @@ model bind in `ConditionalMethodHandler`, whose value closures read through `Res
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
 
 A first-class callable in a position where Laravel passes one value binds the same way:
-`CallableForms::passingOneValue()` reads it as `fn ($v) => m($v)`.
+`CallableForms::passingOneValue()` reads it as `fn ($v) => m($v)`. A `map()` or `array_map()` callback also reads a
+function or `Class::m` string and a `[$object, 'm']` or `[Foo::class, 'm']` pair so (`CallableForms::asOneValueClosure()`).
 
 These rules settle the cases the table leaves open:
 
@@ -602,7 +603,7 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
   holds it (a constant, `.=`, `+=` or `++`) and no key write lands on a local that may be `null`. Neither is the key a
   variable reads, `$k` in `$a[$k] = …`, nor a variable variable's write.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
-- **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
+- **A `map()` whose argument is no callable form**, such as a variable holding a closure: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
   or an operator such as `.=`, leaves a class binding standing, since only the old binding is known, though a value
   read takes what its own `$x = …;` writes where it binds a value, or a model the write gives a typed value, and past

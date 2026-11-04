@@ -5,19 +5,18 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\Closure as ClosureExpr;
 
 /**
- * The one way a `map()` callback's parameters are bound, shared by RelationCollectionChainHandler,
- * CollectionPipelineHandler, VariableHandler and ModelFinderHandler. The body resolves through ClosureHandler, which
- * seeds its locals and binds the class any other parameter declares.
+ * The one read of a callback over an array's elements, for `array_map()` and every `map()`. Any callable form reads
+ * as the closure it amounts to, whose body ClosureHandler resolves, binding the class an unbound parameter declares.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -26,11 +25,102 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 trait BindsMapCallbacks
 {
     /**
-     * Resolve a `map()` callback's body with its first parameter bound to the element as elementBinding() binds it,
-     * and its second to $keyValue where the caller passes one. Null for a callable that is no closure, or a variadic
-     * first parameter.
+     * The array a callback maps one array to, each arm keyed as ArrayArms::mapped() keys it. A `null` arm is left out,
+     * as PHP throws on it. Null where an arm is no array, or the callback cannot be read for an element.
      *
-     * The answer is each element the callback returns, as the reading sends it in an array, apart from the callback.
+     * Each element binds as elementOf() reads it, with $elementModel or the model the element names. $arrayed says
+     * JsonResource::filter() reaches the result as an array.
+     *
+     * @param  ValueExpressionResult  $input
+     * @param  class-string<Model>|null  $elementModel
+     * @return ValueExpressionResult|null
+     */
+    protected function mappedArrayResult(
+        Expr $callback,
+        array $input,
+        bool $arrayed,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?string $elementModel = null,
+    ): ?array {
+        $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::elementOf($arm) === null ? null : $arm);
+
+        if ($arms === null || $arms === []) {
+            return null;
+        }
+
+        /** @var array<string, ValueExpressionResult> $bodies each element's mapped value, read once */
+        $bodies = [];
+        $mapped = [];
+
+        foreach ($arms as $arm) {
+            $element = (string) ArrayArms::elementOf($arm);
+
+            if (! isset($bodies[$element])) {
+                $value = ValueResult::elementOf($input, $element);
+                $carried = $value['modelFqcn'] ?? null;
+                $model = $elementModel ?? ($carried !== null && is_a($carried, Model::class, true) ? $carried : null);
+                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine);
+
+                if ($body === null || $body['type'] === 'unknown') {
+                    return null;
+                }
+
+                $bodies[$element] = $body;
+            }
+
+            $mapped[] = (string) ArrayArms::mapped($arm, $bodies[$element]['type']);
+        }
+
+        $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));
+
+        // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
+        return [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false];
+    }
+
+    /**
+     * What a callback returns for one element, as the reading sends it in an array, apart from the callback: each of
+     * $parameters bound to the parameter at its position as an array's element, the first by $elementModel too. Null
+     * for a callable that reads as no closure, or a variadic first parameter.
+     *
+     * $arrayed says JsonResource::filter() reaches the result as an array.
+     *
+     * @param  list<ValueExpressionResult>  $parameters
+     * @param  class-string<Model>|null  $elementModel
+     * @return ValueExpressionResult|null
+     */
+    protected function resolveArrayCallback(
+        Expr $callback,
+        array $parameters,
+        ?string $elementModel,
+        bool $arrayed,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
+        $callback = CallableForms::asOneValueClosure(CallableForms::heldCallable($callback, $scope), count($parameters));
+
+        if ($callback === null || ($callback->params[0] ?? null)?->variadic === true) {
+            return null;
+        }
+
+        $returned = $scope->readClaimedClosure(
+            $callback,
+            null,
+            $engine,
+            fn (): array => $engine->resolve($callback),
+            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, elements: true),
+            function () use ($scope, $arrayed): void {
+                $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
+                $scope->mapResultArrayed = false;
+            },
+        );
+
+        return ValueResult::withoutHeldObject($engine->reading()->arrayValue(ValueResult::calledValue($returned)));
+    }
+
+    /**
+     * What a `map()` callback returns for one element, its first parameter bound to the element as elementBinding()
+     * binds it, and its second to $keyValue where the caller passes one, as resolveArrayCallback() reads it.
      *
      * $arrayed says JsonResource::filter() reaches the result as an array.
      *
@@ -48,39 +138,16 @@ trait BindsMapCallbacks
         ExpressionEngine $engine,
         ?array $keyValue = null,
     ): ?array {
-        if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
+        if ($callback === null) {
             return null;
         }
 
-        $first = $callback->params[0] ?? null;
+        $parameters = [$elementValue ?? ValueResult::unknown()];
 
-        if ($first !== null && $first->variadic) {
-            return null;
+        if ($keyValue !== null) {
+            $parameters[] = $keyValue;
         }
 
-        $name = AnalysisScope::firstParameterName($callback);
-        $binding = ParameterBinder::elementBinding($elementModel, $elementValue, $first, $scope);
-
-        $returned = $scope->readClaimedClosure(
-            $callback,
-            null,
-            $engine,
-            fn (): array => $engine->resolve($callback),
-            function () use ($callback, $scope, $engine, $name, $binding, $keyValue): void {
-                if ($name !== null && $binding !== null) {
-                    resolve(ParameterBinder::class)->bindPassed([$name => $binding], $scope);
-                }
-
-                if ($keyValue !== null) {
-                    ParameterBinder::bindCallbackArgument($callback, 1, $keyValue, $scope, $engine);
-                }
-            },
-            function () use ($scope, $arrayed): void {
-                $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
-                $scope->mapResultArrayed = false;
-            },
-        );
-
-        return ValueResult::withoutHeldObject($engine->reading()->arrayValue(ValueResult::calledValue($returned)));
+        return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine);
     }
 }

@@ -25,7 +25,7 @@ trait ResolvesCallbackValues
 {
     /**
      * The value a callback returns, `unknown` included, called with $passed, each bound to the parameter at its
-     * position by ParameterBinder::bindCallbackArgument(), and every later one to its default. A variable reads as the
+     * position by ParameterBinder::bindCallbackArguments(), and every later one to its default. A variable reads as the
      * callable it holds, and a first-class callable as the call it stands for; any other value is read as itself.
      *
      * @param  list<Expr|ValueExpressionResult>  $passed
@@ -34,7 +34,9 @@ trait ResolvesCallbackValues
     protected function callbackValue(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $callback = CallableForms::heldCallable($callback, $scope);
-        $callback = $passed === [] ? $callback : CallableForms::passingOneValue($callback);
+        $callback = $passed !== [] && CallableForms::isFirstClassCallable($callback)
+            ? CallableForms::asOneValueClosure($callback, count($passed)) ?? $callback
+            : $callback;
 
         return $scope->readClaimedClosure(
             $callback,
@@ -46,9 +48,7 @@ trait ResolvesCallbackValues
                     return;
                 }
 
-                foreach ($passed as $position => $argument) {
-                    ParameterBinder::bindCallbackArgument($callback, $position, $argument, $scope, $engine);
-                }
+                ParameterBinder::bindCallbackArguments($callback, $passed, $scope, $engine);
             },
         );
     }

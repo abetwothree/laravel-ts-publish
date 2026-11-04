@@ -82,13 +82,11 @@ class RelationChainResource extends JsonResource
                     ->map(fn ($member) => EnumResource::make($member->role)),
             ],
 
-            // map() argument is a string callable, not a Closure/ArrowFunction — must not be
-            // treated as a closure body (which would otherwise resolve 'strtoupper' itself,
-            // a plain string literal, as if it were the map's return value).
+            // map() argument is a string callable: it is called with each member, as a closure is,
+            // never read as the plain string literal 'strtoupper' itself.
             'member_names_upper' => $this->members->take(5)->map('strtoupper'),
 
-            // map() argument is an array callable ([$this, 'method']), not a Closure/
-            // ArrowFunction — same guard as above, different unsupported argument shape.
+            // map() argument is an array callable ([$this, 'method']): the method is called with each member.
             'member_formatted' => $this->members->take(5)->map([$this, 'formatMember']),
 
             // map()/pluck() as a first-class callable (no args at all — this is a Closure

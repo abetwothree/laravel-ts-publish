@@ -487,8 +487,8 @@ Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/Collections/RelationCollectionChainHandler.php) takes a chain rooted at
 `$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
 [`CollectionPipelineHandler`](../../src/Ast/Handlers/Collections/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
-and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
-since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
+and reads the element type off `$arg` when it resolves to `X[]`; any other array `$arg` holds takes only a `map()` and
+`all()`. A top-level `|` declines, since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
 [`KnownFunctionCallHandler`](../../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
@@ -502,10 +502,17 @@ a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` termina
   `Collection<X>` and its array both render `X[]`, so it is identity on the published type.
 - **`concat($source)` is identity only on exact type equality**: anything but the receiver's own collection type
   declines the chain, since `Comment[]` joined with `Tag[]` is a different collection, not a longer one.
-- **A `collect()` pipeline binds its `map()` parameter to its element**: the model the receiver resolver names for
-  `$arg`, or that its value carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
-  `AnalysisScope::$varValueBindings`. Both bind through one binder, as
+- **A `collect()` pipeline maps as `array_map()` does**: `BindsMapCallbacks::mappedArrayResult()` keeps each arm's
+  keys, a list as a list, a `Record` or an object literal with its keys, and a value nothing types as
+  `R[] | Record<string, R>`. Its parameter binds to the model the receiver resolver names for `$arg`, or that its value
+  carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
+  `AnalysisScope::$varValueBindings`, and an element nothing types not at all, so the parameter's declaration binds.
+  All bind through one binder, as
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
+- **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
+  `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a
+  shorter array pads with `null`. A `null` callback returns the one array, or zips several into tuples. An object,
+  a `Collection` included, declines, since PHP throws a `TypeError` on it.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.

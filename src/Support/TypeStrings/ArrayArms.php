@@ -10,7 +10,8 @@ use Closure;
 
 /**
  * The arms of an array's published type, read one at a time: which arm is an array and which a keyed one, the list
- * `array_values()` makes of an arm, what `array_filter()` keeps of one, and the element of a one-armed list.
+ * `array_values()` makes of an arm, what `array_filter()` keeps of one, what `array_map()` makes of one and the value
+ * each of its elements holds, and the element of a one-armed list.
  *
  * A stateless reader; Ast\Members\ArrayArm models an arm that a write changes.
  *
@@ -88,6 +89,47 @@ final class ArrayArms
         }
 
         return TsTypeShape::elementType($arm) === null ? null : $arm;
+    }
+
+    /**
+     * The value each element of one arm holds: a list's element, a Record's value, a tuple's or an object literal's
+     * members joined, `never` for no element, and `unknown` for an arm nothing types; null for any other arm.
+     */
+    public static function elementOf(string $arm): ?string
+    {
+        if ($arm === 'unknown') {
+            return $arm;
+        }
+
+        $values = $arm === '[]' ? 'never[]' : self::valuesOf($arm);
+
+        if ($values !== null && TsTypeShape::isWrapped($values, '[', ']')) {
+            $values = TsTypeShape::listType(TsTypeShape::tupleMembers($values));
+        }
+
+        return $values === null ? null : self::listElement($values);
+    }
+
+    /**
+     * What array_map() makes of one arm, each element's value replaced by $value under the key it had: a list or tuple
+     * as a list, a Record and an object literal keyed as they were, and an arm nothing types as either a list or a
+     * Record; null for any other arm.
+     */
+    public static function mapped(string $arm, string $value): ?string
+    {
+        $list = TsTypeShape::listType([$value]);
+        $record = TsTypeShape::recordArguments($arm);
+        $members = TsTypeShape::members($arm);
+
+        return match (true) {
+            $arm === 'unknown' => $list.' | Record<string, '.$value.'>',
+            $record !== null => 'Record<'.$record[0].', '.$value.'>',
+            // json_encode() writes an empty array as `[]`.
+            $members === [] => 'never[]',
+            $members !== null => '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$value, $members)).' }',
+            TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null => $list,
+            default => null,
+        };
     }
 
     /**

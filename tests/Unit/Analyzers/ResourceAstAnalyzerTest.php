@@ -854,10 +854,10 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
             ->toBe('{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }');
     });
 
-    // A string ('strtoupper') or array ([$this, 'method']) callable has no closure body to analyze.
-    test('map() with a non-closure callable argument stays unknown', function () {
-        expect($this->props['member_names_upper']['type'])->toBe('unknown')
-            ->and($this->props['member_formatted']['type'])->toBe('unknown');
+    // A string ('strtoupper') or array ([$this, 'method']) callable is called with each member, as a closure is.
+    test('map() with a string or array callable types what the callable returns', function () {
+        expect($this->props['member_names_upper']['type'])->toBe('string[]')
+            ->and($this->props['member_formatted']['type'])->toBe('string[]');
     });
 
     // PHP-Parser's CallLike::getArgs() asserts !isFirstClassCallable(), so under zend.assertions=1

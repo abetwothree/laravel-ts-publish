@@ -2608,6 +2608,16 @@ declare global {
             category_class_name?: string | null;
             category_table_name?: string | null;
         }
+        /**
+         * Exercises array_map(): one array keeps its keys, two arrays re-index into a list, and a callable of any form is
+         * called with each element.
+         */
+        export interface ArrayMapResource {
+            messages: string[];
+            doubled: { low: number; high: number };
+            zipped: [string | null, number | null][];
+            names: string[];
+        }
         /** The other arm of the reviewable morph union ReviewResource unions over. */
         export interface ArtistResource {
             id: number;
@@ -5087,8 +5097,8 @@ declare global {
             member_role_resources: workbench.app.enums.RoleType[];
             member_role_resources_filtered: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType>;
             wrapped_filtered: { roles: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType> };
-            member_names_upper: unknown;
-            member_formatted: unknown;
+            member_names_upper: string[];
+            member_formatted: string[];
             member_mapped_fcc: unknown;
             member_plucked_fcc: unknown;
             first_member: workbench.app.models.User | null;

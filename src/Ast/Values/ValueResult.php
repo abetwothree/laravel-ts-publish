@@ -99,6 +99,31 @@ final class ValueResult
     }
 
     /**
+     * The value each element of a list result holds: $element with the list's channels, the one enum the list embeds
+     * as the enum it holds where $element spells that enum's type, and the list's model only where $element names it.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult
+     */
+    public static function elementOf(array $list, string $element): array
+    {
+        $value = [...self::withoutHeldObject($list), 'type' => $element, 'optional' => false];
+        unset($value['keepsKeys'], $value['absentReadsNull']);
+
+        $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
+
+        if (count($enums) === 1 && self::enumTypeName($enums[0]) === $element) {
+            $value['directEnumFqcn'] = $enums[0];
+        }
+
+        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== $element) {
+            unset($value['modelFqcn']);
+        }
+
+        return $value;
+    }
+
+    /**
      * A collected list of an element, as a resource collection sends it: `Record<string, R>` when the collection keeps
      * its keys, else `R[]`. The one place that spells it, for `$this->collection` and `$this->resource`'s items alike.
      */

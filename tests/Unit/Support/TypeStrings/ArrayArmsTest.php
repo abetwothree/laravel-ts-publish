@@ -75,3 +75,40 @@ describe('listElement', function () {
         'an arrow returning a list declines' => ['() => B[]', null],
     ]);
 });
+
+describe('elementOf', function () {
+    test('the value each element of one arm holds', function (string $arm, ?string $element) {
+        expect(ArrayArms::elementOf($arm))->toBe($element);
+    })->with([
+        'a list' => ['string[]', 'string'],
+        'an Array' => ['Array<T>', 'T'],
+        'a tuple joins its members' => ['[number, string, number]', 'number | string'],
+        'the empty tuple holds none' => ['[]', 'never'],
+        'no element' => ['never[]', 'never'],
+        'a Record holds its values' => ['Record<string, number>', 'number'],
+        'an object literal joins its members' => ['{ a: number; b?: string }', 'number | string'],
+        'an empty object holds none' => ['{}', 'never'],
+        'an arm nothing types' => ['unknown', 'unknown'],
+        'a scalar declines' => ['string', null],
+        'an intersection declines' => ['{ a: string } & { b: string }', null],
+    ]);
+});
+
+describe('mapped', function () {
+    test('what array_map() makes of one arm, keyed as it was', function (string $arm, ?string $mapped) {
+        expect(ArrayArms::mapped($arm, 'R'))->toBe($mapped);
+    })->with([
+        'a list stays a list' => ['string[]', 'R[]'],
+        'a tuple re-lists' => ['[number, string]', 'R[]'],
+        'a Record keeps its keys' => ['Record<string, number>', 'Record<string, R>'],
+        'an object literal keeps its members' => ['{ a: number; "1"?: string }', '{ a: R; "1"?: R }'],
+        'an empty object is the empty list' => ['{}', 'never[]'],
+        'an arm nothing types may be either' => ['unknown', 'R[] | Record<string, R>'],
+        'a scalar declines' => ['string', null],
+        'an intersection declines' => ['{ a: string } & { b: string }', null],
+    ]);
+
+    test('a union value is parenthesized before the list suffix binds', function () {
+        expect(ArrayArms::mapped('string[]', 'A | B'))->toBe('(A | B)[]');
+    });
+});

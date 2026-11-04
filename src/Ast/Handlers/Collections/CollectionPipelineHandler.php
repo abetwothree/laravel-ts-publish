@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ReadsCollectedItems;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -21,8 +22,8 @@ use PhpParser\Node\Expr\MethodCall;
 use ReflectionMethod;
 
 /**
- * A collection chain rooted at `collect($arg)`: the element type comes from `$arg`, survives
- * `values`/`all`/`filter`/`reject`/`unique` plus at most one `map(closure)`, and is array-wrapped back out.
+ * A collection chain rooted at `collect($arg)`: a list's element type survives `values`, `all`, `filter`, `reject`
+ * and `unique`, and at most one `map()` with any callable maps any array `$arg` holds, keeping its keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -31,6 +32,7 @@ use ReflectionMethod;
 final class CollectionPipelineHandler implements ExpressionHandler
 {
     use BindsMapCallbacks;
+    use ReadsCollectedItems;
     use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
@@ -47,19 +49,15 @@ final class CollectionPipelineHandler implements ExpressionHandler
         }
 
         [$steps, $root] = CollectionSteps::chain($expr);
-        $rootResult = $this->collectRootResult($root, $engine);
+        $items = CallArguments::collectArgument($root);
+        $rootResult = $items === null ? null : $this->collectedItems($items, $scope, $engine);
 
         if ($rootResult === null || ! $root instanceof FuncCall) {
             return null;
         }
 
-        // Only a `T[]` root lists its elements here, never an `Array<T>` one.
-        $element = str_ends_with($rootResult['type'], '[]') ? ArrayArms::listElement($rootResult['type']) : null;
-
-        if ($element === null) {
-            return null;
-        }
-
+        // Only a `T[]` root lists its elements here, never an `Array<T>` one; any other root is only mapped.
+        $listed = str_ends_with($rootResult['type'], '[]') && ArrayArms::listElement($rootResult['type']) !== null;
         $identityOps = ['values', 'all', 'filter', 'reject', 'unique'];
         $mapNode = null;
 
@@ -67,7 +65,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         $sequentialKeys = true;
 
         foreach ($steps as $step) {
-            if (in_array($step['name'], $identityOps, true)) {
+            if (in_array($step['name'], $identityOps, true) && ($listed || $step['name'] === 'all')) {
                 $sequentialKeys = $step['name'] === 'all'
                     ? $sequentialKeys
                     : ! CollectionSteps::keyedAfter($step['node'], $step['name'], ! $sequentialKeys, false);
@@ -87,57 +85,33 @@ final class CollectionPipelineHandler implements ExpressionHandler
         }
 
         if ($mapNode === null) {
-            return [
+            return ! $listed ? null : [
                 ...$rootResult,
                 'type' => $sequentialKeys ? $rootResult['type'] : $this->keyedObjectArm($rootResult['type']),
                 'optional' => false,
             ];
         }
 
-        $bodyResult = $this->resolveMapCallback(
-            CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value,
-            $this->elementModel($root, $rootResult, $element, $scope),
-            ['type' => $element, 'optional' => false],
+        $callback = CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value;
+        $mapped = $callback === null ? null : $this->mappedArrayResult(
+            $callback,
+            $rootResult,
             $steps[count($steps) - 1]['name'] === 'all',
             $scope,
             $engine,
+            $this->elementModel($items, $scope),
         );
 
-        return $this->mappedList($bodyResult, ! $sequentialKeys, false);
+        return $mapped === null || $sequentialKeys ? $mapped : [...$mapped, 'type' => $this->keyedObjectArm($mapped['type'])];
     }
 
     /**
-     * Resolve the argument of a `collect($arg)` root, or decline a chain rooted at anything else.
+     * The model each element of a `collect($items)` root holds, as the receiver resolver names it for `$items`.
      *
-     * @return ValueExpressionResult|null
-     */
-    private function collectRootResult(Expr $root, ExpressionEngine $engine): ?array
-    {
-        $argument = CallArguments::collectArgument($root);
-        $result = $argument === null ? null : $engine->resolve($argument);
-
-        // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
-        return $result !== null && $result['type'] === '[]' ? [...$result, 'type' => 'never[]'] : $result;
-    }
-
-    /**
-     * The model each element of a `collect($arg)` root holds: the element model the receiver resolver names for `$arg`,
-     * else the model its value carries when the element type is that model.
-     *
-     * @param  ValueExpressionResult  $rootResult
      * @return class-string<Model>|null
      */
-    private function elementModel(FuncCall $root, array $rootResult, string $element, AnalysisScope $scope): ?string
+    private function elementModel(Expr $items, AnalysisScope $scope): ?string
     {
-        $argument = CallArguments::collectArgument($root);
-        $named = $argument === null ? null : resolve(ReceiverClassResolver::class)->resolve($argument, $scope)?->elementModel;
-
-        if ($named !== null) {
-            return $named;
-        }
-
-        $carried = $rootResult['modelFqcn'] ?? null;
-
-        return $carried !== null && is_a($carried, Model::class, true) && class_basename($carried) === $element ? $carried : null;
+        return resolve(ReceiverClassResolver::class)->resolve($items, $scope)?->elementModel;
     }
 }

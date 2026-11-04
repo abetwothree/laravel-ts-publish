@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
 use PhpParser\Node\Expr;
@@ -140,4 +141,33 @@ test('a collect() root binds its map parameter to the model its value carries', 
     'the relation\'s all()' => ['collect($this->comments->all())->map(fn ($c) => $c->content)->all()', 'string[]'],
     'a whenLoaded() value' => ['collect($this->whenLoaded(\'comments\'))->map(fn ($c) => ["id" => $c->id])->all()', '{ id: number }[]'],
     'a spread of the element' => ['collect($this->comments->all())->map(fn ($c) => [...$c->toArray(), "f" => 1])->all()', "(Omit<Comment, 'f'> & { f: number })[]"],
+]);
+
+// map() keeps the keys of the array collect() wraps, and calls any callable form with each element.
+test('a collect() root maps any array through any callable, keeping its keys', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a Record' => ['collect($this->scores)->map(fn ($n) => $n * 2)->all()', 'Record<string, number>'],
+    'a string callable' => ["collect(\$this->names())->map('strtoupper')->all()", 'string[]'],
+    'a first-class callable' => ['collect($this->names())->map(strtoupper(...))->all()', 'string[]'],
+    'a first-class method' => ['collect($this->names())->map($this->shout(...))->all()', 'string[]'],
+    'a vague root, typed callback' => [
+        "collect(\$this->opaque())->map(fn (\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ValueObjects\\MapOption \$c) => ['id' => \$c->itemId])->all()",
+        '{ id: number }[] | Record<string, { id: number }>',
+    ],
+]);
+
+// VariableHandler maps a collection no chain handler takes, such as a relation's plucked values, with the same typer.
+test('a map() over any other collection calls any callable form', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a string callable' => ["\$this->comments->pluck('content')->map('strtoupper')->all()", 'string[]'],
+    'a first-class method' => ["\$this->comments->pluck('content')->map(\$this->shoutUntyped(...))->all()", 'string[]'],
+    'a closure' => ["\$this->comments->pluck('content')->map(fn (\$c) => strtoupper(\$c))->all()", 'string[]'],
 ]);

@@ -10794,6 +10794,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ArrayMapResource": {
+            "name": "ArrayMapResource",
+            "properties": [
+                {
+                    "name": "messages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "doubled",
+                    "type": "{ low: number; high: number }",
+                    "optional": false
+                },
+                {
+                    "name": "zipped",
+                    "type": "[string | null, number | null][]",
+                    "optional": false
+                },
+                {
+                    "name": "names",
+                    "type": "string[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ArtistResource": {
             "name": "ArtistResource",
             "properties": [
@@ -19051,12 +19076,12 @@
                 },
                 {
                     "name": "member_names_upper",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
                     "name": "member_formatted",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {

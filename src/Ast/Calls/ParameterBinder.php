@@ -46,7 +46,7 @@ use ReflectionParameter;
  * parameters are bound.
  *
  * A callback's parameters bind to what its caller passes them: a collection's element (elementBinding()) or the value
- * at their position (bindCallbackArgument()).
+ * at their position (bindCallbackArgument()), each position in turn (bindCallbackArguments()).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
@@ -211,6 +211,43 @@ final class ParameterBinder
             $scope->closureParamExprBindings[$name] = $argument;
         } elseif ($argument['type'] !== 'unknown') {
             $scope->varValueBindings[$name] = $argument;
+        }
+    }
+
+    /**
+     * Bind a callback's parameters by position to what its caller passes, each as bindCallbackArgument() binds it; or,
+     * where $elements says the values are an array's elements, each typed one as elementBinding() binds it, the first
+     * by $firstElementModel too, so a model a parameter declares binds. A variadic parameter collects the rest.
+     *
+     * @param  list<Expr|ValueExpressionResult>  $passed
+     * @param  class-string<Model>|null  $firstElementModel
+     */
+    public static function bindCallbackArguments(
+        ArrowFunction|ClosureExpr $callback,
+        array $passed,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?string $firstElementModel = null,
+        bool $elements = false,
+    ): void {
+        foreach ($passed as $position => $argument) {
+            $param = $callback->params[$position] ?? null;
+
+            if (! $elements || $argument instanceof Expr || $param === null || $param->variadic
+                || ! $param->var instanceof Variable || ! is_string($param->var->name)
+            ) {
+                self::bindCallbackArgument($callback, $position, $argument, $scope, $engine);
+
+                continue;
+            }
+
+            // An element nothing types binds nothing, so the parameter's own declaration binds it.
+            $value = $argument['type'] === 'unknown' ? null : $argument;
+            $binding = self::elementBinding($position === 0 ? $firstElementModel : null, $value, $param, $scope);
+
+            if ($binding !== null) {
+                resolve(self::class)->bindPassed([$param->var->name => $binding], $scope);
+            }
         }
     }
 
