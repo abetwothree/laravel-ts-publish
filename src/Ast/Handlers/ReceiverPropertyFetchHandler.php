@@ -86,10 +86,8 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             ? $results[0]
             : ValueResult::unionResults($results);
 
-        if (($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits)
-            && ! in_array('null', TsTypeString::splitTopLevelUnion($merged['type']), true)
-        ) {
-            $merged['type'] .= ' | null';
+        if ($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits) {
+            $merged['type'] = TsTypeString::withNullArm($merged['type']);
         }
 
         return $merged;
@@ -110,7 +108,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
 
         if ($attribute !== null) {
             return $attributeless && $this->readsNullWithoutAttributes($resolver, $modelFqcn, $name)
-                ? [...$attribute, 'type' => ValueResult::withNullArm($attribute['type'])]
+                ? [...$attribute, 'type' => TsTypeString::withNullArm($attribute['type'])]
                 : $attribute;
         }
 
