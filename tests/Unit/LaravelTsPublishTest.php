@@ -342,7 +342,7 @@ describe('toTsType', function () {
         'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
     ]);
 
-    // An appended `| null` would join an arrow's return type, so the arrow is grouped; `unknown` keeps its printed null.
+    // An appended `| null` would join an arrow's return type, so the arrow is grouped; `unknown` keeps its null arm.
     test('a nullable PHP type keeps its null arm outside an arrow and beside unknown', function (string $phpType, string $type) {
         config()->set('ts-publish.custom_ts_mappings', ['callable' => '() => void']);
 
