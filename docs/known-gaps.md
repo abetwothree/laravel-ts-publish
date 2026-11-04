@@ -556,9 +556,9 @@ classes, `User` and `Post` there, nowhere but inside a literal, such as `'User'`
 elsewhere, such as `'k' => $this->user` or `'k' => $this->post`, no join can bind each token: `toArray()`'s and an
 Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Spread into a nested
-literal or a local, such as `'meta' => [...$this->fill()]`, the fill reads as a value object's shape does, each leaf
-naming the model `unknown`, since no value carries the class behind each token. Type the key with an import-aware
-`#[TsCasts]`.
+literal, a local or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads as a value
+object's shape does, each leaf naming the model `unknown`, since no value carries the class behind each token. Type the
+key with an import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 
