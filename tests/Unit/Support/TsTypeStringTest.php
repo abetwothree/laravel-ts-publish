@@ -1204,6 +1204,7 @@ describe('orUndefined', function () {
         'naming it only in template text' => ['`a | undefined | b`', '`a | undefined | b` | undefined'],
         'an arrow function' => ['() => void', '(() => void) | undefined'],
         'an arrow function whose return type names it' => ['() => A | undefined', '(() => A | undefined) | undefined'],
+        'an arrow after another arm' => ['B | () => C', 'B | (() => C) | undefined'],
     ]);
 });
 

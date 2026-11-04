@@ -345,9 +345,11 @@ class TsTypeString
      */
     public function orUndefined(string $type): string
     {
-        return in_array('undefined', $this->splitTopLevelUnion($type), true)
+        $arms = $this->splitTopLevelUnion($type);
+
+        return in_array('undefined', $arms, true)
             ? $type
-            : TsTypeShape::unionArm($type).' | undefined';
+            : implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)).' | undefined';
     }
 
     /**

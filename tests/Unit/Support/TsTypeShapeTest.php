@@ -307,7 +307,6 @@ describe('unionArm', function () {
         'an arrow function' => ['() => void', '(() => void)'],
         'one returning a union' => ['(a: string) => A | B', '((a: string) => A | B)'],
         'a constructor type' => ['new () => A', '(new () => A)'],
-        'an arrow after another arm' => ['B | () => C', '(B | () => C)'],
         'a parenthesized arrow' => ['(() => void)', '(() => void)'],
         'an object holding an arrow' => ['{ fn: () => void }', '{ fn: () => void }'],
         'a list of arrows' => ['(() => void)[]', '(() => void)[]'],
