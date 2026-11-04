@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\BindsMapCallbacks;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;

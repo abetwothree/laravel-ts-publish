@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfReadingParameterResource;
 use Illuminate\Http\Request;

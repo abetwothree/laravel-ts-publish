@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;

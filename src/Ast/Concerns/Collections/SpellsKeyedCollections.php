@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;

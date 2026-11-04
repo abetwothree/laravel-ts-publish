@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;

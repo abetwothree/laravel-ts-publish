@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;

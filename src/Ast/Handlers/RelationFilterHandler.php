@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;

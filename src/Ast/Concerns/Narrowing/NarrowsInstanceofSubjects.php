@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;

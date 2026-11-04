@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;

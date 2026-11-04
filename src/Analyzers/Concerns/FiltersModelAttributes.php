@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;

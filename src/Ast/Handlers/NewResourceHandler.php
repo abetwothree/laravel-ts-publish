@@ -6,9 +6,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ReadsNullablePayloads;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
