@@ -37,7 +37,7 @@ whose untypable class leaves the whole ternary `unknown`. Type the arm with a re
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill spells an override like a class
 another branch holds, such as `k: Person|User` beside `'k' => $this->user`: no join can say which class each `User`
 token is, so the key publishes the other branch's `User` alone, as it did before the fill, and the documented
-override's arm is left out.
+override's arm is left out with no warning.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
