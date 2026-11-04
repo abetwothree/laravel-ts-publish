@@ -163,9 +163,7 @@ final class PropertyChainHandler implements ExpressionHandler
                 return ValueResult::unknown();
             }
 
-            $type = $hasNullable && ! str_ends_with($relationInfo['type'], ' | null')
-                ? $relationInfo['type'].' | null'
-                : $relationInfo['type'];
+            $type = $hasNullable ? TsTypeString::withNullArm($relationInfo['type']) : $relationInfo['type'];
 
             /** @var ValueExpressionResult $result */
             $result = ['type' => $type, 'optional' => false];
@@ -181,9 +179,7 @@ final class PropertyChainHandler implements ExpressionHandler
             return $result;
         }
 
-        $type = $hasNullable && ! str_ends_with($tsInfo['type'], ' | null')
-            ? $tsInfo['type'].' | null'
-            : $tsInfo['type'];
+        $type = $hasNullable ? TsTypeString::withNullArm($tsInfo['type']) : $tsInfo['type'];
 
         return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
     }
