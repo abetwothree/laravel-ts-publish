@@ -12,8 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Reads of enums a test keys in `custom_ts_mappings`: a case and a cast column take the mapping, while an
- * `EnumResource` and `->value` keep the enum's own names, a `#[TsEnum]` rename included.
+ * Reads of enums a test keys in `custom_ts_mappings`: a case and a cast column take the mapping, an `EnumResource`
+ * keeps the enum's own names, a `#[TsEnum]` rename included, and a case's own `->value` publishes its literal.
  *
  * @mixin MappedLevelHolder
  */

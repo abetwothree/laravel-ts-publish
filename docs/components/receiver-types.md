@@ -422,15 +422,19 @@ while their siblings keep their types:
   `UiUntypedChartKindResource` pins it.
 
 The analysis sets `AnalysisScope::$casesAsLiterals`, so `ValueResolver::resolveConstantValue()` types a plain backed
-enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list literal
-or `collect()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and `[Status::Draft, Status::Published]` `(0 | 1)[]`,
-where the enum's type is vaguer. So `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A pure enum's
+enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list literal,
+`collect()` or `cases()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and `[Status::Draft, Status::Published]`
+`(0 | 1)[]`, where the enum's type is vaguer. A literal binds no enum, so where a `map()` or `array_map()` callback reads
+nothing off one, the array is read again with its cases as their enums (`BindsMapCallbacks::mappedReadingCases()`). So `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A pure enum's
 case, which `json_encode()` cannot write, and a `JsonSerializable` enum's, whose `jsonSerialize()` it sends, type
 nothing; a case of an enum `LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's
 getter returns types the same way where the body reads the accessor whole: the getter is analyzed under the flag too,
 with memo entries of its own, so an in-place read never replays the literal. An `EnumResource` payload reads its cases
 as their enum (`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum,
-such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry.
+such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry. The
+value read sets it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. A caller that needs the case's
+enum, such as an `EnumResource` payload, sets `AnalysisScope::$casesAsEnums`, and the helper's body then reads its cases
+as their enums, under a `method-return:` key of its own.
 
 Attribute filters know an answer that names no token, which a reader that carries no import publishes.
 `AnalysisScope::$carriesImports` is false only for an accessor's getter read that way
@@ -499,7 +503,11 @@ what it declines falls to the reflected property. `->value` publishes the enum's
 [reader that carries imports][reader-no-import], an enum [`PublishedEnums`] says `ts:publish` writes, and no case whose
 `#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends. A case past
 ±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number` and `string`. `PropertyChainHandler`'s
-wrapped-enum arm asks the same class.
+wrapped-enum arm asks the same class (`EnumValueTypes::member()`).
+
+A read off a case itself, `Status::Draft->value`, publishes the literal that case sends (`EnumValueTypes::caseMember()`),
+`0` here, and so does each case arm of a ternary or `match` receiver, with `| null` for `?->`. A `match` is a receiver
+too: each arm but a `throw` resolves as a ternary's do.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains

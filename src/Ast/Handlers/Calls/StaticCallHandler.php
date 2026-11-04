@@ -23,7 +23,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -41,8 +43,8 @@ use ReflectionMethod;
 use ReflectionNamedType;
 
 /**
- * Resource construction via static calls: `EnumResource::make()`/`::collection()`, `SomeResource::make()`/
- * `::collection()`, a chain onto a resource-resolving receiver, and the `$this::`-style shapes. Its guard order is
+ * Static calls: `EnumResource::make()`/`::collection()`, `SomeResource::make()`/`::collection()`, a chain onto a
+ * resource-resolving receiver, the `$this::`-style shapes, an enum's `cases()` and any other return. Its guard order is
  * load-bearing; it declines a `$this::` method nothing declares and a class expression it cannot name.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -255,6 +257,12 @@ final class StaticCallHandler implements ExpressionHandler
             ];
         }
 
+        $cases = $this->enumCasesResult($className, $call, $scope);
+
+        if ($cases !== null) {
+            return $cases;
+        }
+
         // Any other existing class — its declared return type, else the shape its literal body spells.
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
@@ -274,6 +282,27 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         return $result;
+    }
+
+    /**
+     * `E::cases()` as the list its cases encode as: each case as its enum, or in the body fallback as the literal it
+     * sends; null for any other call, or for cases json_encode() cannot write as literals, a pure enum's.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function enumCasesResult(string $className, StaticCall $call, AnalysisScope $scope): ?array
+    {
+        if (! enum_exists($className)
+            || ! $call->name instanceof Identifier
+            || $call->name->toLowerString() !== 'cases'
+            || $call->args !== []
+        ) {
+            return null;
+        }
+
+        DependencyRecorder::recordClass($className);
+
+        return resolve(ValueResolver::class)->resolveConstantValue($className::cases(), $scope->casesAsLiterals);
     }
 
     /**

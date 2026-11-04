@@ -32,6 +32,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
@@ -611,6 +612,22 @@ it('resolves EnumResource::make($this->status) to the enum channel', function ()
         'enumFqcn' => Status::class,
     ]);
 });
+
+// The body fallback reads each case as the literal json_encode() writes, which a pure enum's case has none of.
+it('types an enum\'s cases() as the list its cases encode as', function (string $php, bool $literals, array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->casesAsLiterals = $literals;
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)->resolve($expr))
+        ->toBe($expected);
+})->with([
+    'a string-backed enum' => ['\\'.Grade::class.'::cases()', false, ['type' => 'GradeType[]', 'optional' => false, 'embeddedEnumFqcns' => [Grade::class]]],
+    'an int-backed enum' => ['\\'.Status::class.'::cases()', false, ['type' => 'StatusType[]', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]],
+    'a pure enum' => ['\\'.Visibility::class.'::cases()', false, ['type' => 'VisibilityType[]', 'optional' => false, 'embeddedEnumFqcns' => [Visibility::class]]],
+    'as literals' => ['\\'.Grade::class.'::cases()', true, ['type' => "('pass' | 'fail')[]", 'optional' => false]],
+    'a pure enum, as literals' => ['\\'.Visibility::class.'::cases()', true, ['type' => 'unknown[]', 'optional' => false]],
+]);
 
 // A local assigned once is followed to what it holds; any other payload is resolved, and kept when it holds one enum.
 it('wraps the one enum a resolved payload holds', function (string $php, array $expected) {

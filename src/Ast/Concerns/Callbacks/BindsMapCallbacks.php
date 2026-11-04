@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 
@@ -79,6 +80,30 @@ trait BindsMapCallbacks
 
         // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
         return [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false];
+    }
+
+    /**
+     * What $map makes of $input or, where that leaves a callback unread in the body fallback, of the input $read reads
+     * again with each enum case as its enum: a parameter bound to the literal a case reads as there has no member.
+     *
+     * @template TInput
+     *
+     * @param  TInput  $input
+     * @param  Closure(): (TInput|null)  $read
+     * @param  Closure(TInput): (ValueExpressionResult|null)  $map
+     * @return ValueExpressionResult|null
+     */
+    protected function mappedReadingCases(mixed $input, Closure $read, Closure $map, AnalysisScope $scope): ?array
+    {
+        $mapped = $map($input);
+
+        if ($mapped !== null || ! $scope->casesAsLiterals) {
+            return $mapped;
+        }
+
+        $reread = $scope->readingCasesAsEnums($read);
+
+        return $reread === null ? null : $map($reread);
     }
 
     /**

@@ -219,6 +219,12 @@ final class AnalysisScope
     public bool $casesAsLiterals = false;
 
     /**
+     * True while a read needs each enum case's enum, such as an `EnumResource` payload, so the body fallback of a
+     * method it calls reads its cases as their enums too, not as literals: readingCasesAsEnums().
+     */
+    public bool $casesAsEnums = false;
+
+    /**
      * Whether the response the runtime class's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
      * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
@@ -931,8 +937,8 @@ final class AnalysisScope
     }
 
     /**
-     * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off, then
-     * restore it.
+     * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off and
+     * casesAsEnums on, then restore both.
      *
      * @template TRead
      *
@@ -942,12 +948,15 @@ final class AnalysisScope
     public function readingCasesAsEnums(Closure $read): mixed
     {
         $literals = $this->casesAsLiterals;
+        $enums = $this->casesAsEnums;
         $this->casesAsLiterals = false;
+        $this->casesAsEnums = true;
 
         try {
             return $read();
         } finally {
             $this->casesAsLiterals = $literals;
+            $this->casesAsEnums = $enums;
         }
     }
 

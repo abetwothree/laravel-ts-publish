@@ -33,6 +33,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -582,7 +583,7 @@ final class ValueResolver
 
     /**
      * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
-     * where the types are published, or an enum case's `->name` or `->value`.
+     * where the types are published, an enum case's `->name` or `->value`, or the cases an enum's `cases()` lists.
      *
      * @throws ConstExprEvaluationException for any other node
      */
@@ -592,6 +593,7 @@ final class ValueResolver
             $expr instanceof ClassConstFetch => $this->evaluateClassConstFetch($expr, $scope),
             $expr instanceof ConstFetch => $this->evaluateGlobalConstant($expr),
             $expr instanceof PropertyFetch => $this->evaluateEnumProperty($expr, $evaluator),
+            $expr instanceof StaticCall => $this->evaluateEnumCases($expr, $scope),
             default => throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated"),
         };
     }
@@ -642,6 +644,29 @@ final class ValueResolver
         }
 
         throw new ConstExprEvaluationException("Constant {$expr->name->toString()} is not defined");
+    }
+
+    /**
+     * The cases `E::cases()`, `self::cases()` or `static::cases()` lists, in declaration order.
+     *
+     * @return list<UnitEnum>
+     *
+     * @throws ConstExprEvaluationException for any other static call
+     */
+    private function evaluateEnumCases(StaticCall $call, AnalysisScope $scope): array
+    {
+        $className = $call->class instanceof Name ? $this->constantClassName($call->class, $scope) : null;
+
+        if ($className === null
+            || ! enum_exists($className)
+            || ! $call->name instanceof Identifier
+            || $call->name->toLowerString() !== 'cases'
+            || $call->args !== []
+        ) {
+            throw new ConstExprEvaluationException('Only an enum\'s cases() can be evaluated');
+        }
+
+        return $className::cases();
     }
 
     /**

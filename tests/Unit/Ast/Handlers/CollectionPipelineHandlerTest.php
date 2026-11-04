@@ -8,10 +8,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
@@ -191,3 +193,12 @@ test('a collect() pipeline keeps a root holding a when() value, and a kept map i
         .'"when_loaded_map":[1],"gapped_kept":{"1":"A","3":"B"},"gapped_all":["A","B"]',
     );
 });
+
+// The body fallback reads a bare case as its literal, yet a mapped case is still the enum its callback reads.
+test('a helper\'s map() or array_map() over enum cases binds its untyped parameter to the enum', function (string $method, string $type) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, $method)['type'] ?? null)->toBe($type);
+})->with([
+    'array_map()' => ['mappedGrades', '{ m: GradeType[] }'],
+    'collect()->map()->all()' => ['collectedStatuses', '{ m: StatusType[] }'],
+    'the cases alone, as the literals they send' => ['gradeCases', "{ m: ('pass' | 'fail')[] }"],
+]);

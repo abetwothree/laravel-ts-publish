@@ -13,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Workbench\App\Enums\Grade;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ArrayMapResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
@@ -212,6 +214,26 @@ it('imports the model a zip or a callback over a model list names, keeping its n
         ->and($method->channelFqcns('firsts'))->toBe([Comment::class])
         ->and($method->channelFqcns('maybe'))->toBe([Comment::class]);
 });
+
+// Each element is a case, so an untyped parameter holds the enum and its `->value` reads as the enum's value type does.
+it('binds an untyped map() or array_map() parameter over enum cases to the enum', function (string $php, string $type, string $enum) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and([...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...$result['embeddedEnumFqcns'] ?? []])
+        ->toContain($enum);
+})->with([
+    'array_map(), a typed parameter' => ['array_map(fn (\\'.Grade::class.' $g) => $g->value, \\'.Grade::class.'::cases())', 'GradeType[]', Grade::class],
+    'array_map(), an untyped parameter' => ['array_map(fn ($g) => $g->value, \\'.Grade::class.'::cases())', 'GradeType[]', Grade::class],
+    'array_map(), an int-backed enum' => ['array_map(fn (\\'.Status::class.' $s) => $s->value, \\'.Status::class.'::cases())', 'StatusType[]', Status::class],
+    'array_map(), the names' => ['array_map(fn (\\'.Grade::class.' $g) => $g->name, \\'.Grade::class.'::cases())', 'GradeKind[]', Grade::class],
+    'collect()->map()->all(), untyped' => ['collect(\\'.Grade::class.'::cases())->map(fn ($g) => $g->value)->all()', 'GradeType[]', Grade::class],
+    'collect()->map()->all(), an int-backed enum' => ['collect(\\'.Status::class.'::cases())->map(fn ($s) => $s->value)->all()', 'StatusType[]', Status::class],
+    'collect()->map(), kept' => ['collect(\\'.Status::class.'::cases())->map(fn ($s) => $s->value)', 'StatusType[]', Status::class],
+    'collect() of case literals' => ['collect([\\'.Grade::class.'::Pass, \\'.Grade::class.'::Fail])->map(fn ($t) => $t->value)->all()', 'GradeType[]', Grade::class],
+    'collect()->all() of the cases' => ['collect(\\'.Grade::class.'::cases())->all()', 'GradeType[]', Grade::class],
+]);
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.
 it('leaves array_map() over a Collection, or a callable it cannot read, to unknown', function (string $php) {

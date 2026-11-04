@@ -327,6 +327,41 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
+        $read = fn (): ?array => $this->mappedInputs($arrays, $scope, $engine);
+        $inputs = $read();
+
+        if ($inputs === null) {
+            return null;
+        }
+
+        $zips = $callback instanceof ConstFetch && $callback->name->toLowerString() === 'null';
+        $result = $this->mappedReadingCases(
+            $inputs,
+            $read,
+            fn (array $inputs): ?array => count($inputs) === 1
+                ? $this->mappedOneArray($callback, $inputs[0], $zips, $scope, $engine)
+                : $this->mappedArrays($callback, $inputs, $zips, $scope, $engine),
+            $scope,
+        );
+
+        if ($result === null) {
+            return null;
+        }
+
+        // The result is a plain array, so a resource re-indexes it as it does any other.
+        unset($result['keepsKeys']);
+
+        return $result;
+    }
+
+    /**
+     * The value each array passed to array_map() holds; null where one is an object, which PHP throws on.
+     *
+     * @param  non-empty-list<Expr>  $arrays
+     * @return non-empty-list<ValueExpressionResult>|null
+     */
+    private function mappedInputs(array $arrays, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
         $inputs = [];
 
         foreach ($arrays as $array) {
@@ -337,19 +372,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $inputs[] = $engine->resolve($array);
         }
 
-        $zips = $callback instanceof ConstFetch && $callback->name->toLowerString() === 'null';
-        $result = count($inputs) === 1
-            ? $this->mappedOneArray($callback, $inputs[0], $zips, $scope, $engine)
-            : $this->mappedArrays($callback, $inputs, $zips, $scope, $engine);
-
-        if ($result === null) {
-            return null;
-        }
-
-        // The result is a plain array, so a resource re-indexes it as it does any other.
-        unset($result['keepsKeys']);
-
-        return $result;
+        return $inputs;
     }
 
     /**

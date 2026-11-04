@@ -284,7 +284,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   output.
 - **`carriesImports` is false only for a getter `AstEngine::analyzeModelClosure()` reads without imports**, for a reader
   that keeps no FQCN channel. **`casesAsLiterals` is true only for the body fallback's analysis and a getter it reads
-  whole**, which type a plain enum's case as the literal it sends. See [Receiver types § The body fallback][body-fallback].
+  whole**, which type a plain enum's case as the literal it sends, unless the caller set `casesAsEnums`, as an
+  `EnumResource` payload does. See [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
 
@@ -716,7 +717,7 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. The two accessor keys gain an `@importless` suffix for a read that
 carries no imports, and all three gain `@casesAsLiterals` for the body fallback's reading; `method-return:`'s answer
-depends on neither. It also holds the per-class reads each resource prop repeats:
+gains `@casesAsEnums` for a caller that needs each case's enum. It also holds the per-class reads each resource prop repeats:
 `JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
 `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in `GuessesModelResources`.
 
@@ -909,7 +910,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
-| `MethodReturnTypeResolver` | `analyzeMethod()` with `casesAsLiterals: true`, then `analyzeMethodValue()` | It is the body fallback: the literal shape, then the value read, both carrying imports. See [Receiver types][body-fallback]. |
+| `MethodReturnTypeResolver` | `analyzeMethod()`, then `analyzeMethodValue()`, both with `casesAsLiterals` unless the caller set `casesAsEnums` | It is the body fallback: the literal shape, then the value read, both carrying imports. See [Receiver types][body-fallback]. |
 
 Every consumer that reaches `ResourceAstAnalyzer::analyze()` without a context locates through
 `MethodLocator::locateDeclared()`, as both Inertia analyzers do for an action.

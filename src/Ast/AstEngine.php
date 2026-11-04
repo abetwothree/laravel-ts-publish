@@ -118,6 +118,7 @@ final class AstEngine
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
      * @param  Reading  $reading  how the caller's values reach the client; a call read for its value runs no filter
+     * @param  bool  $casesAsLiterals  true for the body fallback, whose plain enum cases type as the literals they send
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -129,6 +130,7 @@ final class AstEngine
         ?string $backing = null,
         ?RuntimeClass $runtime = null,
         Reading $reading = Reading::Encoded,
+        bool $casesAsLiterals = false,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -137,6 +139,7 @@ final class AstEngine
         }
 
         [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime, $reading);
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }

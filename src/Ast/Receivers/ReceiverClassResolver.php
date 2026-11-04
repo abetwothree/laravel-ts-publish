@@ -47,6 +47,7 @@ use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -54,8 +55,10 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\Int_;
@@ -167,6 +170,7 @@ final class ReceiverClassResolver
                 $expr->if === null ? null : $this->instanceofProof($expr->cond),
             ),
             $expr instanceof Coalesce => $this->fromArms([$expr->left, $expr->right], $scope, true),
+            $expr instanceof Match_ => $this->fromArms($this->valuedArms($expr), $scope, false),
             default => null,
         };
     }
@@ -1312,6 +1316,19 @@ final class ReceiverClassResolver
         }
 
         return $this->merge($types, $shortCircuits);
+    }
+
+    /**
+     * The bodies of a `match`'s arms that yield a value; a `throw` arm yields none.
+     *
+     * @return list<Expr>
+     */
+    private function valuedArms(Match_ $match): array
+    {
+        return array_values(array_filter(
+            array_map(fn (MatchArm $arm): Expr => $arm->body, $match->arms),
+            fn (Expr $body): bool => ! $body instanceof Throw_,
+        ));
     }
 
     /**

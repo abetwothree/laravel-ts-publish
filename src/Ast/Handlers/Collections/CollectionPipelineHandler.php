@@ -93,13 +93,16 @@ final class CollectionPipelineHandler implements ExpressionHandler
         }
 
         $callback = CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value;
-        $mapped = $callback === null ? null : $this->mappedArrayResult(
-            $callback,
+        $arrayed = $steps[count($steps) - 1]['name'] === 'all';
+        $elementModel = $this->elementModel($items, $scope);
+        $mapped = $callback === null ? null : $this->mappedReadingCases(
             $rootResult,
-            $steps[count($steps) - 1]['name'] === 'all',
+            // A closure: an arrow function would make PHPStan take the first read's non-null result for the re-read.
+            function () use ($items, $scope, $engine): ?array {
+                return $this->collectedItems($items, $scope, $engine);
+            },
+            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel),
             $scope,
-            $engine,
-            $this->elementModel($items, $scope),
         );
 
         if ($mapped === null || ! $listed) {

@@ -17,7 +17,8 @@ use UnitEnum;
 
 /**
  * What an enum's `->value` and `->name` publish: the published enum's alias with its import where that alias spells
- * what PHP sends, otherwise the literal union of what PHP sends; the rules are in docs/components/receiver-types.md.
+ * what PHP sends, otherwise the literal union of what PHP sends, and one case's own as its literal; the rules are in
+ * docs/components/receiver-types.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -142,9 +143,24 @@ final class EnumValueTypes
             return null;
         }
 
-        return self::typed(is_int($case->value) && abs($case->value) > self::MAX_SAFE_INTEGER
-            ? 'number'
-            : self::literals([$case->value]));
+        return self::typed(self::scalarLiteral($case->value));
+    }
+
+    /**
+     * What reading `->value` or `->name` on one case sends, spelled with no import: its value as a literal, or `number`
+     * past the safe integer range, or its name; null for a pure case's value or any other member.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public static function caseMember(UnitEnum $case, string $member): ?array
+    {
+        DependencyRecorder::recordClass($case::class);
+
+        return match (true) {
+            $member === 'name' => self::typed(self::literals([$case->name])),
+            $member === 'value' && $case instanceof BackedEnum => self::typed(self::scalarLiteral($case->value)),
+            default => null,
+        };
     }
 
     /**
@@ -227,6 +243,14 @@ final class EnumValueTypes
     private static function alias(string $enum, bool $kind): array
     {
         return [...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)), 'directEnumFqcn' => $enum];
+    }
+
+    /**
+     * One case's scalar as a TypeScript literal, or `number` past the safe integer range.
+     */
+    private static function scalarLiteral(int|string $value): string
+    {
+        return is_int($value) && abs($value) > self::MAX_SAFE_INTEGER ? 'number' : self::literals([$value]);
     }
 
     /**

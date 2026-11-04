@@ -956,8 +956,8 @@ text never spells. A union arm spelling no `…Type` rides the embedded queue (`
 ternary of a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
 `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
 names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
-for a value of a declared type (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and `->name` keep the
-enum's names through `EnumValueTypes`. `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the
+for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value` and `->name` keep the enum's
+names through `EnumValueTypes`, except a case's own, which publish its literal. `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the
 type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column
 still miss the wrap
 ([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).

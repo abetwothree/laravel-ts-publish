@@ -20,7 +20,6 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 
 /**
  * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, a local, or the one
@@ -88,25 +87,12 @@ trait ResolvesEnumPropertyArgTypes
                 return $this->resolveEnumFromAttribute($argExpr->name->toString(), $scope);
             }
 
-            // Enum::staticMethod(...) or Enum::Case — resolved from the class name alone. parseAndResolveAst()
-            // runs a NameResolver, so ->class is already the FQCN.
-            $enumClassName = null;
+            // `Enum::Case`, or a static call such as `Enum::from(...)` that returns the enum.
+            $enum = $argExpr instanceof StaticCall || $argExpr instanceof ClassConstFetch
+                ? $this->heldEnum($argExpr, $scope)
+                : null;
 
-            if ($argExpr instanceof StaticCall && $argExpr->class instanceof Name) {
-                $enumClassName = $argExpr->class->toString();
-            } elseif ($argExpr instanceof ClassConstFetch && $argExpr->class instanceof Name) {
-                $enumClassName = $argExpr->class->toString();
-            }
-
-            if ($enumClassName !== null && enum_exists($enumClassName)) {
-                return [
-                    ...$result,
-                    'type' => ValueResult::enumTypeName($enumClassName),
-                    'enumFqcn' => $enumClassName,
-                ];
-            }
-
-            return null;
+            return $enum === null ? null : [...$result, 'type' => ValueResult::enumTypeName($enum), 'enumFqcn' => $enum];
         }
 
         /** @var PropertyFetch $argExpr */
@@ -194,8 +180,10 @@ trait ResolvesEnumPropertyArgTypes
             ...($resolved['embeddedEnumFqcns'] ?? []),
         ]));
 
+        $class = $fqcns === [] ? $this->heldEnum($payload, $scope) : null;
         $enum = match (count($fqcns)) {
-            0 => $this->retypedPayloadEnum($payload, $scope),
+            // A value of a type an override or a `custom_ts_mappings` entry answers carries no enum channel.
+            0 => $class !== null && LaravelTsPublish::retypedEnumType($class) !== null ? $class : null,
             1 => $fqcns[0],
             default => null,
         };
@@ -294,15 +282,14 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * The one enum class a payload holds that `toTsType()` names no enum for, an override or a `custom_ts_mappings`
-     * entry answering its type, as a value of a type it declares carries no enum channel.
+     * The one enum class an expression holds, as the receiver resolver names it; null for any other class, or several.
      *
      * @return class-string|null
      */
-    private function retypedPayloadEnum(Expr $payload, AnalysisScope $scope): ?string
+    private function heldEnum(Expr $expr, AnalysisScope $scope): ?string
     {
-        $classes = resolve(ReceiverClassResolver::class)->resolve($payload, $scope)->classes ?? [];
+        $classes = resolve(ReceiverClassResolver::class)->resolve($expr, $scope)->classes ?? [];
 
-        return count($classes) === 1 && LaravelTsPublish::retypedEnumType($classes[0]) !== null ? $classes[0] : null;
+        return count($classes) === 1 && enum_exists($classes[0]) ? $classes[0] : null;
     }
 }

@@ -14,7 +14,7 @@ use Workbench\App\Enums\UiTone;
 /**
  * Reads of enums with an override that publish the enum's own names: an `EnumResource` of a case, a cast column, an
  * accessor, a renamed enum, a coalesce, a constant, a helper, a closure default, a list, a `match` or a collection,
- * and a case's `->value` and `->name`, beside the override a case or a cast column takes.
+ * and a column's `->name`, beside the override a case or a cast column takes and a case's own literal members.
  *
  * @mixin UiToneHolder
  */

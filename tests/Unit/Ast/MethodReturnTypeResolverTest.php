@@ -8,11 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\PostHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyStampingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
@@ -179,6 +181,16 @@ test('a body fallback reads its enum cases as literals, apart from an analysis t
     expect(array_column($asEnum->properties, 'type', 'name'))->toBe(['v' => 'StatusType'])
         ->and(array_column($asLiteral->properties, 'type', 'name'))->toBe(['v' => '0'])
         ->and(collect($filtered->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>");
+});
+
+// A value read takes the body fallback's literal as the shape does, while a wrap still needs the case's enum.
+test('a helper\'s plain enum case reads as its literal, as its shape\'s does, and wraps as its enum', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toBe([
+        'draft' => '0',
+        'draft_resource' => 'AsEnum<typeof Status>',
+        'draft_list' => 'AsEnum<typeof Status>[]',
+    ])->and(resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, 'draft'))
+        ->toBe(['type' => '0', 'optional' => false]);
 });
 
 test('a body the model inherits filters the model it runs on', function () {
