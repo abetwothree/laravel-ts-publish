@@ -368,7 +368,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $aggregate = $this->typedAggregate($function, $args, $scope);
         $passed = $aggregate === null
             ? ValueResult::unknown()
-            : [...$aggregate, 'type' => ValueResult::stripNullArm($aggregate['type'])];
+            : [...$aggregate, 'type' => TsTypeString::withoutNullArm($aggregate['type'])];
         $fromValue = $this->resolveValueArgument($args, $passed, $scope, $engine);
         $typed = $fromValue !== null && $fromValue['type'] !== 'unknown' ? $fromValue : null;
         $value = $typed ?? $aggregate ?? ['type' => 'number', 'optional' => false];
@@ -376,9 +376,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // Any aggregate but a count is SQL NULL over no rows, which Laravel returns before it calls the closure. Only
         // the model's own declaration can turn that NULL into a value.
         if ($function !== null && $function !== 'count'
-            && ($aggregate === null || ValueResult::hasNullArm($aggregate['type']))
+            && ($aggregate === null || TsTypeString::hasNullArm($aggregate['type']))
         ) {
-            $value['type'] = ValueResult::withNullArm($value['type']);
+            $value['type'] = TsTypeString::withNullArm($value['type']);
         }
 
         return $this->applyConditionalDefault($value, $args, $scope, $engine);
@@ -432,7 +432,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $value = $engine->resolve(FirstClassCallableHandler::invokedCall($held));
 
         if ($stripNull) {
-            $value['type'] = ValueResult::stripNullArm($value['type']);
+            $value['type'] = TsTypeString::withoutNullArm($value['type']);
         } else {
             // whenNull() returns its value only when that value is null, so the arm names nothing the value does. The
             // value is still resolved, so that an arm dropped inside it is counted.
@@ -607,7 +607,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $value;
         }
 
-        return [...$value, 'type' => ValueResult::withNullArm($value['type'])];
+        return [...$value, 'type' => TsTypeString::withNullArm($value['type'])];
     }
 
     /**
@@ -683,7 +683,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             : 'unknown';
 
         if ($castType !== 'unknown') {
-            return ['type' => ValueResult::withNullArm($castType), 'optional' => false];
+            return ['type' => TsTypeString::withNullArm($castType), 'optional' => false];
         }
 
         // The attribute names the relation snake-cased, so the relation is the method whose snake case matches.
@@ -701,13 +701,13 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($columnType !== null && in_array($function, ['min', 'max'], true)
             && (new TypeScriptMap)->isCustomMapped($columnType)
         ) {
-            return ['type' => ValueResult::withNullArm(LaravelTsPublish::toTsType($columnType)['type']), 'optional' => false];
+            return ['type' => TsTypeString::withNullArm(LaravelTsPublish::toTsType($columnType)['type']), 'optional' => false];
         }
 
         $driver = $resolver->connectionDriver($scope->modelClass);
         $type = $columnType === null || $driver === null ? null : AggregateValueType::of($function, $columnType, $driver);
 
-        return $type === null ? null : ['type' => ValueResult::withNullArm($type), 'optional' => false];
+        return $type === null ? null : ['type' => TsTypeString::withNullArm($type), 'optional' => false];
     }
 
     /**
@@ -884,7 +884,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // loaded value that is not null.
         if ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== []) {
             $this->bindVariadicList($closure, [
-                'type' => ValueResult::stripNullArm($relationInfo['type']),
+                'type' => TsTypeString::withoutNullArm($relationInfo['type']),
                 'optional' => false,
                 ...($relationInfo['modelFqcn'] !== null
                     ? ['modelFqcn' => $relationInfo['modelFqcn']]
@@ -1016,7 +1016,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             if ($resolvedValue !== null) {
                 $element = $keepNull
                     ? $resolvedValue
-                    : [...$resolvedValue, 'type' => ValueResult::stripNullArm($resolvedValue['type'])];
+                    : [...$resolvedValue, 'type' => TsTypeString::withoutNullArm($resolvedValue['type'])];
 
                 $this->bindVariadicList($callback, $element, $scope, $engine);
             }
@@ -1050,7 +1050,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // A model binds as a helper's argument does, so a new one keeps its unsaved mark.
         if ($model !== null) {
             $binder = resolve(ParameterBinder::class);
-            $filled = [...$resolvedValue, 'type' => ValueResult::stripNullArm($resolvedValue['type'])];
+            $filled = [...$resolvedValue, 'type' => TsTypeString::withoutNullArm($resolvedValue['type'])];
             $binding = $binder->passedBinding($filled, $model);
 
             if ($binding !== null) {
@@ -1090,7 +1090,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         return $model !== null
             && is_a($model, Model::class, true)
-            && ValueResult::stripNullArm($resolvedValue['type']) === class_basename($model)
+            && TsTypeString::withoutNullArm($resolvedValue['type']) === class_basename($model)
                 ? ReceiverType::of($model)
                 : null;
     }
