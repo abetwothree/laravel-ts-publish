@@ -463,6 +463,10 @@ $this->app->singleton(TsNaming::class, MyTsNaming::class);
 A subclass that overrode `importSortGroup()` or `$resourceTypeNames` extends `TsNaming` instead, where both are
 protected. [Support helpers](./components/support-helpers.md) sets which class owns a helper.
 
+Overriding `flattenTraits()` or `propertyDeclaringFileClass()` no longer changes what the package emits either, since
+it finds the file declaring a member through [`DeclaringFile`](../src/Ast/Docblocks/DeclaringFile.php). An override
+of `methodDeclaringFileClass()` still applies, for methods only; the file declaring a property has no replacement point.
+
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
 `TsTypeString::typeNameOccursIn()` decides which imports a type still needs, and it counts a name wherever its token
