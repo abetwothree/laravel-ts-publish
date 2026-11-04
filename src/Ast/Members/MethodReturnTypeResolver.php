@@ -250,6 +250,9 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $inline = new InlineObjectResult;
+        // First: forgetUnpublishableMembers() would make a fill whose override and model share a name `unknown` whole.
+        $inline->readNullSlotsClassLess($analysis);
         $analysis->forgetUnpublishableMembers();
 
         // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.
@@ -263,7 +266,7 @@ final class MethodReturnTypeResolver
             }
         }
 
-        $object = new InlineObjectResult()->of($analysis);
+        $object = $inline->of($analysis);
         $object['type'] = TsTypeString::hoistNull([$object['type'], ...$otherArms]);
 
         // A member left `unknown` brings no import.

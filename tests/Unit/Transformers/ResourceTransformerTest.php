@@ -3561,6 +3561,8 @@ describe("a key toArray()'s @return shape names a class for, where its body read
 
         expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
             'x' => '{ k: unknown; m: number }',
+            'x_pair' => '{ k: { a: User; b: unknown }; m: number }',
+            'x_literal' => "{ k: { kind: 'User'; r: unknown }; m: number }",
             'direct' => '{ k: unknown }',
             'nested' => '{ y: { k: unknown } }',
             'beside' => '{ k: unknown; m: number }',

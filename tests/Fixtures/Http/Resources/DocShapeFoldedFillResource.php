@@ -27,6 +27,8 @@ final class DocShapeFoldedFillResource extends JsonResource
 
         return [
             'x' => $this->bare(),
+            'x_pair' => $this->barePair(),
+            'x_literal' => $this->bareLiteral(),
             'direct' => [...$this->documented()],
             'nested' => ['y' => [...$this->documented()]],
             'beside' => [...$this->documented(), 'm' => 1],
@@ -44,6 +46,32 @@ final class DocShapeFoldedFillResource extends JsonResource
     private function bare(): array
     {
         return [...$this->documented(), 'm' => 1];
+    }
+
+    /**
+     * A helper with no `@return`, read as a value, spreading the object of the override and the model.
+     */
+    private function barePair(): array
+    {
+        return [...$this->objectPair(), 'm' => 1];
+    }
+
+    /**
+     * A helper with no `@return`, read as a value, spreading the literal beside the model.
+     */
+    private function bareLiteral(): array
+    {
+        return [...$this->literal(), 'm' => 1];
+    }
+
+    /**
+     * The literal `'User'` beside the model.
+     *
+     * @return array{k: array{kind: 'User', r: User}}
+     */
+    private function literal(): array
+    {
+        return ['k' => json_decode((string) $this->content)];
     }
 
     /**

@@ -226,6 +226,21 @@ final class InlineObjectResult
     }
 
     /**
+     * Read class-less each member whose declared slots hold an override's null: the object's per-name queues cannot
+     * hold that null, so the override's token would take the class its name spells.
+     */
+    public function readNullSlotsClassLess(MethodAnalysis $analysis): void
+    {
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name]) && in_array(null, $slots, true)) {
+                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
+            }
+        }
+    }
+
+    /**
      * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
      *
      * @param  class-string|null  $single
@@ -235,21 +250,6 @@ final class InlineObjectResult
     private static function channelFqcns(?string $single, array $embedded): array
     {
         return [...($single !== null ? [$single] : []), ...$embedded];
-    }
-
-    /**
-     * Read class-less each member whose declared slots hold an override's null: the object's per-name queues cannot
-     * hold that null, so the override's token would take the class its name spells.
-     */
-    private function readNullSlotsClassLess(MethodAnalysis $analysis): void
-    {
-        $types = array_column($analysis->properties, 'type', 'name');
-
-        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
-            if (isset($types[$name]) && in_array(null, $slots, true)) {
-                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
-            }
-        }
     }
 
     /**
