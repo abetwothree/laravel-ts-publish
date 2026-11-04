@@ -41,6 +41,25 @@ final class EnumValueTypes
     private static array $cases = [];
 
     /**
+     * What reading `->value` or `->name` on the enum publishes, as value() and name() spell it; null for any other
+     * member, or a class that is no enum.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public static function member(string $enum, string $member, bool $carriesImports): ?array
+    {
+        if (! is_a($enum, UnitEnum::class, true)) {
+            return null;
+        }
+
+        return match ($member) {
+            'value' => self::value($enum, $carriesImports),
+            'name' => self::name($enum, $carriesImports),
+            default => null,
+        };
+    }
+
+    /**
      * What reading `->value` on the enum publishes, or null when it holds none: a pure enum, one with no case, or a
      * class that is no enum.
      *

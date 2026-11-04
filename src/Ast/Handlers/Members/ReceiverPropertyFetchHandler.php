@@ -24,7 +24,6 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionClass;
-use UnitEnum;
 
 /**
  * `<receiver>->prop` and `<receiver>?->prop` typed from the property on the receiver's PHP class;
@@ -71,7 +70,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
                 ? $this->modelMember($class, $name, $scope, $attributeless)
-                : $this->enumMember($class, $name, $scope->carriesImports)
+                : EnumValueTypes::member($class, $name, $scope->carriesImports)
                     ?? $this->reflectedProperty($class, $name, $receiver->declaredOnly);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -151,25 +150,6 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             && ! array_key_exists($name, $instance->getAttributes())
             && ! in_array($cast, ['accessor', 'attribute'], true)
             && ($castClass === null || ! class_exists($castClass) || enum_exists($castClass));
-    }
-
-    /**
-     * An enum's `value` or `name`, or the enum interfaces', as EnumValueTypes publishes them; null for any other read.
-     *
-     * @param  class-string  $class
-     * @return ValueExpressionResult|null
-     */
-    private function enumMember(string $class, string $name, bool $carriesImports): ?array
-    {
-        if (! is_a($class, UnitEnum::class, true)) {
-            return null;
-        }
-
-        return match ($name) {
-            'value' => EnumValueTypes::value($class, $carriesImports),
-            'name' => EnumValueTypes::name($class, $carriesImports),
-            default => null,
-        };
     }
 
     /**

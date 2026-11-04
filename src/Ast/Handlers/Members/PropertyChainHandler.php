@@ -221,14 +221,10 @@ final class PropertyChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        $result = match ($innerProp) {
-            'name' => EnumValueTypes::name($wrappedClass, $scope->carriesImports),
-            // A pure enum has no `value`, so this read fails at runtime (docs/known-gaps.md); the arm keeps a backed
-            // enum's value type rather than regress the key to unknown.
-            'value' => EnumValueTypes::value($wrappedClass, $scope->carriesImports)
-                ?? EnumValueTypes::value(BackedEnum::class, $scope->carriesImports),
-            default => null,
-        };
+        // A pure enum has no `value`, so this read fails at runtime (docs/known-gaps.md); the fallback keeps a backed
+        // enum's value type rather than regress the key to unknown.
+        $result = EnumValueTypes::member($wrappedClass, $innerProp, $scope->carriesImports)
+            ?? ($innerProp === 'value' ? EnumValueTypes::value(BackedEnum::class, $scope->carriesImports) : null);
 
         return $result ?? ValueResult::unknown();
     }
