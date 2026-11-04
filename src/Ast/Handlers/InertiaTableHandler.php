@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -81,7 +82,7 @@ final class InertiaTableHandler implements ExpressionHandler
 
         return [
             ...ValueResult::unknown(),
-            'type' => $this->mayReturnNull($expr, $table) ? ValueResult::withNullArm($type) : $type,
+            'type' => $this->mayReturnNull($expr, $table) ? TsTypeString::withNullArm($type) : $type,
             'modelFqcn' => $model,
             'customImports' => [$this->tablePackage() => [self::TABLE_TYPE]],
         ];
