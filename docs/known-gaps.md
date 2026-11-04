@@ -550,9 +550,9 @@ another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Per
 the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
 which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
 `@return array{…}` of a resource's `toArray()`, a spread helper or an Inertia page's props helper filling a vague key,
-joined with any return or render branch that spells neither `User`. Beside a branch that does spell it, such as
-`'k' => $this->user`, no join can bind each token: `toArray()`'s and an Inertia page's branches publish the key
-`unknown`, and a spread helper's or merge call's drop the fill
+joined with any return or render branch whose type spells `User` nowhere but inside a literal, such as `'User'`.
+Beside a branch that spells it elsewhere, such as `'k' => $this->user`, no join can bind each token: `toArray()`'s and
+an Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Type the key with an
 import-aware `#[TsCasts]`.
 

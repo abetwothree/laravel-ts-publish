@@ -7081,6 +7081,8 @@ test('mergeReturnBranches() joins a key\'s declared token slots where no other b
     'beside a string' => [[['User | User', [null, User::class]], ['string', null]], false, 'User | User | string', [null, User::class]],
     'a string first' => [[['string', null], ['User | User', [null, User::class]]], false, 'string | User | User', [null, User::class]],
     'beside a null' => [[['User | User', [null, User::class]], ['null', null]], false, 'User | User | null', [null, User::class]],
+    'after a literal spelling the name' => [[["{ kind: 'User' }", null], ['User | User', [null, User::class]]], false, "{ kind: 'User' } | User | User", [null, null, User::class]],
+    'beside a declared text spelling the name only in a literal' => [[["{ kind: 'User'; p: Post }", [Post::class]], ['User | User', [null, User::class]]], false, "{ kind: 'User'; p: Post } | User | User", [null, Post::class, null, User::class]],
     'beside a dropped unknown' => [[['User | User', [null, User::class]], ['unknown', null]], true, 'User | User', [null, User::class]],
     'beside a kept unknown' => [[['User | User', [null, User::class]], ['unknown', null]], false, 'unknown', []],
     'two unalike' => [[['User | User', [null, User::class]], ['User', [User::class]]], false, 'unknown', []],

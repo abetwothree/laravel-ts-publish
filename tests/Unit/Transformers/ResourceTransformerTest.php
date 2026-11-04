@@ -16,7 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadge
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingLiteralResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
@@ -3484,6 +3486,30 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             '@js/types/ui' => ['User'],
             '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
         ]);
+    });
+
+    test('gives a literal spelling a joined name a slot of its own, in either branch order', function () {
+        $transformer = new ResourceTransformer(DocShapeLiteralJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal_first' => "{ kind: 'User' } | User[] | WorkbenchUser",
+            'slotted_first' => "User[] | WorkbenchUser | { kind: 'User' }",
+            'disjoint_first' => "{ kind: 'User'; p: Post } | User[] | WorkbenchUser",
+            'disjoint_last' => "User[] | WorkbenchUser | { kind: 'User'; p: Post }",
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('gives a literal spelling a joined name a slot of its own through a spread helper\'s join', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppingLiteralResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe("{ kind: 'User' } | User[] | WorkbenchUser")
+            ->and($transformer->typeImports)->toBe([
+                '@js/types/ui' => ['User'],
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            ]);
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {

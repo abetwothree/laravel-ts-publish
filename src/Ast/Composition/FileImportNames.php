@@ -230,6 +230,25 @@ final class FileImportNames
     }
 
     /**
+     * The slots of a type joined from arms, each beside its own declaration's slots: one per token of the names of the
+     * classes any arm's slots hold, so a token another arm's class is spelled like, a literal's too, takes a null.
+     *
+     * @param  list<DeclaredArm>  $arms
+     * @return TokenFqcns
+     */
+    public static function joinedSlots(array $arms): array
+    {
+        $names = self::ownNames(array_merge([], ...array_column($arms, 1)));
+        $slots = [];
+
+        foreach ($arms as [$arm, $armSlots]) {
+            array_push($slots, ...array_column(self::declaredTokens($arm, $armSlots, $names), 'slot'));
+        }
+
+        return $slots;
+    }
+
+    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void

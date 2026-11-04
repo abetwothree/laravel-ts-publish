@@ -1033,6 +1033,18 @@ it('joins a props helper\'s override-beside-model fill with a render branch\'s n
         ->and(inertiaProps(new DocShapeBranchedPageController()->branched(1))->owner)->toBeNull();
 });
 
+it('gives a render branch\'s literal spelling a joined name a slot of its own', function () {
+    app(Router::class)->get('/doc-shape-literal-first/{id}', [DocShapeBranchedPageController::class, 'literalFirst']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { owner: { kind: 'User' } | User[] | ModelsUser }")
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ]);
+});
+
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {
     app(Router::class)->get('/embedded-cast/{post}', [EmbeddedCastController::class, 'show']);
     $transformer = new RouteTransformer(EmbeddedCastController::class);

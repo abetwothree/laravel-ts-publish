@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 test('declaredTokens() gives each own name\'s token the next slot, an unread one\'s too, and another name\'s none', function () {
@@ -27,4 +28,15 @@ test('declaredArms() gives each top-level arm the slots its own names\' tokens t
         ['string', []],
         ['null', []],
     ])->and(FileImportNames::declaredArms('string | number', []))->toBe([['string', []], ['number', []]]);
+});
+
+test('joinedSlots() gives every arm one slot per token of the names any arm\'s slots hold, a non-own token null', function () {
+    expect(FileImportNames::joinedSlots([
+        ["{ kind: 'User' }", []],
+        ["{ kind: 'User'; p: Post }", [Post::class]],
+        ['User[]', [null]],
+        ['User', [User::class]],
+        ['string', []],
+    ]))->toBe([null, null, Post::class, null, User::class])
+        ->and(FileImportNames::joinedSlots([['string', []], ['null', []]]))->toBe([]);
 });

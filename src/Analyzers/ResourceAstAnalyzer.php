@@ -2528,8 +2528,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function unionSlottedTypes(array $types, array $slotted): array
     {
-        $arms = [];
-        $slots = [];
+        /** @var list<DeclaredArm> $joined */
+        $joined = [];
         $nullable = false;
 
         foreach ($types as $type) {
@@ -2539,13 +2539,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             foreach ($typeArms as [$arm, $armSlots]) {
                 if ($arm === 'null') {
                     $nullable = true;
-                } elseif ($armSlots !== [] || ! in_array($arm, $arms, true)) {
-                    $arms[] = $arm;
-                    array_push($slots, ...$armSlots);
+                } elseif ($armSlots !== [] || ! in_array($arm, array_column($joined, 0), true)) {
+                    $joined[] = [$arm, $armSlots];
                 }
             }
         }
 
-        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), $slots];
+        $arms = array_column($joined, 0);
+
+        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), FileImportNames::joinedSlots($joined)];
     }
 }
