@@ -84,7 +84,8 @@ trait ResolvesModelTypes
             'type' => $tsInfo['type'],
             'enumFqcn' => $enumFqcn,
             'classFqcns' => $tsInfo['classFqcns'],
-            // Present only where the type spells one name for two classes; see TypeScriptTypeInfo.
+            // Present only where the type spells one name for two classes or an override spells a class's name; see
+            // TypeScriptTypeInfo.
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),

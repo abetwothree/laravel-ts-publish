@@ -90,6 +90,7 @@ use UnitEnum;
  *    tokenFqcns?: TokenFqcns,
  * }
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
+ * @phpstan-type SlottedToken = array{string, int, class-string|null}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
@@ -3190,20 +3191,43 @@ class LaravelTsPublish
     {
         $slots = $info['tokenFqcns'] ?? [];
         $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        $left = '';
+        $from = 0;
 
-        if ($names === []) {
-            return $info['type'];
+        foreach ($this->slottedTokens($info['type'], $names, $slots, $names) as [$token, $at, $fqcn]) {
+            $left .= substr($info['type'], $from, $at - $from).($fqcn === null ? $token : ' ');
+            $from = $at + strlen($token);
         }
 
-        $at = 0;
+        return $left.substr($info['type'], $from);
+    }
 
-        return (string) preg_replace_callback(
-            TsTypeString::queuedTokenPattern($names),
-            function (array $token) use ($slots, &$at): string {
-                return ($slots[$at++] ?? null) === null ? $token[0] : ' ';
-            },
-            $info['type'],
-        );
+    /**
+     * Each token of the names in a type, in order, with its offset and the slot it reads: the next of `$slots` for a
+     * token of a name in `$own`, else what `$other` answers for it, null by default.
+     *
+     * @param  list<string>  $names  the names whose tokens are read
+     * @param  TokenFqcns  $slots  one per token of a name in `$own`, in order
+     * @param  list<string>  $own
+     * @param  (Closure(string): (class-string|null))|null  $other
+     * @return list<SlottedToken>
+     */
+    private function slottedTokens(string $type, array $names, array $slots, array $own, ?Closure $other = null): array
+    {
+        if ($names === []) {
+            return [];
+        }
+
+        preg_match_all(TsTypeString::queuedTokenPattern($names), $type, $matches, PREG_OFFSET_CAPTURE);
+        $tokens = [];
+        $next = 0;
+
+        foreach ($matches[0] as [$token, $at]) {
+            $slot = in_array($token, $own, true) ? $slots[$next++] ?? null : ($other === null ? null : $other($token));
+            $tokens[] = [$token, $at, $slot];
+        }
+
+        return $tokens;
     }
 
     /**
@@ -3234,10 +3258,15 @@ class LaravelTsPublish
     private function intersectedShape(string $phpType, array $useMap, string $namespace): ?array
     {
         $members = $this->splitPhpDocIntersectionType($phpType);
+
+        if (count($members) < 2) {
+            return null;
+        }
+
         $keys = [];
         $shapes = [];
 
-        foreach (count($members) > 1 ? $members : [] as $member) {
+        foreach ($members as $member) {
             $parsed = $this->arrayShapeEntries($member);
             $shape = $parsed === null ? null : $this->resolveArrayShapeString($member, $useMap, $namespace);
 
@@ -3249,7 +3278,7 @@ class LaravelTsPublish
             $shapes[] = $shape;
         }
 
-        if ($shapes === [] || count(array_unique($keys)) < count($keys)) {
+        if (count(array_unique($keys)) < count($keys)) {
             return null;
         }
 
@@ -3347,16 +3376,14 @@ class LaravelTsPublish
         $names = array_combine($info['classFqcns'], $info['classes']);
         $classNames = array_values(array_unique(array_map(fn (string $fqcn): string => $names[$fqcn], $classes)));
         $enums = new ClassTokenQueue($info['enumFqcns'], FileImportNames::typeName(...), ValueResult::enumSiblingNames(...));
-        $pattern = TsTypeString::queuedTokenPattern([...$classNames, ...FileImportNames::namesOf('classes', $info['enumFqcns'])]);
-        $tokens = [];
-        $at = 0;
-        preg_match_all($pattern, $info['type'], $matches);
 
-        foreach ($matches[0] as $token) {
-            $tokens[] = in_array($token, $classNames, true) ? $classTokens[$at++] ?? null : $enums->take($token)[0] ?? null;
-        }
-
-        return $tokens;
+        return array_column($this->slottedTokens(
+            $info['type'],
+            [...$classNames, ...FileImportNames::namesOf('classes', $info['enumFqcns'])],
+            $classTokens,
+            $classNames,
+            fn (string $token): ?string => $enums->take($token)[0] ?? null,
+        ), 2);
     }
 
     /**
@@ -3372,21 +3399,12 @@ class LaravelTsPublish
         $classes = array_merge([], ...array_map(fn (array $arm): array => $arm['tokenFqcns'] ?? [], $arms));
         $names = $this->tokenNames(array_values(array_unique(array_filter($classes))), $classNames);
 
-        if ($names === []) {
-            return [];
-        }
-
-        $pattern = TsTypeString::queuedTokenPattern($names);
         $tokens = [];
 
         foreach ($arms as $arm) {
-            $own = $this->tokenNames(array_values(array_unique(array_filter($arm['tokenFqcns'] ?? []))), $classNames);
-            $at = 0;
-            preg_match_all($pattern, $arm['type'], $matches);
-
-            foreach ($matches[0] as $token) {
-                $tokens[] = in_array($token, $own, true) ? $arm['tokenFqcns'][$at++] ?? null : null;
-            }
+            $slots = $arm['tokenFqcns'] ?? [];
+            $own = $this->tokenNames(array_values(array_unique(array_filter($slots))), $classNames);
+            array_push($tokens, ...array_column($this->slottedTokens($arm['type'], $names, $slots, $own), 2));
         }
 
         return $tokens;

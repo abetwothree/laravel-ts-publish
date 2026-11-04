@@ -262,7 +262,7 @@ class ModelMetadataAnalyzer
 
     /**
      * Parse the optional `@return array{...}` shape, with the custom imports of the overrides each key spells, none for
-     * a key naming a model at any depth; a trailing `?` marks an optional key.
+     * a key naming any class but an enum at any depth; a trailing `?` marks an optional key.
      *
      * @return DeclaredTypes
      */
@@ -281,9 +281,9 @@ class ModelMetadataAnalyzer
             $types[$property] = $info['type'];
             $tokens[$property] = $info['tokenFqcns'] ?? [];
 
-            // A companion imports no model, so an override's import of a model's name must not let its token pass.
-            $namesModel = array_any($tokens[$property], fn (?string $fqcn): bool => $fqcn !== null && ! enum_exists($fqcn));
-            $imports[$property] = $namesModel ? [] : $info['customImports'];
+            // A companion imports no class but an enum, so an override's import of a class's name must not let it pass.
+            $namesClass = array_any($tokens[$property], fn (?string $fqcn): bool => $fqcn !== null && ! enum_exists($fqcn));
+            $imports[$property] = $namesClass ? [] : $info['customImports'];
 
             if ($optional) {
                 $optionalKeys[$property] = true;
