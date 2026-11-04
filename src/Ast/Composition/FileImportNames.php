@@ -42,7 +42,7 @@ use Closure;
  * @phpstan-type SoleClasses = array<string, class-string>
  * @phpstan-type Token = array{string, int, bool}
  * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
- * @phpstan-type DeclaredArm = array{string, TokenFqcns}
+ * @phpstan-type DeclaredArm = array{0: string, 1: TokenFqcns, 2?: list<string>}
  *
  * @internal
  */
@@ -189,27 +189,12 @@ final class FileImportNames
      */
     public static function declaredTokens(string $type, array $slots, array $names = []): array
     {
-        $own = self::ownNames($slots);
-        $read = array_values(array_unique([...$own, ...$names]));
-
-        if ($read === []) {
-            return [];
-        }
-
-        $at = 0;
-        $tokens = [];
-
-        foreach (self::tokens('classes', $read, $type) as [$token, $offset, $isRead]) {
-            $isOwn = in_array($token, $own, true);
-            $slot = $isOwn ? $slots[$at++] ?? null : null;
-            $tokens[] = ['token' => $token, 'offset' => $offset, 'slot' => $slot, 'own' => $isOwn, 'read' => $isRead];
-        }
-
-        return $tokens;
+        return self::declaredTokensOf($type, $slots, self::ownNames($slots), $names);
     }
 
     /**
-     * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order.
+     * Each top-level arm of a declaration's type, beside the slots its own names' tokens take, in print order, and
+     * those names, since an arm's share of the slots may hold no class of a name it spells.
      *
      * @param  TokenFqcns  $slots
      * @return list<DeclaredArm>
@@ -222,7 +207,7 @@ final class FileImportNames
 
         foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
             $count = $own === [] ? 0 : count(self::tokens('classes', $own, $arm));
-            $arms[] = [$arm, array_slice($slots, $at, $count)];
+            $arms[] = [$arm, array_slice($slots, $at, $count), $own];
             $at += $count;
         }
 
@@ -230,8 +215,9 @@ final class FileImportNames
     }
 
     /**
-     * The slots of a type joined from arms, each beside its own declaration's slots: one per token of the names of the
-     * classes any arm's slots hold, so a token another arm's class is spelled like, a literal's too, takes a null.
+     * The slots of a type joined from arms: one per token of the names of the classes any arm's slots hold. An arm's
+     * slots go to the tokens of its declaration's own names, a whole declaration's read from its slots, and any other
+     * token, one another arm's class is spelled like or a literal's, takes a null.
      *
      * @param  list<DeclaredArm>  $arms
      * @return TokenFqcns
@@ -241,8 +227,9 @@ final class FileImportNames
         $names = self::ownNames(array_merge([], ...array_column($arms, 1)));
         $slots = [];
 
-        foreach ($arms as [$arm, $armSlots]) {
-            array_push($slots, ...array_column(self::declaredTokens($arm, $armSlots, $names), 'slot'));
+        foreach ($arms as $arm) {
+            $tokens = self::declaredTokensOf($arm[0], $arm[1], $arm[2] ?? self::ownNames($arm[1]), $names);
+            array_push($slots, ...array_column($tokens, 'slot'));
         }
 
         return $slots;
@@ -272,6 +259,34 @@ final class FileImportNames
     private static function ownNames(array $slots): array
     {
         return self::namesOf('classes', array_values(array_unique(array_filter($slots))));
+    }
+
+    /**
+     * declaredTokens() of slots that belong to a declaration whose own names are `$own`.
+     *
+     * @param  TokenFqcns  $slots
+     * @param  list<string>  $own
+     * @param  list<string>  $names
+     * @return list<DeclaredToken>
+     */
+    private static function declaredTokensOf(string $type, array $slots, array $own, array $names): array
+    {
+        $read = array_values(array_unique([...$own, ...$names]));
+
+        if ($read === []) {
+            return [];
+        }
+
+        $at = 0;
+        $tokens = [];
+
+        foreach (self::tokens('classes', $read, $type) as [$token, $offset, $isRead]) {
+            $isOwn = in_array($token, $own, true);
+            $slot = $isOwn ? $slots[$at++] ?? null : null;
+            $tokens[] = ['token' => $token, 'offset' => $offset, 'slot' => $slot, 'own' => $isOwn, 'read' => $isRead];
+        }
+
+        return $tokens;
     }
 
     /**

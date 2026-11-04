@@ -2536,11 +2536,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $typeArms = $slotted[$type]
                 ?? array_map(static fn (string $arm): array => [$arm, []], TsTypeString::splitTopLevelUnion($type));
 
-            foreach ($typeArms as [$arm, $armSlots]) {
-                if ($arm === 'null') {
+            foreach ($typeArms as $typeArm) {
+                if ($typeArm[0] === 'null') {
                     $nullable = true;
-                } elseif ($armSlots !== [] || ! in_array($arm, array_column($joined, 0), true)) {
-                    $joined[] = [$arm, $armSlots];
+                } elseif ($typeArm[1] !== [] || ! in_array($typeArm[0], array_column($joined, 0), true)) {
+                    $joined[] = $typeArm;
                 }
             }
         }

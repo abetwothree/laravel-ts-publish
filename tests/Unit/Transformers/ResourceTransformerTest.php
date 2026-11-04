@@ -17,8 +17,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingLiteralResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingMixedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeMixedArmJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
@@ -3510,6 +3512,45 @@ describe("a key toArray()'s @return shape names a class for, where its body read
                 '@js/types/ui' => ['User'],
                 '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
             ]);
+    });
+
+    test('binds an arm\'s override and other class beside the model in another arm, unknown beside a branch spelling one', function () {
+        $transformer = new ResourceTransformer(DocShapeMixedArmJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'beside_null' => '{ a: User; p: Post } | WorkbenchUser | null',
+            'beside_string' => '{ a: User; p: Post } | WorkbenchUser | string',
+            'beside_post' => 'unknown',
+            'literal_first' => "{ kind: 'User' } | { a: User; p: Post } | WorkbenchUser",
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('binds an arm\'s override and other class beside the model in another arm through a spread helper\'s join, else drops it', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppingMixedArmResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'k' => '{ a: User; p: Post } | WorkbenchUser | null',
+            'beside_post' => 'Post',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('sends what each mixed-arm join admits', function () {
+        $comment = new Comment(['content' => '{"id":1,"name":"Ada"}']);
+        $other = new Comment(['content' => '{"id":1,"name":"Ada"}'])->forceFill(['id' => 2]);
+
+        expect(sentAsJson(new DocShapeMixedArmJoinResource($comment)->resolve(request())))
+            ->beside_null->toBeNull()
+            ->beside_string->toBe('{"id":1,"name":"Ada"}')
+            ->literal_first->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeMixedArmJoinResource($other)->resolve(request())))
+            ->beside_null->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeDroppingMixedArmResource($comment)->resolve(request())))->k->toBeNull();
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {

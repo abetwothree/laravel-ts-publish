@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /** A test-only controller whose render branches join a props helper's override-beside-model fill with other values. */
@@ -32,6 +33,16 @@ class DocShapeBranchedPageController
         return Inertia::render('DocShape/LiteralFirst', [...$this->listed()]);
     }
 
+    /** Renders a fill holding an override and a post in one arm, the model in another, or a null owner. */
+    public function mixedArm(int $id): Response
+    {
+        if ($id > 1) {
+            return Inertia::render('DocShape/MixedArm', [...$this->mixed()]);
+        }
+
+        return Inertia::render('DocShape/MixedArm', ['owner' => null]);
+    }
+
     /**
      * The props helper's fill.
      *
@@ -48,6 +59,16 @@ class DocShapeBranchedPageController
      * @return array{owner: array{kind: 'User'}}
      */
     private function literal(): array
+    {
+        return ['owner' => json_decode((string) request('owner'))];
+    }
+
+    /**
+     * A fill with an override and a post in one arm, the model spelled like the override in the other.
+     *
+     * @return array{owner: array{a: Person, p: Post}|User}
+     */
+    private function mixed(): array
     {
         return ['owner' => json_decode((string) request('owner'))];
     }

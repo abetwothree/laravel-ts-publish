@@ -34,10 +34,11 @@ whole call `unknown`, or the vague type it declares. So is `$this->resource` rea
 whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
 `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
 
-A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill spells an override like a class
-another branch holds, such as `k: Person|User` beside `'k' => $this->user`: no join can say which class each `User`
-token is, so the key publishes the other branch's `User` alone, as it did before the fill, and the documented
-override's arm is left out with no warning.
+A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
+branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
+`k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
+the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
+override's among them, are left out with no warning.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -550,9 +551,10 @@ another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Per
 the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
 which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
 `@return array{…}` of a resource's `toArray()`, a spread helper or an Inertia page's props helper filling a vague key,
-joined with any return or render branch whose type spells `User` nowhere but inside a literal, such as `'User'`.
-Beside a branch that spells it elsewhere, such as `'k' => $this->user`, no join can bind each token: `toArray()`'s and
-an Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
+`array{a: Person, p: Post}|User` too, joined with any return or render branch whose type spells the names of the fill's
+classes, `User` and `Post` there, nowhere but inside a literal, such as `'User'`. Beside a branch that spells one
+elsewhere, such as `'k' => $this->user` or `'k' => $this->post`, no join can bind each token: `toArray()`'s and an
+Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Type the key with an
 import-aware `#[TsCasts]`.
 

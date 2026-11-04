@@ -1045,6 +1045,19 @@ it('gives a render branch\'s literal spelling a joined name a slot of its own', 
         ]);
 });
 
+it('binds an arm\'s override and other class beside the model in another arm, joined with a render branch\'s null', function () {
+    app(Router::class)->get('/doc-shape-mixed-arm/{id}', [DocShapeBranchedPageController::class, 'mixedArm']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { owner: { a: User; p: Post } | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['Post', 'User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
+});
+
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {
     app(Router::class)->get('/embedded-cast/{post}', [EmbeddedCastController::class, 'show']);
     $transformer = new RouteTransformer(EmbeddedCastController::class);

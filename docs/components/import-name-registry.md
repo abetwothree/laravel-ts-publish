@@ -99,7 +99,8 @@ Callers fill their queues in one of three ways:
   its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the
   override's `User` where another key brings that import. `FileImportNames::declaredTokens()` is the one reading of
   those slots: the docblock engine's keep check and key fill, the branch join, `ResourceTransformer` and this file all
-  read them through it, and none respells a token inside a literal or after `typeof`.
+  read them through it, the join by way of `joinedSlots()`, which reads a cut arm against its whole text's own names,
+  and none respells a token inside a literal or after `typeof`.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter

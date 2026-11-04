@@ -150,9 +150,11 @@ the member's `tokenFqcns`, which queues its classes and records the slots in `Me
 `merge()` carries them. `mergeReturnBranches()` joins a declared text's arms whole, past the branches it drops, so a
 branch spelling none of the text's own names joins beside it: `User | User | string`, its slots `[null, User]`. Every
 joined arm takes one slot per token of the joined names, a literal's `'User'` a null one
-(`FileImportNames::joinedSlots()`). Where another branch spells those names outside a literal, with other slots or none,
-no join can bind them (`declaredBranches()`): a strict join publishes the key `unknown` with no class, and a dropping
-one first reads that fill as the untyped value it stood in for (`MethodAnalysis::untype()`), so it drops the fill and
+(`FileImportNames::joinedSlots()`). An arm cut from a declared text reads its share of the slots against the whole
+text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as `{ a: User; p: Post }`'s
+`[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with other slots or none, no
+join can bind them (`declaredBranches()`): a strict join publishes the key `unknown` with no class, and a dropping one
+first reads that fill as the untyped value it stood in for (`MethodAnalysis::untype()`), so it drops the fill and
 publishes the other branches, as before the fill. `ResourceTransformer` reads a key's tokens from its slots where one
 holds an override's null, so `either: Person|User` publishes `User | WorkbenchUser`, each with its import, as an Inertia
 page does through `FileImportNames`; a per-name queue cannot hold that null.
