@@ -59,7 +59,10 @@ trait BindsMapCallbacks
             if (! isset($bodies[$element])) {
                 $value = ValueResult::elementOf($input, $element);
                 $carried = $value['modelFqcn'] ?? null;
-                $model = $elementModel ?? ($carried !== null && is_a($carried, Model::class, true) ? $carried : null);
+                // An element that may be null binds as its value, keeping the `null` a bound model would drop.
+                $model = $elementModel ?? ($carried !== null && $element === class_basename($carried) && is_a($carried, Model::class, true)
+                    ? $carried
+                    : null);
                 $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine);
 
                 if ($body === null || $body['type'] === 'unknown') {

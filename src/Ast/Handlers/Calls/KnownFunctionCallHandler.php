@@ -393,7 +393,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $parameters[] = [...ValueResult::elementOf($input, $element), 'type' => $element];
         }
 
-        // Each element's channels ride along, so the tuples import the enums and classes their arms name.
+        // Each element's channels ride along, so the tuples import the enums and models their arms name.
         if ($zips) {
             return [...ValueResult::unionResults($parameters), 'type' => '['.implode(', ', array_column($parameters, 'type')).'][]', 'optional' => false];
         }

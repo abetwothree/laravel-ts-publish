@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
@@ -194,6 +195,22 @@ it('imports the enum a null-callback zip of an enum list names', function () {
 
     expect($zipped[0]['type'])->toBe('[GradeType | null, number | null][]')
         ->and(array_merge(...array_values($analysis->typeImports)))->toContain('GradeType');
+});
+
+// A shorter array pads with null, and a list may hold null, so each element may be null, yet its model is still the
+// one the arm names.
+it('imports the model a zip or a callback over a model list names, keeping its null', function () {
+    $analysis = resolve(AstEngine::class)->analyze(ZippedModelsResource::class, 'toArray');
+    $method = resolve(AstEngine::class)->analyzeMethod(ZippedModelsResource::class, 'toArray');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'zipped' => '[Comment | null, number | null][]',
+        'firsts' => '(Comment | null)[]',
+        'maybe' => '(Comment | null)[]',
+    ])->and(array_merge(...array_values($analysis->typeImports)))->toContain('Comment')
+        ->and($method->channelFqcns('zipped'))->toBe([Comment::class])
+        ->and($method->channelFqcns('firsts'))->toBe([Comment::class])
+        ->and($method->channelFqcns('maybe'))->toBe([Comment::class]);
 });
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.

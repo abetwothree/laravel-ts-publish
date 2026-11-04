@@ -100,7 +100,8 @@ final class ValueResult
 
     /**
      * The value each element of a list result holds: $element with the list's channels, the one enum the list embeds
-     * as the enum it holds where $element spells that enum's type, and the list's model only where $element names it.
+     * as the enum it holds where $element spells that enum's type, and the list's model only where $element names it,
+     * alone or beside the `null` a shorter array pads with.
      *
      * @param  ValueExpressionResult  $list
      * @return ValueExpressionResult
@@ -116,7 +117,7 @@ final class ValueResult
             $value['directEnumFqcn'] = $enums[0];
         }
 
-        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== $element) {
+        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm($element)) {
             unset($value['modelFqcn']);
         }
 
