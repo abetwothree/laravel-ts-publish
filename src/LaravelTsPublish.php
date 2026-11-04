@@ -2893,7 +2893,7 @@ class LaravelTsPublish
             );
             $merged = ImportMaps::merge(...array_column($infos, 'customImports'));
             $borrows = array_any($infos, fn (array $info): bool => $this->borrowsImport($info, $merged));
-            $tokens = $this->unionTokenFqcns($infos);
+            $tokens = $this->joinedTokenFqcns($infos);
 
             return [
                 'type' => implode(' | ', array_column($infos, 'type')),
@@ -3284,7 +3284,7 @@ class LaravelTsPublish
      */
     private function shapeOfPieces(string $type, array $pieces): array
     {
-        $tokens = $this->unionTokenFqcns($pieces);
+        $tokens = $this->joinedTokenFqcns($pieces);
 
         return [
             'type' => $type,
@@ -3432,23 +3432,37 @@ class LaravelTsPublish
     }
 
     /**
-     * The class behind each token of a union's arms that spells one of their classes' names, in order: the arm's own,
-     * else null, as for an override spelled like the model beside it.
+     * The class behind each token of pieces joined into one type, each piece's slots read as a generated file names
+     * their classes (FileImportNames::joinedSlots()).
      *
-     * @param  list<ShapeTypeInfo>  $arms
-     * @param  array<string, string>|null  $classNames  class => the name its tokens spell; null for a generated file's
+     * @param  list<ShapeTypeInfo>  $pieces
      * @return TokenFqcns
      */
-    private function unionTokenFqcns(array $arms, ?array $classNames = null): array
+    private function joinedTokenFqcns(array $pieces): array
+    {
+        return FileImportNames::joinedSlots(array_map(
+            static fn (array $piece): array => [$piece['type'], $piece['tokenFqcns'] ?? []],
+            $pieces,
+        ));
+    }
+
+    /**
+     * The class behind each token of a resolved union's arms that spells one of their classes' names as the union
+     * spells it, in order: the arm's own, else null, as for an override spelled like the model beside it.
+     *
+     * @param  list<ShapeTypeInfo>  $arms
+     * @param  array<string, string>  $classNames  class => the name its tokens spell
+     * @return TokenFqcns
+     */
+    private function unionTokenFqcns(array $arms, array $classNames): array
     {
         $classes = array_merge([], ...array_map(fn (array $arm): array => $arm['tokenFqcns'] ?? [], $arms));
-        $names = $this->tokenNames(array_values(array_unique(array_filter($classes))), $classNames);
-
+        $names = $this->tokenNames($classes, $classNames);
         $tokens = [];
 
         foreach ($arms as $arm) {
             $slots = $arm['tokenFqcns'] ?? [];
-            $own = $this->tokenNames(array_values(array_unique(array_filter($slots))), $classNames);
+            $own = $this->tokenNames($slots, $classNames);
             array_push($tokens, ...array_column($this->slottedTokens($arm['type'], $names, $slots, $own), 2));
         }
 
@@ -3456,17 +3470,18 @@ class LaravelTsPublish
     }
 
     /**
-     * The names classes' tokens are spelled with: as `$classNames` maps each, else as a generated file names it.
+     * The names classes' tokens are spelled with, as `$classNames` maps each.
      *
-     * @param  list<class-string>  $fqcns
-     * @param  array<string, string>|null  $classNames
+     * @param  TokenFqcns  $slots
+     * @param  array<string, string>  $classNames
      * @return list<string>
      */
-    private function tokenNames(array $fqcns, ?array $classNames): array
+    private function tokenNames(array $slots, array $classNames): array
     {
-        return $classNames === null
-            ? FileImportNames::namesOf('classes', $fqcns)
-            : array_values(array_unique(array_map(fn (string $fqcn): string => $classNames[$fqcn], $fqcns)));
+        return array_values(array_unique(array_map(
+            fn (string $fqcn): string => $classNames[$fqcn],
+            array_values(array_unique(array_filter($slots))),
+        )));
     }
 
     /**
