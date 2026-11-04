@@ -2040,15 +2040,29 @@ describe('phpstan type aliases', function () {
         expect($alias)->toBeNull();
     });
 
-    test('looks a docblock name up as an alias only when it is a bare name', function () {
+    test('looks a docblock name up as an alias only when it is a PHPDoc identifier', function () {
         $service = new AliasCacheLaravelTsPublish;
 
         $type = $service->docblockReturnTypes(new ReflectionMethod(PairAliasHost::class, 'pairs'))['type'];
 
         expect($type)->toBe('{ p: { a: number }; list: { a: number }[]; key: string | number; name: string; count: number }')
             ->and($service->cachedAliasNames(PairAliasHost::class))->toContain('Pair')
-            ->and(preg_grep('/^\\w+$/', $service->cachedAliasNames(PairAliasHost::class), PREG_GREP_INVERT))->toBe([]);
+            ->and($service->cachedAliasNames(PairAliasHost::class))->not->toContain('int<0, max>')
+            ->and(preg_grep(
+                '/^[A-Za-z_\\x80-\\xff][A-Za-z0-9_\\x80-\\xff-]*$/',
+                $service->cachedAliasNames(PairAliasHost::class),
+                PREG_GREP_INVERT,
+            ))->toBe([]);
     });
+
+    test('resolves an alias named with a hyphen or with non-ASCII letters, as PHPStan reads it', function (string $name, string $expected) {
+        $context = new ReflectionClass(IdentifierAliasHost::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias($name, [], '', $context)['type'])->toBe($expected);
+    })->with([
+        'a hyphen' => ['pair-shape', '{ a: number }'],
+        'non-ASCII letters' => ['Größe', '{ b: string }'],
+    ]);
 
     test('an imported alias whose definition names the alias it is imported as, in its own class, expands', function () {
         $context = new ReflectionClass(PairRowImporter::class);
@@ -3588,14 +3602,14 @@ class PointFromInterface {}
 class PointFromTrait {}
 
 /**
- * Names its `Pair` alias bare and inside a list in one return shape, beside types no alias can be named.
+ * Names its `Pair` alias bare and inside a list in one return shape, beside two PHPDoc keywords and an int range.
  *
  * @phpstan-type Pair array{a: int}
  */
 class PairAliasHost
 {
     /**
-     * Declare a pair, a list of them, and three keys typed by PHPDoc keywords.
+     * Declare a pair, a list of them, and three keys typed by PHPDoc keyword types.
      *
      * @return array{p: Pair, list: list<Pair>, key: array-key, name: non-empty-string, count: int<0, max>}
      */
@@ -3604,6 +3618,14 @@ class PairAliasHost
         return ['p' => ['a' => 1], 'list' => [], 'key' => 1, 'name' => 'n', 'count' => 0];
     }
 }
+
+/**
+ * Names one alias with a hyphen and one with non-ASCII letters, both PHPDoc identifiers PHPStan accepts.
+ *
+ * @phpstan-type pair-shape array{a: int}
+ * @phpstan-type Größe array{b: string}
+ */
+class IdentifierAliasHost {}
 
 /**
  * Imports `PairRowSource`'s `Row` as `Pair`, the name `Row`'s own definition gives another alias of that class.

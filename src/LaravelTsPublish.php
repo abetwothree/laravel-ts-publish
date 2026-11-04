@@ -2448,7 +2448,8 @@ class LaravelTsPublish
     {
         $context = end($this->aliasContextStack);
 
-        if ($context === false || preg_match('/^\w+$/', $name) !== 1) {
+        // An alias name is a PHPDoc identifier, as PHPStan's lexer reads one: a hyphen or a non-ASCII byte may follow.
+        if ($context === false || preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff-]*$/', $name) !== 1) {
             return null;
         }
 
