@@ -130,6 +130,25 @@ it('clears the cast entry of a key the source sets without one', function () {
     expect($target->casts)->toBe(['kept' => ['type' => 'K', 'import' => null]]);
 });
 
+// A declaration's token slots describe the text it wrote, which the source's value replaces.
+it('merges declared token slots as it merges casts', function () {
+    $user = 'Workbench\\App\\Models\\User';
+    $target = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'User', 'optional' => false, 'description' => ''],
+        ['name' => 'kept', 'type' => 'User', 'optional' => false, 'description' => ''],
+    ]);
+    $target->declaredTokenFqcns = ['owner' => [$user], 'kept' => [$user]];
+    $source = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+    ]);
+    $source->declaredTokenFqcns = ['either' => [null, $user]];
+
+    $target->merge($source);
+
+    expect($target->declaredTokenFqcns)->toBe(['kept' => [$user], 'either' => [null, $user]]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [

@@ -42,6 +42,9 @@ class TsTypeString
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
+    /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
+    protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
+
     /**
      * A quoted string literal or a generated index signature key, whose text is a value or a key, never a name.
      *
@@ -416,6 +419,17 @@ class TsTypeString
     public function isUnknownOnly(string $type): bool
     {
         return array_values(array_diff($this->splitTopLevelUnion($type), ['null'])) === ['unknown'];
+    }
+
+    /**
+     * Whether a type says nothing of its value but that it may be null: it has an arm besides `null`, and each such
+     * arm is one of VAGUE_ARMS.
+     */
+    public function isVagueOnly(string $type): bool
+    {
+        $arms = array_diff($this->splitTopLevelUnion($type), ['null']);
+
+        return $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE_ARMS, true));
     }
 
     /**

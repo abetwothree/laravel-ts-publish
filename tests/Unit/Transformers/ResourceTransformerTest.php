@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
@@ -13,6 +14,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBefo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
@@ -47,6 +51,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -82,8 +87,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastRes
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -3398,6 +3405,80 @@ describe('a helper whose @return shape names a model, read as a value its body c
                 '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
                 '../../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
+    });
+});
+
+describe("a key toArray()'s @return types where its body reads it vague", function () {
+    beforeEach(function () {
+        Schema::dropIfExists('meta_comments');
+        Schema::create('meta_comments', function (Blueprint $table) {
+            $table->id();
+            $table->json('meta')->nullable();
+            $table->json('tags');
+            $table->text('body')->nullable();
+            $table->timestamps();
+        });
+    });
+
+    test("takes each member in place of an 'array' column's or a decoded value's vague type, keeping the column's null", function () {
+        $transformer = new ResourceTransformer(ArrayCastShapeResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'meta' => 'string[] | null',
+            'tags' => 'string[]',
+            'owner' => 'User',
+            'decoded' => 'string[]',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('sends what each member admits', function () {
+        $user = '{"id":1,"name":"Ada"}';
+        $sent = fn (?array $meta): mixed => sentAsJson(new ArrayCastShapeResource(
+            MetaComment::query()->create(['meta' => $meta, 'tags' => ['x'], 'body' => $user])->fresh(),
+        )->resolve(request()));
+
+        expect($sent(['a', 'b']))->meta->toBe(['a', 'b'])->tags->toBe(['x'])->owner->name->toBe('Ada')
+            ->and($sent(null))->meta->toBeNull();
+    });
+});
+
+describe("a key toArray()'s @return shape names a class for, where its body reads it unknown", function () {
+    test('binds an override and the model spelled like it each to its own import, top-level, nested and spread', function () {
+        $transformer = new ResourceTransformer(DocShapeOverrideUnionResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User | WorkbenchUser',
+            'either' => 'User | WorkbenchUser',
+            'meta' => '{ either: User | WorkbenchUser; n: number }',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('publishes the model a nested shape names, with its import', function () {
+        $transformer = new ResourceTransformer(DocShapeNestedModelResource::class);
+
+        expect($transformer->properties['meta']['type'])->toBe('{ author: User; n: number }')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test("fills a key with an array<string, V> return's value, V naming a model, with its import", function () {
+        $transformer = new ResourceTransformer(DocShapeModelRecordResource::class);
+
+        expect($transformer->properties['first']['type'])->toBe('{ a: User }')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('sends the model or the override under each key', function () {
+        $comment = new Comment(['content' => '{"id":1,"name":"Ada"}']);
+
+        expect(sentAsJson(new DocShapeOverrideUnionResource($comment)->resolve(request())))
+            ->spread->name->toBe('Ada')
+            ->either->name->toBe('Ada')
+            ->meta->either->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeNestedModelResource($comment)->resolve(request())))->meta->author->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeModelRecordResource($comment)->resolve(request())))->first->a->name->toBe('Ada');
     });
 });
 

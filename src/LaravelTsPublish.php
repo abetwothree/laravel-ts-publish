@@ -88,6 +88,7 @@ use UnitEnum;
  *    type: string,
  *    customImports: array<string, list<string>>,
  *    tokenFqcns?: TokenFqcns,
+ *    phpDoc?: string,
  * }
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
  * @phpstan-type SlottedToken = array{string, int, class-string|null}
@@ -1203,6 +1204,50 @@ class LaravelTsPublish
             $declaringClass,
             fn (): array => $this->parseArrayShapeToInfos($returnType, $useMap, $namespace),
         );
+    }
+
+    /**
+     * docblockReturnTypes() as a docblock shape's member carries it, with the class behind each token of a class name.
+     *
+     * @return ShapeTypeInfo
+     */
+    public function docblockReturnTypeInfo(ReflectionMethod $method): array
+    {
+        return $this->docblockTypeInfo($this->docblockReturnTypes($method));
+    }
+
+    /**
+     * A docblock shape's member as a key it types publishes it, each union arm once beside the class behind each of its
+     * tokens; null where its own custom imports leave a name it spells unbrought, as keptShapeMember() reads it.
+     *
+     * @param  ShapeTypeInfo  $info
+     * @return ShapeTypeInfo|null
+     */
+    public function shapeMemberForKey(array $info): ?array
+    {
+        if (! $this->shapeKeeps($info)) {
+            return null;
+        }
+
+        $slots = $info['tokenFqcns'] ?? [];
+        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        $arms = [];
+        $at = 0;
+
+        // Arms of one text whose tokens name different classes, as an override spelled like a model's, stay apart.
+        foreach (TsTypeString::splitTopLevelUnion($info['type']) as $arm) {
+            $armSlots = array_column($this->slottedTokens($arm, $names, array_slice($slots, $at), $names), 2);
+            $at += count($armSlots);
+            $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
+        }
+
+        $tokens = array_merge([], ...array_column($arms, 1));
+
+        return [
+            'type' => implode(' | ', array_column($arms, 0)),
+            'customImports' => $info['customImports'],
+            ...($tokens === [] ? [] : ['tokenFqcns' => $tokens]),
+        ];
     }
 
     /**
@@ -2901,7 +2946,8 @@ class LaravelTsPublish
     }
 
     /**
-     * parseArrayShapeToTsTypes()'s map, each value with the custom imports of the overrides it spells.
+     * parseArrayShapeToTsTypes()'s map, each value with the custom imports of the overrides it spells and the member's
+     * PHPDoc type as written.
      *
      * @param  array<string, string>  $useMap
      * @return array<string, ShapeTypeInfo>
@@ -2918,7 +2964,7 @@ class LaravelTsPublish
 
         foreach ($parsed['entries'] as $entry) {
             $key = $entry['key'].($entry['optional'] ? '?' : '');
-            $result[$key] = $this->resolvePhpDocTypeToInfo($entry['type'], $useMap, $namespace);
+            $result[$key] = [...$this->resolvePhpDocTypeToInfo($entry['type'], $useMap, $namespace), 'phpDoc' => $entry['type']];
         }
 
         return $result;

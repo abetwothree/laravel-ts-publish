@@ -1698,10 +1698,10 @@ describe('parseDocblockReturnArrayShape', function () {
 describe('docblockReturnShapeInfos', function () {
     test('names the class behind each token of a class\'s name, in token order, and omits the key with none', function () {
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithModelDocblock::class, 'share')))->toBe([
-            'owner' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class]],
-            'status' => ['type' => 'StatusType', 'customImports' => [], 'tokenFqcns' => [Status::class]],
+            'owner' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'User'],
+            'status' => ['type' => 'StatusType', 'customImports' => [], 'tokenFqcns' => [Status::class], 'phpDoc' => 'Status'],
         ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithDocblockOverEmbeddedModel::class, 'share')))->toBe([
-            'team' => ['type' => 'User[]', 'customImports' => [], 'tokenFqcns' => [User::class]],
+            'team' => ['type' => 'User[]', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'list<User>'],
         ]);
     });
 
@@ -1709,20 +1709,30 @@ describe('docblockReturnShapeInfos', function () {
         $ui = ['@js/types/ui' => ['User']];
 
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithOverriddenUnionDocblock::class, 'share')))->toBe([
-            'person' => ['type' => 'User', 'customImports' => $ui],
-            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
+            'person' => ['type' => 'User', 'customImports' => $ui, 'phpDoc' => 'Person'],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'Person|User'],
         ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(OverrideUnionShareMiddleware::class, 'share')))->toBe([
-            'listed' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
-            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class]],
+            'listed' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'list<Person|User>'],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'Person|User'],
         ]);
     });
 
     test('names the class behind each token of a nested shape, a literal\'s included', function () {
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedModelMetadataProvider::class, 'provide')))->toBe([
-            'pair' => ['type' => "{ kind: 'User'; r: User }", 'customImports' => [], 'tokenFqcns' => [null, User::class]],
+            'pair' => [
+                'type' => "{ kind: 'User'; r: User }",
+                'customImports' => [],
+                'tokenFqcns' => [null, User::class],
+                'phpDoc' => "array{kind: 'User', r: User}",
+            ],
         ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedEnumMetadataProvider::class, 'provide')))->toBe([
-            'pair' => ['type' => "{ kind: 'Role'; r: RoleType }", 'customImports' => [], 'tokenFqcns' => [Role::class]],
-            'top' => ['type' => 'RoleType', 'customImports' => [], 'tokenFqcns' => [Role::class]],
+            'pair' => [
+                'type' => "{ kind: 'Role'; r: RoleType }",
+                'customImports' => [],
+                'tokenFqcns' => [Role::class],
+                'phpDoc' => "array{kind: 'Role', r: Role}",
+            ],
+            'top' => ['type' => 'RoleType', 'customImports' => [], 'tokenFqcns' => [Role::class], 'phpDoc' => 'Role'],
         ]);
     });
 });

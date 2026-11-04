@@ -84,10 +84,11 @@ payload property adds neither the key nor its import, while a method-level cast 
 resource method cast does.
 
 Shared data's `@return` shape is a cast in force on each key no `#[TsCasts]` entry replaces, with the custom imports it
-keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`). The
-fit keeps exactly those classes and displaces every other class the value carried, dropping one whose name the shape's
-own imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the
-namer reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. By
+keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`), as
+is an API resource method's on each vague key its refiner fills. The fit keeps exactly those classes and displaces
+every other class the value carried, dropping one whose name the shape's own imports bring. A token an override spells
+like a class's name names none, which no per-name queue can hold, so the namer, `ResourceTransformer`'s too, reads the
+key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. By
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a key there
 that names a model or an enum, at any depth, is imported, and an override spelled like it keeps its own import.
 
@@ -96,7 +97,8 @@ A cast entry describes one value of its key. `merge()` drops it where a later so
 
 The fit runs at publish time, never when the analyzer applies a cast. Dropping a key's import channels there loses the
 classes an import-less cast spells, the wraps a cast writes itself, and what a later class-level cast without an import
-needs (`ClassCastOverMethodCastResource`).
+needs (`ClassCastOverMethodCastResource`). The one analysis-time fit is a key `ReturnShapeRefiner` fills from a
+method's `@return`, which held only a vague value ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill)).
 
 `dropOverriddenEnumResources()` stays as the guard for the one record the fit never sees: a later spread's key over an
 earlier spread's `EnumResource`, which would make `rewriteEnumResourceTypes()` throw. `SpreadOverSpreadEnumResource`

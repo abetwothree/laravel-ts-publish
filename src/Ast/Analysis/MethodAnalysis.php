@@ -79,7 +79,8 @@ class MethodAnalysis
 
     /**
      * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
-     * where an override spells that name: a share() docblock entry's, recorded by CastChannels::fit() at publish time.
+     * where an override spells that name, recorded by CastChannels::fit(): a share() docblock entry's at publish time,
+     * and a key ReturnShapeRefiner fills from a method's `@return` when the analysis reads it.
      *
      * @var array<array-key, TokenFqcns>
      */
@@ -257,9 +258,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps, `casts` and `closedToDottedKeys` replace-merge, the source
-     * winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as aliasPropertyType()
-     * reads them by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
+     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the
+     * source winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as read by
+     * position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
@@ -280,11 +281,16 @@ class MethodAnalysis
                 unset($this->casts[$property['name']]);
             }
 
+            if (! isset($source->declaredTokenFqcns[$property['name']])) {
+                unset($this->declaredTokenFqcns[$property['name']]);
+            }
+
             unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
+        $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
 

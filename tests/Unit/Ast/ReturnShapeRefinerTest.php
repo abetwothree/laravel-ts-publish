@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
 
 /**
@@ -78,11 +79,70 @@ test('a shape value naming an overridden class fills with the override and bring
     expect(array_column($analysis->properties, 'type', 'name'))->toBe([
         'chart' => 'ChartType',
         'nested' => '{ panel: UiNode; n: number }',
-        'owner' => 'unknown',
+        'owner' => 'User',
     ])->and($analysis->customImports)->toBe([
         '@js/types/ui' => ['UiNode'],
         ComposedClassTypes::marker(Chart::class) => ['ChartType'],
     ]);
+});
+
+test('a filled key queues the model its member names, as a cast naming it does', function () {
+    $analysis = refinedAnalysis([['name' => 'owner', 'type' => 'unknown']], 'overridden');
+
+    expect($analysis->inlineModelFqcns)->toBe(['owner' => [User::class]])
+        ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
+});
+
+test('an override spelled like the model beside it keeps both arms, each token with its own class', function () {
+    $analysis = refinedAnalysis([['name' => 'either', 'type' => 'unknown']], 'spelledLikeModel');
+
+    expect($analysis->properties[0]['type'])->toBe('User | User')
+        ->and($analysis->declaredTokenFqcns)->toBe(['either' => [null, User::class]])
+        ->and($analysis->inlineModelFqcns)->toBe(['either' => [User::class]])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
+});
+
+test('a vague-only key takes its member in place of the vague arms, keeping the null arm', function (string $name, string $inferred, string $expected) {
+    $props = collect(refinedAnalysis([['name' => $name, 'type' => $inferred]], 'vague')->properties)->keyBy('name');
+
+    expect($props[$name]['type'])->toBe($expected);
+})->with([
+    'a nullable list' => ['list', 'unknown[] | null', 'string[] | null'],
+    'a list' => ['list', 'unknown[]', 'string[]'],
+    'an empty list' => ['list', 'never[]', 'string[]'],
+    'a null before the list' => ['list', 'null | unknown[]', 'string[] | null'],
+    'unknown with a null arm' => ['list', 'unknown | null', 'string[] | null'],
+    'a record' => ['record', 'Record<string, unknown>', 'Record<string, number>'],
+    'a nullable record' => ['record', 'Record<string, unknown> | null', 'Record<string, number> | null'],
+]);
+
+test('a vague member fills only an exact unknown, never a vague key it would make less specific', function (string $inferred, string $expected) {
+    $props = collect(refinedAnalysis([['name' => 'vague', 'type' => $inferred]], 'vague')->properties)->keyBy('name');
+
+    expect($props['vague']['type'])->toBe($expected);
+})->with([
+    'a list' => ['unknown[]', 'unknown[]'],
+    'a nullable record' => ['Record<string, unknown> | null', 'Record<string, unknown> | null'],
+    'unknown' => ['unknown', 'unknown'],
+]);
+
+test('a precise inferred key keeps its type over the docblock', function (string $inferred) {
+    $props = collect(refinedAnalysis([['name' => 'precise', 'type' => $inferred]], 'vague')->properties)->keyBy('name');
+
+    expect($props['precise']['type'])->toBe($inferred);
+})->with([
+    'a string' => ['string'],
+    'a list of strings' => ['string[]'],
+    'a vague arm beside a precise one' => ['unknown[] | string'],
+    'a lone null' => ['null'],
+    'an unknown inside a shape' => ['{ a: unknown }'],
+]);
+
+test('a union of two Records gives no record value', function () {
+    $analysis = refinedAnalysis([['name' => 'a', 'type' => 'unknown']], 'records');
+
+    expect($analysis->properties[0]['type'])->toBe('unknown')
+        ->and($analysis->customImports)->toBe([]);
 });
 
 test('an array<string, V> return naming an overridden class fills with the override and brings its import', function () {

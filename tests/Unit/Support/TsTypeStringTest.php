@@ -1175,6 +1175,27 @@ describe('isUnknownOnly', function () {
     ]);
 });
 
+describe('isVagueOnly', function () {
+    test('only a type whose non-null arms all say nothing of the value is vague-only', function (string $type, bool $expected) {
+        expect($this->service->isVagueOnly($type))->toBe($expected);
+    })->with([
+        'bare unknown' => ['unknown', true],
+        'unknown with a null arm' => ['unknown | null', true],
+        'an unknown list' => ['unknown[]', true],
+        'an empty list' => ['never[]', true],
+        'an unknown record' => ['Record<string, unknown>', true],
+        'a nullable list before its null' => ['null | unknown[]', true],
+        'two vague arms' => ['unknown[] | Record<string, unknown> | null', true],
+        'a lone null' => ['null', false],
+        'a real type' => ['string', false],
+        'a vague arm beside a real one' => ['unknown[] | string', false],
+        'a list of a real type' => ['string[]', false],
+        'a record of a real type' => ['Record<string, number>', false],
+        'a record keyed by number' => ['Record<number, unknown>', false],
+        'an unknown inside a shape' => ['{ a: unknown }', false],
+    ]);
+});
+
 describe('isExtendable', function () {
     test('only one type reference that is no keyword can join an interface\'s extends list', function (string $type, bool $extendable) {
         expect($this->service->isExtendable($type))->toBe($extendable);

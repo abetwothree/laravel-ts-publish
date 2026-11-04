@@ -30,7 +30,7 @@ These are the classes a change to resource analysis usually touches:
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
@@ -120,7 +120,7 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
-  `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
+  vague, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
   after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
@@ -136,10 +136,20 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 
 ### What the method's `@return` may fill
 
-`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or a `@return array<string, V>` value type for every
-unfilled key. A `key?:` entry also marks the key optional. It fills a value only where
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds at each
-leaf, and adds those imports to the analysis, so an override fills with its import while a model or an enum is skipped.
+`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or the `V` of a `@return array<string, V>` that is one
+`Record<string, V>`, for every vague key. A `key?:` entry also marks the key optional. A key is vague where every arm
+but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`TsTypeString::isVagueOnly()`), as an
+`'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
+only an exact `unknown`.
+
+It fills a value only where
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
+token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
+resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
+the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
+`merge()` carries them, and a branch join keeps them where every branch declares the key alike. `ResourceTransformer`
+reads a key's tokens from its slots where one holds an override's null, so `either: Person|User` publishes
+`User | WorkbenchUser`, each with its import; a per-name queue cannot hold that null.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`

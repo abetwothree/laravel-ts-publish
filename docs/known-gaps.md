@@ -531,19 +531,23 @@ A docblock shape keeps a model or an enum at any depth, with its import. Read by
 override like the model or enum beside it, such as `either: Person|User`, is read as a value object's shape is, each
 leaf naming a class `unknown`. So is one where a literal or a key spells the class's name:
 `array{kind: 'User', r: User}` publishes `{ kind: 'User'; r: unknown }`, and `array{User: int, owner: User}` publishes
-`{ User: number; owner: unknown }`. `share()`'s `@return` keeps them all, and a metadata provider's fails the publish on
-any class but an enum.
+`{ User: number; owner: unknown }`. `share()`'s `@return` keeps them all, as does an API resource's `toArray()` or
+spread helper where its `@return` fills a key the body left vague, and a metadata provider's fails the publish on any
+class but an enum.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
 and a value object's shape, though it publishes as written elsewhere. Give the override an `import`.
 
 ### A docblock union of an override and a model spelled alike binds both to the model, outside `share()`
 
-An API resource's helper documented `@return Person|User`, where `Person`'s override is `User` from another module,
-publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Person|User>` a list of it, importing only the model. The
-override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON, which the
-model's type does not describe. `share()`'s `@return` keeps each arm with its own import. Type the key with an
-import-aware `#[TsCasts]`.
+An API resource's helper read as a value, documented `@return Person|User`, where `Person`'s override is `User` from
+another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Person|User>` a list of it, importing only
+the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
+which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
+`@return array{…}` of a resource's `toArray()` or spread helper filling a vague key, unless another return branch sets
+that key to a different value: the join unions the branches by type text, as
+[a merge does](#a-merge-whose-two-sides-name-same-basename-classes-publishes-only-one-of-them), so the two `User` arms
+become one, the model's. Type the key with an import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 

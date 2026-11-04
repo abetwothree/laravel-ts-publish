@@ -7050,6 +7050,24 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });
 
+test('mergeReturnBranches() keeps a key\'s declared token slots only where every branch declares it alike', function () {
+    $user = User::class;
+    $branch = function (string $type, ?array $slots): ResourceAnalysis {
+        $analysis = new ResourceAnalysis(properties: [['name' => 'either', 'type' => $type, 'optional' => false, 'description' => '']]);
+        $analysis->declaredTokenFqcns = $slots === null ? [] : ['either' => $slots];
+
+        return $analysis;
+    };
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+    expect($analyzer->mergeReturnBranches([$branch('User | User', [null, $user]), $branch('User | User', [null, $user])])->declaredTokenFqcns)
+        ->toBe(['either' => [null, $user]])
+        ->and($analyzer->mergeReturnBranches([$branch('User | User', [null, $user]), $branch('string', null)])->declaredTokenFqcns)
+        ->toBe([])
+        ->and($analyzer->mergeReturnBranches([$branch('User', [null]), $branch('User', [$user])])->declaredTokenFqcns)
+        ->toBe([]);
+});
+
 // merge()/mergeWhen() call their closure with no argument, so a parameter holds its default, never the outer local.
 test('a merge closure parameter owns its name and holds its default', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(MergeParameterShadowResource::class), Post::class)->analyze()->properties)->keyBy('name');

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
@@ -44,6 +45,7 @@ use ReflectionClass;
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type TokenFqcns from MethodAnalysis
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -113,6 +115,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
     protected array $carried = [];
+
+    /** @var array<array-key, TokenFqcns> property name => the class behind each class token of a declaration's text */
+    protected array $declaredTokenFqcns = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -437,6 +442,7 @@ class ResourceTransformer extends CoreTransformer
         );
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
+        $this->declaredTokenFqcns = $analysis->declaredTokenFqcns;
 
         // A body-less collection whose live wrap key is null or empty emits an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -1336,13 +1342,13 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
-                $this->properties[$propName]['type'],
-                $propFqcns,
-                $nameMap,
-                $this->importAliases,
-                $this->siblingImportNames,
-            );
+            $type = $this->properties[$propName]['type'];
+            $slots = $this->declaredTokenFqcns[$propName] ?? [];
+
+            // A per-name queue cannot hold the null of an override's token spelled like a class, so each reads a slot.
+            $this->properties[$propName]['type'] = in_array(null, $slots, true)
+                ? $this->aliasSlottedTokens($type, $slots, $nameMap)
+                : TsTypeString::aliasPropertyType($type, $propFqcns, $nameMap, $this->importAliases, $this->siblingImportNames);
         }
     }
 
@@ -1432,5 +1438,35 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return array_values(array_unique([...$base, ...$multi, ...$inlineResources]));
+    }
+
+    /**
+     * Respell each token of a declaration's classes' names in a type by the class its own slot names, in order, leaving
+     * a null slot's token, an override's, as spelled.
+     *
+     * @param  TokenFqcns  $slots
+     * @param  array<string, string>  $nameMap  FQCN => unaliased type name
+     */
+    private function aliasSlottedTokens(string $type, array $slots, array $nameMap): string
+    {
+        $names = FileImportNames::namesOf('classes', array_values(array_unique(array_filter($slots))));
+
+        if ($names === []) {
+            return $type; // @codeCoverageIgnore
+        }
+
+        $at = 0;
+
+        return preg_replace_callback(
+            TsTypeString::queuedTokenPattern($names),
+            function (array $token) use ($slots, $nameMap, &$at): string {
+                $fqcn = $slots[$at++] ?? null;
+
+                return $fqcn === null
+                    ? $token[0]
+                    : TsTypeString::aliasPropertyType($token[0], [$fqcn], $nameMap, $this->importAliases, $this->siblingImportNames);
+            },
+            $type,
+        ) ?? $type;
     }
 }

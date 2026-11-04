@@ -105,6 +105,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type TokenFqcns from MethodAnalysis
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
  *
@@ -518,6 +519,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
+        $merged->declaredTokenFqcns = $this->slotsEveryBranchAgrees($analyses, array_keys($propertyMap));
         $merged->queueSplitClasses($analyses);
 
         return $merged;
@@ -2306,6 +2308,39 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $merged->merge($skipped);
+    }
+
+    /**
+     * The token slots of each key every branch that sets it declares to one text alike, as the union then keeps that
+     * text and each token's class; any other key's slots no longer line up with its tokens.
+     *
+     * @param  list<MethodAnalysis>  $analyses
+     * @param  list<array-key>  $names
+     * @return array<array-key, TokenFqcns>
+     */
+    private function slotsEveryBranchAgrees(array $analyses, array $names): array
+    {
+        $slots = [];
+
+        foreach ($names as $name) {
+            $declared = [];
+
+            foreach ($analyses as $analysis) {
+                foreach ($analysis->properties as $property) {
+                    if ($property['name'] === (string) $name) {
+                        $declared[] = [$property['type'], $analysis->declaredTokenFqcns[$name] ?? null];
+                    }
+                }
+            }
+
+            $alike = count(array_unique(array_map(serialize(...), $declared))) === 1;
+
+            if ($alike && $declared[0][1] !== null) {
+                $slots[$name] = $declared[0][1];
+            }
+        }
+
+        return $slots;
     }
 
     /**
