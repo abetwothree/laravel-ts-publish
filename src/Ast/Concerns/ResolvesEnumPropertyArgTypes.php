@@ -186,7 +186,7 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $resolved = $engine->resolve($payload);
+        $resolved = $scope->readingCasesAsEnums(fn (): array => $engine->resolve($payload));
         // A union of enum reads, such as a `??` over a case, carries its one enum on the multi-entry channel.
         $fqcns = array_values(array_unique([
             ...(isset($resolved['directEnumFqcn']) ? [$resolved['directEnumFqcn']] : []),
@@ -229,15 +229,21 @@ trait ResolvesEnumPropertyArgTypes
      * Bypasses ResolvesModelTypes's cached-property gate, which this per-call handler never
      * populates — calls the ModelAttributeResolver singleton directly instead; it caches per FQCN.
      *
+     * @param  bool  $casesAsLiterals  the scope's own flag where the attribute is read as a value; an `EnumResource`
+     *                                 payload or a `->value` base needs the enum, so it reads cases as their enum
      * @return AttributeTypeInfo
      */
-    protected function resolveModelAttributeTypeInfo(string $attributeName, AnalysisScope $scope): array
-    {
+    protected function resolveModelAttributeTypeInfo(
+        string $attributeName,
+        AnalysisScope $scope,
+        bool $casesAsLiterals = false,
+    ): array {
         if ($scope->modelClass === null) {
             return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => [], 'customImports' => []];
         }
 
-        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports);
+        $tsInfo = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports, $casesAsLiterals);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;

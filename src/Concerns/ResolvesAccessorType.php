@@ -31,6 +31,8 @@ trait ResolvesAccessorType
      *
      * @param  ReflectionClass<Model>  $reflectionModel
      * @param  bool  $carriesImports  false when the reader carries no import; only the getter body step reads it
+     * @param  bool  $casesAsLiterals  true when the reader types a plain enum case as its literal, as the body fallback
+     *                                 does; only the getter body step reads it
      * @return TypeScriptTypeInfo
      */
     protected function resolveAccessorType(
@@ -38,6 +40,7 @@ trait ResolvesAccessorType
         Model $modelInstance,
         ReflectionClass $reflectionModel,
         bool $carriesImports = true,
+        bool $casesAsLiterals = false,
     ): array {
         $result = LaravelTsPublish::emptyTypeScriptInfo();
         ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
@@ -71,7 +74,13 @@ trait ResolvesAccessorType
 
                     // Both annotations are vague, so what the getter body returns is the better answer.
                     $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $docblockReturn;
-                    $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
+                    $bodyReturn = $this->resolveAccessorBodyType(
+                        $reflectionModel->getName(),
+                        $name,
+                        $carriesImports,
+                        $fallbackReturn,
+                        $casesAsLiterals,
+                    );
 
                     return $bodyReturn ?? $fallbackReturn;
                 }
@@ -105,7 +114,13 @@ trait ResolvesAccessorType
             }
 
             $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $result;
-            $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
+            $bodyReturn = $this->resolveAccessorBodyType(
+                $reflectionModel->getName(),
+                $name,
+                $carriesImports,
+                $fallbackReturn,
+                $casesAsLiterals,
+            );
 
             return $bodyReturn ?? $fallbackReturn;
         }
@@ -122,10 +137,15 @@ trait ResolvesAccessorType
      * @param  TypeScriptTypeInfo  $fallbackReturn  what the waterfall yields when the body step declines
      * @return TypeScriptTypeInfo|null
      */
-    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports, array $fallbackReturn): ?array
-    {
+    protected function resolveAccessorBodyType(
+        string $modelFqcn,
+        string $name,
+        bool $carriesImports,
+        array $fallbackReturn,
+        bool $casesAsLiterals = false,
+    ): ?array {
         $analyzer = resolve(AccessorBodyAnalyzer::class);
-        $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports);
+        $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports, $casesAsLiterals);
 
         if ($bodyReturn === null || ! $this->isVagueTsType($bodyReturn['type'])) {
             return $bodyReturn;

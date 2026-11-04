@@ -91,8 +91,9 @@ A reader that keeps no FQCN channel reads an accessor with `carriesImports: fals
 for a member naming a token, `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
 The model file and every resource publish the analysis with imports. A method body the body fallback reads carries
 imports, as [Receiver types](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does) says, so
-it reads an accessor as the model file publishes it; no reader in a publish run seeds the flag since then, and the
-import-less path is reached only from its own unit tests.
+it reads an accessor as the model file publishes it, but for a plain enum case its getter returns: `analyze()` takes
+`casesAsLiterals: true` there, and the getter's case types as the literal it sends. No reader in a publish run seeds
+`carriesImports: false`, so the import-less path is reached only from its own unit tests.
 
 `ResolvesAccessorType::resolveAccessorBodyType()` then chooses between that spelling and the annotation. Without
 imports, a spelling can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
@@ -112,15 +113,16 @@ read position in both modes.
 ## Cycles
 
 Two accessors that read each other would recurse forever. `analyze()` enters an `AnalysisMemo` guard keyed
-`accessor-body:{model}@{attribute}`, with `@importless` appended for a read without imports, and returns null on
-re-entry. The inner read is `unknown` and the outer one terminates, as `Release::loopA()` and `loopB()` pin. The same
-key memoizes the answer for the run, a cut-short one with the guards that cut it.
+`accessor-body:{model}@{attribute}`, with `@importless` appended for a read without imports and `@casesAsLiterals` for
+the body fallback's, and returns null on re-entry. The inner read is `unknown` and the outer one terminates, as
+`Release::loopA()` and `loopB()` pin. The same key memoizes the answer for the run, a cut-short one with the guards that
+cut it.
 
 `AccessorBodyAnalyzer` keys its own guard because `analyzeModelClosure()` guards and memoizes nothing, unlike
 `AstEngine::analyzeMethod()` with its `analysis:` key. The two keys are not interchangeable, so don't merge them. Each
-import mode has its own key, so an import-less read never stands in for the published one or cuts it short. A getter
-that calls a method reading the same accessor back, as `FilteringAccessorModel::selfReport()` does, is cut at that read
-in either read order: the method publishes the getter's own reading, and the getter publishes that read as `unknown`.
+reading has its own key, so an import-less or a body fallback's read never stands in for the published one or cuts it
+short. A getter that calls a method reading the same accessor back, as `FilteringAccessorModel::selfReport()` does, is
+read back once more in the body fallback's reading before that read's own guard cuts it, in any read order.
 
 ## What stays vague
 
@@ -136,6 +138,6 @@ These pages hold the neighboring rules:
 
 - [ModelAttributeResolver](model-attribute-resolver.md), for the attribute waterfall and `@property` refinement
 - [AST engine § The run memo replays what it recorded](ast-engine.md#the-run-memo-replays-what-it-recorded)
-- The known gap where a shape whose values name a class loses those values:
-  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways)
+- The known gap where a shape whose values name a class can lose some of them:
+  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them)
 - [Type inference gates](../testing/type-inference-gates.md), including the token gate's DOM-free program

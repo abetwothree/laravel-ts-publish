@@ -257,6 +257,7 @@ final class AstEngine
      *
      * @param  class-string<Model>  $modelClass
      * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
+     * @param  bool  $casesAsLiterals  true when the body fallback reads the accessor, whose cases keep their literals
      * @return ValueExpressionResult
      *
      * @internal
@@ -266,12 +267,14 @@ final class AstEngine
         ClosureExpr|ArrowFunction $closure,
         MethodContext $context,
         bool $carriesImports = true,
+        bool $casesAsLiterals = false,
     ): array {
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
         $scope->rebase(self::genericReflection($modelClass), $modelClass);
         $scope->carriesImports = $carriesImports;
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
@@ -490,9 +493,9 @@ final class AstEngine
                 $method,
                 passed: $passed,
                 runtime: $runtime,
-                casesAsLiterals: $casesAsLiterals,
                 readsCall: $readsCall,
                 reading: $reading,
+                casesAsLiterals: $casesAsLiterals,
             );
 
             return $analyzer->analyze();

@@ -507,7 +507,7 @@ resource too. So a resource that guards on it needs no `#[TsCasts]` for what the
 resource with no backing model for two or more models still publishes `null` for an attribute its arm reads, such as
 `$this->title` (#127).
 
-### A shape whose values name a class loses those values, in one of two ways
+### A shape whose values name a class can lose some of them
 
 A value object's own shape carries an override's import, but no model's or enum's. It keeps a member naming a class or
 an enum with an override, such as `chart: Chart`, or a value object whose shape keeps one, with its imports, and

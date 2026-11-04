@@ -283,8 +283,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
 - **`carriesImports` is false only for a getter `AstEngine::analyzeModelClosure()` reads without imports**, for a reader
-  that keeps no FQCN channel. **`casesAsLiterals` is true only for the body fallback's analysis**, which types a plain
-  enum's case as the literal it sends. See [Receiver types § The body fallback][body-fallback].
+  that keeps no FQCN channel. **`casesAsLiterals` is true only for the body fallback's analysis and a getter it reads
+  whole**, which type a plain enum's case as the literal it sends. See [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
 
@@ -711,8 +711,8 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 [`AnalysisMemo`] is a container singleton holding the engine's cycle guards and a per-run memo of four analyses:
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. The two accessor keys gain an `@importless` suffix for a read that
-carries no imports, and `analysis:` gains `@casesAsLiterals` for the body fallback's analysis; `method-return:`'s
-answer depends on neither. It also holds the per-class reads each resource prop repeats:
+carries no imports, and all three gain `@casesAsLiterals` for the body fallback's reading; `method-return:`'s answer
+depends on neither. It also holds the per-class reads each resource prop repeats:
 `JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
 `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in `GuessesModelResources`.
 

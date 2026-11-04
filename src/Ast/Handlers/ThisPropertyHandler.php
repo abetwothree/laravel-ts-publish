@@ -140,7 +140,7 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $own !== null && ValueResult::namesOnlyPublishedModels($own) ? $own : $result;
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
+        $info = $this->resolveModelAttributeTypeInfo($propName, $scope, $scope->casesAsLiterals);
 
         if ($info['type'] !== 'unknown') {
             return ValueResult::withAttributeChannels([...$result, 'type' => $info['type']], $info);

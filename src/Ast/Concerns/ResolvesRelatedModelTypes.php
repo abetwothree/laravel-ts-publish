@@ -30,7 +30,8 @@ trait ResolvesRelatedModelTypes
      */
     protected function analyzeRelatedModelProperty(string $propertyName, AnalysisScope $scope, string $modelFqcn): array
     {
-        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($modelFqcn, $propertyName, $scope->carriesImports);
+        $tsInfo = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute($modelFqcn, $propertyName, $scope->carriesImports, $scope->casesAsLiterals);
 
         if ($tsInfo['type'] === 'unknown') {
             return ValueResult::unknown();

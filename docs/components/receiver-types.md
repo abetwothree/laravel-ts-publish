@@ -412,8 +412,8 @@ then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the l
 The analysis folds through `InlineObjectResult::of()`, as an inline literal does, so each member keeps its type and the
 import channels of the classes it names: a model, an API resource, an enum or its `EnumResource` wrap, a filter's
 `Pick<>`. `BodyFallbackChannelsTest` pins each against the same literal written in place.
-`MethodAnalysis::forgetUnpublishableMembers()` publishes `unknown` for two members and forgets their channels, while
-their siblings keep their types:
+`MethodAnalysis::forgetUnpublishableMembers()` publishes `unknown` for two kinds of member and forgets their channels,
+while their siblings keep their types:
 
 - One naming a model with no published file, which `resolve()`'s check would decline the whole shape for.
 - One whose class publishes under a name a custom import brings. The reader holds the shape as one key, which aliases
@@ -425,9 +425,11 @@ enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or li
 or `collect()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and `[Status::Draft, Status::Published]` `(0 | 1)[]`,
 where the enum's type is vaguer. So `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A pure enum's
 case, which `json_encode()` cannot write, and a `JsonSerializable` enum's, whose `jsonSerialize()` it sends, type
-nothing; a case of an enum `LaravelTsPublish::retypedEnumType()` answers for keeps its override. Any other read of an
-enum, such as a cast attribute, `->value` or an accessor's getter, publishes as it does in place. The flag keys its own
-`analysis:` memo entry.
+nothing; a case of an enum `LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's
+getter returns types the same way where the body reads the accessor whole: the getter is analyzed under the flag too,
+with memo entries of its own, so an in-place read never replays the literal. An `EnumResource` payload reads its cases
+as their enum (`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum,
+such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry.
 
 Attribute filters know an answer that names no token, which a reader that carries no import publishes.
 `AnalysisScope::$carriesImports` is false only for an accessor's getter read that way
@@ -512,7 +514,7 @@ These pages cover the neighbors of receiver resolution:
 - [ResourceAstAnalyzer § Attribute filters on any model receiver][resource-filters]: how `RelationFilterHandler` builds
   the filter answers the receiver rules reuse.
 - [AccessorBodyAnalyzer](accessor-body-analyzer.md): getter bodies, the other reader that can carry no import.
-- [Known gaps § A shape whose values name a class loses those values][gap-shape]: what the body fallback costs a user.
+- [Known gaps § A shape whose values name a class can lose some of them][gap-shape]: what the body fallback costs a user.
 - [API Resources § Method Return Types](https://tolki.abe.dev/ts/api-resources.html#method-return-types): what users see
   of receiver inference.
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that catch a regression to `unknown` or an
@@ -537,7 +539,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
 [`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
 [gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
-[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
+[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [params]: ast-engine.md#a-called-methods-parameters
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type

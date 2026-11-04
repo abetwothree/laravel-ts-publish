@@ -206,10 +206,16 @@ class ModelAttributeResolver
      *
      * @param  class-string  $modelFqcn
      * @param  bool  $carriesImports  false when the reader carries no import, so a getter body is analyzed without them
+     * @param  bool  $casesAsLiterals  true when the reader types a plain enum case as its literal, as the body fallback
+     *                                 does, so a getter body is analyzed that way too
      * @return TypeScriptTypeInfo
      */
-    public function resolveAttribute(string $modelFqcn, string $attributeName, bool $carriesImports = true): array
-    {
+    public function resolveAttribute(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+    ): array {
         $empty = LaravelTsPublish::emptyTypeScriptInfo();
         $ctx = $this->resolveContext($modelFqcn);
 
@@ -220,14 +226,14 @@ class ModelAttributeResolver
         $attr = $ctx['attributes']->firstWhere('name', $attributeName);
 
         if ($attr === null) {
-            return $this->resolveAttributeFallbacks($modelFqcn, $ctx, $attributeName, $carriesImports);
+            return $this->resolveAttributeFallbacks($modelFqcn, $ctx, $attributeName, $carriesImports, $casesAsLiterals);
         }
 
         $cast = $attr['cast'];
 
         if (($cast === 'attribute' || $cast === 'accessor')) {
             try {
-                $accessorInfo = $this->accessorType($ctx, $attributeName, $carriesImports);
+                $accessorInfo = $this->accessorType($ctx, $attributeName, $carriesImports, $casesAsLiterals);
 
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
@@ -992,8 +998,13 @@ class ModelAttributeResolver
      * }  $ctx
      * @return TypeScriptTypeInfo
      */
-    protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName, bool $carriesImports): array
-    {
+    protected function resolveAttributeFallbacks(
+        string $modelFqcn,
+        array $ctx,
+        string $attributeName,
+        bool $carriesImports,
+        bool $casesAsLiterals = false,
+    ): array {
         $empty = LaravelTsPublish::emptyTypeScriptInfo();
 
         // Guarded on the snake form being a literal attribute, so the recursive call always lands on
@@ -1004,7 +1015,7 @@ class ModelAttributeResolver
         // Only accessors: Eloquent camel-cases the key when looking for a mutator method, but never when
         // reading $attributes, so $order->placedAt on a plain placed_at column is null at runtime.
         if ($snakeAttr !== null && ($snakeAttr['cast'] === 'attribute' || $snakeAttr['cast'] === 'accessor')) {
-            return $this->resolveAttribute($modelFqcn, $snake, $carriesImports);
+            return $this->resolveAttribute($modelFqcn, $snake, $carriesImports, $casesAsLiterals);
         }
 
         // Requires a matching relation, so a real column ending in "_count" is never guessed at here.
@@ -1532,18 +1543,29 @@ class ModelAttributeResolver
     }
 
     /**
-     * An accessor's waterfall type, worked out once per model, attribute and import mode for the run.
+     * An accessor's waterfall type, worked out once per model, attribute, import mode and case reading for the run.
      *
      * An import-less read refines its spelling against the type with imports, so the two share this one memo.
      *
      * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
      * @return TypeScriptTypeInfo
      */
-    protected function accessorType(array $ctx, string $attributeName, bool $carriesImports = true): array
-    {
+    protected function accessorType(
+        array $ctx,
+        string $attributeName,
+        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+    ): array {
         return resolve(AnalysisMemo::class)->remember(
-            'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless'),
-            fn (): array => $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports),
+            'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless')
+                .($casesAsLiterals ? '@casesAsLiterals' : ''),
+            fn (): array => $this->resolveAccessorType(
+                $attributeName,
+                $ctx['instance'],
+                $ctx['reflection'],
+                $carriesImports,
+                $casesAsLiterals,
+            ),
         );
     }
 

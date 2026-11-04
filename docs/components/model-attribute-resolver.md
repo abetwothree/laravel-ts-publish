@@ -46,8 +46,9 @@ key inside a concrete shape is not the same as no shape. The return-type order, 
 refinement all use this one predicate.
 
 `resolveAttribute()` takes a `carriesImports` flag, which reaches only the getter-body step and the `@property`
-refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). The
-accessor step is memoized per model, attribute and import mode, so one mode never reuses the other's answer.
+refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). Its
+`casesAsLiterals` flag, set for a whole read in the body fallback, reaches only the getter-body step. The accessor step
+is memoized per model, attribute, import mode and case reading, so no reading reuses another's answer.
 `resolveAttributeClass()` and `resolveAccessorModelFqcns()` take no flag, because the first never reads a getter body
 and the models a getter returns do not depend on how its filters are spelled.
 
@@ -479,6 +480,6 @@ These pages hold the neighboring rules:
 - [Version-guarded Laravel classes](../laravel-version-guards.md), including the `#[UseResource]` guard in
   `ModelClassResolver`
 - [Support helpers](support-helpers.md), for why the docblock helpers stayed on `LaravelTsPublish`
-- The known gap where a shape whose values name a class loses those values:
-  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways)
+- The known gap where a shape whose values name a class can lose some of them:
+  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them)
 - [Type inference gates](../testing/type-inference-gates.md)

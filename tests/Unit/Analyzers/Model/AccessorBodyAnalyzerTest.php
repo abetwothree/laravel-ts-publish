@@ -137,8 +137,8 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
             ->toBe("{ v: { v: { v: unknown; p: Pick<User, 'id'> }; p: Pick<User, 'id'> }; id: number }");
     });
 
-    // The getter calls report(), whose body reads the getter back: the cycle is cut at its first repeat in each mode,
-    // and the import-less read keeps a guard of its own, so no answer depends on who asked first.
+    // The getter calls report(), whose body reads the getter back in a reading of its own, as the import-less read is:
+    // each keeps its own guard, so no read cuts another short and no answer depends on who asked first.
     test('a getter, the method body reading it back and its import-less read each publish one answer in any order', function (string $first) {
         $reads = [
             'getter' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'],
@@ -153,7 +153,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
             $types[$name] ??= $read();
         }
 
-        expect($types['getter'])->toBe("{ v: Pick<User, 'id'>; report: { self: unknown; id: number } }")
+        expect($types['getter'])->toBe("{ v: Pick<User, 'id'>; report: $report }")
             ->and($types['method'])->toBe($report)
             ->and($types['import-less'])->toBe("{ v: { id: number }; report: $report }");
     })->with(['getter first' => 'getter', 'method first' => 'method', 'an import-less read first' => 'import-less']);

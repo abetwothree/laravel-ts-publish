@@ -931,6 +931,27 @@ final class AnalysisScope
     }
 
     /**
+     * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off, then
+     * restore it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingCasesAsEnums(Closure $read): mixed
+    {
+        $literals = $this->casesAsLiterals;
+        $this->casesAsLiterals = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->casesAsLiterals = $literals;
+        }
+    }
+
+    /**
      * Run a read with one gap of a name lifted, so a value a write inside it assigns reads the name as it was before.
      *
      * @template TRead

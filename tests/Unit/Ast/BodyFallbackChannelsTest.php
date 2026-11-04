@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\CaseGetterHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\CategoryHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\CommentHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\DualAuthorHelperResource;
@@ -49,8 +50,11 @@ describe('a bare `: array` helper read as a value', function () {
         'relation and method reads on a typed parameter' => [TaskHelperResource::class, 'rel', '{ assignee: User | null; fresh: HelperTask | null; team: Team; team_name: string; key: number }'],
         'two models that share a basename' => [DualAuthorHelperResource::class, 'pair', '{ a: WorkbenchUser; b: CrmUser }'],
         'a payload method called on a resource the body builds' => [PostHelperResource::class, 'built', '{ author: User; title: string }'],
+        'an EnumResource wrap over either of two cases' => [CaseGetterHelperResource::class, 'wrapped', '{ s: AsEnum<typeof Status> }'],
+        'an EnumResource wrap over an accessor returning a case' => [CaseGetterHelperResource::class, 'given_wrap', '{ s: AsEnum<typeof Status> }'],
     ]);
 
+    // The file imports what its in-place keys bring too; the channel equality above is what isolates each helper.
     test('imports the enum an EnumResource wrap spells as a value', function () {
         expect(new ResourceTransformer(PostHelperResource::class)->valueImports)
             ->toBe(['../../../../../../../workbench/app/enums' => ['Status']]);
@@ -64,17 +68,20 @@ describe('a bare `: array` helper read as a value', function () {
     });
 
     // P9: the literal a plain backed case sends is more specific than the enum's type its literal reads in place.
-    test('keeps the literal a plain backed enum case sends, alone or listed, with no channel', function (string $name, string $type, string $inPlace) {
-        $properties = new ResourceTransformer(PostHelperResource::class)->properties;
+    test('keeps the literal a plain backed enum case sends, alone, listed or from a getter, with no channel', function (string $resource, string $name, string $type, string $inPlace) {
+        $properties = new ResourceTransformer($resource)->properties;
 
         expect($properties['helper_'.$name]['type'])->toBe($type)
             ->and($properties['in_'.$name]['type'])->toBe($inPlace)
-            ->and(bodyFallbackChannelClasses(PostHelperResource::class, 'helper_'.$name))->toBe([]);
+            ->and(bodyFallbackChannelClasses($resource, 'helper_'.$name))->toBe([]);
     })->with([
-        'one case' => ['single', '{ v: 0 }', '{ v: StatusType }'],
-        'a list literal' => ['inline', '{ v: (0 | 1)[] }', '{ v: StatusType[] }'],
-        'a class constant listing cases' => ['constant', '{ v: (0 | 1)[] }', '{ v: StatusType[] }'],
-        'a collected list' => ['collected', '{ v: 0[] }', '{ v: StatusType[] }'],
+        'one case' => [PostHelperResource::class, 'single', '{ v: 0 }', '{ v: StatusType }'],
+        'a list literal' => [PostHelperResource::class, 'inline', '{ v: (0 | 1)[] }', '{ v: StatusType[] }'],
+        'a class constant listing cases' => [PostHelperResource::class, 'constant', '{ v: (0 | 1)[] }', '{ v: StatusType[] }'],
+        'a collected list' => [PostHelperResource::class, 'collected', '{ v: 0[] }', '{ v: StatusType[] }'],
+        'an accessor whose getter returns one' => [CaseGetterHelperResource::class, 'default', '{ v: 0; n: number }', '{ v: StatusType; n: number }'],
+        'an accessor whose getter returns a shape holding one' => [CaseGetterHelperResource::class, 'shape', '{ v: { s: 0; n: number }; n: number }', '{ v: { s: StatusType; n: number }; n: number }'],
+        'that accessor read on a model a typed parameter holds' => [CaseGetterHelperResource::class, 'given', '{ v: 0 }', '{ v: StatusType }'],
     ]);
 
     // A method read as a value declines whole when it names such a model; only the member naming it gives way.
