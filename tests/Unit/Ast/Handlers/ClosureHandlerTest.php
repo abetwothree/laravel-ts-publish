@@ -316,6 +316,8 @@ it('leaves the body\'s unknown for a vague @return, one that types nothing, or o
         ->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
 })->with([
     'mixed' => ['/** @return mixed */'],
+    'void' => ['/** @return void */'],
+    'never' => ['/** @return never */'],
     'a mixed-valued array' => ['/** @return array<string, mixed> */'],
     'a class that does not exist' => ['/** @return NoSuchClass */'],
     'a list of a class that does not exist' => ['/** @return list<NoSuchClass> */'],

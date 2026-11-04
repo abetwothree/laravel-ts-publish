@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
@@ -178,6 +179,26 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
             'import-less' => 'unknown[]',
         ]);
     })->with(['model first' => 'model', 'method first' => 'method', 'an import-less read first' => 'import-less']);
+});
+
+// The `@return` before a getter closure answers where its body types nothing, as for a resource's value closure.
+describe('AccessorBodyAnalyzer for a getter its closure\'s docblock types', function () {
+    test('the model publishes each getter\'s documented type, passed by name or by position', function () {
+        expect(array_map(fn (array $mutator): string => $mutator['type'], (new ModelTransformer(DocumentedGetterPost::class))->data()->mutators))
+            ->toEqual([
+                'doc_label' => 'string',
+                'doc_count' => 'number',
+                'doc_post' => 'Post | null',
+                'doc_status' => 'StatusType',
+            ]);
+    });
+
+    test('a method body reads a getter documented as a class as unknown without imports, and keeps its siblings', function () {
+        $read = fn (string $method): ?string => resolve(MethodReturnTypeResolver::class)->resolve(DocumentedGetterPost::class, $method)['type'] ?? null;
+
+        expect($read('readDocumented'))->toBe('{ label: string; post: unknown; status: unknown; id: number }')
+            ->and($read('readPicked'))->toBe('{ v: { id: number; doc_count: number; doc_post: unknown; doc_status: unknown }; id: number }');
+    });
 });
 
 describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', function () {

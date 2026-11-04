@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocumentedClosurePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EloquentStaticsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\FilteredRelationsController;
@@ -1620,6 +1621,12 @@ it('reads a props helper a trait supplies under an alias, called or spread, as u
             ['meta', 'spread', 'guarded', 'base'],
             ['tk' => 1, 'tn' => 'x'],
         ));
+});
+
+it('types a closure prop whose body types nothing by the @return written before it', function () {
+    expect(pageData(DocumentedClosurePropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { label: string, count?: number }')
+        ->and(json_encode(inertiaProps(new DocumentedClosurePropsController()->show())))->toBe('{"label":"x"}');
 });
 
 it('reads a first-class callable in props a helper builds as Inertia calls it', function () {
