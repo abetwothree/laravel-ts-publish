@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -132,14 +133,14 @@ trait ResolvesEnumPropertyArgTypes
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
         $reading = $engine->reading();
 
-        if ($result === null || ! ValueResult::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
+        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
             return $result;
         }
 
         return match (true) {
-            $reading !== Reading::Encoded => [...$result, 'type' => ValueResult::stripNullArm($result['type']).' | never[]'],
+            $reading !== Reading::Encoded => [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'],
             $scope->filtersNestedResources => $result,
-            default => [...$result, 'type' => ValueResult::stripNullArm($result['type'])],
+            default => [...$result, 'type' => TsTypeString::withoutNullArm($result['type'])],
         };
     }
 
@@ -205,7 +206,7 @@ trait ResolvesEnumPropertyArgTypes
 
         $retyped = LaravelTsPublish::retypedEnumType($enum);
         $enumType = $retyped ?? ValueResult::enumTypeName($enum);
-        $held = ValueResult::stripNullArm($resolved['type']);
+        $held = TsTypeString::withoutNullArm($resolved['type']);
 
         if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
@@ -217,7 +218,7 @@ trait ResolvesEnumPropertyArgTypes
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
-            'type' => ValueResult::hasNullArm($resolved['type']) ? ValueResult::withNullArm($type) : $type,
+            'type' => TsTypeString::hasNullArm($resolved['type']) ? TsTypeString::withNullArm($type) : $type,
             'optional' => $resolved['optional'],
             'enumFqcn' => $enum,
         ];
@@ -287,7 +288,7 @@ trait ResolvesEnumPropertyArgTypes
 
         return [
             ...ValueResult::unknown(),
-            'type' => ValueResult::hasNullArm($info['type']) ? ValueResult::withNullArm($type) : $type,
+            'type' => TsTypeString::hasNullArm($info['type']) ? TsTypeString::withNullArm($type) : $type,
             'enumFqcn' => $enum,
         ];
     }
