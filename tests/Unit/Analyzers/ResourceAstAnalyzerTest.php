@@ -796,7 +796,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     });
 
     test('map() closure body embeds both an enum-cast column and a model-backed property, and both propagate', function () {
-        // role is a nullable column, so the body type is a union and gets parenthesized before '[]'.
+        // role is a nullable column, but its `| null` sits inside the braces, so the list takes no parentheses.
         expect($this->props['member_profiles']['type'])->toBe('{ id: number; role: RoleType | null; owner: User }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_profiles')
             ->and($this->analysis->inlineEnumFqcns['member_profiles'])->toContain(Role::class)
@@ -805,8 +805,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     });
 
     test('->map->only() reached directly off the relation resolves the HigherOrderCollectionProxy', function () {
-        // arrayWrapType() parenthesizes on any '|', including one nested inside the braces — same
-        // as member_profiles above, not a defect specific to this proxy.
+        // A `|` nested inside the braces leaves the list unparenthesized, as member_profiles above.
         expect($this->props['member_map_only']['type'])->toBe('{ id: number; role: RoleType | null }[]')
             ->and($this->props['member_map_only']['optional'])->toBeFalse()
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_map_only')
@@ -6188,7 +6187,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     );
 
     test('whenLoaded closure ->map->only() resolves the HigherOrderCollectionProxy per element', function () {
-        // arrayWrapType() parenthesizes on any '|', including one nested inside the braces.
+        // A `|` nested inside the braces leaves the list unparenthesized.
         expect($this->props['staff_map_only']['type'])
             ->toBe('{ id: number; name: string; role: RoleType | null; last_login_at: string | null }[]')
             ->and($this->props['staff_map_only']['optional'])->toBeTrue()
