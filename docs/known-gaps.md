@@ -465,6 +465,8 @@ protected. [Support helpers](./components/support-helpers.md) sets which class o
 Overriding `flattenTraits()` or `propertyDeclaringFileClass()` no longer changes what the package emits either, since
 it finds the file declaring a member through [`DeclaringFile`](../src/Ast/Docblocks/DeclaringFile.php). An override
 of `methodDeclaringFileClass()` still applies, for methods only; the file declaring a property has no replacement point.
+An override of `resolveAccessorType()` or `resolveAccessorBodyType()` is not consulted where a helper read as a value
+reads an accessor whole, whose getter's plain enum cases keep their literals there.
 
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 

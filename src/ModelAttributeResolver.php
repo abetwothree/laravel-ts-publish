@@ -1559,13 +1559,9 @@ class ModelAttributeResolver
         return resolve(AnalysisMemo::class)->remember(
             'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless')
                 .($casesAsLiterals ? '@casesAsLiterals' : ''),
-            fn (): array => $this->resolveAccessorType(
-                $attributeName,
-                $ctx['instance'],
-                $ctx['reflection'],
-                $carriesImports,
-                $casesAsLiterals,
-            ),
+            fn (): array => $casesAsLiterals
+                ? $this->readAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports, true)
+                : $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports),
         );
     }
 
