@@ -48,12 +48,21 @@ test('splits and reads literals where TypeScript\'s parser does', function (arra
         ->and($mismatches)->toBe([]);
 })->with(typeScannerCorpus());
 
-test('reads a type with no backtick and no arrow alike in both dialects', function (array $rows) {
+test('reads a type with no backtick, no arrow and no quote left open on its line alike in both dialects', function (array $rows) {
     $mismatches = [];
     $compared = 0;
 
+    // TypeScript reads a quote with no closer to the type's end, and one across a line break whole, where PHPDoc reads
+    // plain text; a span left open moves when one more byte follows the type.
+    $leavesQuoteOpen = static function (string $type): bool {
+        $spans = TypeScanner::literalSpans($type);
+
+        return $spans !== TypeScanner::literalSpans($type.' ')
+            || array_any($spans, static fn (array $span): bool => strpbrk(substr($type, $span[0], $span[1] - $span[0]), "\r\n") !== false);
+    };
+
     foreach ($rows as $row) {
-        if (strpbrk($row['t'], '`=') !== false) {
+        if (strpbrk($row['t'], '`=') !== false || $leavesQuoteOpen($row['t'])) {
             continue;
         }
 
