@@ -814,7 +814,7 @@ where an earlier value still reaches the read), the walk's branch join (`walk-br
 array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a
 spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
-it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
+it drops. `CoalesceHandler` strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never
 returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
 exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
 arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
