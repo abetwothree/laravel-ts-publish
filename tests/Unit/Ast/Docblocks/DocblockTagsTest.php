@@ -49,6 +49,10 @@ test('a space before a generic\'s or a shape\'s opener continues the type, but n
         ->and(DocblockTags::type("/**\n * @return int (the count)\n */", 'return'))->toBe('int');
 });
 
+test('captures a callable tag whole, up to the by-reference name after its return type', function () {
+    expect(DocblockTags::type('/** @var callable(int): string &$cb */', 'var'))->toBe('callable(int): string');
+});
+
 test('a family with no tag, or only prose mentions of one, reads null', function () {
     expect(DocblockTags::type("/**\n * Mentions @return int here.\n */", 'return'))->toBeNull()
         ->and(DocblockTags::type('/** @returns int */', 'return'))->toBeNull()

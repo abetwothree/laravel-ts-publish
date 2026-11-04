@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForeignWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OverriddenWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WarningBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
@@ -154,6 +155,13 @@ describe('SubjectPropertyTypeResolver::declaredType()', function () {
         'a record' => ['context', 'Record<string, unknown>'],
         'its own `@var`, over the constructor\'s' => ['codes', 'number[]'],
     ]);
+
+    test('a trait-promoted property reads the trait constructor\'s `@param`, though the class overrides it', function () {
+        $subject = new ReflectionClass(NoteBoard::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->declaredType($subject, $subject->getProperty('notes'))['type'] ?? null)
+            ->toBe('string[]');
+    });
 });
 
 describe('SubjectPropertyTypeResolver::declaresOwnProperty()', function () {

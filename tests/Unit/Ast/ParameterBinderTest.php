@@ -7,7 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -492,10 +491,6 @@ test('reads a list shape @param as the tuple it declares', function () {
 
     expect($reader->readDeclared((string) $reader->extractParamTag("/**\n * @param  list{int, string}  \$posts\n */", 'posts', $context), $context)['type'] ?? null)
         ->toBe('[number, string]');
-});
-
-test('captures a callable tag whole, up to the by-reference name after its return type', function () {
-    expect(DocblockTags::type('/** @var callable(int): string &$cb */', 'var'))->toBe('callable(int): string');
 });
 
 // Past the write a receiver no longer holds the model: the value is a typed column, whose member PHP cannot read.

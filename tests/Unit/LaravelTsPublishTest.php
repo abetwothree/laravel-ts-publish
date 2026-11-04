@@ -42,6 +42,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
@@ -906,6 +907,10 @@ describe("an overridden member of a value object's shape", function () {
         "the class's own redeclaration of its trait's" => [GaugeRack::class, '{ gauges: { x: number }[] }', []],
         "a trait's promoted constructor parameter" => [GaugeBox::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
     ]);
+
+    test("types a trait's promoted property by the trait constructor's @param, though the class overrides it", function () {
+        expect($this->service->toTsType(NoteBoard::class))->toMatchArray(['type' => '{ limit: number; notes: string[] }']);
+    });
 
     test("sends a trait property's members in the shape it publishes", function () {
         $shelf = new GaugeShelf;
