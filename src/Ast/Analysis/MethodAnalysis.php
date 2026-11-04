@@ -492,9 +492,9 @@ class MethodAnalysis
      *
      * @return list<class-string>
      */
-    public function allTokenFqcns(): array
+    public function allChannelFqcns(): array
     {
-        return $this->allChannelFqcns(
+        return $this->fqcnsOnChannels(
             [$this->enumResources, $this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
             [$this->multiEnumResourceFqcns, $this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
         );
@@ -517,7 +517,7 @@ class MethodAnalysis
      */
     public function allWrappedEnumFqcns(): array
     {
-        return $this->allChannelFqcns([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+        return $this->fqcnsOnChannels([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
     }
 
     /**
@@ -779,7 +779,7 @@ class MethodAnalysis
      * @param  list<FqcnQueueMap>  $listed
      * @return list<class-string>
      */
-    private function allChannelFqcns(array $single, array $listed): array
+    private function fqcnsOnChannels(array $single, array $listed): array
     {
         $fqcns = array_merge([], ...array_map(array_values(...), $single));
 
