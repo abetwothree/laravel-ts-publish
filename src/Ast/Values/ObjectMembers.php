@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 
 /**
  * A printed object type read back into its keys, each carrying the classes its own type spells: the reverse of
@@ -54,7 +55,7 @@ final class ObjectMembers
 
         foreach ($members as [$key, $type]) {
             $optional = str_ends_with($key, '?');
-            $name = self::keyName($optional ? substr($key, 0, -1) : $key);
+            $name = PrintedKey::decode($key);
 
             if ($name === null) {
                 return null;
@@ -95,22 +96,6 @@ final class ObjectMembers
             || (! $carriesImports && TsTypeString::shapeValueHasUnimportableToken($value['type']));
 
         return $losesText ? null : self::analysis($value);
-    }
-
-    /**
-     * The key a printed key names: a bare identifier or integer as written, a quoted one unquoted; null for any other,
-     * an index signature among them.
-     */
-    private static function keyName(string $printed): ?string
-    {
-        if (preg_match('/^(?:[a-zA-Z_$][a-zA-Z0-9_$]*|0|[1-9]\d*)$/', $printed) === 1) {
-            return $printed;
-        }
-
-        // The printer quotes a key with json_encode(), so json_decode() reads back exactly the key it was given.
-        $name = str_starts_with($printed, '"') ? json_decode($printed) : null;
-
-        return is_string($name) ? $name : null;
     }
 
     /**

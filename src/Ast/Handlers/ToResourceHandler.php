@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -62,7 +63,7 @@ final class ToResourceHandler implements ExpressionHandler
 
         // A `?->` here or earlier in the chain ends the whole expression as null, where a plain `->` on null throws.
         return $result !== null && $this->chainShortCircuits($expr)
-            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
     }
 

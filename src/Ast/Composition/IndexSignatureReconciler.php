@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 
 /**
  * Settles each template-literal index signature against the keys published beside it.
@@ -158,8 +158,8 @@ final class IndexSignatureReconciler
 
     /**
      * Every arm of the given types except `undefined`, or null when one of them cannot join: a top-level `unknown`
-     * arm swallows the rest, a token other than a primitive, `Record`, `Date` or a literal, or an FQCN channel, is
-     * rewritten under its own key's name, and the splitter can cut a string literal holding a backslash apart.
+     * arm swallows the rest, and a token other than a primitive, `Record`, `Date` or a literal, or an FQCN channel, is
+     * rewritten under its own key's name.
      *
      * @param  list<string>  $keys  the signature's name and the named keys its pattern matches
      * @param  list<string>  $types  the signature's entries' types and those keys' types
@@ -177,7 +177,7 @@ final class IndexSignatureReconciler
         $arms = [];
 
         foreach ($types as $type) {
-            if ($this->holdsEscapedLiteral($type) || TsTypeString::shapeValueHasUnimportableToken($type)) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
                 return null;
             }
 
@@ -228,12 +228,6 @@ final class IndexSignatureReconciler
                 ));
             }
         }
-    }
-
-    /** Whether a `'` or `"` in the type is followed by a backslash before the next quote of its kind. */
-    private function holdsEscapedLiteral(string $type): bool
-    {
-        return preg_match('/([\'"])(?:(?!\1)[^\\\\])*\\\\/', $type) === 1;
     }
 
     /**

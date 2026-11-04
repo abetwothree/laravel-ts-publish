@@ -155,6 +155,10 @@ it('answers with the class behind each token when the info carries that queue, e
         ['classFqcns' => [User::class, CrmUser::class]],
         [User::class, CrmUser::class],
     ],
+    'an info whose queue holds a null for an override\'s token, which no class queue can hold' => [
+        ['classFqcns' => [User::class], 'classTokenFqcns' => [null, User::class]],
+        [User::class],
+    ],
     'an info that names no class' => [
         ['classFqcns' => []],
         [],

@@ -14,13 +14,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -672,11 +675,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $element = LaravelTsPublish::resolveDocblockTypeName(
-            $generic['element'],
-            LaravelTsPublish::parseFileUseStatements($span['context']),
-            $span['context']->getNamespaceName(),
-        );
+        $element = DocblockNames::resolve($generic['element'], $span['context']);
 
         return ReceiverType::isConcreteModel($element) ? $element : null;
     }
@@ -905,9 +904,9 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return FrameworkClasses::is($property->getDeclaringClass()->getName())
+        return FrameworkClasses::is(DeclaringFile::ofProperty($property, $owner)->getName())
             ? null
-            : $this->typeOf($this->propertyClasses($property, $scope->runtime->class->getName()));
+            : $this->typeOf($this->propertyClasses($property, $owner, $scope->runtime->class->getName()));
     }
 
     /**
@@ -1438,11 +1437,12 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $property = new ReflectionProperty($class, $name);
+        $subject = new ReflectionClass($class);
+        $property = $subject->getProperty($name);
 
         // A non-public property read from outside goes to __get(), not to the declaration.
         return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $class))
+            ? $this->typeOf($this->propertyClasses($property, $subject, $class))
             : null;
     }
 
@@ -1477,7 +1477,7 @@ final class ReceiverClassResolver
         $held = $type['classFqcns'];
 
         // A list of the model, or a union of it with another type, holds no single model.
-        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+( \| null)?$/', $type['type']) === 1
+        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+$/', TsTypeString::withoutNullArm($type['type'])) === 1
             ? ReceiverType::of($held[0])
             : null;
     }
@@ -2278,11 +2278,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * A property's classes: its native class type, else its full `@var` type.
+     * A property's classes: its native class type, else its full docblock type, as PropertyDocblockTypeReader::tag()
+     * finds it on the class the property was read on.
      *
+     * @param  ReflectionClass<object>  $subject
      * @return non-empty-list<class-string>|null
      */
-    private function propertyClasses(ReflectionProperty $property, string $receiverClass): ?array
+    private function propertyClasses(ReflectionProperty $property, ReflectionClass $subject, string $receiverClass): ?array
     {
         $declaring = $property->getDeclaringClass();
         $native = DeclaredClasses::nativeClasses($property->getType(), $receiverClass, $declaring->getName());
@@ -2291,12 +2293,11 @@ final class ReceiverClassResolver
             return $native;
         }
 
-        $docComment = $property->getDocComment();
-        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
 
-        return $declared === null || $declared === ''
+        return $tag === null
             ? null
-            : DeclaredClasses::docblockClasses($declared, $declaring, $receiverClass, $declaring->getName());
+            : DeclaredClasses::docblockClasses($tag['type'], $tag['context'], $receiverClass, $declaring->getName());
     }
 
     /**
@@ -2313,14 +2314,15 @@ final class ReceiverClassResolver
         $declaring = $property->getDeclaringClass();
 
         // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $docComment = FrameworkClasses::is($declaring->getName()) ? false : $property->getDocComment();
-        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = FrameworkClasses::is(DeclaringFile::ofProperty($property, $subject)->getName())
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
 
-        if ($declared === null || $declared === '') {
+        if ($tag === null) {
             return null;
         }
 
-        $arms = DeclaredClasses::docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
+        $arms = DeclaredClasses::docblockArms($tag['type'], $tag['context'], $subject->getName(), $declaring->getName());
 
         return $arms['classes'] === [] ? null : $arms;
     }

@@ -21,10 +21,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -246,8 +246,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
     {
-        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && ValueResult::hasNullArm($value['type'])
-            ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
+        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && TsTypeString::hasNullArm($value['type'])
+            ? [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])]
             : $value;
     }
 
@@ -486,9 +486,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
-        return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
-            ? [...$declared, 'optional' => $reading['optional'] ?? false]
-            : null;
+        return ValueResult::isPublishableReading($declared) ? [...$declared, 'optional' => $reading['optional'] ?? false] : null;
     }
 
     /**
@@ -679,7 +677,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $type = $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list;
 
         // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
-        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? ValueResult::withNullArm($type) : $type, 'optional' => false];
+        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? TsTypeString::withNullArm($type) : $type, 'optional' => false];
     }
 
     /**

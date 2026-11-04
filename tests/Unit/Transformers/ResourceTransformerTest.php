@@ -6,12 +6,33 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingLiteralResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingMixedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedCousinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedFillResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedLiteralResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedOrphanResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedSplitResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeMixedArmJoinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeTopLevelFillResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBranchResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
@@ -20,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
@@ -29,13 +51,22 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -71,8 +102,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastRes
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -2068,6 +2101,82 @@ describe('ResourceTransformer with a `@var` on `$resource`', function () {
         'a nullable shorthand' => [NullableShorthandWrappedResource::class, Post::class],
         'a class in the resource namespace, with no import' => [SameNamespaceWrappedResource::class, SameNamespacePost::class],
     ]);
+
+    test('a resource\'s spaced generic $resource @var names the model behind it', function () {
+        $transformer = new ResourceTransformer(SpacedGenericVarResource::class);
+
+        expect($transformer->modelClass)->toBe(Post::class)
+            ->and($transformer->properties['title']['type'])->toBe('string');
+    });
+
+    test('a same-namespace class a resource @var names without an import types its reads', function () {
+        $transformer = new ResourceTransformer(InvoiceViewResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'number' => 'string',
+            'total' => 'number | null',
+            'paid' => 'boolean',
+        ]);
+    });
+});
+
+// A docblock resolves its names in the file that wrote it, which reflection does not report for a trait's property.
+describe('ResourceTransformer over a property docblock another file declares', function () {
+    test('a trait property\'s `@var` names the classes the trait imports', function (string $resource) {
+        $transformer = new ResourceTransformer($resource);
+
+        expect($transformer->properties['status']['type'])->toBe('StatusType')
+            ->and($transformer->properties['post']['type'])->toBe('Post | null')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['StatusType'],
+                '../../../../../../workbench/app/models' => ['Post'],
+            ]);
+    })->with([
+        'a user importing neither' => [TraitPropertyResource::class],
+        'a user importing other classes under the same names' => [TraitPropertyClashResource::class],
+    ]);
+
+    test('a `$resource` `@var` a parent or a trait declares names the class its own file imports', function (string $resource) {
+        $transformer = new ResourceTransformer($resource);
+
+        expect($transformer->modelClass)->toBe(Post::class)
+            ->and($transformer->properties['title']['type'])->toBe('string');
+    })->with([
+        'a parent in another namespace' => [PostWrappingChildResource::class],
+        'a trait' => [TraitWrappedPostResource::class],
+    ]);
+
+    test('a promoted property takes its constructor\'s `@param`, and its own `@var` over it', function () {
+        $transformer = new ResourceTransformer(WarningBagResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'warnings' => 'string[]',
+            'bag' => '{ warnings: string[]; context: Record<string, unknown>; codes: number[] }',
+        ]);
+    });
+});
+
+// A docblock describes a closure where it sits on the closure or on the argument holding it, never on the call.
+describe('ResourceTransformer over a value closure\'s docblock', function () {
+    test('a closure\'s docblock @return types a value closure that has no native return type', function () {
+        $transformer = new ResourceTransformer(DocumentedClosureResource::class);
+        $properties = $transformer->properties;
+
+        expect($properties['doc_arrow'])->toMatchArray(['type' => 'string | null', 'optional' => true])
+            ->and($properties['doc_fn'])->toMatchArray(['type' => 'string | null', 'optional' => true])
+            ->and($properties['doc_named']['type'])->toBe('number')
+            ->and($properties['doc_class']['type'])->toBe('Post | null')
+            ->and($properties['native_return']['type'])->toBe('string | null')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['Post']]);
+    });
+
+    test('a docblock before the whole call or the item, or a vague one, leaves the closure unknown', function () {
+        $properties = (new ResourceTransformer(DocumentedClosureResource::class))->properties;
+
+        expect($properties['doc_call']['type'])->toBe('unknown')
+            ->and($properties['doc_item']['type'])->toBe('unknown')
+            ->and($properties['doc_vague']['type'])->toBe('unknown');
+    });
 });
 
 describe('ResourceTransformer with AddressMixinResource and AddressExtendsResource', function () {
@@ -2491,7 +2600,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
         expect($data->properties['member_role_snapshot']['type'])
-            ->toBe('({ role: RoleType | null })[]');
+            ->toBe('{ role: RoleType | null }[]');
 
         expect($data->typeImports)->toHaveKey('../../enums');
         expect($data->typeImports['../../enums'])->toContain('RoleType');
@@ -3263,6 +3372,16 @@ describe('a member typed by a docblock union whose arms render alike for two mod
         'a variable bound to the model' => [HandoverCrewResource::class, 'bound_crew', 'WorkbenchUser[] | CrmUser[]'],
     ]);
 
+    test('a @return union of two same-basename model lists publishes both, aliased', function () {
+        $transformer = new ResourceTransformer(SameBasenameListUnionResource::class);
+
+        expect($transformer->properties['people']['type'])->toBe('WorkbenchUser[] | CrmUser[]')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
+
     test('publishes an array and a record of each model where each arm spells its model twice', function () {
         expect((new ResourceTransformer(HandoverKeyedRosterResource::class))->properties['members']['type'])
             ->toBe('WorkbenchUser[] | Record<string, WorkbenchUser> | CrmUser[] | Record<string, CrmUser>');
@@ -3276,6 +3395,300 @@ describe('a member typed by a docblock union whose arms render alike for two mod
                 '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
                 '../../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
+    });
+});
+
+describe('a helper whose @return shape names a model, read as a value its body cannot type', function () {
+    test('publishes the model at any depth of the shape, with its import', function (string $key, string $type, array $imports) {
+        $transformer = new ResourceTransformer(DocShapeHelpersResource::class);
+
+        expect($transformer->properties[$key]['type'])->toBe($type)
+            ->and($transformer->typeImports['../../../../../../workbench/app/models'] ?? [])->toContain(...$imports);
+    })->with([
+        'an array shape' => ['shape', '{ owner: User; n: number }', ['User']],
+        'an object shape' => ['obj', '{ owner: User }', ['User']],
+        'an intersection of shapes' => ['inter', '{ a: number; owner: User }', ['User']],
+        'a list shape' => ['tuple', '[User, number]', ['User']],
+        'a shape nesting a shape and a list' => ['nested', '{ meta: { author: User; posts: Post[] } }', ['User', 'Post']],
+    ]);
+
+    test('publishes two models that share a name, each aliased and imported', function () {
+        $transformer = new ResourceTransformer(DocShapePairResource::class);
+
+        expect($transformer->properties['pair']['type'])->toBe('{ a: WorkbenchUser; b: CrmUser }')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
+});
+
+describe("a key toArray()'s @return types where its body reads it vague", function () {
+    beforeEach(function () {
+        Schema::dropIfExists('meta_comments');
+        Schema::create('meta_comments', function (Blueprint $table) {
+            $table->id();
+            $table->json('meta')->nullable();
+            $table->json('tags');
+            $table->text('body')->nullable();
+            $table->timestamps();
+        });
+    });
+
+    test("takes each member in place of an 'array' column's or a decoded value's vague type, keeping the column's null", function () {
+        $transformer = new ResourceTransformer(ArrayCastShapeResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'meta' => 'string[] | null',
+            'tags' => 'string[]',
+            'owner' => 'User',
+            'decoded' => 'string[]',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('sends what each member admits', function () {
+        $user = '{"id":1,"name":"Ada"}';
+        $sent = fn (?array $meta): mixed => sentAsJson(new ArrayCastShapeResource(
+            MetaComment::query()->create(['meta' => $meta, 'tags' => ['x'], 'body' => $user])->fresh(),
+        )->resolve(request()));
+
+        expect($sent(['a', 'b']))->meta->toBe(['a', 'b'])->tags->toBe(['x'])->owner->name->toBe('Ada')
+            ->and($sent(null))->meta->toBeNull();
+    });
+});
+
+describe("a key toArray()'s @return shape names a class for, where its body reads it unknown", function () {
+    test('binds an override and the model spelled like it each to its own import, top-level, nested and spread', function () {
+        $transformer = new ResourceTransformer(DocShapeOverrideUnionResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User | WorkbenchUser',
+            'either' => 'User | WorkbenchUser',
+            'meta' => '{ either: User | WorkbenchUser; n: number }',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('publishes the model a nested shape names, with its import', function () {
+        $transformer = new ResourceTransformer(DocShapeNestedModelResource::class);
+
+        expect($transformer->properties['meta']['type'])->toBe('{ author: User; n: number }')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test("fills a key with an array<string, V> return's value, V naming a model, with its import", function () {
+        $transformer = new ResourceTransformer(DocShapeModelRecordResource::class);
+
+        expect($transformer->properties['first']['type'])->toBe('{ a: User }')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('joins a spread helper\'s fill with a branch spelling none of its names, each token keeping its class', function () {
+        $transformer = new ResourceTransformer(DocShapeBranchJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'text' => 'User | WorkbenchUser | string',
+            'none' => 'User | WorkbenchUser | null',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('gives a literal spelling a joined name a slot of its own, in either branch order', function () {
+        $transformer = new ResourceTransformer(DocShapeLiteralJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal_first' => "{ kind: 'User' } | User[] | WorkbenchUser",
+            'slotted_first' => "User[] | WorkbenchUser | { kind: 'User' }",
+            'disjoint_first' => "{ kind: 'User'; p: Post } | User[] | WorkbenchUser",
+            'disjoint_last' => "User[] | WorkbenchUser | { kind: 'User'; p: Post }",
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('gives a literal spelling a joined name a slot of its own through a spread helper\'s join', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppingLiteralResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe("{ kind: 'User' } | User[] | WorkbenchUser")
+            ->and($transformer->typeImports)->toBe([
+                '@js/types/ui' => ['User'],
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            ]);
+    });
+
+    test('binds an arm\'s override and other class beside the model in another arm, unknown beside a branch spelling one', function () {
+        $transformer = new ResourceTransformer(DocShapeMixedArmJoinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'beside_null' => '{ a: User; p: Post } | WorkbenchUser | null',
+            'beside_string' => '{ a: User; p: Post } | WorkbenchUser | string',
+            'beside_post' => 'unknown',
+            'literal_first' => "{ kind: 'User' } | { a: User; p: Post } | WorkbenchUser",
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('binds an arm\'s override and other class beside the model in another arm through a spread helper\'s join, else drops it', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppingMixedArmResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'k' => '{ a: User; p: Post } | WorkbenchUser | null',
+            'beside_post' => 'Post',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['Post', 'User as WorkbenchUser'],
+        ]);
+    });
+
+    test('sends what each mixed-arm join admits', function () {
+        $comment = new Comment(['content' => '{"id":1,"name":"Ada"}']);
+        $other = new Comment(['content' => '{"id":1,"name":"Ada"}'])->forceFill(['id' => 2]);
+
+        expect(sentAsJson(new DocShapeMixedArmJoinResource($comment)->resolve(request())))
+            ->beside_null->toBeNull()
+            ->beside_string->toBe('{"id":1,"name":"Ada"}')
+            ->literal_first->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeMixedArmJoinResource($other)->resolve(request())))
+            ->beside_null->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeDroppingMixedArmResource($comment)->resolve(request())))->k->toBeNull();
+    });
+
+    // A folded value carries no slots, so every fill folded into it reads class-less, its model too.
+    // Known gap: "A docblock fill spread inside a nested literal keeps no class".
+    test('reads a fill folded into a nested literal class-less, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedFillResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'x' => '{ k: unknown; m: number }',
+            'x_pair' => '{ k: { a: User; b: unknown }; m: number }',
+            'x_literal' => "{ k: { kind: 'User'; r: unknown }; m: number }",
+            'direct' => '{ k: unknown }',
+            'nested' => '{ y: { k: unknown } }',
+            'beside' => '{ k: unknown; m: number }',
+            'local' => '{ k: unknown }',
+            'model_only' => '{ k: unknown }',
+            'object_pair' => '{ k: { a: User; b: unknown } }',
+            'listed_literal' => "{ k: { kind: 'User'; r: unknown }[] }",
+            'object_or_null' => "{ k: { kind: 'User'; r: unknown } | null }",
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+    });
+
+    test('keeps a folded fill\'s literal as written, and reads a folded pair of users class-less, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedLiteralResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal' => "{ k: { kind: 'User'; r: unknown } }",
+            'pair' => '{ k: unknown }',
+        ])->and($transformer->typeImports)->toBe([]);
+    });
+
+    test('binds the same fills spread at the top level, where their slots reach the publisher', function () {
+        $transformer = new ResourceTransformer(DocShapeTopLevelFillResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'k' => "{ kind: 'User'; r: WorkbenchUser }",
+            'p' => 'WorkbenchUser | CrmUser',
+            'o' => 'User | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ]);
+    });
+
+    test('sends what each folded fill admits', function () {
+        $sent = sentAsJson(new DocShapeFoldedFillResource(new Comment(['content' => '{"name":"Ada"}']))->resolve(request()));
+
+        expect($sent->direct->k->name)->toBe('Ada')
+            ->and($sent->nested->y->k->name)->toBe('Ada')
+            ->and($sent->beside->m)->toBe(1)
+            ->and($sent->local->k->name)->toBe('Ada')
+            ->and([$sent->object_pair->k->a->name, $sent->object_pair->k->b->name])->toBe(['Ada', 'Ada'])
+            ->and($sent->x_pair->k->b->name)->toBe('Ada');
+    });
+
+    test('reads a folded fill\'s users class-less beside an override in a sibling member, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedSplitResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'one_fill' => '{ n: User; m: unknown }',
+            'two_fills' => '{ n: User; m: unknown }',
+            'with_null' => '{ k: unknown; n: User; m: unknown }',
+            'x_split' => '{ n: User; m: unknown; z: number }',
+            'crm_beside' => '{ k: unknown; c: unknown }',
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+    });
+
+    test('reads a folded model fill class-less beside an override in a cousin member, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedCousinResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'in_place_cousin' => '{ n: User; inner: { m: unknown } }',
+            'fill_cousins' => '{ p: { n: User }; q: { m: unknown } }',
+            'deep_cousin' => '{ p: { n: User }; q: { m: unknown } }',
+            'listed' => '({ n: User } | { m: unknown })[]',
+            'literal_cousin' => "{ n: User; lm: { kind: 'User'; m: unknown } }",
+        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+    });
+
+    test('imports no override a folded fill spells only in a literal once read class-less, in either member order', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedOrphanResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal_override' => "{ k: unknown; kind: 'User' }",
+            'literal_crm' => "{ k: unknown; kind: 'User'; c: unknown }",
+            'triple' => '{ k: unknown; c: unknown; m: unknown }',
+            'triple_reordered' => '{ k: unknown; m: unknown; c: unknown }',
+        ])->and($transformer->typeImports)->toBe([]);
+    });
+
+    test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppedBranchResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User | WorkbenchUser',
+            'merged' => 'User | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('drops the fill where a dropping join meets the model alone, publishing the model as before', function () {
+        $transformer = new ResourceTransformer(DocShapeDroppedClashResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'spread' => 'User',
+            'merged' => 'User',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
+    });
+
+    test('publishes unknown where another branch spells the fill\'s names with other classes, never a wrong binding', function () {
+        $transformer = new ResourceTransformer(DocShapeUnalikeBranchResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'plain' => 'unknown',
+            'declared' => 'unknown',
+            'cast' => 'string | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User as WorkbenchUser']]);
+    });
+
+    test('sends the model or the override under each key', function () {
+        $comment = new Comment(['content' => '{"id":1,"name":"Ada"}']);
+
+        expect(sentAsJson(new DocShapeOverrideUnionResource($comment)->resolve(request())))
+            ->spread->name->toBe('Ada')
+            ->either->name->toBe('Ada')
+            ->meta->either->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeNestedModelResource($comment)->resolve(request())))->meta->author->name->toBe('Ada')
+            ->and(sentAsJson(new DocShapeModelRecordResource($comment)->resolve(request())))->first->a->name->toBe('Ada');
     });
 });
 
@@ -3371,10 +3784,9 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             ->and([$sent(['draft' => 1]), $sent([]), $asked])->toBe([0, 1, 1]);
     });
 
-    // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.
-    test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
+    test('publishes a wrap over a local in a helper the body fallback reads as it publishes in place', function () {
         expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
-            ->toBe('{ s: unknown; title: string }');
+            ->toBe('{ s: AsEnum<typeof Status>; title: string }');
     });
 
     test('publishes an untyped helper that can run off its end with its null', function () {
@@ -3652,4 +4064,31 @@ test('a resource a page resolves keeps its own interface', function () {
     expect(pageData(ResolvedCardController::class.'@show')['pageType'] ?? null)->toContain("Omit<PostCardResource, 'author'>")
         ->and(resourceProps(PostCardResource::class))->toBe(['id' => 'number', 'title' => 'string', 'author' => 'UserCardResource'])
         ->and(PostCardResource::make($post)->response()->getData()->data->author)->toEqual((object) ['id' => $user->id, 'name' => 'Ada']);
+});
+
+// PHPStan reads `@phpstan-return` over `@return` whatever their order; a vague prefixed tag yields to a precise one.
+test('a helper documented by @return and @phpstan-return publishes the prefixed tag unless only it is vague', function () {
+    require_once __DIR__.'/../../Fixtures/Stubs/DualReturnTagsResource.php.stub';
+
+    $transformer = new ResourceTransformer(DualReturnTagsResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'both' => '{ a: number; b: string }',
+        'reversed' => '{ a: number; b: string }',
+        'phpstan_only' => '{ a: number; b: string }',
+        'precise_plain' => '{ a: number }',
+    ]);
+});
+
+// A template literal's text is a value, so a `| null |` inside it names no null arm to hoist or to skip appending.
+test('a template-literal override keeps its text whole beside null, a string and in a list', function () {
+    $properties = new ResourceTransformer(TemplateSlugResource::class)->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        'slug' => '`a | null | b`',
+        'slug_ternary' => '`a | null | b` | null',
+        'slug_or_string' => '`a | null | b` | string',
+        'slug_list' => '`a | null | b`[]',
+        'slug_helper' => '`a | null | b` | null',
+    ]);
 });

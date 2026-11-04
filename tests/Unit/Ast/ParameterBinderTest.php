@@ -7,12 +7,13 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
@@ -102,8 +103,8 @@ test('a helper body reads its typed parameters through every reading of it', fun
         'headline_id' => 'number',
         'headline' => 'string',
         'maybe' => '{ maybe_title: string | null }',
-        'status_label' => "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
-        'status_payload' => "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
+        'status_label' => '{ label: StatusKind; value: StatusType }',
+        'status_payload' => '{ payload_status: StatusType; payload_name: StatusKind }',
         'payload_status' => 'StatusType',
         'payload_name' => 'StatusKind',
     ]);
@@ -118,19 +119,19 @@ test('each kind of declared parameter binds as the value a call passes it', func
         'scalar' => '{ count: number }',
         'nm_title' => 'string | null',
         'nm_post' => 'Post | null',
-        'nullable_model' => '{ nm_title: string | null; nm_post: unknown }',
+        'nullable_model' => '{ nm_title: string | null; nm_post: Post | null }',
         'un_id' => 'number',
         'un_owner' => 'Post',
-        'union' => '{ un_id: number; un_owner: unknown }',
+        'union' => '{ un_id: number; un_owner: Post }',
         'va_posts' => 'Post[]',
-        'variadic' => '{ va_posts: unknown }',
+        'variadic' => '{ va_posts: Post[] }',
         'br_title' => 'string',
         'by_reference' => '{ br_title: string }',
         'df_limit' => 'number',
         'df_title' => 'string | null',
         'defaulted' => '{ df_limit: number; df_title: string | null }',
         'dl_posts' => 'Post[]',
-        'docblock_list' => '{ dl_posts: unknown }',
+        'docblock_list' => '{ dl_posts: Post[] }',
         'pp_tags' => 'string[]',
         'phpstan_param' => '{ pp_tags: string[] }',
         'ut_title' => 'string',
@@ -312,6 +313,12 @@ test('binds a closure\'s parameters by the types they declare, natively or by @p
         ]);
 });
 
+test('binds a closure argument\'s parameter by the @param written before the argument', function () {
+    expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(DocumentedClosureResource::class)->properties))
+        ->toMatchArray(['doc_param' => 'string | number'])
+        ->and(json_encode(new DocumentedClosureResource(new Post)->relabel()->toArray(request())['doc_param']))->toBe('1');
+});
+
 // PHP 8.4 reflects `self` and `parent` as spelled, and 8.5 too in a trait's method.
 test('reads a parameter typed self as its declaring class', function () {
     $reflection = new ReflectionClass(SelfTypedHelpers::class);
@@ -491,11 +498,6 @@ test('reads a list shape @param as the tuple it declares', function () {
 
     expect($reader->readDeclared((string) $reader->extractParamTag("/**\n * @param  list{int, string}  \$posts\n */", 'posts', $context), $context)['type'] ?? null)
         ->toBe('[number, string]');
-});
-
-test('captures a callable tag whole, up to the by-reference name after its return type', function () {
-    expect(resolve(PropertyDocblockTypeReader::class)->extractVarType('/** @var callable(int): string &$cb */'))
-        ->toBe('callable(int): string');
 });
 
 // Past the write a receiver no longer holds the model: the value is a typed column, whose member PHP cannot read.

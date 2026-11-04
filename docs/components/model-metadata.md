@@ -42,9 +42,10 @@ For each key, `#[TsCasts]` on `provide()` beats the `@return array{...}` shape, 
   `optional: true` or the docblock says `key?:`.
 - **Imports**: a docblock key follows
   [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), except
-  that a key it fails throws rather than publishing `unknown`, and that an enum named there is imported, as an
-  import-less cast's is: a model named there fails the token check unless a cast covers it. `mergeTypes()` keeps an
-  override's import per key the docblock still types
+  that a key it fails throws rather than publishing `unknown`, and that an enum named there, at any depth, is imported,
+  as an import-less cast's is: any other class named there, such as a model or an API resource, at any depth, fails the
+  token check unless a cast covers it, and `parseDeclaredTypes()` drops such a key's imports so an override spelled like
+  the class cannot pass it. `mergeTypes()` keeps an override's import per key the docblock still types
   (`ModelMetadataAnalysis::$docblockImports`), and the token check reads each key no cast typed (`importFreeKeys()`)
   against the inferred imports and that key's own, so one key never passes on another key's import.
 - **Inference**: body inference keeps only the keys the payload returned and discards any type containing `unknown`.

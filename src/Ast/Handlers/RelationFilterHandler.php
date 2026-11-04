@@ -181,7 +181,7 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         $models = $this->resolveAccessorModelFqcns($propName, $scope);
-        $nullable = $this->shortCircuits($call) || in_array('null', TsTypeString::splitTopLevelUnion($engine->resolve($call->var)['type']), true);
+        $nullable = $this->shortCircuits($call) || TsTypeString::hasNullArm($engine->resolve($call->var)['type']);
         $suffix = $nullable ? ' | null' : '';
 
         if ($models === [] || ! $scope->carriesImports) {
@@ -276,8 +276,8 @@ final class RelationFilterHandler implements ExpressionHandler
         $embeddedCustomImports = [];
 
         foreach ($arms as ['result' => $arm]) {
-            $nullable = $nullable || in_array('null', TsTypeString::splitTopLevelUnion($arm['type']), true);
-            $type = ValueResult::stripNullArm($arm['type']);
+            $nullable = $nullable || TsTypeString::hasNullArm($arm['type']);
+            $type = TsTypeString::withoutNullArm($arm['type']);
 
             // A record carries no import channel, so a repeat of one adds nothing.
             if ($type === 'Record<string, unknown>' && in_array($type, $inlineTypes, true)) {
@@ -321,12 +321,12 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($read['type'])) {
-            $nullableRead = in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true);
+            $nullableRead = TsTypeString::hasNullArm($read['type']);
             $read = [...ValueResult::unknown(), 'type' => $nullableRead ? 'unknown[] | null' : 'unknown[]'];
         }
 
-        if ($this->shortCircuits($call) && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
-            $read['type'] .= ' | null';
+        if ($this->shortCircuits($call)) {
+            $read['type'] = TsTypeString::withNullArm($read['type']);
         }
 
         return $read;

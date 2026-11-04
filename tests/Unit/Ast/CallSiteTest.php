@@ -63,7 +63,7 @@ test('each call publishes its own argument, a written parameter its local, and a
         'nested' => '{ deeper: Record<string, unknown> }',
         'written' => '{ author_name: string }',
         'shout' => '?string',
-        'fallback' => '{ value: unknown }',
+        'fallback' => '{ value: Post | string }',
         'fallback_null' => '{ value: string }',
     ]);
 });

@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Support\Facades\Auth;
 use PhpParser\Node\Expr;
@@ -60,7 +60,7 @@ trait ResolvesAuthHelperCalls
 
         $identifier = resolve(ModelAttributeResolver::class)->authIdentifierTsType($model);
 
-        return $identifier === null ? null : ['type' => ValueResult::withNullArm($identifier), 'optional' => false];
+        return $identifier === null ? null : ['type' => TsTypeString::withNullArm($identifier), 'optional' => false];
     }
 
     /**

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
@@ -39,6 +38,48 @@ trait ResolvesAccessorType
         ReflectionClass $reflectionModel,
         bool $carriesImports = true,
     ): array {
+        return $this->readAccessorType($name, $modelInstance, $reflectionModel, $carriesImports, casesAsLiterals: false);
+    }
+
+    /**
+     * The getter body's type when it beats the vague annotations, or null to fall back to them. Without imports the
+     * spelling can be vague where the published one is not (`unknown[]` for `Comment[]`); it then wins only over a
+     * fallback that is `unknown` or names a class the reader cannot import.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  TypeScriptTypeInfo  $fallbackReturn  what the waterfall yields when the body step declines
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports, array $fallbackReturn): ?array
+    {
+        return $this->readAccessorBodyType($modelFqcn, $name, $carriesImports, $fallbackReturn, casesAsLiterals: false);
+    }
+
+    /**
+     * A "vague" TS type carries no element information, so a docblock generic can usually do better.
+     *
+     * Delegates to TsTypeString::isVagueTsType() — the single definition of "vague" shared with
+     * methodOrDocblockReturnTypes() — rather than duplicating the predicate here.
+     */
+    protected function isVagueTsType(string $type): bool
+    {
+        return TsTypeString::isVagueTsType($type);
+    }
+
+    /**
+     * resolveAccessorType()'s waterfall, which a reader typing a plain enum case as its literal, as the body fallback
+     * does, enters directly: that reading's getter body step has no protected variant to override.
+     *
+     * @param  ReflectionClass<Model>  $reflectionModel
+     * @return TypeScriptTypeInfo
+     */
+    private function readAccessorType(
+        string $name,
+        Model $modelInstance,
+        ReflectionClass $reflectionModel,
+        bool $carriesImports,
+        bool $casesAsLiterals,
+    ): array {
         $result = LaravelTsPublish::emptyTypeScriptInfo();
         ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
 
@@ -71,7 +112,7 @@ trait ResolvesAccessorType
 
                     // Both annotations are vague, so what the getter body returns is the better answer.
                     $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $docblockReturn;
-                    $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
+                    $bodyReturn = $this->accessorBodyStep($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn, $casesAsLiterals);
 
                     return $bodyReturn ?? $fallbackReturn;
                 }
@@ -80,7 +121,7 @@ trait ResolvesAccessorType
                 // comparing) — states that no getter exists, not what reading returns; the raw column
                 // applies instead, so this falls through to omittedTypeScriptInfo() rather than publish it.
                 $docblockReturn = LaravelTsPublish::attributeDocblockReturnTypes($method);
-                $docblockNonNullType = ValueResult::stripNullArm($docblockReturn['type']);
+                $docblockNonNullType = TsTypeString::withoutNullArm($docblockReturn['type']);
 
                 if (
                     $docblockReturn['type'] !== 'unknown'
@@ -105,7 +146,7 @@ trait ResolvesAccessorType
             }
 
             $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $result;
-            $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
+            $bodyReturn = $this->accessorBodyStep($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn, $casesAsLiterals);
 
             return $bodyReturn ?? $fallbackReturn;
         }
@@ -114,18 +155,41 @@ trait ResolvesAccessorType
     }
 
     /**
-     * The getter body's type when it beats the vague annotations, or null to fall back to them. Without imports the
-     * spelling can be vague where the published one is not (`unknown[]` for `Comment[]`); it then wins only over a
-     * fallback that is `unknown` or names a class the reader cannot import.
+     * The waterfall's getter body step: resolveAccessorBodyType(), which an override replaces, but for the case-literal
+     * reading, which it cannot take.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  TypeScriptTypeInfo  $fallbackReturn
+     * @return TypeScriptTypeInfo|null
+     */
+    private function accessorBodyStep(
+        string $modelFqcn,
+        string $name,
+        bool $carriesImports,
+        array $fallbackReturn,
+        bool $casesAsLiterals,
+    ): ?array {
+        return $casesAsLiterals
+            ? $this->readAccessorBodyType($modelFqcn, $name, $carriesImports, $fallbackReturn, true)
+            : $this->resolveAccessorBodyType($modelFqcn, $name, $carriesImports, $fallbackReturn);
+    }
+
+    /**
+     * resolveAccessorBodyType()'s answer, with the getter's plain enum cases typed as their literals where asked.
      *
      * @param  class-string<Model>  $modelFqcn
      * @param  TypeScriptTypeInfo  $fallbackReturn  what the waterfall yields when the body step declines
      * @return TypeScriptTypeInfo|null
      */
-    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports, array $fallbackReturn): ?array
-    {
+    private function readAccessorBodyType(
+        string $modelFqcn,
+        string $name,
+        bool $carriesImports,
+        array $fallbackReturn,
+        bool $casesAsLiterals,
+    ): ?array {
         $analyzer = resolve(AccessorBodyAnalyzer::class);
-        $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports);
+        $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports, $casesAsLiterals);
 
         if ($bodyReturn === null || ! $this->isVagueTsType($bodyReturn['type'])) {
             return $bodyReturn;
@@ -142,16 +206,5 @@ trait ResolvesAccessorType
         $publishedReturn = $analyzer->analyze($modelFqcn, $name);
 
         return $publishedReturn !== null && ! $this->isVagueTsType($publishedReturn['type']) ? $bodyReturn : null;
-    }
-
-    /**
-     * A "vague" TS type carries no element information, so a docblock generic can usually do better.
-     *
-     * Delegates to TsTypeString::isVagueTsType() — the single definition of "vague" shared with
-     * methodOrDocblockReturnTypes() — rather than duplicating the predicate here.
-     */
-    protected function isVagueTsType(string $type): bool
-    {
-        return TsTypeString::isVagueTsType($type);
     }
 }

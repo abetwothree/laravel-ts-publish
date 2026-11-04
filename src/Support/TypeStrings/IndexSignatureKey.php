@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Support;
+namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
 /**
  * The grammar of a generated index-signature key, in both directions: `[key: number]`, `[key: string]`, and the

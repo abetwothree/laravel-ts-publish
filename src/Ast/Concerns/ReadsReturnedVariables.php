@@ -1558,7 +1558,7 @@ trait ReadsReturnedVariables
         $leftOut = isset($this->optionalValueKeys[$keyName]);
         // PHP holds an object, never null, where Inertia later resolves it, so only a plain value's null runs `??=`.
         $nullLands = $paths['object'] ? $paths['plainNull'] : ValueResult::mayBeNull($held['type']);
-        $keptType = $paths['objectNull'] ? $held['type'] : ValueResult::stripNullArm($held['type']);
+        $keptType = $paths['objectNull'] ? $held['type'] : TsTypeString::withoutNullArm($held['type']);
 
         if (! ($signature || $nullLands || ($held['optional'] && ($paths['unset'] || (! $leftOut && ! $paths['object']))))) {
             return;

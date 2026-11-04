@@ -796,8 +796,8 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     });
 
     test('map() closure body embeds both an enum-cast column and a model-backed property, and both propagate', function () {
-        // role is a nullable column, so the body type is a union and gets parenthesized before '[]'.
-        expect($this->props['member_profiles']['type'])->toBe('({ id: number; role: RoleType | null; owner: User })[]')
+        // role is a nullable column, but its `| null` sits inside the braces, so the list takes no parentheses.
+        expect($this->props['member_profiles']['type'])->toBe('{ id: number; role: RoleType | null; owner: User }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_profiles')
             ->and($this->analysis->inlineEnumFqcns['member_profiles'])->toContain(Role::class)
             ->and($this->analysis->inlineModelFqcns)->toHaveKey('member_profiles')
@@ -805,9 +805,8 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     });
 
     test('->map->only() reached directly off the relation resolves the HigherOrderCollectionProxy', function () {
-        // arrayWrapType() parenthesizes on any '|', including one nested inside the braces — same
-        // as member_profiles above, not a defect specific to this proxy.
-        expect($this->props['member_map_only']['type'])->toBe('({ id: number; role: RoleType | null })[]')
+        // A `|` nested inside the braces leaves the list unparenthesized, as member_profiles above.
+        expect($this->props['member_map_only']['type'])->toBe('{ id: number; role: RoleType | null }[]')
             ->and($this->props['member_map_only']['optional'])->toBeFalse()
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_map_only')
             ->and($this->analysis->inlineEnumFqcns['member_map_only'])->toContain(Role::class);
@@ -965,7 +964,7 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
     // a channel distinct from enumResources/directEnumFqcns that ResourceTransformer reads
     // separately (see propertyInlineEnumFqcns in rewriteEnumResourceTypes()'s import-GC).
     test('a bare enum read nested inside an inline array registers in inlineEnumFqcns', function () {
-        expect($this->props['member_role_snapshot']['type'])->toBe('({ role: RoleType | null })[]')
+        expect($this->props['member_role_snapshot']['type'])->toBe('{ role: RoleType | null }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_role_snapshot')
             ->and($this->analysis->inlineEnumFqcns['member_role_snapshot'])->toContain(Role::class);
     });
@@ -2505,17 +2504,14 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
 });
 
 describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the model itself)', function () {
-    test('a model method body publishes token-free filters and an accessor getter publishes the Pick<>', function () {
-        // `$this` is the model in both bodies. The method body's shape carries no import, so its literal filters inline
-        // the columns; the getter's channels reach the model file, so it keeps the Pick<> references.
-        $method = '{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
-            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }';
+    test('a model method body and an accessor getter both publish the Pick<>', function () {
+        // `$this` is the model in both bodies, and each carries the model's channel, so each keeps the Pick<>.
         $getter = "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | "
             ."'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }";
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReleaseColumnsResource::class), Release::class)->analyze()->properties)->keyBy('name');
         $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks');
 
-        expect($props['columns']['type'])->toBe($method)
+        expect($props['columns']['type'])->toBe($getter)
             ->and($props['picks']['type'])->toBe($getter)
             ->and($accessor['type'])->toBe($getter)
             ->and($accessor['classFqcns'])->toBe([Release::class]);
@@ -2523,14 +2519,14 @@ describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the mo
 });
 
 describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filters inside the model itself)', function () {
-    test('a model method body publishes token-free relation filters beside its typed keys', function () {
+    test('a model method body publishes its relation filters as the accessor reading them does', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
 
         expect($props['summary']['type'])->toBe(
-            '{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; '
-            .'post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; '
+            "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; "
+            .'post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; '
             .'reply_previews: { id: number; content: string }[] }',
-        );
+        )->and($props['summary']['type'])->toBe($props['picks']['type']);
     });
 
     test('a model method body reading that accessor publishes the filters its own body would', function () {
@@ -2574,13 +2570,13 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
         ], ['Comment', 'User']],
         'pluck() and a shape a closure parameter builds' => [BulletinArchiveResource::class, [
             'plucked' => 'Comment[][]',
-            'rows' => "({ author: Pick<User, 'id' | 'name'> })[]",
-            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+            'rows' => "{ author: Pick<User, 'id' | 'name'> }[]",
+            'own_picks' => "Pick<Bulletin, 'id' | 'title'>[]",
         ], ['Bulletin', 'Comment', 'User']],
         'a relation chain, a closure parameter and pluck() inside whenLoaded()' => [BulletinLoadedResource::class, [
             'lead_list' => 'Comment[]',
             'lead_owner' => 'User',
-            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+            'own_picks' => "Pick<Bulletin, 'id' | 'title'>[]",
         ], ['Bulletin', 'Comment', 'User']],
         'the resource\'s own model through $this->resource, whenAppended() and whenHas()' => [BulletinResource::class, [
             'list' => 'Comment[]',
@@ -2625,10 +2621,10 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
             ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
 
-    test('a model method body making the same reads publishes them without a class', function () {
+    test('a model method body making the same reads publishes them with their classes', function () {
         $props = collect(resolve(AstEngine::class)->analyze(BulletinBoardResource::class)->properties)->keyBy('name');
 
-        expect($props['summary']['type'])->toBe('{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }');
+        expect($props['summary']['type'])->toBe("{ comment_lists: Comment[][]; lead_author: Pick<User, 'id' | 'name'> | null; id: number }");
     });
 });
 
@@ -6191,9 +6187,9 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     );
 
     test('whenLoaded closure ->map->only() resolves the HigherOrderCollectionProxy per element', function () {
-        // arrayWrapType() parenthesizes on any '|', including one nested inside the braces.
+        // A `|` nested inside the braces leaves the list unparenthesized.
         expect($this->props['staff_map_only']['type'])
-            ->toBe('({ id: number; name: string; role: RoleType | null; last_login_at: string | null })[]')
+            ->toBe('{ id: number; name: string; role: RoleType | null; last_login_at: string | null }[]')
             ->and($this->props['staff_map_only']['optional'])->toBeTrue()
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('staff_map_only')
             ->and($this->analysis->inlineEnumFqcns['staff_map_only'])->toContain(Role::class);
@@ -7016,10 +7012,10 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
     });
 
-    test('a key cast to a string literal holding a backslash puts the fill back, and keeps its own cast', function () {
+    test('a key cast to a string literal holding a backslash joins the union, and keeps its own cast', function () {
         $props = ($this->shape)('escapedLiteralKey');
 
-        expect($props['[key: `${string}_a_tag`]']['type'])->toBe('unknown | undefined')
+        expect($props['[key: `${string}_a_tag`]']['type'])->toBe("number | 'it\\'s | null | x' | undefined")
             ->and($props['state_a_tag']['type'])->toBe("'it\\'s | null | x'");
     });
 
@@ -7053,6 +7049,59 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });
 
+/**
+ * Branches setting `either`, each a type and the token slots a declaration recorded for it, if any.
+ *
+ * @param  list<array{string, list<class-string|null>|null}>  $branches
+ */
+function slottedBranches(array $branches, bool $drops = false): ResourceAnalysis
+{
+    $analyses = array_map(function (array $branch): ResourceAnalysis {
+        $analysis = new ResourceAnalysis(properties: [['name' => 'either', 'type' => $branch[0], 'optional' => false, 'description' => '']]);
+
+        if ($branch[1] !== null) {
+            $analysis->declaredTokenFqcns = ['either' => $branch[1]];
+            $analysis->inlineModelFqcns = ['either' => [User::class]];
+        }
+
+        return $analysis;
+    }, $branches);
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->mergeReturnBranches($analyses, $drops);
+}
+
+test('mergeReturnBranches() joins a key\'s declared token slots where no other branch spells their names unalike', function (array $branches, bool $drops, string $type, array $slots) {
+    $merged = slottedBranches($branches, $drops);
+
+    expect($merged->properties[0]['type'])->toBe($type)
+        ->and($merged->declaredTokenFqcns)->toBe($slots === [] ? [] : ['either' => $slots]);
+})->with([
+    'alike' => [[['User | User', [null, User::class]], ['User | User', [null, User::class]]], false, 'User | User', [null, User::class]],
+    'beside a string' => [[['User | User', [null, User::class]], ['string', null]], false, 'User | User | string', [null, User::class]],
+    'a string first' => [[['string', null], ['User | User', [null, User::class]]], false, 'string | User | User', [null, User::class]],
+    'beside a null' => [[['User | User', [null, User::class]], ['null', null]], false, 'User | User | null', [null, User::class]],
+    'after a literal spelling the name' => [[["{ kind: 'User' }", null], ['User | User', [null, User::class]]], false, "{ kind: 'User' } | User | User", [null, null, User::class]],
+    'beside a declared text spelling the name only in a literal' => [[["{ kind: 'User'; p: Post }", [Post::class]], ['User | User', [null, User::class]]], false, "{ kind: 'User'; p: Post } | User | User", [null, Post::class, null, User::class]],
+    'an arm holding an override then another class, beside a null' => [[['{ a: User; p: Post } | User', [null, Post::class, User::class]], ['null', null]], false, '{ a: User; p: Post } | User | null', [null, Post::class, User::class]],
+    'an arm holding an override then another class, after a literal' => [[["{ kind: 'User' }", null], ['{ a: User; p: Post } | User', [null, Post::class, User::class]]], false, "{ kind: 'User' } | { a: User; p: Post } | User", [null, null, Post::class, User::class]],
+    'beside a dropped unknown' => [[['User | User', [null, User::class]], ['unknown', null]], true, 'User | User', [null, User::class]],
+    'beside a kept unknown' => [[['User | User', [null, User::class]], ['unknown', null]], false, 'unknown', []],
+    'two unalike' => [[['User | User', [null, User::class]], ['User', [User::class]]], false, 'unknown', []],
+    'two unalike, both dropped' => [[['User | User', [null, User::class]], ['User', [User::class]]], true, 'unknown', []],
+    'a plain branch spelling the name' => [[['User | User', [null, User::class]], ['User', null]], false, 'unknown', []],
+    'a plain branch spelling the name, the fill dropped' => [[['User | User', [null, User::class]], ['User', null]], true, 'User', []],
+]);
+
+test('mergeReturnBranches() forgets the classes of a key whose branches spell its declared names unalike', function (bool $drops) {
+    $merged = slottedBranches([['User | User', [null, User::class]], ['User', [User::class]]], $drops);
+
+    expect($merged->inlineModelFqcns)->toBe([])
+        ->and(slottedBranches([['User | User', [null, User::class]], ['string', null]], $drops)->inlineModelFqcns)
+        ->toBe(['either' => [User::class]])
+        ->and(slottedBranches([['User | User', [null, User::class]], ['User', null]], $drops)->inlineModelFqcns)
+        ->toBe([]);
+})->with(['a strict join' => [false], 'a dropping join' => [true]]);
+
 // merge()/mergeWhen() call their closure with no argument, so a parameter holds its default, never the outer local.
 test('a merge closure parameter owns its name and holds its default', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(MergeParameterShadowResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -7081,6 +7130,8 @@ test('a spread helper\'s `@return` publishes its literal types, and each union a
     'two arms typed alike' => ['amount', 'number'],
     'a name no class answers to' => ['custom', 'CustomObject'],
     'a class the shape cannot import' => ['text', 'unknown'],
+    'an unimported interface of the same namespace' => ['captioned', 'unknown'],
+    'an unimported trait of the same namespace' => ['labelled', 'unknown'],
     'a quoted key spaced before its optional marker' => ['quoted-key', "'a' | 'b'"],
 ]);
 
@@ -7351,7 +7402,7 @@ test('a short ternary keeps both arms in a resource body Inertia reads', functio
         ->and([$empty->tryFrom, $empty->helperTryFrom, $empty->helperInst, $empty->mwTryFrom])->toBe([null, null, null, null]);
 });
 
-// The body fallback flattens a helper's shape with no import, so the case types as the value it sends.
+// The body fallback reads a plain backed case as the value it sends, which its enum's type is vaguer than.
 test('an enum case in a vague helper\'s body fallback publishes the value it sends, beside its typed siblings', function () {
     $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
 

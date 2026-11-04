@@ -5,10 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PhpstanExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
@@ -96,6 +97,11 @@ it('accepts an explicit model class and an arbitrary method name', function () {
 it('resolves the backing model the way the resource pipeline does', function () {
     expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass(UserResource::class)))
         ->toBe(User::class);
+});
+
+it('resolves the backing model a @phpstan-extends tag names', function () {
+    expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass(PhpstanExtendsResource::class)))
+        ->toBe(Post::class);
 });
 
 it('a ResourceCollection with @mixin resolves no model', function (string $collection) {

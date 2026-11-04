@@ -149,6 +149,16 @@ describe('AstEngine::analyze()', function () {
         expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->valueImports)->toBe([]);
     });
 
+    test('reads a wrapped enum as nullable only through a top-level null arm', function (string $type, bool $nullable) {
+        $analysis = new MethodAnalysis(enumResources: ['role' => Role::class]);
+
+        expect(AnalysisComposer::enumResourceArms($analysis, ['role' => $type])['role']['nullable'])->toBe($nullable);
+    })->with([
+        'a null arm' => ['RoleType | null', true],
+        'a list whose members may be null' => ['(RoleType | null)[]', false],
+        'a type name holding null' => ['AnnulledType', false],
+    ]);
+
     test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
         $analysis = new MethodAnalysis(
             properties: [

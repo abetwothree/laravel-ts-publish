@@ -44,9 +44,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedPropertyTagsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
@@ -798,6 +800,27 @@ describe('@property docblock refinement', function () {
 
         expect($info['type'])->toBe('Record<string, unknown> | null');
     });
+
+    test('reads a type as entirely vague past any top-level null arm, and a lone null as exact', function (string $type, bool $vague) {
+        $resolver = new class extends ModelAttributeResolver
+        {
+            /**
+             * Whether the resolver reads the type as carrying no structure at all.
+             */
+            public function readsEntirelyVague(string $type): bool
+            {
+                return $this->isEntirelyVagueTsType($type);
+            }
+        };
+
+        expect($resolver->readsEntirelyVague($type))->toBe($vague);
+    })->with([
+        'unknown with a trailing null arm' => ['unknown | null', true],
+        'unknown with a leading null arm' => ['null | unknown', true],
+        'a list or a record with a null arm between them' => ['unknown[] | null | Record<string, unknown>', true],
+        'a record alone' => ['Record<string, unknown> | null', false],
+        'a lone null' => ['null', false],
+    ]);
 });
 
 test('a @property tag spelling a tuple, an object shape, a quoted key or a nested nullable shape types its column', function (string $column, string $type) {
@@ -807,6 +830,17 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
     'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
+
+test('a @phpstan-property tag types its column over a vaguer @property', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PhpstanPropertyPost::class, 'tags')['type'])->toBe('string[] | null');
+});
+
+test('a @property tag holding a quoted literal with a space, or a generic spaced before its opener, refines its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SpacedPropertyTagsPost::class, $column)['type'])->toBe($type);
+})->with([
+    'a quoted literal with a space' => ['meta_info', 'string | Record<string, number> | null'],
+    'a generic spaced before its opener' => ['related_users', 'Record<string, number> | null'],
 ]);
 
 test('a cast sends a NULL column as null only when it is a database type, a primitive, an enum, AsCollection or AsEnumCollection', function (?string $cast, bool $expected) {

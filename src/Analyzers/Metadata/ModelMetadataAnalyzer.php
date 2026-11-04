@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -30,11 +31,11 @@ use Throwable;
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type ComposedTypes array{types: array<string, string>, typeImports: TypesImportMap}
  * @phpstan-type DeclaredTypes array{
- *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, TokenFqcns>,
+ *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, Slots>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
  * }
  */
@@ -115,7 +116,7 @@ class ModelMetadataAnalyzer
     /**
      * Fit the keys a cast or the docblock retypes, then respell every key no cast import owns, beside its imports.
      *
-     * @param  array<string, TokenFqcns>  $docblockTokens  each docblock key's class behind each token of its text
+     * @param  array<string, Slots>  $docblockTokens  each docblock key's class behind each token of its text
      * @param  list<string>  $payloadKeys
      * @return ComposedTypes
      */
@@ -261,8 +262,8 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Parse the optional `@return array{...}` shape, with the custom imports of the overrides each key spells; a
-     * trailing `?` marks an optional key.
+     * Parse the optional `@return array{...}` shape, with the custom imports of the overrides each key spells, none for
+     * a key naming any class but an enum at any depth; a trailing `?` marks an optional key.
      *
      * @return DeclaredTypes
      */
@@ -279,8 +280,11 @@ class ModelMetadataAnalyzer
             $optional = str_ends_with($property, '?');
             $property = $optional ? substr($property, 0, -1) : $property;
             $types[$property] = $info['type'];
-            $imports[$property] = $info['customImports'];
             $tokens[$property] = $info['tokenFqcns'] ?? [];
+
+            // A companion imports no class but an enum, so an override's import of a class's name must not let it pass.
+            $namesClass = array_any($tokens[$property], fn (?string $fqcn): bool => $fqcn !== null && ! enum_exists($fqcn));
+            $imports[$property] = $namesClass ? [] : $info['customImports'];
 
             if ($optional) {
                 $optionalKeys[$property] = true;
@@ -361,7 +365,7 @@ class ModelMetadataAnalyzer
      *
      * A docblock key names only the enums behind its tokens, since a companion imports no model.
      *
-     * @param  array<string, TokenFqcns>  $docblockTokens
+     * @param  array<string, Slots>  $docblockTokens
      * @param  array<string, string>  $published  each payload key's type
      * @return CastMap
      */

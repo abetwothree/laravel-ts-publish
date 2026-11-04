@@ -34,6 +34,12 @@ whole call `unknown`, or the vague type it declares. So is `$this->resource` rea
 whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
 `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
 
+A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
+branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
+`k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
+the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
+override's among them, are left out with no warning.
+
 ### A list literal holding an element no rule types publishes `unknown[]`
 
 `[$this->id, json_decode('{}')]` publishes `unknown[]`, not `number[]`. A list element is in every response, so unlike a
@@ -148,17 +154,16 @@ Return a literal on each path, or state the keys in `#[TsCasts]`.
 A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of a
 declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a value
 and alone where its result is the method's own return, when the argument is not one object literal (a `Record`, a list,
-a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, holds an `EnumResource`
-wrap or two same-named enums a level apart, or, for a helper read as a value, any class an import-less read cannot
-import. An assignment inside another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference
-call of the parameter leaves only the helper's own writes, and so does a rewrite of its values in place, `array_walk()`,
-a by-reference `foreach` or `Arr::set()`, inside a block too; a `??=`, a key-keeping sort such as `ksort()`,
-`array_push()` and `array_unshift()` keep the argument's keys. Inside a block, such a write, or an `=` of a value the
-walk cannot read, makes each key held before it optional, a local's too, and, but for an `unset()`, publishes the shape
-open, unless it keeps every key, as those calls, a local's rewrite in place and an `=` of `array_merge()` or
-`array_replace()`, either recursive, or `Arr::add()` taking the array first, or of a `+` it leads, do. A local rewritten
-in place keeps its earlier value types, though `array_walk()` may turn a number into a string. Declare
-`@return array{…}` on the helper to publish the exact shape.
+a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, or holds an
+`EnumResource` wrap or two same-named enums a level apart. An assignment inside another expression, a top-level
+`unset()`, destructuring, `foreach` target or by-reference call of the parameter leaves only the helper's own writes,
+and so does a rewrite of its values in place, `array_walk()`, a by-reference `foreach` or `Arr::set()`, inside a block
+too; a `??=`, a key-keeping sort such as `ksort()`, `array_push()` and `array_unshift()` keep the argument's keys.
+Inside a block, such a write, or an `=` of a value the walk cannot read, makes each key held before it optional, a
+local's too, and, but for an `unset()`, publishes the shape open, unless it keeps every key, as those calls, a local's
+rewrite in place and an `=` of `array_merge()` or `array_replace()`, either recursive, or `Arr::add()` taking the array
+first, or of a `+` it leads, do. A local rewritten in place keeps its earlier value types, though `array_walk()` may
+turn a number into a string. Declare `@return array{…}` on the helper to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
@@ -463,6 +468,12 @@ $this->app->singleton(TsNaming::class, MyTsNaming::class);
 A subclass that overrode `importSortGroup()` or `$resourceTypeNames` extends `TsNaming` instead, where both are
 protected. [Support helpers](./components/support-helpers.md) sets which class owns a helper.
 
+Overriding `flattenTraits()` or `propertyDeclaringFileClass()` no longer changes what the package emits either, since
+it finds the file declaring a member through [`DeclaringFile`](../src/Ast/Docblocks/DeclaringFile.php). An override
+of `methodDeclaringFileClass()` still applies, for methods only; the file declaring a property has no replacement point.
+An override of `resolveAccessorType()` or `resolveAccessorBodyType()` is not consulted where a helper read as a value
+reads an accessor whole, whose getter's plain enum cases keep their literals there.
+
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
 `TsTypeString::typeNameOccursIn()` decides which imports a type still needs, and it counts a name wherever its token
@@ -504,29 +515,63 @@ resource too. So a resource that guards on it needs no `#[TsCasts]` for what the
 resource with no backing model for two or more models still publishes `null` for an attribute its arm reads, such as
 `$this->title` (#127).
 
-### A shape whose values name a class loses those values, in one of two ways
+### A shape whose values name a class can lose some of them
 
-The method-body fallback, a docblock array shape and a value object's own shape carry an override's import, but no
-model's or enum's. Each keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value
-object whose shape keeps one, with its imports, and loses a member naming any other class, such as a model. The body
-fallback (`MethodReturnTypeResolver::bodyType()`) publishes such a value as `unknown` and keeps the rest of the shape,
-as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
-degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
-`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
-an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union spells
-a model or enum beside an override, such as `Person|User`, is `unknown` too, even where the two spell one name.
+A value object's own shape carries an override's import, but no model's or enum's. It keeps a member naming a class or
+an enum with an override, such as `chart: Chart`, or a value object whose shape keeps one, with its imports, and
+degrades one leaf naming any other class, such as a model: a `toArray()` documented `@return array{owner: User}`
+publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` → `[unknown, number]`, while `Record<string, User>`
+has nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method
+a native return type that names the class. A member whose union spells a model or enum beside an override, such as
+`Person|User`, is `unknown` too.
+
+A helper read as a value publishes what the same literal publishes in place, but for a member whose class publishes
+under a name another member's override imports, such as an enum typed `ChartType` beside a composed `Chart`: the key
+holding the helper would spell both alike, so that member is `unknown`
+([Receiver types](./components/receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does)).
+Written in place, the literal spells both with the enum's alias, which types the composed class's value as the enum's.
+Put the two under different keys.
+
+A docblock shape keeps a model or an enum at any depth, with its import. Read by an API resource's helper, a property's
+`@var` or a model's accessor, though, a shape that also names any other class, such as an API resource, or spells an
+override like the model or enum beside it, such as `either: Person|User`, is read as a value object's shape is, each
+leaf naming a class `unknown`. So is one where a literal or a key spells the class's name:
+`array{kind: 'User', r: User}` publishes `{ kind: 'User'; r: unknown }`, and `array{User: int, owner: User}` publishes
+`{ User: number; owner: unknown }`. `share()`'s `@return` keeps them all, as does an API resource's `toArray()` or
+spread helper where its `@return` fills a key the body left vague, and a metadata provider's fails the publish on any
+class but an enum.
 
 A member whose override names a type with no import, such as `#[TsType('UiLocal')]`, is `unknown` in a docblock shape
-and a value object's shape, though it publishes as written elsewhere. In the body fallback it takes the import another
-member brings for that name, or is `unknown` when none does. Give the override an `import`.
+and a value object's shape, though it publishes as written elsewhere. Give the override an `import`.
 
-### A `share()` docblock union of an override and a model spelled alike can bind both to the model
+### A docblock union of an override and a model spelled alike binds both to the model, outside `share()`
 
-In `share()`'s `@return`, `either: Person|User`, where `Person`'s override is `User` from another module, publishes
-`User | User` with only the model's import when neither the key's value nor another key brings the override's import.
-The override arm then reads as the model and `tsc` passes, though Inertia sends a `Person` as its own JSON, which the
-model's type does not describe. Type the key with an import-aware `#[TsCasts]`, or share a key that brings the
-override's import, such as `person: Person`: the arm then keeps its import and the model is aliased.
+An API resource's helper read as a value, documented `@return Person|User`, where `Person`'s override is `User` from
+another module, publishes `WorkbenchUser | WorkbenchUser`, and `@return list<Person|User>` a list of it, importing only
+the model. The override arm then reads as the model and `tsc` passes, though Laravel sends a `Person` as its own JSON,
+which the model's type does not describe. `share()`'s `@return` keeps each arm with its own import, and so does the
+`@return array{…}` of a resource's `toArray()`, a spread helper or an Inertia page's props helper filling a vague key,
+`array{a: Person, p: Post}|User` too, joined with any return or render branch whose type spells the names of the fill's
+classes, `User` and `Post` there, nowhere but inside a literal, such as `'User'`. Beside a branch that spells one
+elsewhere, such as `'k' => $this->user` or `'k' => $this->post`, no join can bind each token: `toArray()`'s and an
+Inertia page's branches publish the key `unknown`, and a spread helper's or merge call's drop the fill
+([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)). Spread into a nested
+literal, the fill reads with no class ([below](#a-docblock-fill-spread-inside-a-nested-literal-keeps-no-class)). Type
+the key with an import-aware `#[TsCasts]`.
+
+### A docblock fill spread inside a nested literal keeps no class
+
+A key a spread helper's or props helper's `@return array{…}` fills keeps the class behind each token only where the
+helper is spread at the top level of `toArray()` or of an Inertia page's props. Spread inside a nested literal, a local
+or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads as a value object's shape does:
+each leaf naming a model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a
+literal's text stays. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, and `array{k: User}` to
+`{ k: unknown }`, as before fills carried classes. An enum-only or API-resource-only fill folds the same way,
+`array{s: Status}` to `{ s: unknown }`, as does each arm of a ternary of spreads,
+`$c ? [...$this->a()] : [...$this->b()]`. A JSON:API resource's attributes are one value too, so a fill there reads
+this way, `toAttributes()`'s own `@return` included. A value has no channel for the class behind each token, so a model
+beside an override spelled like it, in the same object or a nested one, would publish as that model; the fix is such a
+channel. Spread the helper at the top level, or type the key with an import-aware `#[TsCasts]`.
 
 ### An open shape publishes only its named keys
 
@@ -624,17 +669,11 @@ resource at once, publishes `unknown` too. End the chain with `->all()`.
 
 ### A relation method that declares no relation class and builds it through a helper is left out
 
-A method with neither a relation return type nor a `@return` naming a relation class, whose body builds the relation
-through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders, is never read as a
-relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it publishes
-`unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
-
-### A relation method whose `@return` is vaguer than its `@phpstan-return` is left out
-
-The docblock reader takes `@return` before `@phpstan-return`, so a method declared `@return mixed` with
-`@phpstan-return HasMany<Comment, $this>`, whose body builds the relation through a helper, is read as declaring no
-relation class and is left out like the entry above. Name the relation class in `@return` too. Reading the tags as one
-grammar would fix it.
+A method with neither a relation return type nor a `@return`, `@phpstan-return` or `@psalm-return` naming a relation
+class, whose body builds the relation through the model's own helper rather than `$this->hasMany(...)` or another of
+Laravel's builders, is never read as a relation, as in Laravel's `model:show`. Its model interface leaves it out, and
+`whenLoaded()` over it publishes `unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is
+read.
 
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 
@@ -647,8 +686,9 @@ resource's own model declares `label()`, since the related model could be any. N
 [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php) publishes `unknown` for
 `$this->whenHas('title', fn ($t) => json_decode($t))`, not the `title` column's `string`, because Laravel returns what
 the value returns and a plain title decodes to `null`, as `WhenHasValueResource` pins. Give the closure a return type,
-such as `fn ($t): ?string => json_decode($t)`, and the key types from it; a `@return` docblock on the closure does not
-type it. Inside a ternary or another union the `unknown` arm is left out instead
+such as `fn ($t): ?string => json_decode($t)`, or a `@return` docblock written before the closure, and the key types
+from it; a docblock before the whole call or above the array item is not read. Inside a ternary or another union
+the `unknown` arm is left out instead
 ([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)), so
 `$c ? $this->whenHas('title', fn ($t) => json_decode($t)) : null` publishes `null`. `whenExistsLoaded()`,
 `whenCounted()` and `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a
@@ -1068,8 +1108,8 @@ subclass writes it, whole, by a compound operator or by element, typed in the wr
 - After a whole `unset()` it publishes `unknown`, since PHP then reads it through `__get()`, which a resource forwards
   to its model.
 - A value the engine cannot type publishes `unknown`: an untyped method or closure parameter, a variable a closure
-  imports by reference, an import a closure holding the write reassigns, or a `mixed` call. A `@param` on a closure
-  passed inline, or on the statement above `$f = function ($n)`, is not read, so such a parameter counts as untyped.
+  imports by reference, an import a closure holding the write reassigns, or a `mixed` call. A `@param` on the statement
+  above `$f = function ($n)` is not read, so such a parameter counts as untyped.
 - Any other write publishes `unknown` as well: a by-reference argument, as in `array_push($this->queue, 1)` or
   `sort($this->tags)`, a `&` reference, a destructuring assignment, and `foreach (… as $this->p)`.
 - An element write publishes `unknown` where the array may be `null` or a scalar, where it compounds, as

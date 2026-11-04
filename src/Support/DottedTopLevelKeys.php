@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 
 /**
  * The object Inertia sends once `PropsResolver::unpackDotProps()` writes each top-level dotted key into its path with
@@ -74,17 +76,11 @@ final class DottedTopLevelKeys
     }
 
     /**
-     * A member's key as written, without the `?` and quotes it prints with.
+     * The key a member names, else its printed text, as for an index signature.
      */
     private static function memberName(string $printed): string
     {
-        $name = str_ends_with($printed, '?') ? substr($printed, 0, -1) : $printed;
-
-        return match (true) {
-            str_starts_with($name, '"') => is_string($decoded = json_decode($name)) ? $decoded : $name,
-            str_starts_with($name, "'") => substr($name, 1, -1),
-            default => $name,
-        };
+        return PrintedKey::decode($printed) ?? $printed;
     }
 
     /**

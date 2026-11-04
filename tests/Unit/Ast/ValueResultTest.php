@@ -91,6 +91,21 @@ describe('ValueResult::namesOnlyPublishedModels()', function () {
     });
 });
 
+describe('ValueResult::isPublishableReading()', function () {
+    test('a reading publishes when there is one, it is not vague, and every model it names gets a file', function (?array $reading, bool $publishable) {
+        expect(ValueResult::isPublishableReading($reading))->toBe($publishable);
+    })->with([
+        'a precise type' => [['type' => 'string | null', 'optional' => false], true],
+        'a published model' => [['type' => 'User', 'optional' => false, 'modelFqcn' => User::class], true],
+        'a shape holding unknown' => [['type' => '{ a: unknown }', 'optional' => false], true],
+        'no reading' => [null, false],
+        'unknown' => [['type' => 'unknown', 'optional' => false], false],
+        'a list of unknown' => [['type' => 'unknown[]', 'optional' => false], false],
+        'object' => [['type' => 'object', 'optional' => false], false],
+        'a framework model' => [['type' => 'Model', 'optional' => false, 'modelFqcn' => Model::class], false],
+    ]);
+});
+
 describe('ValueResult::unionResults() over arms that spell one name for two classes', function () {
     test('two models sharing a name are two members, each queued in the order the type spells them', function () {
         $result = ValueResult::unionResults([
@@ -555,17 +570,17 @@ describe('ValueResult::withEnumArmShapes()', function () {
     });
 });
 
-describe('ValueResult::withNullArm() and hasNullArm()', function () {
-    // Two classes can share a name, so the arm is appended to the text, never merged into it.
-    test('append one top-level null arm and read only a top-level one', function (string $type, string $withArm, bool $hasArm) {
-        expect(ValueResult::withNullArm($type))->toBe($withArm)
-            ->and(ValueResult::hasNullArm($type))->toBe($hasArm);
+describe('ValueResult::arrayWrapType()', function () {
+    test('lists a type, parenthesizing it only where a top-level union, intersection or arrow would bind the brackets', function (string $type, string $list) {
+        expect(ValueResult::arrayWrapType($type))->toBe($list);
     })->with([
-        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null', false],
-        'unknown, which already admits null' => ['unknown', 'unknown', false],
-        'a leading null arm' => ['null | string', 'null | string', true],
-        'a null inside an element type, which is not top-level' => ['(X | null)[]', '(X | null)[] | null', false],
-        'a trailing null arm' => ['string | null', 'string | null', true],
+        'an arrow function' => ['() => A', '(() => A)[]'],
+        'an object holding a union' => ['{ a: A | B }', '{ a: A | B }[]'],
+        'a union' => ['A | B', '(A | B)[]'],
+        'an intersection' => ['A & { b: B }', '(A & { b: B })[]'],
+        'a generic holding a union' => ["Pick<Post, 'id' | 'title'>", "Pick<Post, 'id' | 'title'>[]"],
+        'a string literal holding a pipe' => ["'a|b'", "'a|b'[]"],
+        'a plain type' => ['User', 'User[]'],
     ]);
 });
 

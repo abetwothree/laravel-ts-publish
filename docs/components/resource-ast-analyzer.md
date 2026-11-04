@@ -30,7 +30,8 @@ These are the classes a change to resource analysis usually touches:
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
+| [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
@@ -120,14 +121,14 @@ handlers to the subject's own. In every profile, the order handlers run in decid
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
-  `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
+  vague, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
   after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
 `analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, as do a merge call's sides (`merge()`,
-`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `branchUnion()` leaves out a branch that
+`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `BranchJoin::branchUnion()` leaves out a branch that
 resolved to `unknown` and unions the rest, as a ternary drops its untypable arm. A key still publishes `unknown` when
 every branch is `unknown`, or, for a spread helper alone, when only `null` is left, since that `null` says nothing
 about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a ternary does.
@@ -136,10 +137,30 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 
 ### What the method's `@return` may fill
 
-`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or a `@return array<string, V>` value type for every
-unfilled key. A `key?:` entry also marks the key optional. It fills a value only where
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds at each
-leaf, and adds those imports to the analysis, so an override fills with its import while a model or an enum is skipped.
+`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or the `V` of a `@return array<string, V>` that is one
+`Record<string, V>`, for every vague key. A `key?:` entry also marks the key optional. A key is vague where every arm
+but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`TsTypeString::isVagueOnly()`), as an
+`'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
+only an exact `unknown`.
+
+It fills a value only where
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
+token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
+resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
+the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
+`merge()` carries them, and a nested literal or local that folds them into a value reads every such key with no class
+(`InlineObjectResult::readFillsClassLess()`), as before the fill. `mergeReturnBranches()` joins a declared text's arms
+whole, past the branches it drops, so a branch spelling none of the text's own names joins beside it:
+`User | User | string`, its slots `[null, User]`. Every joined arm takes one slot per token of the joined names, a
+literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the
+slots against the whole text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as
+`{ a: User; p: Post }`'s `[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with
+other slots or none, no join can bind them (`BranchJoin::declaredBranches()`): a strict join publishes the key `unknown`
+with no class, and a dropping one first reads that fill as the untyped value it stood in for
+(`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill.
+`ResourceTransformer` reads a key's tokens from its slots where one holds an override's null, so `either: Person|User`
+publishes `User | WorkbenchUser`, each with its import, as an Inertia page does through `FileImportNames`; a per-name
+queue cannot hold that null.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`
@@ -222,8 +243,8 @@ those handlers. It also records the controller scope, which has no model, where 
 
 A model's own method or accessor body is analyzed with the model as its subject. There `$this->resource` is the
 model's own member, because only an API resource has the proxy (`AnalysisScope::hasResourceProxy()`). How filters
-answer in that body, and in a body that carries no imports, is in
-[receiver types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+answer in that body, and in a reader that carries no imports, is in
+[receiver types § The body fallback carries channels as an inline literal does](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does).
 
 The relation arm publishes by member kind, adds `| null` through `?->`, and declines (`null`, so a later handler
 answers) on anything else:
@@ -394,7 +415,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
 - **`whenNotNull()` and `whenNull()` test their value for `null`**: both call `when()` on `is_null($value)`.
-  `whenNotNull()` strips the top-level `| null` from its value with `ValueResult::stripNullArm()`, which leaves a
+  `whenNotNull()` strips the top-level `| null` from its value with `TsTypeString::withoutNullArm()`, which leaves a
   nested one. A closure or first-class callable is never `null`, so `whenNotNull()` always calls it, with nothing: the
   key is required and keeps what it returns, `null` included. `whenNull()`'s value arm is `null`.
 - **`unless()` and `mergeUnless()` reuse `when()` and `mergeWhen()`**: negating the condition changes which arm runs,
@@ -772,9 +793,8 @@ none, since a later write or cast may still make the key joinable.
 A key cannot join a union when any of these holds:
 
 - its type has a top-level `unknown` arm, which would swallow the typed arms
-- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name, a global name or a template
-  literal type, where a string or number literal is fine
-- it holds a string literal with a backslash, which the union splitter can cut apart
+- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name or a global name, where a string
+  or number literal and a template literal's text are fine
 - it is not a cast key and carries an FQCN channel, whose token is rewritten under its own key's name
 
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
@@ -866,7 +886,8 @@ up unused; see
 `mergeReturnBranches()` stays on the analyzer, off `MethodAnalysis`, because it needs a per-branch property map to
 union a key that several branches set, which a field-by-field merge cannot express. It takes every channel from
 `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to `merge()` reaches
-branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it.
+branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it. The join
+of each key's branch types and casts is `BranchJoin`'s, so the engine owns that type-string composition.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)

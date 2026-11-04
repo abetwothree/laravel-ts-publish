@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use ReflectionClass;
@@ -134,8 +135,6 @@ final class DeclaredClasses
     public static function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
     {
         $file = $context->getFileName();
-        // Most docblocks name only scalars, so the import map is read for the first arm that needs it.
-        $useMap = null;
         $classes = [];
         $named = true;
         $nullable = false;
@@ -170,11 +169,7 @@ final class DeclaredClasses
             $class = match ($name) {
                 '$this', 'static' => $staticClass,
                 'self' => $selfClass,
-                default => LaravelTsPublish::resolveDocblockTypeName(
-                    $name,
-                    $useMap ??= LaravelTsPublish::parseFileUseStatements($context),
-                    $context->getNamespaceName(),
-                ),
+                default => DocblockNames::resolve($name, $context),
             };
 
             if (self::isClassLike($class)) {
@@ -188,7 +183,8 @@ final class DeclaredClasses
     }
 
     /**
-     * Whether a name is a loadable class, interface, or enum.
+     * Whether a name is a loadable class, interface, or enum: a type a value can have, so never a trait, unlike
+     * DocblockNames::isClassLike().
      *
      * @phpstan-assert-if-true class-string $name
      */

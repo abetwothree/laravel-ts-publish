@@ -373,15 +373,15 @@ it('reads $variable->map(callback: …) by name', function () {
 it('resolves a nullsafe chain from a typed map-closure parameter', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['authors']['type'])->toBe('({ id: number; who: string | null; who_or: string | null })[]')
-        ->and($props['loaded']['type'])->toBe('({ who: string | null })[]')
+    expect($props['authors']['type'])->toBe('{ id: number; who: string | null; who_or: string | null }[]')
+        ->and($props['loaded']['type'])->toBe('{ who: string | null }[]')
         ->and($props['loaded']['optional'])->toBeTrue();
 });
 
 it('keeps a typed map over a relation the model does not declare through a trailing values()->all()', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UserFeaturedPostsResource::class), User::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[] | null')
+    expect($props['featured_posts']['type'])->toBe('{ id: number; title: string; file: string | null }[] | null')
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 

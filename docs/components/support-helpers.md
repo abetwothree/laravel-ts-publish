@@ -32,11 +32,8 @@ The helpers and the test that pins them live in these files:
   each top-level dotted key of a page or shared data into its path with `Arr::set()`, printed from pieces that name the
   key each prints, and each signature covering a head it wrote widened to admit it. A head marked `closed`, a resource
   or prop object Inertia replaces, prints as a scalar does. Static and `@internal`.
-- [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
-  grammar: encode from parts, recognize, literal segments, cast spellings and the keys a signature covers. Static and
-  `@internal`.
-- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
-  `@internal`.
+- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as, and which
+  list index it names. A type reader's int-key check reads it rather than a regex. Static and `@internal`.
 - [`Support\ImportMaps`](../../src/Support/ImportMaps.php): one import map from several, each name once per path, names
   and paths sorted, the name each import binds, `X as Y` binding `Y`, and the part of a map a type spells. Static and
   `@internal`. Every merge of import maps added since goes through it; five older inline merges stay as they are,
@@ -57,6 +54,20 @@ The helpers and the test that pins them live in these files:
 - [`Support\NamespaceNameCollisions`](../../src/Support/NamespaceNameCollisions.php): which names two classes
   publish in one namespace, from the namespace, class and names of each, the first to list a name owning it. The
   runner's colliding-names warning reads it. Static and `@internal`.
+- [`Support\TypeStrings\TypeScanner`](../../src/Support/TypeStrings/TypeScanner.php): the type scanner. It reads a
+  type string's bracket depths, its parts between top-level separators, and its string and template literals.
+  `TypeScannerCorpusTest` proves it against TypeScript's parser on golden, hand-written and generated types. Static
+  and `@internal`. `TsTypeShape` splits, nests and lists on it, `TsTypeString` reads its literal spans and masks, and
+  the docblock engine and `DocblockTags` read PHPDoc through it.
+- [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
+  TypeScript type or a PHPDoc type, where a backtick is plain text, no arrow owns a union, and a quote with no closer
+  on its line is plain text, as PHPStan's lexer reads it. `@internal`.
+- [`Support\TypeStrings\PrintedKey`](../../src/Support/TypeStrings/PrintedKey.php): the key a printed object key
+  names, the inverse of every key printer: `validJsObjectKey()`, `shapeKey()` and `toJsLiteral()`. A reader that
+  matches a printed key against a PHP key decodes it here rather than unquoting it. Static and `@internal`.
+- [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
+  template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
+  keys a signature covers. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -84,11 +95,22 @@ Ask what the helper's input domain is, not what calls it:
 | Does a registered route dispatch to this class? | `RoutedControllers` |
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
+| How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
+| Does this type have a top-level `null` arm, and what is it with one or without one? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()` |
+| How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
+| How does this type stand before a postfix `[]` or `?`, which binds tighter than `\|`? | `TsTypeShape::postfixOperand()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
-| What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
+| What is each member type of this tuple, and which is optional? | `TsTypeShape::tupleMembers()`, `tupleElements()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
+| Which key does this printed object key name, and is it this one? | `PrintedKey::decode()`, `names()` |
+| Which list index does this array key name? | `PhpArrayKey::listIndex()` |
+| How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
+| Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
+| Which class stands behind each token of a declaration's type, and what is that type read with no class? | `TokenSlots` |
+| Which names does a class's token take: its type's, an enum's `…Kind` or its const's? | `TokenSlots::typeName()`, `namesOf()` |
+| What is one key's type joined from its branches, beside its slots? | `BranchJoin` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
@@ -143,9 +165,25 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
-`IndexSignatureKey::PATTERN` and `ImportMaps::localNames()`. That one-way dependency is what made the class safe to lift
-out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`
+and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`. That one-way
+dependency is what made the class safe to lift out. A new member that wants `toTsType()` is not a type-string helper,
+and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+
+Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
+a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and
+`shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
+Two readers stay literal-blind: `typeNameOccursIn()`, as its [known gap][literal-blind] says, and
+`extractImportableTypes()`, which still splits an override's or cast's type on every `|`.
+
+`hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
+`TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.
+The `[]` wrappers, `ValueResult::arrayWrapType()`, `ValueResult::collectionListType()` and `wrapAsArray()`, list
+through `TsTypeShape::listType()`. Other joins still append bare, such as `TsTypeString::union()`, FormRequest's
+rule unions and a few raw `[]` suffixes.
+
+[literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
 `ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, and
@@ -155,9 +193,11 @@ namespaces publish resolves as that file's import does. For a name no FQCN map c
 `GlobalsWriterTest` pins both collection orders.
 
 The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
-point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()` and
-`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather
-than a local regex.
+point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()`,
+`isVagueOnly()`, `orUndefined()` and the null-arm helpers are likewise the one home for their test or spelling, so a
+new caller uses them rather than a local regex, `str_contains()` or `in_array()` over a split. Neither appender
+de-duplicates, so `User | User`, two classes, keeps both arms. `withNullArm()` leaves `unknown` as it is, the AST's
+reading; `orNull()` prints `unknown | null`, as the engine prints a nullable PHP type.
 
 ### `TsNaming`
 
@@ -209,9 +249,31 @@ they read through `withoutShapeImports()`: a shape, a docblock's or a value obje
 makes valid (`shapeKeeps()`), and each answers as before shapes carried custom imports. Every caller in the package
 reads their info siblings instead.
 
+The PHPDoc splitters stay on the engine too, `splitPhpDocUnionType()`, `splitAtTopLevelCommas()` and
+`splitPhpDocIntersectionType()` among them, but each reads the type through `TypeScanner`'s PHPDoc dialect, as do the
+shape and group bracket checks, the alias balancer and `DocblockTags`' tag capture. None walks depth or quotes itself.
+
 A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
 with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical
 move, so the sub-engine was left whole. Treat "break the cycle" as the task, and moving the methods as its consequence.
+
+## Token slots and the branch join live in `src/Ast/Composition`
+
+The class behind each token of a declaration's text, its slots, is read only through
+[`TokenSlots`](../../src/Ast/Composition/TokenSlots.php), and one key's branch types join only through
+[`BranchJoin`](../../src/Ast/Composition/BranchJoin.php), never on `LaravelTsPublish` or `ResourceAstAnalyzer`. Neither
+is a Support helper, since both call the engine, which `SupportBoundaryTest` forbids there. Four lists share
+"token…Fqcns" names and count different things:
+
+| Space | The list | One entry per |
+| --- | --- | --- |
+| A | `TypeScriptTypeInfo['classTokenFqcns']` | class token, by the `classes` labels; one holding a null is in space B |
+| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's and one after `typeof` too; null for an override's |
+| C | `FileImportNames`' `TokenQueue` | token a channel reads |
+| D | `MethodAnalysis::channelFqcns($name)` | class on a key's channels, by kind, not per token |
+
+A, B and C count in print order but over different tokens, so a walk built for one misaligns on another: slots hold
+an entry for a literal's token, and a `TokenQueue` none.
 
 ## The delegation rule
 

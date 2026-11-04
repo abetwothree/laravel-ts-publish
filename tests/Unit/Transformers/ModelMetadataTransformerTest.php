@@ -23,6 +23,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetada
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
@@ -329,6 +331,24 @@ test('imports an override a docblock shape names, at its top level and nested, a
     ])->and($data->properties['nested']['n'])->toBe(1);
 });
 
+test('imports an enum a docblock shape nests, as it imports one at its top level', function () {
+    config()->set('ts-publish.model_metadata.provider_class', NestedEnumMetadataProvider::class);
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['pair' => "{ kind: 'Role'; r: RoleType }", 'top' => 'RoleType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and($data->properties)->toBe(['pair' => ['kind' => 'Role', 'r' => 'Admin'], 'top' => 'Admin']);
+});
+
+test('fails for a model a docblock shape nests, as it fails for one at its top level', function () {
+    config()->set('ts-publish.model_metadata.provider_class', NestedModelMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))->toThrow(
+        InvalidArgumentException::class,
+        "model [Workbench\\App\\Models\\User] property [pair] has type [{ kind: 'User'; r: User }] whose import cannot be inferred",
+    );
+});
+
 test("checks a docblock key against its own imports, never another key's", function () {
     config()->set('ts-publish.model_metadata.provider_class', CollidingOverrideMetadataProvider::class);
 
@@ -477,13 +497,16 @@ test('spells an empty PHP array as an empty object wherever its type is object-l
         ->and($properties['rows'][1])->toBeInstanceOf(stdClass::class);
 });
 
-test('spells an empty container beside a template literal holding a quoted backtick or an escaped quote', function (string $key) {
+test('spells an empty container beside a template literal holding a quoted backtick, an escaped quote, a separator or a brace', function (string $key) {
     config()->set('ts-publish.model_metadata.provider_class', TemplateLiteralModelMetadataProvider::class);
 
     $properties = (new ModelMetadataTransformer(User::class))->data()->properties;
 
     expect($properties[$key]['b'])->toBeInstanceOf(stdClass::class);
-})->with(['singleQuoted', 'doubleQuoted', 'escapedDoublePair', 'escapedDoubleText', 'escapedSinglePair', 'apostropheThenEscaped']);
+})->with([
+    'singleQuoted', 'doubleQuoted', 'escapedDoublePair', 'escapedDoubleText', 'escapedSinglePair', 'apostropheThenEscaped',
+    'semicolon', 'comma', 'brace',
+]);
 
 test('spells body-inferred empty containers by their inferred type', function () {
     config()->set('ts-publish.model_metadata.provider_class', AstEmptyValuesModelMetadataProvider::class);

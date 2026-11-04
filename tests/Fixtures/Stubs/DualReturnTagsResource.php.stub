@@ -1,0 +1,66 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Models\Post;
+
+/*
+ * A `.php.stub` file because Pint's phpdoc_order fixer moves `@return` above `@phpstan-return`, which would erase the
+ * reversed order `reversed()` pins, and its finder only matches `*.php`.
+ */
+
+/** Helpers whose body types nothing, documented by `@return` and `@phpstan-return` in each order, alone and vague. */
+class DualReturnTagsResource extends JsonResource
+{
+    /** @var Post */
+    public $resource;
+
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            'both' => $this->both(),
+            'reversed' => $this->reversed(),
+            'phpstan_only' => $this->phpstanOnly(),
+            'precise_plain' => $this->precisePlain(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     *
+     * @phpstan-return array{a: int, b: string}
+     */
+    private function both(): array
+    {
+        return (array) json_decode((string) $this->title, true);
+    }
+
+    /**
+     * @phpstan-return array{a: int, b: string}
+     *
+     * @return array<string, mixed>
+     */
+    private function reversed(): array
+    {
+        return (array) json_decode((string) $this->title, true);
+    }
+
+    /** @phpstan-return array{a: int, b: string} */
+    private function phpstanOnly(): array
+    {
+        return (array) json_decode((string) $this->title, true);
+    }
+
+    /**
+     * @return array{a: int}
+     *
+     * @phpstan-return array<string, mixed>
+     */
+    private function precisePlain(): array
+    {
+        return (array) json_decode((string) $this->title, true);
+    }
+}

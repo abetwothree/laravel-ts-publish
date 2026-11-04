@@ -78,7 +78,7 @@ final class InlineArrayHandler implements ExpressionHandler
 
         // Spreading null throws, so a null arm sets no key. A class no generated file exports would be a token with no
         // import behind it. A resolved resource's restated keys are one object, though an intersection.
-        $type = ValueResult::stripNullArm($spreadResult['type']);
+        $type = TsTypeString::withoutNullArm($spreadResult['type']);
 
         return (self::isObjectType($type) || isset($spreadResult['resolvedFqcn'])) && ValueResult::namesOnlyExportedClasses($spreadResult)
             ? ['type' => $type, 'result' => $spreadResult]

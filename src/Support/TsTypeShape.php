@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+
 /**
  * Answer structural questions about a TypeScript type string without a full parser.
  *
  * Understands exactly the syntax the metadata pipeline emits: inline object literals and index signatures,
  * Record<K, V>, T[] / readonly T[] / Array<T> / ReadonlyArray<T>, tuples, and top-level unions with null.
- * Intersections and arrow-function types are opaque. Also the home of the one top-level splitter for
- * TypeScript type strings; PHPDoc types keep their own in LaravelTsPublish::splitPhpDocUnionType().
+ * Intersections and arrow-function types are opaque.
+ *
+ * Every reader nests and splits as TypeScanner reads the type, so a string or template literal is read whole.
+ *
+ * @phpstan-type TupleElement = array{string, bool}
  */
 final class TsTypeShape
 {
@@ -35,15 +41,13 @@ final class TsTypeShape
     }
 
     /**
-     * Whether an object literal or a `Record<number, …>` sits anywhere in the type, outside quotes.
-     *
-     * A template literal's `${…}` reads as an object, so an unsure answer is yes.
+     * Whether an object literal or a `Record<number, …>` sits anywhere in the type, outside literal text.
      */
     public static function holdsKeyedObject(string $type): bool
     {
-        $unquoted = preg_replace('/([\'"])(?:\\\\.|(?!\1).)*\1/s', '', $type) ?? $type;
+        $code = TypeScanner::maskLiterals($type);
 
-        return str_contains($unquoted, '{') || preg_match('/\bRecord<\s*number\s*,/', $unquoted) === 1;
+        return str_contains($code, '{') || preg_match('/\bRecord<\s*number\s*,/', $code) === 1;
     }
 
     /**
@@ -59,14 +63,14 @@ final class TsTypeShape
             }
 
             if (self::isWrapped($arm, '[', ']')) {
-                return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
-                    ? self::tupleMembers($arm)[(int) $key] ?? null
-                    : null;
+                $index = PhpArrayKey::listIndex($key);
+
+                return $index === null ? null : self::tupleMembers($arm)[$index] ?? null;
             }
 
             foreach (self::members($arm) ?? [] as [$name, $value]) {
-                // `[key: string]: T` answers every key; a literal key may be quoted and/or optional.
-                if (str_starts_with($name, '[') || trim(rtrim($name, '?'), '\'"') === $key) {
+                // `[key: string]: T` answers every key.
+                if (str_starts_with($name, '[') || PrintedKey::names($name, $key)) {
                     return $value;
                 }
             }
@@ -82,7 +86,17 @@ final class TsTypeShape
      */
     public static function tupleMembers(string $tuple): array
     {
-        return array_map(self::tupleMember(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
+        return array_column(self::tupleElements($tuple), 0);
+    }
+
+    /**
+     * Each member of one tuple, in order, as its type without its optional marker and whether it carries one.
+     *
+     * @return list<TupleElement>
+     */
+    public static function tupleElements(string $tuple): array
+    {
+        return array_map(self::tupleElement(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
     }
 
     /**
@@ -97,9 +111,7 @@ final class TsTypeShape
             return true;
         }
 
-        $unquoted = preg_match('/^([\'"])(.*)\1$/s', $key, $match) === 1 ? stripcslashes($match[2]) : $key;
-
-        return is_numeric($unquoted);
+        return is_numeric(PrintedKey::decode($key) ?? $key);
     }
 
     /**
@@ -139,30 +151,37 @@ final class TsTypeShape
         }
 
         $last = strlen($type) - 1;
-        $outside = array_keys(self::depths($type), 0, true);
+        $outside = array_keys(TypeScanner::depths($type), 0, true);
 
         return $outside === [0, $last];
     }
 
     /**
-     * The element type of an array type, or null when the type is not an array.
+     * The element type of the first union arm that is an array type, or null when no arm is one.
      */
     public static function elementType(string $type): ?string
     {
         foreach (self::arms($type) as $arm) {
             foreach (['Array<', 'ReadonlyArray<'] as $prefix) {
-                if (str_starts_with($arm, $prefix) && str_ends_with($arm, '>')) {
-                    return trim(substr($arm, strlen($prefix), -1));
+                $generic = substr($arm, strlen($prefix) - 1);
+                $arguments = str_starts_with($arm, $prefix) && self::isWrapped($generic, '<', '>')
+                    ? self::splitTopLevel(substr($generic, 1, -1), [','])
+                    : [];
+
+                if (count($arguments) === 1) {
+                    return $arguments[0];
                 }
             }
 
-            // `[]` is the empty tuple, not an array suffix, and a tuple has no single element type.
-            if ($arm !== '[]' && str_ends_with($arm, '[]')) {
-                $element = trim(substr($arm, 0, -2));
+            // `[]` is the empty tuple, not an array suffix, and a tuple has no single element type. `[]` binds tighter
+            // than `&` and `=>`, so `A & B[]` lists only `B` and `() => B[]` returns the list.
+            $element = $arm !== '[]' && str_ends_with($arm, '[]') ? trim(substr($arm, 0, -2)) : null;
+            $listed = $element !== null
+                && self::topLevelPosition($element, '&') === null
+                && self::topLevelPosition($element, '=') === null;
 
-                return str_starts_with($element, '(') && str_ends_with($element, ')')
-                    ? trim(substr($element, 1, -1))
-                    : $element;
+            if ($listed) {
+                return self::isWrapped($element, '(', ')') ? trim(substr($element, 1, -1)) : $element;
             }
         }
 
@@ -197,82 +216,71 @@ final class TsTypeShape
         $element = match (true) {
             $types === [] => 'never',
             in_array('unknown', $types, true) => 'unknown',
-            default => implode(' | ', $types),
+            count($types) === 1 => $types[0],
+            default => implode(' | ', array_map(self::unionArm(...), $types)),
         };
 
-        // `[]` binds tighter than `|`, `&` and `=>`, so `A | B[]` would list only B.
-        return count(self::splitTopLevel($element, ['|', '&'])) > 1 || self::topLevelPosition($element, '=') !== null
-            ? '('.$element.')[]'
-            : $element.'[]';
+        return self::postfixOperand($element).'[]';
     }
 
     /**
-     * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quotes.
+     * One arm of a union as it joins others: parenthesized when it holds a top-level `=>`, whose return type would
+     * otherwise take in every arm after it.
+     */
+    public static function unionArm(string $arm): string
+    {
+        return self::topLevelPosition($arm, '=') === null ? $arm : '('.$arm.')';
+    }
+
+    /**
+     * One arm of a union as it joins others, an intersection parenthesized like an arrow, so the union reads as arms.
+     */
+    public static function groupedArm(string $arm): string
+    {
+        return count(self::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : self::unionArm($arm);
+    }
+
+    /**
+     * A type as the operand of a postfix `[]` or `?`, parenthesized where it holds a top-level `|`, `&` or `=>`: the
+     * postfix binds tighter, so `A | B[]` would list only `B`.
+     */
+    public static function postfixOperand(string $type): string
+    {
+        return count(self::splitTopLevel($type, ['|', '&'])) > 1 ? '('.$type.')' : self::unionArm($type);
+    }
+
+    /**
+     * Split on any of $separators that sit at depth zero as TypeScanner reads it: outside brackets, literal text and an
+     * arrow's return type.
      *
      * @param  list<string>  $separators  Single characters.
      * @return list<string> Trimmed, non-empty parts.
      */
     public static function splitTopLevel(string $type, array $separators): array
     {
-        $parts = [];
-        $start = 0;
-
-        foreach (self::depths($type) as $offset => $depth) {
-            if ($depth === 0 && in_array($type[$offset], $separators, true)) {
-                $parts[] = substr($type, $start, $offset - $start);
-                $start = $offset + 1;
-            }
-        }
-
-        $parts[] = substr($type, $start);
-
-        return array_values(array_filter(array_map(trim(...), $parts), static fn (string $part): bool => $part !== ''));
+        return TypeScanner::split($type, $separators);
     }
 
     /**
-     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and quotes.
+     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and literal text.
      */
     private static function topLevelPosition(string $type, string $needle): ?int
     {
-        foreach (self::depths($type) as $offset => $depth) {
-            if ($depth === 0 && $type[$offset] === $needle) {
+        $offset = strpos($type, $needle);
+
+        if ($offset === false) {
+            return null;
+        }
+
+        $depths = TypeScanner::depths($type);
+
+        for (; $offset !== false; $offset = strpos($type, $needle, $offset + 1)) {
+            if (($depths[$offset] ?? null) === 0) {
                 return $offset;
             }
         }
 
         return null;
-    }
-
-    /**
-     * The bracket depth of each character outside quotes, by offset; a bracket sits at the depth outside the pair it
-     * opens or closes.
-     *
-     * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator(), and the `>` of
-     * `=>` closes nothing.
-     *
-     * @return array<int, int>
-     */
-    private static function depths(string $type): array
-    {
-        $depths = [];
-        $depth = 0;
-        $quote = null;
-
-        foreach (str_split($type) as $offset => $char) {
-            if ($quote !== null) {
-                $quote = $char === $quote ? null : $quote;
-            } elseif ($char === '\'' || $char === '"') {
-                $quote = $char;
-            } elseif (str_contains('{[(<', $char)) {
-                $depths[$offset] = $depth++;
-            } elseif (str_contains('}])>', $char) && ! ($char === '>' && $offset > 0 && $type[$offset - 1] === '=')) {
-                $depths[$offset] = $depth = max(0, $depth - 1);
-            } else {
-                $depths[$offset] = $depth;
-            }
-        }
-
-        return $depths;
     }
 
     /**
@@ -296,17 +304,20 @@ final class TsTypeShape
     }
 
     /**
-     * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union.
+     * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union,
+     * and whether it carries one.
+     *
+     * @return TupleElement
      */
-    private static function tupleMember(string $member): string
+    private static function tupleElement(string $member): array
     {
         if (! str_ends_with($member, '?')) {
-            return $member;
+            return [$member, false];
         }
 
         $member = trim(substr($member, 0, -1));
 
-        return self::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member;
+        return [self::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member, true];
     }
 
     /**

@@ -22,7 +22,7 @@ These classes carry receiver inference:
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
 | [`MacroCallResolver`] | The macro a `Macroable` subject's `__call()` runs for a name it does not declare, and what that macro returns |
-| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-no-fqcn-channel): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
+| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
 | [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`] | What an `instanceof` condition proves, and the binding its proven arm resolves under |
 
 ## Receiver resolution
@@ -63,6 +63,8 @@ reflection answers, a decline included.
 
 A type with a builtin arm names no class, such as `: string` or `@var UrlService|string`. Neither does a docblock part
 with text after its generics: `Collection<int, User>` names `Collection`, while `Collection<int, User>[]` is an array.
+A property's docblock, `$resource`'s included, resolves in the file that declares it, a parent's or a trait's, and a
+promoted property with no `@var` reads its constructor's `@param` ([`PropertyDocblockTypeReader::tag()`]).
 
 `$this->prop` and `$this->resource->prop` share one code path, because a `JsonResource` forwards what it does not
 declare through `__get()` and `__call()`, so the two are the same read at runtime. The one asymmetry is deliberate. A
@@ -368,7 +370,7 @@ step can decline:
    class declares, the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so
    `Model::fresh()` on a `User` is `User | null`.
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
-   signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel), then
+   signature is vague, then [the body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does), then
    [the value its returns hold](#a-method-read-as-a-value-carries-import-channels). A conditional `@return` whose every
    branch is a string type, as `Str::upper()` declares, reads `string`.
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
@@ -379,7 +381,7 @@ step can decline:
    `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the direct
    reflection in `ResolvesRelatedModelTypes` applies it itself, so here it still guards step 3.
 
-### The body fallback carries no FQCN channel
+### The body fallback carries channels as an inline literal does
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
 body once per set of bindings its calls' arguments make. The shape spelled by its literal return, or by a returned
@@ -407,21 +409,32 @@ that calls itself terminates, whatever each call passes. An int key publishes qu
 then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
 `ServiceReturnResource.tiers` publishes `string[]`.
 
-The inline type follows
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), checked per
-method rather than per member: against the whole method's custom imports and the classes on its channels
-(`MethodAnalysis::channelNames()`). An override, such as `'chart' => new Chart`, keeps its type and import; a model is
-`unknown`, and its siblings keep their types. `UiUntypedChartKindResource` pins an enum spelled like a composed class
-beside it. In a scope that carries no import, `ValueResolver::resolveClassConstant()` types a plain backed enum's case
-as the literal it sends (`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes
-`'bar' | UiToneDto`, and drops a pure enum's case, which `json_encode()` cannot write. A `JsonSerializable` enum keeps
-`unknown`, since `json_encode()` sends its `jsonSerialize()`, not its value. A case of an enum
-`LaravelTsPublish::retypedEnumType()` answers for keeps its override and brings no name of its own. A case an accessor's
-getter returns, or one passed to a helper that returns it, types the same way as a case written in place. Any other read
-of an enum, such as a cast attribute or a list of a plain enum's cases, is `unknown`.
+The analysis folds through `InlineObjectResult::of()`, as an inline literal does, so each member keeps its type and the
+import channels of the classes it names: a model, an API resource, an enum or its `EnumResource` wrap, a filter's
+`Pick<>`. `BodyFallbackChannelsTest` pins each against the same literal written in place. A member a `@return` fill
+typed first reads with no class, as `of()` reads one (`InlineObjectResult::readFillsClassLess()`). Then
+`MethodAnalysis::forgetUnpublishableMembers()` publishes `unknown` for two kinds of member and forgets their channels,
+while their siblings keep their types:
 
-Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
-`carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:
+- One naming a model with no published file, which `resolve()`'s check would decline the whole shape for.
+- One whose class publishes under a name a custom import brings. The reader holds the shape as one key, which aliases
+  every token of a name alike, so an enum spelled like a composed class beside it would take that class's tokens.
+  `UiUntypedChartKindResource` pins it.
+
+The analysis sets `AnalysisScope::$casesAsLiterals`, so `ValueResolver::resolveConstantValue()` types a plain backed
+enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list literal
+or `collect()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and `[Status::Draft, Status::Published]` `(0 | 1)[]`,
+where the enum's type is vaguer. So `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A pure enum's
+case, which `json_encode()` cannot write, and a `JsonSerializable` enum's, whose `jsonSerialize()` it sends, type
+nothing; a case of an enum `LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's
+getter returns types the same way where the body reads the accessor whole: the getter is analyzed under the flag too,
+with memo entries of its own, so an in-place read never replays the literal. An `EnumResource` payload reads its cases
+as their enum (`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum,
+such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry.
+
+Attribute filters know an answer that names no token, which a reader that carries no import publishes.
+`AnalysisScope::$carriesImports` is false only for an accessor's getter read that way
+([AccessorBodyAnalyzer § A reader that carries no import][reader-no-import]), and the filter code reads the flag:
 
 - A literal key list publishes the inline shape, never a `Pick<>`. A member whose type names a token, such as an enum
   column or a relation, is `unknown` there, so its siblings keep their types.
@@ -434,22 +447,8 @@ Attribute filters are the exception, because they know an answer that names no t
   `ModelAttributeResolver::serializedAttributeNames()` lists. A `null` arm stays, and any other token makes the whole
   answer `unknown`.
 
-A filter in the getter of an accessor the body reads is covered too. When the accessor's type comes from its getter
-body, `AccessorBodyAnalyzer` analyzes that getter without imports as well, so the method keeps its shape. The model file
-and every resource still publish the getter's own analysis, and `CommentRelationFiltersResource` and
-`ReleaseColumnsResource` pin both kinds of body. See
-[AccessorBodyAnalyzer § A reader that carries no import][reader-no-import].
-
-An `EnumResource` wrap over a closure parameter's column, a local or any other resolved payload, and a
-`$this->helper()` that `SubjectHelperReturnResolver` reads, stay `unknown` without imports, so their siblings keep their
-types.
-
-An accessor still costs the method its whole shape when its type names a class any other way:
-
-- Through its closure signature or its `Attribute<>` docblock.
-- Through an old-style getter's return type or `@return` docblock.
-- Through an `@property` tag.
-- Through a getter that returns a class-typed value without a filter, such as `fn () => $this->author`.
+A method body reads an accessor as the model file publishes it, filters included. `CommentRelationFiltersResource` and
+`ReleaseColumnsResource` pin both kinds of body.
 
 ### A method read as a value carries import channels
 
@@ -472,7 +471,7 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 - **Skips a dependency's method**: built in, under a vendor directory Composer registered, or in this package's own
   `src/` (`DependencyFiles`).
 - **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
-- **Unlike the shape, it carries import channels**, so a helper that returns an enum or a model imports it.
+- **It carries import channels, as the shape does**, so a helper that returns an enum or a model imports it.
 
 It shares the `method-body:` cycle guard with the shape, so a recursion through either reader stops at its first repeat.
 
@@ -516,7 +515,7 @@ These pages cover the neighbors of receiver resolution:
 - [ResourceAstAnalyzer § Attribute filters on any model receiver][resource-filters]: how `RelationFilterHandler` builds
   the filter answers the receiver rules reuse.
 - [AccessorBodyAnalyzer](accessor-body-analyzer.md): getter bodies, the other reader that can carry no import.
-- [Known gaps § A shape whose values name a class loses those values][gap-shape]: what the body fallback costs a user.
+- [Known gaps § A shape whose values name a class can lose some of them][gap-shape]: what the body fallback costs a user.
 - [API Resources § Method Return Types](https://tolki.abe.dev/ts/api-resources.html#method-return-types): what users see
   of receiver inference.
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that catch a regression to `unknown` or an
@@ -530,6 +529,7 @@ These pages cover the neighbors of receiver resolution:
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
+[`PropertyDocblockTypeReader::tag()`]: ../../src/Ast/Docblocks/PropertyDocblockTypeReader.php
 [`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
@@ -540,7 +540,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
 [`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
 [gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
-[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
+[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [params]: ast-engine.md#a-called-methods-parameters
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type

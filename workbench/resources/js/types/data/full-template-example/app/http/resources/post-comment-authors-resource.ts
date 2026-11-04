@@ -8,6 +8,6 @@
 export interface PostCommentAuthorsResource
 {
     id: number;
-    authors: ({ id: number; who: string | null; who_or: string | null })[];
-    loaded?: ({ who: string | null })[];
+    authors: { id: number; who: string | null; who_or: string | null }[];
+    loaded?: { who: string | null }[];
 }

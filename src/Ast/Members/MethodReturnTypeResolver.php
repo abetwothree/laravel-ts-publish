@@ -10,10 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -56,7 +56,6 @@ use ReflectionMethod;
  */
 final class MethodReturnTypeResolver
 {
-    use BuildsInlineObjectTypes;
     use InspectsAstNodes;
 
     /**
@@ -192,9 +191,9 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The inline object a method's literal return body spells, beside every non-array arm its declaration names, open
-     * where it holds keys the analysis never read; null when a return the shape does not describe is left over, or
-     * the shape spells nothing importable.
+     * The inline object a method's literal return body spells, with its members' import channels as an inline literal
+     * carries them, beside every non-array arm its declaration names, open where it holds keys the analysis never read;
+     * null when a return the shape does not describe is left over.
      *
      * The cycle guard stays per method, whatever the call passes, so a recursion passing a new value each time still
      * stops at its first repeat.
@@ -237,7 +236,7 @@ final class MethodReturnTypeResolver
                 $class,
                 $methodName,
                 $backing ?? (is_a($runs, Model::class, true) ? $runs : null),
-                carriesImports: false,
+                casesAsLiterals: true,
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
@@ -251,16 +250,9 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        // The inline type carries custom imports and no FQCN channel, so a member keeps its type only where the imports
-        // bring in every name it spells and no class on its channels publishes under one; any other is `unknown`.
-        $imported = ImportMaps::localNames($analysis->customImports);
-
-        foreach ($analysis->properties as $index => $property) {
-            if (array_intersect($analysis->channelNames($property['name']), $imported) !== []
-                || ! TsTypeString::importsCover($property['type'], $analysis->customImports)) {
-                $analysis->properties[$index]['type'] = 'unknown';
-            }
-        }
+        // First: forgetUnpublishableMembers() would make a fill whose override and model share a name `unknown` whole.
+        InlineObjectResult::readFillsClassLess($analysis);
+        $analysis->forgetUnpublishableMembers();
 
         // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.
         if ($analysis->holdsUnreadKeys) {
@@ -273,20 +265,17 @@ final class MethodReturnTypeResolver
             }
         }
 
-        $type = $this->buildInlineObjectType($analysis);
-
-        if (! TsTypeString::importsCover($type, $analysis->customImports)) {
-            return null;
-        }
+        $object = new InlineObjectResult()->of($analysis);
+        $object['type'] = TsTypeString::hoistNull([$object['type'], ...$otherArms]);
 
         // A member left `unknown` brings no import.
-        $imports = ImportMaps::spelledIn($analysis->customImports, $type);
+        $object['customImports'] = ImportMaps::spelledIn($object['customImports'] ?? [], $object['type']);
 
-        return [
-            ...ValueResult::unknown(),
-            'type' => TsTypeString::hoistNull([$type, ...$otherArms]),
-            ...($imports === [] ? [] : ['customImports' => $imports]),
-        ];
+        if ($object['customImports'] === []) {
+            unset($object['customImports']);
+        }
+
+        return $object;
     }
 
     /**

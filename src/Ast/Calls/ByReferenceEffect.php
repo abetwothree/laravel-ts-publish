@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use Closure;
 
 /**
@@ -139,10 +140,7 @@ enum ByReferenceEffect
         }
 
         if (TsTypeShape::isWrapped($arm, '[', ']')) {
-            return array_map(
-                static fn (string $member): array => [rtrim($member, '?'), 'number'],
-                TsTypeShape::splitTopLevel(substr($arm, 1, -1), [',']),
-            );
+            return array_map(static fn (string $member): array => [$member, 'number'], TsTypeShape::tupleMembers($arm));
         }
 
         $record = TsTypeShape::recordArguments($arm);
@@ -233,7 +231,7 @@ enum ByReferenceEffect
             $printed = [];
 
             foreach ($members as [$name, $value]) {
-                if (trim(rtrim($name, '?'), '\'"') === $key) {
+                if (PrintedKey::names($name, $key)) {
                     $found = true;
                     $value = $member;
                 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -11,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +25,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -32,13 +36,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
- * @phpstan-type TokenFqcns = list<class-string|null>
  * @phpstan-type CastInForce = array{
  *     type: string,
  *     import: string|null,
  *     optional?: bool,
  *     customImports?: TypesImportMap,
- *     tokenFqcns?: TokenFqcns,
+ *     tokenFqcns?: Slots,
  * }
  * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{
@@ -78,9 +81,10 @@ class MethodAnalysis
 
     /**
      * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
-     * where an override spells that name: a share() docblock entry's, recorded by CastChannels::fit() at publish time.
+     * where an override spells that name, recorded by CastChannels::fit(): a share() docblock entry's at publish time,
+     * and a key ReturnShapeRefiner fills from a method's `@return` when the analysis reads it.
      *
-     * @var array<array-key, TokenFqcns>
+     * @var array<array-key, Slots>
      */
     public array $declaredTokenFqcns = [];
 
@@ -256,9 +260,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps, `casts` and `closedToDottedKeys` replace-merge, the source
-     * winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as aliasPropertyType()
-     * reads them by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
+     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the
+     * source winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as read by
+     * position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {
@@ -279,11 +283,16 @@ class MethodAnalysis
                 unset($this->casts[$property['name']]);
             }
 
+            if (! isset($source->declaredTokenFqcns[$property['name']])) {
+                unset($this->declaredTokenFqcns[$property['name']]);
+            }
+
             unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
+        $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
 
@@ -467,7 +476,7 @@ class MethodAnalysis
      *
      * @return list<class-string>
      */
-    public function tokenFqcns(string $name): array
+    public function channelFqcns(string $name): array
     {
         return [
             ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
@@ -483,9 +492,9 @@ class MethodAnalysis
      *
      * @return list<class-string>
      */
-    public function allTokenFqcns(): array
+    public function allChannelFqcns(): array
     {
-        return $this->allChannelFqcns(
+        return $this->fqcnsOnChannels(
             [$this->enumResources, $this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
             [$this->multiEnumResourceFqcns, $this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
         );
@@ -508,7 +517,7 @@ class MethodAnalysis
      */
     public function allWrappedEnumFqcns(): array
     {
-        return $this->allChannelFqcns([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+        return $this->fqcnsOnChannels([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
     }
 
     /**
@@ -538,6 +547,90 @@ class MethodAnalysis
             $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
             $this->leftOutValues[$name],
         );
+    }
+
+    /**
+     * Read a key as an untyped value: `unknown`, with no import channel, and without each custom import its text
+     * spelled that no other key reads outside a literal. Whether the value may be left out stays, since an untyped
+     * value may be too.
+     */
+    public function untype(string $name): void
+    {
+        $this->retypeClassLess($name, 'unknown');
+    }
+
+    /**
+     * Retype a key with a text naming no class, as TokenSlots::classLess() reads one: with no import channel, and
+     * without each custom import its old text spelled that neither the new text nor another key reads outside a
+     * literal. Whether the value may be left out stays.
+     */
+    public function retypeClassLess(string $name, string $type): void
+    {
+        $spelled = [];
+        $others = [$type];
+
+        foreach ($this->properties as $index => $property) {
+            if ($property['name'] !== $name) {
+                $others[] = $property['type'];
+
+                continue;
+            }
+
+            $spelled[] = $property['type'];
+            $this->properties[$index]['type'] = $type;
+            unset($this->properties[$index]['bodyType'], $this->properties[$index]['fillType']);
+        }
+
+        $leftOut = isset($this->leftOutValues[$name]);
+        $this->forgetChannels($name);
+
+        if ($leftOut) {
+            $this->leftOutValues[$name] = true;
+        }
+
+        // A literal's spelling binds no import, so only a read token elsewhere keeps one.
+        $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
+            && ! TokenSlots::readsName(ImportMaps::localName($import), ...$others);
+
+        foreach ($this->customImports as $path => $names) {
+            $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
+
+            if ($kept === []) {
+                unset($this->customImports[$path]);
+            } else {
+                $this->customImports[$path] = $kept;
+            }
+        }
+    }
+
+    /**
+     * Publish `unknown` for each member whose own channels name a model with no published file, or a class publishing
+     * under a name the custom imports bring, and forget its channels; the other members keep theirs.
+     *
+     * A reader holding these members in one key declines it for such a model (ValueResult::namesOnlyPublishedModels())
+     * and aliases every token of one name alike, so such a class would take the custom import's tokens with it.
+     */
+    public function forgetUnpublishableMembers(): void
+    {
+        $imported = ImportMaps::localNames($this->customImports);
+
+        foreach (array_unique(array_column($this->properties, 'name')) as $name) {
+            $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
+
+            if (ValueResult::everyModelPublished($models)
+                && ($imported === [] || array_intersect($this->channelNames($name), $imported) === [])
+            ) {
+                continue;
+            }
+
+            foreach ($this->properties as $index => $property) {
+                if ($property['name'] === $name) {
+                    $this->properties[$index]['type'] = 'unknown';
+                }
+            }
+
+            $this->forgetChannels($name);
+        }
     }
 
     /**
@@ -686,7 +779,7 @@ class MethodAnalysis
      * @param  list<FqcnQueueMap>  $listed
      * @return list<class-string>
      */
-    private function allChannelFqcns(array $single, array $listed): array
+    private function fqcnsOnChannels(array $single, array $listed): array
     {
         $fqcns = array_merge([], ...array_map(array_values(...), $single));
 

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -43,6 +44,25 @@ final class InlineObjectResult
     use BuildsInlineObjectTypes;
 
     /**
+     * Read class-less each member a declared fill typed, as before slots rode a type: the value an object folds into
+     * carries no slots, and its per-name queues would hand an override's or a literal's token, at any depth, a class.
+     */
+    public static function readFillsClassLess(MethodAnalysis $analysis): void
+    {
+        if ($analysis->declaredTokenFqcns === []) {
+            return;
+        }
+
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name])) {
+                $analysis->retypeClassLess((string) $name, TokenSlots::classLess($types[$name], $slots));
+            }
+        }
+    }
+
+    /**
      * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
      *
      * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
@@ -52,6 +72,8 @@ final class InlineObjectResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
     {
+        self::readFillsClassLess($analysis);
+
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 

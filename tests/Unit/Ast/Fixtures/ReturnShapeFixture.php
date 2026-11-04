@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use Stringable;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
@@ -33,11 +34,39 @@ final class ReturnShapeFixture
     }
 
     /**
-     * Overridden classes, whose imports the shape carries, beside a published model, which it cannot import.
+     * Overridden classes, whose imports the shape carries, beside a published model, which its fill queues.
      *
      * @return array{chart: Chart, nested: array{panel: Panel, n: int}, owner: User}
      */
     public function overridden(): array
+    {
+        return [];
+    }
+
+    /**
+     * An override spelled like the model beside it, which keeps both tokens apart.
+     *
+     * @return array{either: Person|User}
+     */
+    public function spelledLikeModel(): array
+    {
+        return [];
+    }
+
+    /**
+     * Members for keys the body reads vague; `mixed` is vague itself.
+     *
+     * @return array{list: list<string>, record: array<string, int>, vague: mixed, precise: int}
+     */
+    public function vague(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, string>|array<string, int>
+     */
+    public function records(): array
     {
         return [];
     }

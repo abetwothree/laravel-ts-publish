@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
@@ -22,10 +23,17 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\RenamedResourceShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedUseItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\AliasCacheLaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Gauge as ClashGauge;
@@ -39,6 +47,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableCallback;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
@@ -78,12 +88,15 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\SpacedDocblockResource;
 use Workbench\App\Http\Resources\UiPanelResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Badge as UiBadge;
@@ -329,6 +342,16 @@ describe('toTsType', function () {
         'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
     ]);
 
+    // An appended `| null` would join an arrow's return type, so the arrow is grouped; `unknown` keeps its null arm.
+    test('a nullable PHP type keeps its null arm outside an arrow and beside unknown', function (string $phpType, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', ['callable' => '() => void']);
+
+        expect($this->service->toTsType($phpType)['type'])->toBe($type);
+    })->with([
+        'a callable mapped to an arrow' => ['?callable', '(() => void) | null'],
+        'mixed, which reads unknown' => ['?mixed', 'unknown | null'],
+    ]);
+
     // Model::toArray() writes the date a class cast or new-style accessor returns as it writes a date column, so the
     // entry for the date's own class wins, and a DateTime reads the `datetime` entry.
     test('a custom_ts_mappings entry for a date class types the date a class cast returns', function (array $mappings, string $cast, string $type) {
@@ -487,7 +510,7 @@ describe('castToTsType', function () {
 describe('custom cast get() docblock', function () {
     test('reads a vague get()\'s @return list<Dto> as the element\'s public properties', function () {
         expect($this->service->toTsType(ConsignmentLegsCast::class)['type'])
-            ->toBe('({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]');
+            ->toBe('{ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[]');
     });
 
     test('keeps the native type when the @return names a class no cast type can import', function () {
@@ -902,6 +925,10 @@ describe("an overridden member of a value object's shape", function () {
         "a trait's promoted constructor parameter" => [GaugeBox::class, '{ gauges: UiGauge[] }', ['@js/types/ui' => ['UiGauge']]],
     ]);
 
+    test("types a trait's promoted property by the trait constructor's @param, though the class overrides it", function () {
+        expect($this->service->toTsType(NoteBoard::class))->toMatchArray(['type' => '{ limit: number; notes: string[] }']);
+    });
+
     test("sends a trait property's members in the shape it publishes", function () {
         $shelf = new GaugeShelf;
         $shelf->gauges = [new UiGauge];
@@ -1042,11 +1069,15 @@ describe('an overridden member of a docblock shape', function () {
         ]);
     });
 
-    test("keeps unknown for a model member, and the type-string readers' answers", function () {
+    test("keeps a model member with its class, and the type-string readers' answers", function () {
         $useMap = ['UiPanel' => UiPanel::class, 'User' => User::class];
 
         expect($this->service->methodOrDocblockReturnTypes(new ReflectionClass(UiBoardShapesResource::class), 'documentedOwner'))
-            ->toMatchArray(['type' => '{ owner: unknown; panel: UiNode }', 'customImports' => ['@js/types/ui' => ['UiNode']]])
+            ->toMatchArray([
+                'type' => '{ owner: User; panel: UiNode }',
+                'classFqcns' => [User::class],
+                'customImports' => ['@js/types/ui' => ['UiNode']],
+            ])
             ->and($this->service->resolvePhpDocTypeToTs('array{panel: UiPanel, nested: array{panel: UiPanel}}', $useMap, ''))
             ->toBe('{ panel: unknown; nested: { panel: unknown } }')
             ->and($this->service->resolvePhpDocTypeToTs('list<array{panel: UiPanel}>', $useMap, ''))->toBe('{ panel: unknown }[]')
@@ -1384,6 +1415,12 @@ describe('docblockReturnTypes', function () {
         'an array of collections' => ['arrayOfCollections', 'OrderItem[][]'],
         'two int-keyed arrays, spaced inside' => ['spacedGenericUnion', 'OrderItem[] | StatusType[]'],
     ]);
+
+    test('docblockReturnTypes() keeps the null of a spaced @return union', function () {
+        $method = new ReflectionMethod(SpacedDocblockResource::class, 'subtitle');
+
+        expect($this->service->docblockReturnTypes($method)['type'])->toBe('string | null');
+    });
 });
 
 describe('extractReturnTypeFromDocblock', function () {
@@ -1511,6 +1548,7 @@ describe('extractReturnTypeFromDocblock', function () {
         'an intersection of string types' => ["/** @return (\$value is '' ? '' : non-empty-string&uppercase-string) */"],
         'a nested conditional' => ["/** @return (\$value is '' ? (\$cap is '' ? '' : non-empty-string) : non-empty-string) */"],
         'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
+        'a literal holding a question mark' => ["/** @return (\$value is 'a?b' ? 'c:d' : string) */"],
     ]);
 
     test('keeps the first-token reading of a conditional return type it cannot read as all strings', function (string $doc, string $reading) {
@@ -1553,11 +1591,11 @@ describe('phpstan-return docblock support', function () {
             ->toBe('string|null');
     });
 
-    test('@return wins over @phpstan-return', function () {
+    test('@phpstan-return wins over @return', function () {
         $doc = "/**\n * @phpstan-return int\n * @return string\n */";
 
         expect(app(LaravelTsPublish::class)->extractReturnTypeFromDocblock($doc))
-            ->toBe('string');
+            ->toBe('int');
     });
 });
 
@@ -1633,6 +1671,27 @@ describe('splitPhpDocUnionType', function () {
 
         expect($result)->toBe(['array{name: string|null}', 'null']);
     });
+
+    test('keeps a quoted literal whole, an escaped quote or a bracket inside it included', function () {
+        expect($this->service->splitPhpDocUnionType("'a|b'|'c'"))->toBe(["'a|b'", "'c'"])
+            ->and($this->service->splitPhpDocUnionType("'it\\'s|x'|null"))->toBe(["'it\\'s|x'", 'null'])
+            ->and($this->service->splitPhpDocUnionType('"a)|b"|int'))->toBe(['"a)|b"', 'int']);
+    });
+
+    test('splits an offset access type only outside its brackets', function () {
+        expect($this->service->splitPhpDocUnionType("T['a'|'b']|null"))->toBe(["T['a'|'b']", 'null']);
+    });
+
+    // PHPStan's lexer reads a quote with no closer on its line as no literal, and a backtick as plain text.
+    test('reads PHPDoc rather than TypeScript: a backtick and an unclosed quote are plain text', function () {
+        expect($this->service->splitPhpDocUnionType('`a|b`'))->toBe(['`a', 'b`'])
+            ->and($this->service->splitPhpDocUnionType("'a|b"))->toBe(["'a", 'b']);
+    });
+
+    test('floors depth at zero, so a stray closer still splits what follows, and keeps no empty arm', function () {
+        expect($this->service->splitPhpDocUnionType('int>|string'))->toBe(['int>', 'string'])
+            ->and($this->service->splitPhpDocUnionType('|int||string'))->toBe(['int', 'string']);
+    });
 });
 
 describe('parseDocblockReturnArrayShape', function () {
@@ -1674,17 +1733,55 @@ describe('parseDocblockReturnArrayShape', function () {
 describe('docblockReturnShapeInfos', function () {
     test('names the class behind each token of a class\'s name, in token order, and omits the key with none', function () {
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithModelDocblock::class, 'share')))->toBe([
-            'owner' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class]],
-            'status' => ['type' => 'StatusType', 'customImports' => [], 'tokenFqcns' => [Status::class]],
+            'owner' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'User'],
+            'status' => ['type' => 'StatusType', 'customImports' => [], 'tokenFqcns' => [Status::class], 'phpDoc' => 'Status'],
         ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithDocblockOverEmbeddedModel::class, 'share')))->toBe([
-            'team' => ['type' => 'User[]', 'customImports' => [], 'tokenFqcns' => [User::class]],
+            'team' => ['type' => 'User[]', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'list<User>'],
         ]);
     });
 
-    test('names no class behind a token an override spells like the model beside it', function () {
+    test('names no class behind a token an override spells like the model beside it, and keeps its import', function () {
+        $ui = ['@js/types/ui' => ['User']];
+
         expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(MiddlewareWithOverriddenUnionDocblock::class, 'share')))->toBe([
-            'person' => ['type' => 'User', 'customImports' => ['@js/types/ui' => ['User']]],
-            'either' => ['type' => 'User | User', 'customImports' => [], 'tokenFqcns' => [null, User::class]],
+            'person' => ['type' => 'User', 'customImports' => $ui, 'phpDoc' => 'Person'],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'Person|User'],
+        ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(OverrideUnionShareMiddleware::class, 'share')))->toBe([
+            'listed' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'list<Person|User>'],
+            'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'Person|User'],
+        ]);
+    });
+
+    test('names the slots of a list beside a resource published under its own name by the names its tokens spell', function () {
+        $ui = ['@js/types/ui' => ['User']];
+
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(RenamedResourceShareMiddleware::class, 'share')))->toBe([
+            'listed' => [
+                'type' => '(AddressResource | User | User)[]',
+                'customImports' => $ui,
+                'tokenFqcns' => [null, User::class],
+                'phpDoc' => 'list<AddressResource|Person|User>',
+            ],
+            'control' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'list<Person|User>'],
+        ]);
+    });
+
+    test('names the class behind each token of a nested shape, a literal\'s included', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedModelMetadataProvider::class, 'provide')))->toBe([
+            'pair' => [
+                'type' => "{ kind: 'User'; r: User }",
+                'customImports' => [],
+                'tokenFqcns' => [null, User::class],
+                'phpDoc' => "array{kind: 'User', r: User}",
+            ],
+        ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(NestedEnumMetadataProvider::class, 'provide')))->toBe([
+            'pair' => [
+                'type' => "{ kind: 'Role'; r: RoleType }",
+                'customImports' => [],
+                'tokenFqcns' => [Role::class],
+                'phpDoc' => "array{kind: 'Role', r: Role}",
+            ],
+            'top' => ['type' => 'RoleType', 'customImports' => [], 'tokenFqcns' => [Role::class], 'phpDoc' => 'Role'],
         ]);
     });
 });
@@ -1788,7 +1885,7 @@ describe('PHPDoc shapes, tuples and callables', function () {
         expect($this->service->resolvePhpDocTypeToTs($phpType, $useMap, ''))->toBe($expected)
             ->and($this->service->resolveDocblockTypePart($phpType, $useMap, '')['type'])->toBe($expected)
             ->and($this->service->resolveGenericContainerType("list<{$phpType}>", $useMap, '')['type'] ?? null)
-            ->toBe(str_contains($expected, '|') ? "({$expected})[]" : "{$expected}[]");
+            ->toBe(TsTypeShape::listType([$expected]));
     })->with([
         'a positional list shape' => ['list{int, string}', '[number, string]'],
         'a positional array shape' => ['array{int, string}', '[number, string]'],
@@ -1808,7 +1905,6 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a tuple inside a shape' => ['array{pair: list{int, string}}', '{ pair: [number, string] }'],
         'a callable inside a shape' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
         'a mixed shape, whose positional member takes the next int key' => ['array{int, a: string}', '{ 0: number; a: string }'],
-        'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
         'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
         'a quoted literal member holding a colon' => ["list{'a:b', int}", "['a:b', number]"],
         'a quoted key holding a comma' => ["array{'a,b': int, c: string}", '{ "a,b": number; c: string }'],
@@ -1816,6 +1912,81 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a quoted key holding a comma and a brace' => ["array{'a,{b': int, c: string}", '{ "a,{b": number; c: string }'],
         'a quoted literal member holding a comma' => ["list{'a,b', int}", "['a,b', number]"],
     ]);
+
+    test('reads a class inside a shape with its channels, and as unknown where a reader keeps only the type string', function () {
+        $useMap = ['User' => User::class];
+
+        expect($this->service->resolvePhpDocTypeToTs('list{User, int}', $useMap, ''))->toBe('[unknown, number]')
+            ->and($this->service->resolveDocblockTypePart('list{User, int}', $useMap, ''))->toMatchArray([
+                'type' => '[User, number]',
+                'classes' => ['User'],
+                'classFqcns' => [User::class],
+            ])
+            ->and($this->service->resolveGenericContainerType('list<list{User, int}>', $useMap, ''))->toMatchArray([
+                'type' => '[User, number][]',
+                'classFqcns' => [User::class],
+            ]);
+    });
+
+    test('spreads the class behind each token of a shape into the channels', function (string $phpType, array $channels) {
+        $useMap = ['User' => User::class, 'CrmUser' => CrmUser::class, 'Status' => Status::class];
+
+        expect($this->service->resolveDocblockTypePart($phpType, $useMap, ''))->toMatchArray($channels);
+    })->with([
+        'a model' => ['array{owner: User, n: int}', [
+            'type' => '{ owner: User; n: number }',
+            'classes' => ['User'],
+            'classFqcns' => [User::class],
+            'enumFqcns' => [],
+        ]],
+        'an enum' => ['object{s: Status}', [
+            'type' => '{ s: StatusType }',
+            'enums' => ['Status'],
+            'enumTypes' => ['StatusType'],
+            'enumFqcns' => [Status::class],
+            'classFqcns' => [],
+        ]],
+        'two models that share a name, each token naming its own' => ['array{a: User, b: CrmUser, c: User}', [
+            'type' => '{ a: User; b: User; c: User }',
+            'classes' => ['User', 'User'],
+            'classFqcns' => [User::class, CrmUser::class],
+            'classTokenFqcns' => [User::class, CrmUser::class, User::class],
+        ]],
+        'an intersection of shapes with no key in common, sent as one object' => ['array{a: int}&array{owner: User}', [
+            'type' => '{ a: number; owner: User }',
+            'classFqcns' => [User::class],
+        ]],
+    ]);
+
+    test('reads a shape its channels cannot carry with no class: an API resource, or an override spelled like a class', function (string $phpType, string $type) {
+        $useMap = [
+            'PostResource' => PostResource::class,
+            'User' => User::class,
+            'Person' => Person::class,
+            'ChartKind' => ChartKind::class,
+            'UiChart' => UiChart::class,
+        ];
+
+        expect($this->service->resolveDocblockTypePart($phpType, $useMap, ''))
+            ->toMatchArray(['type' => $type, 'classFqcns' => [], 'enumFqcns' => []]);
+    })->with([
+        'an API resource beside a model' => ['array{r: PostResource, owner: User}', '{ r: unknown; owner: unknown }'],
+        'an override spelled like a model' => ['array{either: Person|User}', '{ either: unknown }'],
+        'an override spelled like an enum' => ['array{kind: ChartKind|UiChart}', '{ kind: unknown }'],
+        'a listed override spelled like a model' => ['list<array{listed: list<Person|User>}>', '{ listed: unknown }[]'],
+        'a literal spelled like the model, whose token names no class' => ["array{kind: 'User', r: User}", "{ kind: 'User'; r: unknown }"],
+        'a quoted union spelling the model, read as one literal' => ["array{kind: 'A|User', r: User}", "{ kind: 'A|User'; r: unknown }"],
+        'a key spelled like the model, whose token names no class' => ['array{User: int, owner: User}', '{ User: number; owner: unknown }'],
+    ]);
+
+    test('splits an intersection of shapes only outside a member\'s quoted literal', function () {
+        expect($this->service->resolveDocblockTypePart("array{a: 'x}&y'}&array{b: int}", [], '')['type'])
+            ->toBe("{ a: 'x}&y'; b: number }");
+    });
+
+    test('reads an intersection of shapes that share a key as unknown, as before', function () {
+        expect($this->service->resolveDocblockTypePart('array{a: int}&array{a: string}', [], '')['type'])->toBe('unknown');
+    });
 
     test('splits at the commas outside brackets and quoted literals', function (string $input, array $parts) {
         expect($this->service->splitAtTopLevelCommas($input))->toBe($parts);
@@ -1825,7 +1996,26 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a double-quoted literal' => ['"a,b": int, c', ['"a,b": int', 'c']],
         'an escaped quote inside a literal' => ["'it\\'s, x': int, c", ["'it\\'s, x': int", 'c']],
         'a quote of the other kind inside a literal' => ["'say \"hi, there\"', c", ["'say \"hi, there\"'", 'c']],
+        'a literal before a plain type' => ["'a,b', int", ["'a,b'", 'int']],
+        'a quote with no closer, which is plain text' => ["'a, b", ["'a", 'b']],
     ]);
+
+    test('reads a quoted literal whole in a @return union, intersection, group or shape key', function (string $doc, string $type) {
+        expect($this->service->resolvePhpDocTypeToTs((string) $this->service->extractReturnTypeFromDocblock($doc), [], ''))
+            ->toBe($type);
+    })->with([
+        'an ampersand in a literal beside null' => ["/** @return 'x&y'|null */", "'x&y' | null"],
+        'a pipe in a shape key' => ["/** @return array{'a|b': int} */", '{ "a|b": number }'],
+        'a brace and a pipe in a shape key' => ["/** @return array{'a}|b': int} */", '{ "a}|b": number }'],
+        'a parenthesis in a grouped literal' => ["/** @return ('a)'|int) */", "'a)' | number"],
+    ]);
+
+    test('reads a quoted union spelling a class name as one literal arm, the class beside it keeping its slot', function () {
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(QuotedUnionShapeReturn::class, 'kindAndUser')))->toBe([
+            'kind' => ['type' => "'A|User'", 'customImports' => [], 'phpDoc' => "'A|User'"],
+            'r' => ['type' => 'User', 'customImports' => [], 'tokenFqcns' => [User::class], 'phpDoc' => 'User'],
+        ]);
+    });
 
     test('reads a parenthesized group as the union it holds', function (string $phpType, string $expected) {
         expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
@@ -1865,6 +2055,43 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'an optional member before a required one, which no list holds' => ['list{0?: int, 1: string}', '[number?, string?]'],
         'an optional union member, parenthesized for its marker' => ['list{0: int, 1?: string|null}', '[number, (string | null)?]'],
         'an optional member before a required one in an array' => ['array{0?: int, 1: string}', '{ 0?: number; 1: string }'],
+        'a key past PHP_INT_MAX, which PHP keeps a string, before a positional member taking 0' => [
+            'array{"9223372036854775808": int, string}',
+            '{ "9223372036854775808": number; 0: string }',
+        ],
+    ]);
+
+    // PHP keeps an overflowing int key and `-0` as strings, so neither publishes bare as an int key would.
+    test('publishes a @return shape key PHP keeps a string quoted, past PHP_INT_MAX or -0', function () {
+        $method = new ReflectionMethod(new class
+        {
+            /** @return array{"9223372036854775808": int, "-0": int} */
+            public function keys(): array
+            {
+                return [];
+            }
+        }, 'keys');
+
+        expect($this->service->docblockReturnTypes($method)['type'])->toBe('{ "9223372036854775808": number; "-0": number }')
+            ->and($this->service->resolvePhpDocTypeToTs("array<'9223372036854775808', int>", [], ''))
+            ->toBe('{ "9223372036854775808"?: number }');
+    });
+
+    // A shape keeps no arrow member, since its `=>` reads as a name no import brings; a subclass that keeps one prints
+    // its marker outside the arrow's return type.
+    test('parenthesizes an optional arrow member for its marker or its list, an arrow owning the union after it', function (string $phpType, string $expected) {
+        $service = new class extends LaravelTsPublish
+        {
+            protected function keptShapeMember(array $info): array
+            {
+                return ['type' => $info['type'], 'customImports' => []];
+            }
+        };
+
+        expect($service->resolvePhpDocTypeToTs($phpType, ['NullableCallback' => NullableCallback::class], ''))->toBe($expected);
+    })->with([
+        'an arrow' => ['list{0: int, 1?: NullableCallback}', '[number, (() => string | null)?]'],
+        'an arrow in a list' => ['list{0: int, 1?: list<NullableCallback>}', '[number, (() => string | null)[]?]'],
     ]);
 
     test('reads a nullable shape or list once, adding a top-level null a nested one does not count as', function (string $phpType, string $expected) {
@@ -1965,6 +2192,30 @@ describe('phpstan type aliases', function () {
             ->and($alias['definition'])->toContain('second: int');
     });
 
+    test('an alias whose quoted key holds a brace ends on its own line', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'QuotedBraceAlias', new ReflectionClass(PhpstanTypeAliasQuotedBraceHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe("array{'a{': int}");
+    });
+
+    test('a multi-line alias whose quoted key holds a closing brace is walked to the brace that closes it', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'QuotedCloserAlias', new ReflectionClass(PhpstanTypeAliasQuotedCloserHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe("array{ 'c}': int, d: string, }");
+    });
+
+    test('a multi-line callable alias is walked to the parenthesis that closes its parameters', function () {
+        $alias = $this->service->resolvePhpstanTypeAlias(
+            'MultilineCallableAlias', new ReflectionClass(PhpstanTypeAliasMultilineCallableHost::class),
+        );
+
+        expect($alias['definition'] ?? null)->toBe('callable( int ): void');
+    });
+
     test('a two-hop @phpstan-import-type chain resolves through an intermediate re-exporting class', function () {
         // X imports from Y, which only re-imports from Z (Y defines nothing locally) — proves the
         // recursion resolves all the way to the class that actually wrote the definition.
@@ -1995,6 +2246,16 @@ describe('phpstan type aliases', function () {
             ->and($read())->toContain($source);
     });
 
+    test('imports an alias an interface or a trait defines', function (string $importer, string $source) {
+        $alias = $this->service->resolvePhpstanTypeAlias('Point', new ReflectionClass($importer));
+
+        expect($alias['definition'] ?? null)->toBe('array{x: int}')
+            ->and(($alias['class'] ?? null)?->getName())->toBe($source);
+    })->with([
+        'an interface' => [PointFromInterface::class, PointAliasInterface::class],
+        'a trait' => [PointFromTrait::class, PointAliasTrait::class],
+    ]);
+
     test('a cyclical @phpstan-import-type chain terminates instead of recursing forever', function () {
         $alias = $this->service->resolvePhpstanTypeAlias(
             'LoopAlias', new ReflectionClass(PhpstanTypeAliasCycleA::class),
@@ -2017,6 +2278,36 @@ describe('phpstan type aliases', function () {
         );
 
         expect($alias)->toBeNull();
+    });
+
+    test('looks a docblock name up as an alias only when it is a PHPDoc identifier', function () {
+        $service = new AliasCacheLaravelTsPublish;
+
+        $type = $service->docblockReturnTypes(new ReflectionMethod(PairAliasHost::class, 'pairs'))['type'];
+
+        expect($type)->toBe('{ p: { a: number }; list: { a: number }[]; key: string | number; name: string; count: number }')
+            ->and($service->cachedAliasNames(PairAliasHost::class))->toContain('Pair')
+            ->and($service->cachedAliasNames(PairAliasHost::class))->not->toContain('int<0, max>')
+            ->and(preg_grep(
+                '/^[A-Za-z_\\x80-\\xff][A-Za-z0-9_\\x80-\\xff-]*$/',
+                $service->cachedAliasNames(PairAliasHost::class),
+                PREG_GREP_INVERT,
+            ))->toBe([]);
+    });
+
+    test('resolves an alias named with a hyphen or with non-ASCII letters, as PHPStan reads it', function (string $name, string $expected) {
+        $context = new ReflectionClass(IdentifierAliasHost::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias($name, [], '', $context)['type'])->toBe($expected);
+    })->with([
+        'a hyphen' => ['pair-shape', '{ a: number }'],
+        'non-ASCII letters' => ['Größe', '{ b: string }'],
+    ]);
+
+    test('an imported alias whose definition names the alias it is imported as, in its own class, expands', function () {
+        $context = new ReflectionClass(PairRowImporter::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias('Pair', [], '', $context)['type'])->toBe('{ p: { a: number } }');
     });
 });
 
@@ -2096,8 +2387,8 @@ describe('resolveGenericContainerType() with an intersection value', function ()
             'Workbench\\App\\Models',
         );
 
-        expect($info['type'])->toBe('(User & { pivot: unknown })[]')
-            ->and($info['classFqcns'])->toBe([User::class]);
+        expect($info['type'])->toBe('(User & { pivot: TaskAssignment })[]')
+            ->and($info['classFqcns'])->toBe([User::class, TaskAssignment::class]);
     });
 
     test('drops an unresolvable intersection member rather than the whole value', function () {
@@ -2161,6 +2452,16 @@ describe('trait @template binding', function () {
         expect($result['type'])->toBe('Comment[]')
             ->and($result['classFqcns'])->toBe([Comment::class]);
     });
+
+    test('a template declared as both @template and @phpstan-template takes one @use argument', function (string $consumer) {
+        $result = $this->service->docblockReturnTypes(new ReflectionMethod($consumer, 'firstItem'));
+
+        expect($result['type'])->toBe('Post | null')
+            ->and($result['classFqcns'])->toBe([Post::class]);
+    })->with([
+        'a @use tag' => [KeyedItemsPost::class],
+        'a @use tag spaced before its arguments' => [SpacedUseItemsPost::class],
+    ]);
 });
 
 describe('attributeDocblockReturnTypes', function () {
@@ -2369,6 +2670,17 @@ describe('emptyTypeScriptInfo', function () {
 });
 
 describe('mergeTypeScriptInfos', function () {
+    // An arrow owns each pipe after it, so an arrow arm joined with others is parenthesized; alone it stays as it is.
+    test('joins an arrow function arm parenthesized, so the arms after it stay outside its return type', function (array $types, string $joined) {
+        $infos = array_map(fn (string $type): array => [...$this->service->emptyTypeScriptInfo(), 'type' => $type], $types);
+
+        expect($this->service->mergeTypeScriptInfos($infos)['type'])->toBe($joined);
+    })->with([
+        'beside null' => [['() => void', 'null'], '(() => void) | null'],
+        'one returning a union, beside a string' => [['() => A | null', 'string'], '(() => A | null) | string'],
+        'alone' => [['() => A | null'], '() => A | null'],
+    ]);
+
     // An object's own JSON keeps its keys; the re-index rewrites only an arm holding an object.
     test('keeps an object\'s keys beside an arm holding no object, and drops them beside an array shape', function () {
         $object = [...$this->service->emptyTypeScriptInfo(), 'type' => '{ 1: string }', 'keepsKeys' => true];
@@ -2682,6 +2994,15 @@ describe('mergeTypeScriptInfos', function () {
             'User | null | User',
         ],
     ]);
+
+    test('keeps a null for each token an override arm spells like a class beside it, with the override\'s import', function () {
+        $ui = ['@js/types/ui' => ['User']];
+        $merged = $this->service->mergeTypeScriptInfos([$this->service->toTsType(Person::class), $this->service->toTsType(User::class)]);
+        $listed = $this->service->resolveGenericContainerType('list<Person|User>', ['Person' => Person::class, 'User' => User::class], '');
+
+        expect($merged)->toMatchArray(['type' => 'User | User', 'classFqcns' => [User::class], 'classTokenFqcns' => [null, User::class], 'customImports' => $ui])
+            ->and($listed)->toMatchArray(['type' => '(User | User)[]', 'classTokenFqcns' => [null, User::class], 'customImports' => $ui]);
+    });
 
     test('queues a token for a bare class kept after an array of it, once another class shares its name', function () {
         $result = $this->service->mergeTypeScriptInfos([
@@ -3448,6 +3769,45 @@ class AttributeDocblockClass
 }
 
 /**
+ * A @phpstan-type whose quoted key holds a brace, above a second alias its capture must not take in.
+ *
+ * @phpstan-type QuotedBraceAlias array{'a{': int}
+ * @phpstan-type FollowingAlias array{b: string}
+ */
+class PhpstanTypeAliasQuotedBraceHost {}
+
+/**
+ * A multi-line @phpstan-type whose quoted key holds a closing brace, above a second alias its capture must not take in.
+ *
+ * @phpstan-type QuotedCloserAlias array{
+ *     'c}': int,
+ *     d: string,
+ * }
+ * @phpstan-type AfterQuotedCloserAlias array{e: bool}
+ */
+class PhpstanTypeAliasQuotedCloserHost {}
+
+/**
+ * A multi-line @phpstan-type callable whose parameter sits on its own line, above a second alias.
+ *
+ * @phpstan-type MultilineCallableAlias callable(
+ *     int
+ * ): void
+ * @phpstan-type AfterMultilineCallableAlias array{f: int}
+ */
+class PhpstanTypeAliasMultilineCallableHost {}
+
+/** A method whose @return shape spells the model's name inside a quoted union literal beside the model. */
+class QuotedUnionShapeReturn
+{
+    /** @return array{kind: 'A|User', r: User} */
+    public function kindAndUser(): array
+    {
+        return ['kind' => 'A|User', 'r' => new User];
+    }
+}
+
+/**
  * A @phpstan-type definition spanning multiple docblock lines, proving resolvePhpstanTypeAlias()
  * walks lines until the array{...} shape's brace depth closes rather than truncating at the first.
  *
@@ -3511,6 +3871,75 @@ class PhpstanTypeAliasHyphenSuffixHost {}
  * @phpstan-type PunctuationAlias.Suffix array{x: int}
  */
 class PhpstanTypeAliasDotSuffixHost {}
+
+/**
+ * Defines `Point` for a class to import.
+ *
+ * @phpstan-type Point array{x: int}
+ */
+interface PointAliasInterface {}
+
+/**
+ * Defines `Point` for a class to import.
+ *
+ * @phpstan-type Point array{x: int}
+ */
+trait PointAliasTrait {}
+
+/**
+ * Imports `Point` from an interface.
+ *
+ * @phpstan-import-type Point from PointAliasInterface
+ */
+class PointFromInterface {}
+
+/**
+ * Imports `Point` from a trait.
+ *
+ * @phpstan-import-type Point from PointAliasTrait
+ */
+class PointFromTrait {}
+
+/**
+ * Names its `Pair` alias bare and inside a list in one return shape, beside two PHPDoc keywords and an int range.
+ *
+ * @phpstan-type Pair array{a: int}
+ */
+class PairAliasHost
+{
+    /**
+     * Declare a pair, a list of them, and three keys typed by PHPDoc keyword types.
+     *
+     * @return array{p: Pair, list: list<Pair>, key: array-key, name: non-empty-string, count: int<0, max>}
+     */
+    public function pairs(): array
+    {
+        return ['p' => ['a' => 1], 'list' => [], 'key' => 1, 'name' => 'n', 'count' => 0];
+    }
+}
+
+/**
+ * Names one alias with a hyphen and one with non-ASCII letters, both PHPDoc identifiers PHPStan accepts.
+ *
+ * @phpstan-type pair-shape array{a: int}
+ * @phpstan-type Größe array{b: string}
+ */
+class IdentifierAliasHost {}
+
+/**
+ * Imports `PairRowSource`'s `Row` as `Pair`, the name `Row`'s own definition gives another alias of that class.
+ *
+ * @phpstan-import-type Row from PairRowSource as Pair
+ */
+class PairRowImporter {}
+
+/**
+ * Defines `Row` over its own `Pair`.
+ *
+ * @phpstan-type Row array{p: Pair}
+ * @phpstan-type Pair array{a: int}
+ */
+class PairRowSource {}
 
 /** Types a property and a return as `self`, which PHP reflects as written in a trait on every version. */
 trait DeclaresSelfTypedMembers

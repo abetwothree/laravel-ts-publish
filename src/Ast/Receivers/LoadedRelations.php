@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Builder;
@@ -479,7 +479,7 @@ final class LoadedRelations
 
         // A morphTo loads its targets' relations and columns per target, which one shape here cannot follow.
         if ($relation['morphFqcns'] !== []) {
-            $type = $this->matches($instance, $name, $held, null) ? $relation['type'] : ValueResult::withNullArm($relation['type']);
+            $type = $this->matches($instance, $name, $held, null) ? $relation['type'] : TsTypeString::withNullArm($relation['type']);
 
             return $constraint === null && $children === [] ? ['type' => $type, 'models' => $relation['morphFqcns']] : null;
         }
@@ -498,7 +498,7 @@ final class LoadedRelations
             return null;
         }
 
-        $nullable = ValueResult::hasNullArm($relation['type'])
+        $nullable = TsTypeString::hasNullArm($relation['type'])
             || (! $toMany && (! $this->matches($instance, $name, $held, $selected) || ! $this->keepsRows($calls)));
 
         $models = [$related];
@@ -515,7 +515,7 @@ final class LoadedRelations
 
         $type = match (true) {
             $toMany => TsTypeShape::listType([$element]),
-            $nullable => ValueResult::withNullArm($element),
+            $nullable => TsTypeString::withNullArm($element),
             default => $element,
         };
 

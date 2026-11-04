@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -387,7 +388,7 @@ final class JsonApiResources
      */
     private static function sendsList(string $relationType): ?bool
     {
-        return $relationType === 'unknown' ? null : str_ends_with(str_replace(' | null', '', $relationType), '[]');
+        return $relationType === 'unknown' ? null : str_ends_with(TsTypeString::withoutNullArm($relationType), '[]');
     }
 
     /**

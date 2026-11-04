@@ -10,5 +10,5 @@ export interface BulletinLoadedResource
     id: number;
     lead_list?: Comment[];
     lead_owner?: User;
-    own_picks?: (Pick<Bulletin, 'id' | 'title'>)[];
+    own_picks?: Pick<Bulletin, 'id' | 'title'>[];
 }

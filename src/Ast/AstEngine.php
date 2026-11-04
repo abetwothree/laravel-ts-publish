@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -56,7 +57,7 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
-     * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
+     * @param  bool  $casesAsLiterals  true for the body fallback, whose plain enum cases type as the literals they send
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
      *                           resource's toArray() is its body, never the resource object it publishes
@@ -70,7 +71,7 @@ final class AstEngine
         string $class,
         string $method = 'toArray',
         ?string $modelClass = null,
-        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
         array $passed = [],
         bool $readsCall = false,
         ?RuntimeClass $runtime = null,
@@ -86,7 +87,7 @@ final class AstEngine
 
         $reading = $reading->entering($runs, $method, $readsCall);
 
-        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($casesAsLiterals ? '@casesAsLiterals' : '')
             .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')
             .$reading->memoKey();
 
@@ -96,7 +97,7 @@ final class AstEngine
                 $reflection,
                 $method,
                 $modelClass,
-                $carriesImports,
+                $casesAsLiterals,
                 $key,
                 $passed,
                 $readsCall,
@@ -257,6 +258,7 @@ final class AstEngine
      *
      * @param  class-string<Model>  $modelClass
      * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
+     * @param  bool  $casesAsLiterals  true when the body fallback reads the accessor, whose cases keep their literals
      * @return ValueExpressionResult
      *
      * @internal
@@ -266,12 +268,14 @@ final class AstEngine
         ClosureExpr|ArrowFunction $closure,
         MethodContext $context,
         bool $carriesImports = true,
+        bool $casesAsLiterals = false,
     ): array {
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
         $scope->rebase(self::genericReflection($modelClass), $modelClass);
         $scope->carriesImports = $carriesImports;
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
@@ -453,7 +457,7 @@ final class AstEngine
         $result = ValueResult::unionResults($results);
 
         return $this->canEndWithoutValue($function)
-            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
     }
 
@@ -468,7 +472,7 @@ final class AstEngine
         ReflectionClass $reflection,
         string $method,
         ?string $modelClass,
-        bool $carriesImports,
+        bool $casesAsLiterals,
         string $key,
         array $passed,
         bool $readsCall,
@@ -488,11 +492,11 @@ final class AstEngine
                 $reflection,
                 $modelClass,
                 $method,
-                carriesImports: $carriesImports,
                 passed: $passed,
                 runtime: $runtime,
                 readsCall: $readsCall,
                 reading: $reading,
+                casesAsLiterals: $casesAsLiterals,
             );
 
             return $analyzer->analyze();

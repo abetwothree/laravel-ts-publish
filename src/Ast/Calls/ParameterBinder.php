@@ -6,10 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -240,7 +240,7 @@ final class ParameterBinder
         $declaredOnly = $classes !== null && $held->declaredOnly;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
-        if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
+        if ($model !== null && ! $unsaved && ! TsTypeString::hasNullArm($value['type'])) {
             return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
         }
 
@@ -470,7 +470,7 @@ final class ParameterBinder
             $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
         }
 
-        if ($value === null || TsTypeString::isVagueTsType($value['type']) || ! ValueResult::namesOnlyPublishedModels($value)) {
+        if (! ValueResult::isPublishableReading($value)) {
             return null;
         }
 
@@ -518,7 +518,7 @@ final class ParameterBinder
         $info = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
 
         return $type instanceof NullableType || self::defaultsToNull($param)
-            ? [...$info, 'type' => ValueResult::withNullArm($info['type'])]
+            ? [...$info, 'type' => TsTypeString::withNullArm($info['type'])]
             : $info;
     }
 }

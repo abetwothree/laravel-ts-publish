@@ -111,6 +111,14 @@ _Avoid_: channel, FQCN channel
 A published key pattern, such as ``[key: `${string}_tag`]``, that types every runtime key it matches.
 _Avoid_: signature key, pattern key
 
+**Printed key**:
+An object key as a generated file spells it, quoted and escaped by `JsEmitter::validJsObjectKey()`.
+_Avoid_: escaped key
+
+**Type scanner**:
+The one reader of a TypeScript or PHPDoc type string's nesting and literals.
+_Avoid_: tokenizer, type parser
+
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 

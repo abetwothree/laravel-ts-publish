@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocumentedClosurePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EloquentStaticsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EnumUnionPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\FilteredRelationsController;
@@ -1359,11 +1360,11 @@ it('types the relation filters a page reads, as Inertia sends them', function ()
         'category_id', 'visibility', 'priority', 'word_count', 'reading_time_minutes', 'featured_image_url', 'is_pinned'];
 
     expect($page['pageType'])->toBe('Inertia.SharedData & { posts: { id: number; title: string }[], '
-        .'trimmed: ({ id: number; title: string; user_id: number; status: StatusType; published_at: string | null; '
+        .'trimmed: { id: number; title: string; user_id: number; status: StatusType; published_at: string | null; '
         .'metadata: unknown[] | null; rating: string | null; category: string; options: Record<string, string> | null; '
         .'deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; '
         .'priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; '
-        .'featured_image_url: string | null; is_pinned: boolean })[], '
+        .'featured_image_url: string | null; is_pinned: boolean }[], '
         .'comments: { id: number; content: string }[], held: { id: number }[] }')
         ->and($page['classFqcns'])->toBe([Status::class, Visibility::class, Priority::class])
         ->and($sent->posts)->toEqual([(object) ['id' => $post->id, 'title' => 'First']])
@@ -1620,6 +1621,12 @@ it('reads a props helper a trait supplies under an alias, called or spread, as u
             ['meta', 'spread', 'guarded', 'base'],
             ['tk' => 1, 'tn' => 'x'],
         ));
+});
+
+it('types a closure prop whose body types nothing by the @return written before it', function () {
+    expect(pageData(DocumentedClosurePropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { label: string, count?: number }')
+        ->and(json_encode(inertiaProps(new DocumentedClosurePropsController()->show())))->toBe('{"label":"x"}');
 });
 
 it('reads a first-class callable in props a helper builds as Inertia calls it', function () {

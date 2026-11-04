@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -34,9 +35,9 @@ final readonly class VarTypeWhitelist
     private const KEY = '(?:-?\d+|[a-z_][\w-]*|\'[^\'\\\\]*\'|"[^"\\\\]*")\s*\??\s*:(?!:)';
 
     /**
-     * @param  array<string, class-string>  $useMap
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve a name
      */
-    private function __construct(private array $useMap, private string $namespace) {}
+    private function __construct(private ReflectionClass $context) {}
 
     /**
      * The whitelist for a type written in a class's file.
@@ -45,7 +46,7 @@ final readonly class VarTypeWhitelist
      */
     public static function for(ReflectionClass $context): self
     {
-        return new self(LaravelTsPublish::parseFileUseStatements($context), $context->getNamespaceName());
+        return new self($context);
     }
 
     /**
@@ -281,8 +282,7 @@ final readonly class VarTypeWhitelist
      */
     private function isTextLiteral(string $token): bool
     {
-        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1
-            && preg_match('/^(?:0|-?[1-9]\d*)$/', $quoted[2]) !== 1;
+        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1 && PhpArrayKey::storedInt($quoted[2]) === null;
     }
 
     /**
@@ -296,8 +296,10 @@ final readonly class VarTypeWhitelist
             return null;
         }
 
-        $resolved = LaravelTsPublish::resolveDocblockTypeName($name, $this->useMap, $this->namespace);
-        $throughFile = $resolved !== $name || $this->namespace === '' || isset($this->useMap[Str::before($name, '\\')]);
+        $resolved = DocblockNames::resolve($name, $this->context);
+        $throughFile = $resolved !== $name
+            || $this->context->getNamespaceName() === ''
+            || isset(LaravelTsPublish::parseFileUseStatements($this->context)[Str::before($name, '\\')]);
 
         return $throughFile && (class_exists($resolved) || interface_exists($resolved)) ? $resolved : null;
     }

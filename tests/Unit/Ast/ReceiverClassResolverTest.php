@@ -10,7 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributedBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -731,6 +734,16 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
             ->and($resolver->resolve(receiverExpr('$this->maybeService'), $scope)?->classes)->toBe([UrlService::class])
             ->and($resolver->resolve(receiverExpr('$this->collectionArray'), $scope))->toBeNull();
     });
+
+    test('a `@var` a trait or a parent declares names the class its own file imports', function (string $resource, string $php) {
+        $scope = new AnalysisScope(new ReflectionClass($resource));
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), $scope)?->classes)->toBe([Post::class]);
+    })->with([
+        'a trait\'s property' => [TraitPropertyClashResource::class, '$this->post'],
+        'a trait\'s `$resource`' => [TraitWrappedPostResource::class, '$this->resource'],
+        'a parent\'s `$resource`' => [PostWrappingChildResource::class, '$this->resource'],
+    ]);
 
     test('a protected model method counts on $this, and declines through a local-variable receiver or the resource proxy', function () {
         $resolver = resolve(ReceiverClassResolver::class);

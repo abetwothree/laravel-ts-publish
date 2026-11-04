@@ -63,15 +63,18 @@ final class LiteralSpreadPostResource extends JsonResource
     }
 
     /**
-     * A name no class answers to, which the app declares for TypeScript, and a class the shape cannot import.
+     * A name no class answers to, which the app declares for TypeScript, a class the shape cannot import, and an
+     * interface and a trait of this namespace, which no published file exports.
      *
-     * @return array{custom: CustomObject, text: Stringable}
+     * @return array{custom: CustomObject, text: Stringable, captioned: Captioned, labelled: LabelledTrait}
      */
     protected function names(): array
     {
         return [
             'custom' => $this->opaque(),
             'text' => $this->opaque(),
+            'captioned' => $this->opaque(),
+            'labelled' => $this->opaque(),
         ];
     }
 

@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node;
 use ReflectionClass;
@@ -19,18 +20,13 @@ trait ResolvesClassNames
      * Resolve a type name from a docblock to its FQCN by consulting the declaring class's
      * `use` imports, its own namespace, and then falling back to the original name.
      *
-     * Delegates to the canonical implementation on LaravelTsPublish.
-     *
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
      */
     protected function resolveDocblockType(string $type, ReflectionClass $declaringClass): string
     {
-        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
-        $namespace = $declaringClass->getNamespaceName();
-
-        return LaravelTsPublish::resolveDocblockTypeName($type, $useMap, $namespace);
+        return DocblockNames::resolve($type, $declaringClass);
     }
 
     /**
@@ -38,7 +34,8 @@ trait ResolvesClassNames
      *
      * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
-     * Each `@var` union member, `?` stripped, resolves through the file's imports, then the class's own namespace.
+     * Each `@var` union member, `?` stripped, resolves through the imports, then the namespace, of the file that
+     * declares the property, as PropertyDocblockTypeReader::tag() finds it, a parent's or a trait's.
      *
      * @template T of object
      *
@@ -60,28 +57,25 @@ trait ResolvesClassNames
             return $info['classFqcns'][0]; // @codeCoverageIgnore
         }
 
-        // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
-        $docComment = $declaringClass->getProperty($property)->getDocComment();
-        $declared = $docComment === false
-            ? null
-            : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        // Without a native class type, the property's docblock type names the class.
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($declaringClass->getProperty($property), $declaringClass);
 
-        if ($declared === null || $declared === '') {
+        if ($tag === null) {
             return null; // @codeCoverageIgnore
         }
 
-        // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
+        // Split the docblock type on | to handle union types in any order (e.g. null|Type or Type|null)
         $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
             'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
 
-        foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $token) {
+        foreach (LaravelTsPublish::splitPhpDocUnionType($tag['type']) as $token) {
             $token = ltrim(trim($token), '?');
 
             if ($token === '' || in_array(strtolower($token), $skip, true)) {
                 continue;
             }
 
-            $fqcn = $this->resolveDocblockType($token, $declaringClass);
+            $fqcn = $this->resolveDocblockType($token, $tag['context']);
 
             if (class_exists($fqcn) || enum_exists($fqcn)) {
                 return $fqcn;

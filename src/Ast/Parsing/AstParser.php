@@ -15,7 +15,8 @@ use PhpParser\Parser;
 use PhpParser\ParserFactory;
 
 /**
- * Single php-parser entry point: name-resolved ASTs, cached per file, recorded as cache dependencies.
+ * Single php-parser entry point: name-resolved ASTs, a closure argument's docblock on the closure, cached per file and
+ * recorded as cache dependencies.
  *
  * @phpstan-type MethodsByName = array<string, list<ClassMethod>>
  *
@@ -93,7 +94,8 @@ class AstParser
     }
 
     /**
-     * Parse raw PHP source into a name-resolved AST. Uncached; prefer parseFile() for on-disk code.
+     * Parse raw PHP source into a name-resolved AST, each closure argument's docblock on its closure. Uncached; prefer
+     * parseFile() for on-disk code.
      *
      * @return array<Node>
      */
@@ -111,6 +113,7 @@ class AstParser
 
         $traverser = new NodeTraverser;
         $traverser->addVisitor(new NameResolver);
+        $traverser->addVisitor(new ArgumentDocCommentVisitor);
 
         return $traverser->traverse($stmts);
     }

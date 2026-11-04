@@ -18,12 +18,13 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
 | `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
+| `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
 | `Handlers/` | One handler per expression family |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
 | `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
-| `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
+| `Values/` | Value results and the readers that type a value: constants, reflection, aggregates |
 
 These are the classes a change to the engine usually touches:
 
@@ -39,7 +40,7 @@ These are the classes a change to the engine usually touches:
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
-| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node, under a trait alias too |
+| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, with a call argument's docblock moved onto the closure it holds, and find one method's AST node, under a trait alias too |
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
@@ -281,9 +282,9 @@ docblocks say what each binding table holds. These eight facts span other classe
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
-- **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback's literal shape, and a
-  getter that `AstEngine::analyzeModelClosure()` reads without imports. See
-  [Receiver types § The body fallback][body-fallback].
+- **`carriesImports` is false only for a getter `AstEngine::analyzeModelClosure()` reads without imports**, for a reader
+  that keeps no FQCN channel. **`casesAsLiterals` is true only for the body fallback's analysis and a getter it reads
+  whole**, which type a plain enum's case as the literal it sends. See [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
 
@@ -414,9 +415,10 @@ other parameter puts its classes, when it names only classes, in `varDeclaredBin
 it is. `bindClosure()` binds a closure's parameters from the declaration the AST holds, and differs in two ways: its
 class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
 `Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
-closure itself. An untyped one binds nothing, since no call is read. A closure's `self` and `parent` name the classes
-`relativeClass()` names, there and in a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the
-name in `relativeParameters`, so its receiver reads members as a spelled inline `@var`'s does.
+closure itself, where `AstParser` also moves one written before the call argument holding it. An untyped one binds
+nothing, since no call is read. A closure's `self` and `parent` name the classes `relativeClass()` names, there and in
+a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the name in `relativeParameters`, so its
+receiver reads members as a spelled inline `@var`'s does.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.
 
@@ -708,11 +710,11 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 
 [`AnalysisMemo`] is a container singleton holding the engine's cycle guards and a per-run memo of four analyses:
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
-`ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
-import mode, gains an `@importless` suffix for an analysis that carries no imports. It also holds the per-class reads
-each resource prop repeats: `JsonApiResources::relationships()` and `includedResources()`,
-`ResourceCollectionBody::sendsCollectedList()`, `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in
-`GuessesModelResources`.
+`ModelAttributeResolver`'s accessor waterfall. The two accessor keys gain an `@importless` suffix for a read that
+carries no imports, and all three gain `@casesAsLiterals` for the body fallback's reading; `method-return:`'s answer
+depends on neither. It also holds the per-class reads each resource prop repeats:
+`JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
+`ResourceResponseBody::holdsWrapKey()`, and the two model guesses in `GuessesModelResources`.
 
 `analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
 suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that
@@ -812,14 +814,14 @@ where an earlier value still reaches the read), the walk's branch join (`walk-br
 array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a
 spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
-it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
+it drops. `CoalesceHandler` strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never
 returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
 exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
 arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
 (`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. It unions both operands through
 `unionResults()`, which leaves an untyped one out.
 `applyConditionalDefault()` records a default only beside a value arm with a type.
-`ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
+`BranchJoin::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
 walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole
 under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
@@ -903,7 +905,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the provider's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
-| `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false`, then `analyzeMethodValue()` | It is the body fallback: the literal shape, then the value read, which carries imports. See [Receiver types][body-fallback]. |
+| `MethodReturnTypeResolver` | `analyzeMethod()` with `casesAsLiterals: true`, then `analyzeMethodValue()` | It is the body fallback: the literal shape, then the value read, both carrying imports. See [Receiver types][body-fallback]. |
 
 Every consumer that reaches `ResourceAstAnalyzer::analyze()` without a context locates through
 `MethodLocator::locateDeclared()`, as both Inertia analyzers do for an action.
@@ -958,7 +960,7 @@ These pages cover the engine's neighbors:
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
-[body-fallback]: receiver-types.md#the-body-fallback-carries-no-fqcn-channel
+[body-fallback]: receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does
 [built-payload]: resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload
 [collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
 [gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways

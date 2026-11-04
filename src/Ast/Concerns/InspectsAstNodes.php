@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Arg;

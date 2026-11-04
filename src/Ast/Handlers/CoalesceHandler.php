@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp;
 
@@ -51,11 +52,11 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
             $rightResult = $engine->resolve($expr->right);
             // A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null.
             $optional = $leftResult['optional']
-                || ($rightResult['optional'] && ($leftResult['type'] === 'unknown' || ValueResult::hasNullArm($leftResult['type'])));
+                || ($rightResult['optional'] && ($leftResult['type'] === 'unknown' || TsTypeString::hasNullArm($leftResult['type'])));
 
             // With a non-null fallback only an object's call can still return null, so any other left null goes.
             if ($held === null || ! $held['objectNull']) {
-                $leftResult['type'] = ValueResult::stripNullArm($leftResult['type']);
+                $leftResult['type'] = TsTypeString::withoutNullArm($leftResult['type']);
             }
 
             // Only the plain null is replaced, so the left's plain arms past `??` are never null.

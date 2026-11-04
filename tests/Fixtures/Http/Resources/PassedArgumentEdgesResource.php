@@ -14,8 +14,8 @@ use Workbench\App\Models\User;
 
 /**
  * Helpers read with what their calls pass: one passed two models, an argument nothing types, a recursion passing a new
- * value each time, a written parameter, a scalar body, a value naming a class the body fallback cannot import, a model
- * no row backs yet, helpers declaring an abstract class or a union, and callables a call holds or calls.
+ * value each time, a written parameter, a scalar body, a value naming a class, a model no row backs yet, helpers
+ * declaring an abstract class or a union, and callables a call holds or calls.
  *
  * @mixin Post
  */

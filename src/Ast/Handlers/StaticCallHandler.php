@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
@@ -23,9 +22,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
@@ -50,7 +51,6 @@ use ReflectionNamedType;
  */
 final class StaticCallHandler implements ExpressionHandler
 {
-    use BuildsInlineObjectTypes;
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
@@ -76,7 +76,7 @@ final class StaticCallHandler implements ExpressionHandler
             $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
 
             return isset($resolved['resourceFqcn'])
-                ? $this->sentResolvedBody([...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])], $engine)
+                ? $this->sentResolvedBody([...$resolved, 'type' => TsTypeString::withoutNullArm($resolved['type'])], $engine)
                 : $resolved;
         }
 
@@ -357,11 +357,11 @@ final class StaticCallHandler implements ExpressionHandler
                 return null;
             }
 
-            return ['type' => $this->buildInlineObjectType($analysis), 'optional' => false];
+            return new InlineObjectResult()->of($analysis);
         }
 
         if ($this->methodReturnAllowsNull($method)) {
-            $receiverResult['type'] = ValueResult::withNullArm($receiverResult['type']);
+            $receiverResult['type'] = TsTypeString::withNullArm($receiverResult['type']);
         }
 
         return $receiverResult;
@@ -478,7 +478,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function holdsOneResource(Expr $receiver, string $type, string $resourceFqcn, AnalysisScope $scope): bool
     {
-        $held = ValueResult::stripNullArm($type);
+        $held = TsTypeString::withoutNullArm($type);
 
         if ($held === TsNaming::resourceTypeName($resourceFqcn) || $held === JsonApiResources::instanceType($resourceFqcn)) {
             return true;

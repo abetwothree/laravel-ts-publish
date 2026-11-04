@@ -6,10 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -329,7 +329,6 @@ describe('an inline @var on a local assignment', function () {
         'a dangling union' => ['string|'],
         'a space before a shape\'s brace' => ['array {a: int}'],
         'a space before a nested shape\'s brace' => ['array{a: array {b: int}}'],
-        'a shape member whose class the shape reader leaves unknown' => ['array{a: User}'],
         'a bare collection, which resolves to unknown elements' => ['\Illuminate\Support\Collection'],
         'a shape mixing positional and named members' => ['array{int, a: string}'],
         'an optional positional member, which PHPDoc does not allow' => ['list{int, string?}'],
@@ -375,6 +374,10 @@ describe('an inline @var on a local assignment', function () {
         'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
         'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
         'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
+        'a string literal key past PHP_INT_MAX, which PHP keeps a string' => [
+            "array<'9223372036854775808'|'-0', int>",
+            '{ "9223372036854775808"?: number; "-0"?: number }',
+        ],
         'quoted shape keys' => ["array{'a': int, \"b-c\": string}", '{ a: number; "b-c": string }'],
         'int shape keys from 0, which PHP lists' => ['array{0: int, 1: string}', '[number, string]'],
         'a negative int shape key' => ['array{-1: int}', '{ "-1": number }'],
@@ -384,7 +387,7 @@ describe('an inline @var on a local assignment', function () {
         'a nullable shape inside a shape' => ['array{a: ?array{b: int}}', '{ a: { b: number } | null }'],
         'a nullable shape inside a listed shape' => [
             'list<array{id: int, meta: ?array{k: string}}>',
-            '({ id: number; meta: { k: string } | null })[]',
+            '{ id: number; meta: { k: string } | null }[]',
         ],
         'a nullable shape' => ['?array{a: int}', '{ a: number } | null'],
         'a nullable list' => ['?list<int>', 'number[] | null'],
@@ -396,6 +399,7 @@ describe('an inline @var on a local assignment', function () {
             '?\Workbench\App\ValueObjects\ArrayableData',
             '{ recordedAt?: string; title: string; weight: number | null } | null',
         ],
+        'a shape member naming a model' => ['array{a: User}', '{ a: User }'],
         'a callable in a shape, which reads unknown' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
         'a callable in each of two members, one nullable' => [
             'array{a: callable(int): string, b: ?callable(): int}',
@@ -420,6 +424,19 @@ describe('an inline @var on a local assignment', function () {
         'a list slot holding two records' => ['list<array<string, int>|array<string, bool>>', '(Record<string, number> | Record<string, boolean>)[]'],
         'a list slot holding a shape or null' => ['list<array{a: int}|null>', '({ a: number } | null)[]'],
     ]);
+
+    test('binds a local by its @phpstan-var or @psalm-var over a plain @var', function () {
+        [$scope, $returned] = inlineVarReturned("/**\n * @var array \$l\n * @phpstan-var list<string> \$l\n */ \$l = json_decode(\"\"); return \$l;");
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+            ->resolve($returned)['type'])->toBe('string[]')
+            ->and(resolve(PropertyDocblockTypeReader::class)
+                ->extractVarTag('/** @psalm-var list<int> $ids */', new ReflectionClass(DeclaredPrecedenceResource::class), []))
+            ->toBe(['list<int>', 'ids', false])
+            ->and(resolve(PropertyDocblockTypeReader::class)
+                ->extractVarTag("/**\n * @phpstan-var list<int>\n * @var array \$ids\n */", new ReflectionClass(DeclaredPrecedenceResource::class), []))
+            ->toBe(['list<int>', 'ids', false]);
+    });
 
     test('binds a nullable shape inside a multi-line shape, read with its lines joined', function () {
         $reader = resolve(PropertyDocblockTypeReader::class);

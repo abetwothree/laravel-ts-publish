@@ -10,9 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedPostParamResource;
 use Illuminate\Http\Request;
+use PhpParser\Comment\Doc;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -272,6 +274,56 @@ it('returns the unknown body result when there is no usable return-type annotati
 
     expect($result)->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
 });
+
+/**
+ * Resolve an arrow function carrying a doc comment through a stub engine that reads its body as $bodyType, in a scope
+ * whose file imports `Post`.
+ *
+ * @return array<string, mixed>
+ */
+function closureHandlerDocumentedResult(string $docComment, string $bodyType, ?Identifier $returnType = null): array
+{
+    $bodyExpr = new Variable('x');
+    $expr = new ArrowFunction(['expr' => $bodyExpr, 'returnType' => $returnType], ['comments' => [new Doc($docComment)]]);
+    $engine = new ClosureHandlerArmStubEngine([[$bodyExpr, ['type' => $bodyType, 'optional' => false]]]);
+    $scope = new AnalysisScope(new ReflectionClass(DocumentedClosureResource::class), Post::class);
+
+    return (new ClosureHandler)->resolve($expr, $scope, $engine) ?? [];
+}
+
+it('falls back to the docblock @return, in PHPStan\'s tag order, when the body and a native return type type nothing', function (string $docComment, array $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown'))->toBe([...$expected, 'heldObject' => true]);
+})->with([
+    'a scalar' => ['/** @return int */', ['type' => 'number', 'optional' => false]],
+    'a model the file imports, or null' => [
+        '/** @return Post|null */',
+        ['type' => 'Post | null', 'optional' => false, 'modelFqcn' => Post::class],
+    ],
+    'a @phpstan-return over a vague @return' => [
+        "/**\n * @return array\n * @phpstan-return list<int>\n */",
+        ['type' => 'number[]', 'optional' => false],
+    ],
+]);
+
+it('reads the body, then a native return type, before the docblock @return', function () {
+    expect(closureHandlerDocumentedResult('/** @return int */', 'boolean')['type'])->toBe('boolean')
+        ->and(closureHandlerDocumentedResult('/** @return int */', 'unknown', new Identifier('string'))['type'])
+        ->toBe('string');
+});
+
+it('leaves the body\'s unknown for a vague @return, one that types nothing, or one naming an unpublished class', function (string $docComment) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown'))
+        ->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
+})->with([
+    'mixed' => ['/** @return mixed */'],
+    'void' => ['/** @return void */'],
+    'never' => ['/** @return never */'],
+    'a mixed-valued array' => ['/** @return array<string, mixed> */'],
+    'a class that does not exist' => ['/** @return NoSuchClass */'],
+    'a list of a class that does not exist' => ['/** @return list<NoSuchClass> */'],
+    'a class that is not a model' => ['/** @return \\ArrayObject */'],
+    'the framework\'s base model' => ['/** @return \\Illuminate\\Database\\Eloquent\\Model */'],
+]);
 
 it('suppresses a closure param that shadows a populated localVarBindings entry, then restores it', function () {
     // This pins the ShadowedClosureParamResource invariant: a closure param that merely shares a

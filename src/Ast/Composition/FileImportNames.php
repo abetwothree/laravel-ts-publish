@@ -23,7 +23,7 @@ use Closure;
  * Names one file's imports across every type it prints, a route file's pages or the shared data, as a resource's.
  *
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type TokenFqcns from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type TokenQueue = list<class-string|null>
  * @phpstan-type TokenQueues = array{classes: TokenQueue, consts: TokenQueue}
@@ -37,10 +37,9 @@ use Closure;
  *     typed: bool,
  *     classes: list<class-string>,
  *     consts: list<class-string>,
- *     declared?: TokenFqcns,
+ *     declared?: Slots,
  * }
  * @phpstan-type SoleClasses = array<string, class-string>
- * @phpstan-type Token = array{string, int, bool}
  *
  * @internal
  */
@@ -48,9 +47,6 @@ final class FileImportNames
 {
     use BuildsImportMaps;
     use ResolvesImportConflicts;
-
-    /** The name a `typeof` reads, which is a const's and never a class channel's type. */
-    private const string AFTER_TYPEOF = '/(?<![A-Za-z0-9_$.])typeof\s+\K[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
 
     /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
     protected array $enumConstMap = [];
@@ -119,7 +115,7 @@ final class FileImportNames
                 $pieces[] = [
                     'text' => $piece['text'],
                     'typed' => true,
-                    'classes' => $analysis->tokenFqcns($source),
+                    'classes' => $analysis->channelFqcns($source),
                     'consts' => $analysis->wrappedEnumFqcns($source),
                     ...($declared === null ? [] : ['declared' => $declared]),
                 ];
@@ -127,7 +123,7 @@ final class FileImportNames
         }
 
         // A class a cast displaced is carried off every channel, but another key's text may still spell it.
-        $held = array_values(array_unique([...$analysis->allTokenFqcns(), ...$analysis->allCarriedFqcns()]));
+        $held = array_values(array_unique([...$analysis->allChannelFqcns(), ...$analysis->allCarriedFqcns()]));
         $classes = self::soleClasses('classes', $held, $brought);
         $consts = self::soleClasses('consts', $analysis->allWrappedEnumFqcns(), $brought);
 
@@ -149,34 +145,6 @@ final class FileImportNames
     }
 
     /**
-     * The name each class's token is spelled with: a `@tolki/types` class's, an enum's type or a resource's or model's.
-     */
-    public static function typeName(string $fqcn): string
-    {
-        return TolkiTypes::MAP[$fqcn]
-            ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
-    }
-
-    /**
-     * Every name a channel's classes are spelled with: a type name and a backed enum's `…Kind`, or an enum's const.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  list<class-string>  $fqcns
-     * @return list<string>
-     */
-    public static function namesOf(string $channel, array $fqcns): array
-    {
-        $names = $channel === 'classes'
-            ? array_merge([], ...array_map(
-                static fn (string $fqcn): array => [self::typeName($fqcn), ...ValueResult::enumSiblingNames($fqcn)],
-                $fqcns,
-            ))
-            : array_map(ValueResult::enumConstName(...), $fqcns);
-
-        return array_values(array_unique($names));
-    }
-
-    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -185,21 +153,10 @@ final class FileImportNames
             $member['type'],
             $member['classes'],
             'classes',
-            fn (string $fqcn, string $spelled): string => $spelled === self::typeName($fqcn)
+            fn (string $fqcn, string $spelled): string => $spelled === TokenSlots::typeName($fqcn)
                 ? $this->localImportName($fqcn, $spelled)
                 : $this->siblingImportNames[$fqcn][$spelled] ?? $spelled,
         ), $this->members);
-    }
-
-    /**
-     * The pattern a channel's tokens are read with: a const only after `typeof`.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  non-empty-list<string>  $names
-     */
-    private static function patternOf(string $channel, array $names): string
-    {
-        return TsTypeString::queuedTokenPattern($names, $channel === 'classes' ? '' : 'typeof\s+\K');
     }
 
     /**
@@ -215,7 +172,7 @@ final class FileImportNames
         $byName = [];
 
         foreach ($fqcns as $fqcn) {
-            foreach (self::namesOf($channel, [$fqcn]) as $name) {
+            foreach (TokenSlots::namesOf($channel, [$fqcn]) as $name) {
                 $byName[$name][] = $fqcn;
             }
         }
@@ -239,11 +196,11 @@ final class FileImportNames
 
         foreach ($pieces as $piece) {
             $fallback = $piece['typed'] ? $sole : [];
-            $names = array_values(array_unique([...self::namesOf($channel, $piece[$channel]), ...array_keys($fallback)]));
+            $names = array_values(array_unique([...TokenSlots::namesOf($channel, $piece[$channel]), ...array_keys($fallback)]));
             $claimed = [...$claimed, ...self::walk($piece, $channel, $names, $fallback)];
         }
 
-        $names = self::namesOf($channel, array_values(array_filter($claimed)));
+        $names = TokenSlots::namesOf($channel, array_values(array_filter($claimed)));
         $queue = [];
 
         foreach ($pieces as $piece) {
@@ -268,28 +225,22 @@ final class FileImportNames
      */
     private static function walk(array $piece, string $channel, array $names, array $fallback): array
     {
-        $tokens = $names === [] ? [] : self::tokens($channel, $names, $piece['text']);
         $queue = [];
 
         if ($channel === 'classes' && isset($piece['declared'])) {
-            $declared = $piece['declared'];
-            $own = self::namesOf($channel, array_values(array_filter($declared)));
-            $at = 0;
-
-            // The declaration holds an entry for every token of its classes' names, one the channel leaves unread too.
-            foreach ($tokens as [$token, , $read]) {
-                $fqcn = in_array($token, $own, true) ? $declared[$at++] ?? null : $fallback[$token] ?? null;
-
-                if ($read) {
-                    $queue[] = $fqcn;
+            foreach (TokenSlots::declaredTokens($piece['text'], $piece['declared'], $names) as $token) {
+                if ($token['read'] && in_array($token['token'], $names, true)) {
+                    $queue[] = $token['own'] ? $token['slot'] : $fallback[$token['token']] ?? null;
                 }
             }
 
             return $queue;
         }
 
+        $tokens = $names === [] ? [] : TokenSlots::tokens($channel, $names, $piece['text']);
+
         $own = $channel === 'classes'
-            ? new ClassTokenQueue($piece[$channel], self::typeName(...), ValueResult::enumSiblingNames(...))
+            ? new ClassTokenQueue($piece[$channel], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))
             : new ClassTokenQueue($piece[$channel], ValueResult::enumConstName(...));
 
         foreach ($tokens as [$token, , $read]) {
@@ -299,36 +250,6 @@ final class FileImportNames
         }
 
         return $queue;
-    }
-
-    /**
-     * Each token of the names in the text, its offset, and whether the channel reads it.
-     *
-     * A literal's or an index signature key's text is a value or a key, and the name after `typeof` is a const's.
-     *
-     * @param  'classes'|'consts'  $channel
-     * @param  non-empty-list<string>  $names
-     * @return list<Token>
-     */
-    private static function tokens(string $channel, array $names, string $text): array
-    {
-        if (preg_match_all(self::patternOf($channel, $names), $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
-            return [];
-        }
-
-        $unread = TsTypeString::literalSpans($text);
-
-        if ($channel === 'classes' && preg_match_all(self::AFTER_TYPEOF, $text, $consts, PREG_OFFSET_CAPTURE) > 0) {
-            foreach ($consts[0] as [$const, $at]) {
-                $unread[] = [$at, $at + strlen($const)];
-            }
-        }
-
-        return array_map(static fn (array $match): array => [
-            $match[0],
-            $match[1],
-            ! array_any($unread, static fn (array $span): bool => $match[1] >= $span[0] && $match[1] < $span[1]),
-        ], $matches[0]);
     }
 
     /**
@@ -342,7 +263,7 @@ final class FileImportNames
      */
     private static function respell(string $type, array $queue, string $channel, Closure $localName): string
     {
-        $names = self::namesOf($channel, array_values(array_filter($queue)));
+        $names = TokenSlots::namesOf($channel, array_values(array_filter($queue)));
 
         if ($names === []) {
             return $type;
@@ -352,13 +273,13 @@ final class FileImportNames
         $from = 0;
         $at = 0;
 
-        foreach (self::tokens($channel, $names, $type) as [$token, $offset, $read]) {
+        foreach (TokenSlots::tokens($channel, $names, $type) as [$token, $offset, $read]) {
             if (! $read) {
                 continue;
             }
 
             $fqcn = $queue[$at++] ?? null;
-            $spelled = $fqcn !== null && in_array($token, self::namesOf($channel, [$fqcn]), true)
+            $spelled = $fqcn !== null && in_array($token, TokenSlots::namesOf($channel, [$fqcn]), true)
                 ? $localName($fqcn, $token)
                 : $token;
             $respelled .= substr($type, $from, $offset - $from).$spelled;

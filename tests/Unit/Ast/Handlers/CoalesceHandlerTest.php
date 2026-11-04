@@ -286,7 +286,7 @@ it('answers a bare unknown when neither arm has a type, whatever the right arm c
 });
 
 it('strips a top-level `| null` arm from the left before deciding whether it is unknown', function () {
-    // `null ?? $x` — the left operand is exactly `null`, which stripNullArm() reduces to 'unknown',
+    // `null ?? $x` — the left operand is exactly `null`, which withoutNullArm() reduces to 'unknown',
     // so the right arm is returned alone, matching the runtime evaluation of `null ?? $x` as `$x`.
     $handler = new CoalesceHandler;
     $left = new ConstFetch(new Name('null'));

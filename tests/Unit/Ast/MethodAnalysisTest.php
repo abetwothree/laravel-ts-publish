@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
     expect(new ResourceAnalysis)->toBeInstanceOf(MethodAnalysis::class)
@@ -129,6 +130,80 @@ it('clears the cast entry of a key the source sets without one', function () {
     expect($target->casts)->toBe(['kept' => ['type' => 'K', 'import' => null]]);
 });
 
+// A declaration's token slots describe the text it wrote, which the source's value replaces.
+it('merges declared token slots as it merges casts', function () {
+    $user = 'Workbench\\App\\Models\\User';
+    $target = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'User', 'optional' => false, 'description' => ''],
+        ['name' => 'kept', 'type' => 'User', 'optional' => false, 'description' => ''],
+    ]);
+    $target->declaredTokenFqcns = ['owner' => [$user], 'kept' => [$user]];
+    $source = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+    ]);
+    $source->declaredTokenFqcns = ['either' => [null, $user]];
+
+    $target->merge($source);
+
+    expect($target->declaredTokenFqcns)->toBe(['kept' => [$user], 'either' => [null, $user]]);
+});
+
+it('reads a key as untyped: unknown, with no channel, and no custom import only its text spelled', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => '', 'fillType' => 'User | User'],
+            ['name' => 'chart', 'type' => 'UiNode', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode'], '@js/types/other' => ['User as Owner']],
+        inlineModelFqcns: ['either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['either' => [null, 'Workbench\\App\\Models\\User']];
+    $analysis->leftOutValues = ['either' => true];
+
+    $analysis->untype('either');
+
+    expect($analysis->properties[0])->toBe(['name' => 'either', 'type' => 'unknown', 'optional' => false, 'description' => ''])
+        ->and($analysis->inlineModelFqcns)->toBe([])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->leftOutValues)->toBe(['either' => true])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
+});
+
+it('retypes a key class-less, keeping a custom import its new text still spells', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'pair', 'type' => '{ a: User; b: User; n: UiNode }', 'optional' => false, 'description' => ''],
+            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode']],
+        inlineModelFqcns: ['pair' => ['Workbench\\App\\Models\\User'], 'either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['pair' => [null, 'Workbench\\App\\Models\\User']];
+
+    $analysis->retypeClassLess('pair', '{ a: User; b: unknown; n: unknown }');
+
+    expect($analysis->properties[0]['type'])->toBe('{ a: User; b: unknown; n: unknown }')
+        ->and($analysis->inlineModelFqcns)->toBe(['either' => ['Workbench\\App\\Models\\User']])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
+});
+
+it('retypes a key class-less, dropping a custom import another key spells only in a literal', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'k', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+            ['name' => 'kind', 'type' => "'User'", 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User']],
+    );
+
+    $analysis->retypeClassLess('k', 'unknown');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['k' => 'unknown', 'kind' => "'User'"])
+        ->and($analysis->customImports)->toBe([]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [
@@ -181,6 +256,41 @@ it('forgets every channel keyed by a property another value took over, and nothi
             'Workbench\App\Http\Resources\TagResource' => 'Workbench\App\Http\Resources\TagResource',
             'kept' => 'Workbench\App\Http\Resources\PostResource',
         ]);
+});
+
+it('publishes unknown for a member naming an unpublished model and forgets its channels, its siblings kept', function (?array $published, string $unpublished) {
+    if ($published !== null) {
+        PublishedModelRegistry::register($published);
+    }
+
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kept', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+    $analysis->addProperty('nested', ['type' => '{ owner: Post }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\App\Models\Post']]);
+    $analysis->properties[] = ['name' => 'lost', 'type' => '{ m: User }', 'optional' => false, 'description' => ''];
+    $analysis->inlineModelFqcns['lost'] = [$unpublished];
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kept' => 'Post', 'nested' => '{ owner: Post }', 'lost' => 'unknown'])
+        ->and($analysis->hasFqcnChannel('lost'))->toBeFalse()
+        ->and($analysis->channelFqcns('kept'))->toBe(['Workbench\App\Models\Post'])
+        ->and($analysis->channelFqcns('nested'))->toBe(['Workbench\App\Models\Post']);
+})->with([
+    'a model the published set leaves out' => [['Workbench\App\Models\Post'], 'Workbench\App\Models\User'],
+    'a framework model, with no published set' => [null, 'Illuminate\Foundation\Auth\User'],
+]);
+
+// The key holding these members aliases every token of a name alike, so the enum would take the composed class's.
+it('publishes unknown for a member whose class publishes under a name a custom import brings, its siblings kept', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kind', ['type' => 'ChartType', 'optional' => false, 'directEnumFqcn' => ChartEnum::class]);
+    $analysis->addProperty('chart', ['type' => 'ChartType', 'optional' => false, 'customImports' => ['@ui' => ['ChartType']]]);
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kind' => 'unknown', 'chart' => 'ChartType'])
+        ->and($analysis->hasFqcnChannel('kind'))->toBeFalse()
+        ->and($analysis->customImports)->toBe(['@ui' => ['ChartType']]);
 });
 
 it('appends inlineModelFqcns per property WITHOUT deduping, unlike its sibling inline maps', function () {

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -41,7 +42,7 @@ use PhpParser\Node\Name;
  *      enumFqcn: class-string|null,
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string>,
+ *      classTokenFqcns?: list<class-string|null>,
  *      customImports: TypesImportMap,
  *      keepsKeys?: bool
  * }
@@ -132,14 +133,14 @@ trait ResolvesEnumPropertyArgTypes
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
         $reading = $engine->reading();
 
-        if ($result === null || ! ValueResult::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
+        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
             return $result;
         }
 
         return match (true) {
-            $reading !== Reading::Encoded => [...$result, 'type' => ValueResult::stripNullArm($result['type']).' | never[]'],
+            $reading !== Reading::Encoded => [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'],
             $scope->filtersNestedResources => $result,
-            default => [...$result, 'type' => ValueResult::stripNullArm($result['type'])],
+            default => [...$result, 'type' => TsTypeString::withoutNullArm($result['type'])],
         };
     }
 
@@ -186,7 +187,7 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $resolved = $engine->resolve($payload);
+        $resolved = $scope->readingCasesAsEnums(fn (): array => $engine->resolve($payload));
         // A union of enum reads, such as a `??` over a case, carries its one enum on the multi-entry channel.
         $fqcns = array_values(array_unique([
             ...(isset($resolved['directEnumFqcn']) ? [$resolved['directEnumFqcn']] : []),
@@ -205,7 +206,7 @@ trait ResolvesEnumPropertyArgTypes
 
         $retyped = LaravelTsPublish::retypedEnumType($enum);
         $enumType = $retyped ?? ValueResult::enumTypeName($enum);
-        $held = ValueResult::stripNullArm($resolved['type']);
+        $held = TsTypeString::withoutNullArm($resolved['type']);
 
         if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
             return null;
@@ -217,7 +218,7 @@ trait ResolvesEnumPropertyArgTypes
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
-            'type' => ValueResult::hasNullArm($resolved['type']) ? ValueResult::withNullArm($type) : $type,
+            'type' => TsTypeString::hasNullArm($resolved['type']) ? TsTypeString::withNullArm($type) : $type,
             'optional' => $resolved['optional'],
             'enumFqcn' => $enum,
         ];
@@ -229,15 +230,21 @@ trait ResolvesEnumPropertyArgTypes
      * Bypasses ResolvesModelTypes's cached-property gate, which this per-call handler never
      * populates — calls the ModelAttributeResolver singleton directly instead; it caches per FQCN.
      *
+     * @param  bool  $casesAsLiterals  the scope's own flag where the attribute is read as a value; an `EnumResource`
+     *                                 payload or a `->value` base needs the enum, so it reads cases as their enum
      * @return AttributeTypeInfo
      */
-    protected function resolveModelAttributeTypeInfo(string $attributeName, AnalysisScope $scope): array
-    {
+    protected function resolveModelAttributeTypeInfo(
+        string $attributeName,
+        AnalysisScope $scope,
+        bool $casesAsLiterals = false,
+    ): array {
         if ($scope->modelClass === null) {
             return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => [], 'customImports' => []];
         }
 
-        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports);
+        $tsInfo = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports, $casesAsLiterals);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
@@ -247,7 +254,8 @@ trait ResolvesEnumPropertyArgTypes
             'enumFqcn' => $enumFqcn,
             'enumFqcns' => $tsInfo['enumFqcns'],
             'classFqcns' => $tsInfo['classFqcns'],
-            // Present only where the type spells one name for two classes; see TypeScriptTypeInfo.
+            // Present only where the type spells one name for two classes or an override spells a class's name; see
+            // TypeScriptTypeInfo.
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
@@ -280,7 +288,7 @@ trait ResolvesEnumPropertyArgTypes
 
         return [
             ...ValueResult::unknown(),
-            'type' => ValueResult::hasNullArm($info['type']) ? ValueResult::withNullArm($type) : $type,
+            'type' => TsTypeString::hasNullArm($info['type']) ? TsTypeString::withNullArm($type) : $type,
             'enumFqcn' => $enum,
         ];
     }

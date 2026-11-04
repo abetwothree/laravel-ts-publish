@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
-use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\NamespaceNameCollisions;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
@@ -17,6 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\RoutedControllers;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 
@@ -80,8 +82,10 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         ResourceReindexing::class,
         ResourceWrapping::class,
         RoutedControllers::class,
+        ScanDialect::class,
         StringSerialization::class,
         TopLevelRenumbering::class,
+        TypeScanner::class,
     ];
     $untagged = [];
 

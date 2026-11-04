@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use BackedEnum;
 use Illuminate\Auth\GenericUser;
@@ -314,7 +315,7 @@ class FormRequestRulesAnalyzer
     {
         $element = $this->composeTrieNode($wildcardChild);
         $elementType = $element['tsType'].($element['isNullable'] ? ' | null' : '');
-        $tsType = $element['isProhibited'] ? 'never[]' : $this->arrayWrapType($elementType);
+        $tsType = $element['isProhibited'] ? 'never[]' : TsTypeShape::listType([$elementType]);
 
         return [
             'tsType' => $tsType,
@@ -395,7 +396,7 @@ class FormRequestRulesAnalyzer
         $elementTypes = array_values(array_unique($elementTypes));
 
         return [
-            'tsType' => $elementTypes === [] ? 'never[]' : $this->arrayWrapType(implode(' | ', $elementTypes)),
+            'tsType' => $elementTypes === [] ? 'never[]' : TsTypeShape::listType([implode(' | ', $elementTypes)]),
             'isRequired' => $own !== null && $own['isRequired'],
             'isNullable' => $own !== null && $own['isNullable'],
             'isProhibited' => $own !== null && $own['isProhibited'],
@@ -978,44 +979,5 @@ class FormRequestRulesAnalyzer
         };
 
         Auth::setUser($stub);
-    }
-
-    /**
-     * Suffix a type with `[]`, parenthesizing when a top-level `|` or `&` is present: TypeScript binds
-     * `[]` tighter than both, so `A | B[]` parses as `A | (B[])`. Depth- and quote-aware — a separator
-     * inside a `{ ... }` shape or a `'literal'` belongs to that member, not to the outer type.
-     */
-    private function arrayWrapType(string $type): string
-    {
-        return $this->hasTopLevelSeparator($type) ? '('.$type.')[]' : $type.'[]';
-    }
-
-    /**
-     * Whether a `|` or `&` appears outside every `{}`, `<>`, `()` and `[]` nesting level, ignoring
-     * quoted literals whose contents are opaque.
-     */
-    private function hasTopLevelSeparator(string $type): bool
-    {
-        $depth = 0;
-        $length = strlen($type);
-        $inQuote = false;
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $type[$i];
-
-            if ($char === "'") {
-                $inQuote = ! $inQuote;
-            } elseif ($inQuote) {
-                continue;
-            } elseif ($char === '{' || $char === '<' || $char === '(' || $char === '[') {
-                $depth++;
-            } elseif ($char === '}' || $char === '>' || $char === ')' || $char === ']') {
-                $depth = max(0, $depth - 1);
-            } elseif (($char === '|' || $char === '&') && $depth === 0) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

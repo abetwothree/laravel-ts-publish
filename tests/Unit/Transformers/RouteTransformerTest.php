@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
@@ -1018,6 +1020,99 @@ it('aliases a model beside a page whose cast imports User from another module, a
             '../../../../../../app/models' => ['User as ModelsUser'],
         ])
         ->and([$sent->owner->name, $sent->author->name])->toBe(['Ada', 'Ada']);
+});
+
+it('joins a props helper\'s override-beside-model fill with a render branch\'s null, each token keeping its class', function () {
+    app(Router::class)->get('/doc-shape-branched/{id}', [DocShapeBranchedPageController::class, 'branched']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { owner: User | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->branched(1))->owner)->toBeNull();
+});
+
+it('gives a render branch\'s literal spelling a joined name a slot of its own', function () {
+    app(Router::class)->get('/doc-shape-literal-first/{id}', [DocShapeBranchedPageController::class, 'literalFirst']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { owner: { kind: 'User' } | User[] | ModelsUser }")
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ]);
+});
+
+it('binds an arm\'s override and other class beside the model in another arm, joined with a render branch\'s null', function () {
+    app(Router::class)->get('/doc-shape-mixed-arm/{id}', [DocShapeBranchedPageController::class, 'mixedArm']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { owner: { a: User; p: Post } | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['Post', 'User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
+});
+
+it('reads a folded fill\'s model class-less beside an override in a sibling prop member, as before', function () {
+    app(Router::class)->get('/doc-shape-split', [DocShapeFoldedPageController::class, 'split']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { split: { n: User | null; m: unknown }, two: { n: User | null; m: unknown } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->split()))->toEqual((object) [
+            'split' => (object) ['n' => null, 'm' => null],
+            'two' => (object) ['n' => null, 'm' => null],
+        ]);
+});
+
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
+it('reads a folded model fill class-less beside an override in a cousin prop member, as before', function () {
+    app(Router::class)->get('/doc-shape-cousin', [DocShapeFoldedPageController::class, 'cousin']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { o: { p: { n: User | null }; q: { m: unknown } } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->cousin()))->toEqual((object) [
+            'o' => (object) ['p' => (object) ['n' => null], 'q' => (object) ['m' => null]],
+        ]);
+});
+
+it('imports no override a folded page fill spells only in a literal once read class-less', function () {
+    app(Router::class)->get('/doc-shape-literal', [DocShapeFoldedPageController::class, 'literal']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { lo: { k: unknown; kind: 'User' | null }, lc: { k: unknown; kind: 'User' | null; c: unknown } }")
+        ->and($transformer->typeImports)->toBe([])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->literal()))->toEqual((object) [
+            'lo' => (object) ['k' => null, 'kind' => null],
+            'lc' => (object) ['k' => null, 'kind' => null, 'c' => null],
+        ]);
+});
+
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
+it('reads props helpers\' fills folded into a page prop class-less, as before', function () {
+    app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: unknown } }')
+        ->and($transformer->typeImports)->toBe([])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->folded()))->toEqual((object) [
+            'prop' => (object) ['k' => null],
+            'nested' => (object) ['y' => (object) ['k' => null]],
+            'model_only' => (object) ['k' => null],
+        ]);
 });
 
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {

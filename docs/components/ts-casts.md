@@ -84,20 +84,25 @@ payload property adds neither the key nor its import, while a method-level cast 
 resource method cast does.
 
 Shared data's `@return` shape is a cast in force on each key no `#[TsCasts]` entry replaces, with the custom imports it
-keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`). The
-fit keeps exactly those classes and displaces every other class the value carried, dropping one whose name the shape's
-own imports bring. A token an override spells like a class's name names none, which no per-name queue can hold, so the
-namer reads the key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. Unlike
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a top-level
-key there that names a model or an enum is imported, unless its own override import spells that name; a nested one
-still follows that rule.
+keeps and the class behind each token it names (`tokenFqcns` from `LaravelTsPublish::docblockReturnShapeInfos()`), as
+is an API resource method's on each vague key its refiner fills. The fit keeps exactly those classes and displaces
+every other class the value carried, dropping one whose name the shape's own imports bring. A token an override spells
+like a class's name names none, which no per-name queue can hold, so the namer, `ResourceTransformer`'s too, reads the
+key's tokens in order from `MethodAnalysis::$declaredTokenFqcns`. By
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), a key there
+that names a model or an enum, at any depth, is imported, and an override spelled like it keeps its own import. A value
+carries no slots, so `InlineObjectResult::of()` first reads every member a fill typed with no class
+(`TokenSlots::classLess()`), as before slots: a leaf a class's token names is `unknown`, an override's or a
+literal's token stays ([known gap](../known-gaps.md#a-docblock-fill-spread-inside-a-nested-literal-keeps-no-class)).
 
 A cast entry describes one value of its key. `merge()` drops it where a later source sets the key without a cast, and
 `mergeReturnBranches()` keeps it only where every branch that sets the key casts it alike.
 
 The fit runs at publish time, never when the analyzer applies a cast. Dropping a key's import channels there loses the
 classes an import-less cast spells, the wraps a cast writes itself, and what a later class-level cast without an import
-needs (`ClassCastOverMethodCastResource`).
+needs (`ClassCastOverMethodCastResource`). Two fits run at analysis time: `InlineObjectResult::of()`'s, over the
+members it folds into one value, whose casts no outer cast can retype, and a key `ReturnShapeRefiner` fills from a
+method's `@return`, which held only a vague value ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill)).
 
 `dropOverriddenEnumResources()` stays as the guard for the one record the fit never sees: a later spread's key over an
 earlier spread's `EnumResource`, which would make `rewriteEnumResourceTypes()` throw. `SpreadOverSpreadEnumResource`
@@ -115,8 +120,8 @@ pins it.
   that spells its name with no class of its own behind it: another key's cast without import channels, an extends
   clause, a type alias. So a carried class no such text keeps never forces an alias. A route file, shared data and a
   companion apply **the unclaimed-token rule** instead: such a text's token takes the one class of its name on any
-  channel or carried, unless a custom import brings that name. A token inside a quoted literal, or after `typeof`,
-  names no class and takes none ([`FileImportNames`](import-name-registry.md#fileimportnames)).
+  channel or carried, unless a custom import brings that name. A token inside a string literal or a template literal's
+  text, or after `typeof`, names no class and takes none ([`FileImportNames`](import-name-registry.md#fileimportnames)).
   `ResourceTransformer::keepSpelled()` applies the same test to the classes it holds, and `pruneUnspelledImports()`,
   after the `AsEnum` rewrite, drops any import whose local name no published type spells.
 - For a cast key, `resolveMultiEnumAccessorFqcns()` and `resolveMultiClassAccessorFqcns()` register through

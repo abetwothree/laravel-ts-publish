@@ -8,6 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForeignWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OverriddenWithResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WarningBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
@@ -127,6 +130,36 @@ describe('SubjectPropertyTypeResolver::resolve()', function () {
         $stats = new ReflectionClass(PostStatsResource::class);
 
         expect($resolver->resolve($stats, 'untypedChannels', RuntimeClass::assumed($stats))['type'] ?? null)
+            ->toBe('string[]');
+    });
+});
+
+describe('SubjectPropertyTypeResolver::declaredType()', function () {
+    test('a trait property\'s `@var` resolves through the trait\'s imports, not its user\'s', function () {
+        $subject = new ReflectionClass(TraitPropertyClashResource::class);
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+
+        expect($resolver->declaredType($subject, $subject->getProperty('status')))
+            ->toMatchArray(['type' => 'StatusType', 'directEnumFqcn' => Status::class])
+            ->and($resolver->declaredType($subject, $subject->getProperty('post')))
+            ->toMatchArray(['type' => 'Post | null', 'modelFqcn' => Post::class]);
+    });
+
+    test('a promoted property with no `@var` of its own reads its constructor\'s `@param`', function (string $property, string $type) {
+        $subject = new ReflectionClass(WarningBag::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->declaredType($subject, $subject->getProperty($property))['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        'a list' => ['warnings', 'string[]'],
+        'a record' => ['context', 'Record<string, unknown>'],
+        'its own `@var`, over the constructor\'s' => ['codes', 'number[]'],
+    ]);
+
+    test('a trait-promoted property reads the trait constructor\'s `@param`, though the class overrides it', function () {
+        $subject = new ReflectionClass(NoteBoard::class);
+
+        expect(resolve(SubjectPropertyTypeResolver::class)->declaredType($subject, $subject->getProperty('notes'))['type'] ?? null)
             ->toBe('string[]');
     });
 });

@@ -9,6 +9,6 @@ export interface BulletinArchiveResource
 {
     id: number;
     plucked: Comment[][];
-    rows: ({ author: Pick<User, 'id' | 'name'> })[];
-    own_picks: (Pick<Bulletin, 'id' | 'title'>)[];
+    rows: { author: Pick<User, 'id' | 'name'> }[];
+    own_picks: Pick<Bulletin, 'id' | 'title'>[];
 }

@@ -46,8 +46,9 @@ key inside a concrete shape is not the same as no shape. The return-type order, 
 refinement all use this one predicate.
 
 `resolveAttribute()` takes a `carriesImports` flag, which reaches only the getter-body step and the `@property`
-refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). The
-accessor step is memoized per model, attribute and import mode, so one mode never reuses the other's answer.
+refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). Its
+`casesAsLiterals` flag, set for a whole read in the body fallback, reaches only the getter-body step. The accessor step
+is memoized per model, attribute, import mode and case reading, so no reading reuses another's answer.
 `resolveAttributeClass()` and `resolveAccessorModelFqcns()` take no flag, because the first never reads a getter body
 and the models a getter returns do not depend on how its filters are spelled.
 
@@ -56,9 +57,9 @@ and the models a getter returns do not depend on how its filters are spelled.
 A mutator with no getter is documented `Attribute<never, string>` by convention. The `never` says no getter exists.
 It is not the read type, since a read returns the raw, cast column, so `ResolvesAccessorType` treats a `never` Get
 like a missing docblock and returns `omittedTypeScriptInfo()`. It strips a `null` arm first with
-`ValueResult::stripNullArm()`, because `?never` and `never|null` both arrive as `never | null`. `resolveAttribute()`
-then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a name with no column.
-`OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
+`TsTypeString::withoutNullArm()`, because `?never` and `never|null` both arrive as `never | null`.
+`resolveAttribute()` then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a
+name with no column. `OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
 
 To assert that a name is left out, use `isOmittedMutator()`, which reads the accessor step's `omit` flag.
 `resolveAttribute()` returns `unknown` both for an omitted mutator and for an attribute it cannot type.
@@ -210,12 +211,24 @@ under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an imp
 included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
 test stops an enum spelled like a composed class beside it from taking that class's import.
 
-A union keeps its arms' merged imports unless an arm its own imports do not cover spells a name a sibling arm's imports
-bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
-`Panel|Status` keeps `UiNode`'s.
+A docblock shape is the exception: each member names the class behind each token of a class's name (`tokenFqcns`, one
+slot per token in print order, null for an override's), so a member naming a model, an enum or a published API resource
+keeps it at any depth, nested or in a container (`keptShapeMember()`). A value object's shape and a reader that keeps
+only the type string read with no class (`withoutShapeClasses()`).
 
-`docblockReturnShapeInfos()` also names the class behind each top-level key's tokens (`tokenFqcns`), which only shared
-data reads ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)); every reader below ignores it.
+A union keeps its arms' merged imports unless an arm its own imports and classes do not cover spells a name a sibling
+arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override spelled `User`, keeps both, its slots
+`[null, User]`, while `Panel|Status` keeps `UiNode`'s; in a container, `mergeTypeScriptInfos()` keeps the null in
+`classTokenFqcns`.
+
+A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
+other class, or holds a null, a literal's or a key's spelled like a class's name included, is read there with no class
+(`shapeChannels()`). Shared data, a metadata companion and an API resource's `@return` fill read `tokenFqcns` from
+`docblockReturnShapeInfos()` ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
+
+`resolveDocblockTypePart()` alone reads an intersection of sealed keyed shapes with no key in common, such as
+`array{a: int}&array{owner: User}`, as the one object it sends, `{ a: number; owner: User }` (`intersectedShape()`). A
+nested one, and one in `share()`'s or a metadata provider's `@return`, read as before.
 
 These readers apply it, each with the scope and the fallback its page gives:
 
@@ -224,7 +237,8 @@ These readers apply it, each with the scope and the fallback its page gives:
 - the `@return` an API resource's method fills from
   ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));
 - a model metadata payload, which throws instead ([Model metadata](model-metadata.md#type-precedence));
-- the body fallback, per method ([Receiver types](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)).
+- the body fallback, which carries FQCN channels and so keeps only the collision test, per method
+  ([Receiver types](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does)).
 
 ## Docblock types
 
@@ -239,14 +253,15 @@ These readers apply it, each with the scope and the fallback its page gives:
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So
-  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: unknown })[]`.
+  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: TaskAssignment })[]`.
 - **Key types**: a string-refinement key, such as `non-empty-string` or `class-string<Model>`, gives
   `Record<string, X>`. An `array-key` or `mixed` key gives `X[] | Record<string, X>`, because the keys may not be
   sequential.
 - **A leading `?`**: `?array<int, int>` has the `?` stripped, the rest resolved and `| null` appended, as `toTsType()`
   does for a plain type. Without it the container pattern would not match, and partial matching would return a
   plausible wrong scalar.
-- **Parentheses**: `wrapAsArray()` wraps a union or an intersection before it appends `[]`.
+- **Parentheses**: `wrapAsArray()` lists through `TsTypeShape::listType()`, which wraps a top-level union, intersection
+  or arrow before it appends `[]`, and no object literal.
 - **Unrecognized generics**: a part that still contains `<` resolves to `unknown`, not to the `int` that partial
   matching would find inside it.
 
@@ -267,27 +282,33 @@ appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `
 ### Trait-declared methods read the trait's file
 
 For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()` reports the using class, though the
-file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
-so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
-use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
-`ModelAttributeResolver::morphToGenericMembers()`. A value object's shape reads a property's `@var` the same way,
-through `propertyDeclaringFileClass()`. Reflection reports a trait's property, docblock and all, as the using class's,
-and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
+file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches
+([`DeclaringFile`](../../src/Ast/Docblocks/DeclaringFile.php)), so a class named in a trait's docblock resolves against
+the trait's imports, not the model's. The docblock readers all use it: `docblockReturnTypes()`,
+`resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and `ModelAttributeResolver::morphToGenericMembers()`.
+Every reader of a property's docblock, a value object's shape included, goes through
+`PropertyDocblockTypeReader::tag()`: it resolves the docblock in the file that declares the property, and gives a
+promoted property with no `@var` its constructor's `@param`. Reflection reports a trait's property, docblock and all,
+as the using class's, and a class's redeclaration of it the same way, so `DeclaringFile::ofProperty()` asks each file's
+source which one declares the property. PHP 8.4 reports a trait's redeclaration of a parent's property as the parent's,
+docblock included, so every caller passes the class it reads the property on, and the trait's source supplies both.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
-argument of the consumer's `@use Trait<X>` tag, spelled `@use`, `@phpstan-use` or `@psalm-use`. `traitUseArguments()`
+argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-use`, `@template-use` or `@use`, the
+prefixed one first ([`DocblockTags`](../../src/Ast/Docblocks/DocblockTags.php)). `traitUseArguments()`
 reads that tag only from the doc comment of the `use` statement inside the class, never from a prose mention, and
 checks the consumer before its parents. It parses the file through `AstParser::parseFile()`, which records the file as
-a cache dependency. The trait name in the tag must resolve through a `use` import or the namespace.
-`resolveDocblockTypeName()`'s namespace fallback checks `class_exists()` and `enum_exists()`, not `trait_exists()`, so
-a same-namespace trait with no `use` import silently fails to bind.
+a cache dependency. A docblock name, the tag's trait included, resolves through the file's `use` imports, then its
+namespace, for any class-like kind ([`DocblockNames`](../../src/Ast/Docblocks/DocblockNames.php)).
 
 ## `@property` refinement
 
 `refineWithPropertyDocblock()` runs only when the waterfall's type is vague, so a concrete result is never
 second-guessed. It searches the class and its parents first, the child winning, then every trait in that chain,
-recursively, so a class-level tag beats one on a trait. A tag may omit the `$` before the name, as some vendor traits
-do, but only when it has no description. That keeps a description's last word from being read as a property name.
+recursively, so a class-level tag beats one on a trait. Within a docblock, `@phpstan-property` and `@psalm-property`
+are read before `@property` and `@property-read`, a vague one yielding to a precise one. A tag may omit the `$` before
+the name, as some vendor traits do, but only when it has no description. That keeps a description's last word from
+being read as a property name.
 
 `isStrictlyMoreStructured()` accepts a candidate that is not vague. It accepts a vague candidate only when the current
 type is entirely vague (`unknown`, `unknown[]`, `object` or `unknown[] | Record<string, unknown>`, optionally with
@@ -461,6 +482,6 @@ These pages hold the neighboring rules:
 - [Version-guarded Laravel classes](../laravel-version-guards.md), including the `#[UseResource]` guard in
   `ModelClassResolver`
 - [Support helpers](support-helpers.md), for why the docblock helpers stayed on `LaravelTsPublish`
-- The known gap where a shape whose values name a class loses those values:
-  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways)
+- The known gap where a shape whose values name a class can lose some of them:
+  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them)
 - [Type inference gates](../testing/type-inference-gates.md)

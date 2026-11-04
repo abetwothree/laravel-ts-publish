@@ -10,12 +10,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -786,7 +786,7 @@ trait CollectsLocalVarBindings
             }
         }
 
-        $nullable = ValueResult::hasNullArm($scope->varValueBindings[$name]['type'] ?? '');
+        $nullable = TsTypeString::hasNullArm($scope->varValueBindings[$name]['type'] ?? '');
 
         foreach ($values as $value) {
             $held = $classes === null ? null : resolve(ReceiverClassResolver::class)->resolve($value, $scope);

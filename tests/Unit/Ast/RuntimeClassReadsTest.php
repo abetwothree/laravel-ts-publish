@@ -145,7 +145,7 @@ function analyzedKeyTypesWithin(int $seconds, string $class): array
 {
     $alarms = function_exists('pcntl_alarm');
     $async = $alarms && pcntl_async_signals(true);
-    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : SIG_DFL;
+    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : null;
 
     if ($alarms) {
         pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
@@ -850,7 +850,7 @@ it('reads a column in a helper a model\'s ancestor reaches through `self::` or a
     $post->forceFill(['id' => 1, 'title' => 'x']);
 
     expect(publishedResourceKeyTypes(SelfHelperPostResource::class, SelfHelperPost::class))->toBe([
-        'via_self' => 'string', 'via_self_shape' => '{ t: string; picked: { title: string } }',
+        'via_self' => 'string', 'via_self_shape' => "{ t: string; picked: Pick<SelfHelperPost, 'title'> }",
         'via_self_only' => '{ title: string }', 'via_private' => 'string',
     ])->and((new SelfHelperPostResource($post))->resolve(request()))->toBe([
         'via_self' => 'x', 'via_self_shape' => ['t' => 'x', 'picked' => ['title' => 'x']], 'via_self_only' => ['title' => 'x'], 'via_private' => 'x',

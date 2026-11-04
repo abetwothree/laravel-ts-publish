@@ -81,8 +81,8 @@ final class ValueResolver
      * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
      * Returns null for anything not a resolvable constant.
      *
-     * A plain enum's case in a scope that carries no import types as the value it sends instead, while a retyped
-     * (overridden) enum's keeps its override, as `LaravelTsPublish::retypedEnumType()` answers.
+     * A plain enum's case under AnalysisScope::$casesAsLiterals types as the value it sends instead, as
+     * resolveConstantValue() says.
      *
      * @return ValueExpressionResult|null
      */
@@ -126,15 +126,7 @@ final class ValueResolver
             return null;
         }
 
-        // A scope that carries no import cannot import an enum's own names, so a case types as the value it sends; a
-        // retyped enum's case keeps its override, whose custom import such a scope carries.
-        if ($constantReflection->isEnumCase() && $value instanceof UnitEnum && ! $scope->carriesImports
-            && LaravelTsPublish::retypedEnumType($className) === null
-        ) {
-            return EnumValueTypes::caseValue($value);
-        }
-
-        return $this->resolveConstantValue($value);
+        return $this->resolveConstantValue($value, $scope->casesAsLiterals);
     }
 
     /**
@@ -159,12 +151,19 @@ final class ValueResolver
      * when it cannot be typed. A scalar leaf maps by its PHP type; a value that is another enum's case resolves to
      * that enum.
      *
+     * With $casesAsLiterals, a case of an enum no override retypes types as what json_encode() writes it as instead, at
+     * any depth, and a case it cannot write, a pure or a `JsonSerializable` enum's, as nothing.
+     *
      * @return ValueExpressionResult|null
      */
-    public function resolveConstantValue(mixed $value): ?array
+    public function resolveConstantValue(mixed $value, bool $casesAsLiterals = false): ?array
     {
         if (is_array($value)) {
-            return $this->analyzeConstantArrayValue($value);
+            return $this->analyzeConstantArrayValue($value, $casesAsLiterals);
+        }
+
+        if ($casesAsLiterals && $value instanceof UnitEnum && LaravelTsPublish::retypedEnumType($value::class) === null) {
+            return EnumValueTypes::caseValue($value);
         }
 
         // A constant's initializer may itself be another class's enum case (`Status::Live`), which getValue() hands
@@ -217,7 +216,9 @@ final class ValueResolver
 
         try {
             $value = $this->evaluateConstantExpression($list, $scope);
-            $constant = is_array($value) && array_is_list($value) ? $this->resolveConstantValue($value) : null;
+            $constant = is_array($value) && array_is_list($value)
+                ? $this->resolveConstantValue($value, $scope->casesAsLiterals)
+                : null;
 
             if ($constant !== null) {
                 return $constant;
@@ -361,7 +362,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantArrayValue(array $value): ?array
+    private function analyzeConstantArrayValue(array $value, bool $casesAsLiterals): ?array
     {
         if ($value === []) {
             return ['type' => 'never[]', 'optional' => false];
@@ -372,8 +373,8 @@ final class ValueResolver
         }
 
         return array_is_list($value)
-            ? $this->analyzeConstantListValue($value)
-            : $this->analyzeConstantRecordValue($value);
+            ? $this->analyzeConstantListValue($value, $casesAsLiterals)
+            : $this->analyzeConstantRecordValue($value, $casesAsLiterals);
     }
 
     /**
@@ -383,7 +384,7 @@ final class ValueResolver
      * @param  list<mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantListValue(array $value): ?array
+    private function analyzeConstantListValue(array $value, bool $casesAsLiterals): ?array
     {
         /** @var array<string, string> $types identity => type */
         $types = [];
@@ -392,7 +393,7 @@ final class ValueResolver
         $customImports = [];
 
         foreach ($value as $item) {
-            $itemResult = $this->resolveConstantValue($item);
+            $itemResult = $this->resolveConstantValue($item, $casesAsLiterals);
 
             if ($itemResult === null || $itemResult['type'] === 'unknown') {
                 return null;
@@ -432,7 +433,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult
      */
-    private function analyzeConstantRecordValue(array $value): array
+    private function analyzeConstantRecordValue(array $value, bool $casesAsLiterals): array
     {
         $parts = [];
         $embeddedEnumFqcns = [];
@@ -440,7 +441,7 @@ final class ValueResolver
         $customImports = [];
 
         foreach ($value as $key => $item) {
-            $itemResult = $this->resolveConstantValue($item) ?? ValueResult::unknown();
+            $itemResult = $this->resolveConstantValue($item, $casesAsLiterals) ?? ValueResult::unknown();
             $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];

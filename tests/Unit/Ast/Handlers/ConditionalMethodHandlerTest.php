@@ -669,7 +669,7 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a to-one whenLoaded variable, bare' => ['$this->whenLoaded("author", fn ($author) => $this->transform($author, fn ($author) => $author))', 'User'],
     'a relation-chain map variable' => [
         '$this->comments->map(fn ($c) => $this->transform($c, fn ($c) => ["id" => $c->id, "who" => $c->user?->name]))',
-        '({ id: number; who: string | null })[]',
+        '{ id: number; who: string | null }[]',
     ],
     'a to-many whenLoaded variable' => [
         '$this->whenLoaded("comments", fn ($comments) => $this->transform($comments, fn ($comments) => $comments))',

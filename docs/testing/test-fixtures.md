@@ -7,7 +7,7 @@ follows the folder.
 | Folder | Holds |
 |---|---|
 | `Models/`, `Relations/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
-| `Http/Resources/`, `Http/Requests/`, `Http/Controllers/` | API resources and collections, form requests, Inertia controllers |
+| `Http/Resources/`, `Http/Requests/`, `Http/Controllers/`, `Http/Middleware/` | API resources and collections, form requests, Inertia controllers, Inertia share middleware |
 | `Tables/` | Inertia UI tables |
 | `Providers/` | service providers a test registers |
 | `Mixins/` | mixins and invokables a test registers as macros on a `Macroable` class |

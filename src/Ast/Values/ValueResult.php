@@ -34,7 +34,7 @@ use ReflectionClass;
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string>,
+ *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool
  * }
@@ -73,23 +73,6 @@ final class ValueResult
     }
 
     /**
-     * Drop a top-level `| null` arm from a type string — a guarded success path proves it unreachable.
-     * Nested null members (inside object shapes, generics, or array element types) are kept.
-     *
-     * The single canonical home for this helper: `CoalesceHandler` (stripping `??`'s left operand) and
-     * `ConditionalMethodHandler` (stripping `whenNotNull()`'s success arm) both call it from here now.
-     */
-    public static function stripNullArm(string $type): string
-    {
-        $members = array_values(array_filter(
-            TsTypeString::splitTopLevelUnion($type),
-            fn (string $member): bool => $member !== 'null',
-        ));
-
-        return $members === [] ? 'unknown' : implode(' | ', $members);
-    }
-
-    /**
      * A type's top-level members except its empty ones, which an arm's shape and its enum are read past.
      *
      * @return list<string>
@@ -108,32 +91,11 @@ final class ValueResult
     }
 
     /**
-     * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
-     */
-    public static function hasNullArm(string $type): bool
-    {
-        return in_array('null', TsTypeString::splitTopLevelUnion($type), true);
-    }
-
-    /**
-     * Append a top-level `| null` arm unless the type has one; `unknown` already admits null, so it stays as is.
-     *
-     * Never TsTypeString::hoistNull(): it de-duplicates members, so `User | User`, two classes, would lose one.
-     */
-    public static function withNullArm(string $type): string
-    {
-        return $type === 'unknown' || self::hasNullArm($type) ? $type : $type.' | null';
-    }
-
-    /**
-     * Suffix a type with `[]`, parenthesizing a union or intersection first: TypeScript binds `[]`
-     * tighter than both, so `A & B[]` parses as `A & (B[])`, not `(A & B)[]`.
-     *
-     * FormRequestRulesAnalyzer's same-named method is a different rule (nesting-aware) and stays there.
+     * A list of a type, as TsTypeShape::listType() prints one.
      */
     public static function arrayWrapType(string $type): string
     {
-        return str_contains($type, '|') || str_contains($type, '&') ? '('.$type.')[]' : $type.'[]';
+        return TsTypeShape::listType([$type]);
     }
 
     /**
@@ -154,13 +116,7 @@ final class ValueResult
      */
     public static function namesOnlyExportedClasses(array $result): bool
     {
-        foreach (self::modelChannelFqcns($result) as $fqcn) {
-            if (! PublishedClasses::exports($fqcn)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all(self::modelChannelFqcns($result), PublishedClasses::exports(...));
     }
 
     /**
@@ -171,7 +127,17 @@ final class ValueResult
      */
     public static function namesOnlyPublishedModels(array $result): bool
     {
-        if (! self::namesOnlyExportedClasses($result)) {
+        return self::everyModelPublished(self::modelChannelFqcns($result));
+    }
+
+    /**
+     * Whether every model of a list gets a published file, as namesOnlyPublishedModels() asks of a result's channels.
+     *
+     * @param  list<class-string>  $models
+     */
+    public static function everyModelPublished(array $models): bool
+    {
+        if (! array_all($models, PublishedClasses::exports(...))) {
             return false;
         }
 
@@ -179,13 +145,22 @@ final class ValueResult
             return true;
         }
 
-        foreach (self::modelChannelFqcns($result) as $model) {
-            if (FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract()) {
-                return false;
-            }
-        }
+        return ! array_any(
+            $models,
+            static fn (string $model): bool => FrameworkClasses::is($model) || new ReflectionClass($model)->isAbstract(),
+        );
+    }
 
-        return true;
+    /**
+     * Whether a reading can publish: there is one, it is not vague, and every model it names gets a published file.
+     *
+     * @param  ValueExpressionResult|null  $result
+     *
+     * @phpstan-assert-if-true !null $result
+     */
+    public static function isPublishableReading(?array $result): bool
+    {
+        return $result !== null && ! TsTypeString::isVagueTsType($result['type']) && self::namesOnlyPublishedModels($result);
     }
 
     /**
@@ -335,7 +310,7 @@ final class ValueResult
     {
         $closed = $result['closedToDottedKeys'] ?? null;
 
-        return $closed !== null && self::stripNullArm($closed) === self::stripNullArm($result['type']);
+        return $closed !== null && TsTypeString::withoutNullArm($closed) === TsTypeString::withoutNullArm($result['type']);
     }
 
     /**
@@ -343,7 +318,7 @@ final class ValueResult
      */
     public static function mayBeNull(string $type): bool
     {
-        return $type === 'unknown' || self::hasNullArm($type);
+        return $type === 'unknown' || TsTypeString::hasNullArm($type);
     }
 
     /**

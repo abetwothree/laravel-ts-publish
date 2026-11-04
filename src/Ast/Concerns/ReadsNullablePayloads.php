@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
@@ -56,7 +56,7 @@ trait ReadsNullablePayloads
         return match ($this->nullablePayloadType($call, $className, $scope, $engine)) {
             null => $type,
             'null' => 'null',
-            default => ValueResult::withNullArm($type),
+            default => TsTypeString::withNullArm($type),
         };
     }
 
@@ -93,7 +93,7 @@ trait ReadsNullablePayloads
         }
 
         if (! $reading->filterReaches($scope)
-            || ! ValueResult::hasNullArm($resolved['type'])
+            || ! TsTypeString::hasNullArm($resolved['type'])
             || $this->isProvenNonNull($payload, $scope)
         ) {
             return null;

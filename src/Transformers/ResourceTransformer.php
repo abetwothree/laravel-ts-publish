@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
@@ -44,6 +45,7 @@ use ReflectionClass;
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -113,6 +115,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
     protected array $carried = [];
+
+    /** @var array<array-key, Slots> property name => the class behind each class token of a declaration's text */
+    protected array $declaredTokenFqcns = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -437,6 +442,7 @@ class ResourceTransformer extends CoreTransformer
         );
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
+        $this->declaredTokenFqcns = $analysis->declaredTokenFqcns;
 
         // A body-less collection whose live wrap key is null or empty emits an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -461,7 +467,7 @@ class ResourceTransformer extends CoreTransformer
             $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
-            $nullable = str_contains($type, 'null');
+            $nullable = TsTypeString::hasNullArm($type);
             $isCollection = ValueResult::isListShaped($type);
             // ValueResult::withEnumArmShapes() records each arm's own shape for a mixed EnumResource/direct-access
             // ternary or match; anything else mixed (e.g. a `??`) falls back to the merged-string guess, which never
@@ -1336,13 +1342,13 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
-                $this->properties[$propName]['type'],
-                $propFqcns,
-                $nameMap,
-                $this->importAliases,
-                $this->siblingImportNames,
-            );
+            $type = $this->properties[$propName]['type'];
+            $slots = $this->declaredTokenFqcns[$propName] ?? [];
+
+            // A per-name queue cannot hold the null of an override's token spelled like a class, so each reads a slot.
+            $this->properties[$propName]['type'] = in_array(null, $slots, true)
+                ? $this->aliasSlottedTokens($type, $slots, $nameMap)
+                : TsTypeString::aliasPropertyType($type, $propFqcns, $nameMap, $this->importAliases, $this->siblingImportNames);
         }
     }
 
@@ -1432,5 +1438,35 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return array_values(array_unique([...$base, ...$multi, ...$inlineResources]));
+    }
+
+    /**
+     * Respell each read token of a declaration's own names in a type by the class its slot names, in order, leaving an
+     * override's token, whose slot is null, as spelled.
+     *
+     * @param  Slots  $slots
+     * @param  array<string, string>  $nameMap  FQCN => unaliased type name
+     */
+    private function aliasSlottedTokens(string $type, array $slots, array $nameMap): string
+    {
+        $respelled = '';
+        $from = 0;
+
+        foreach (TokenSlots::declaredTokens($type, $slots) as $token) {
+            if ($token['slot'] === null || ! $token['read']) {
+                continue;
+            }
+
+            $respelled .= substr($type, $from, $token['offset'] - $from).TsTypeString::aliasPropertyType(
+                $token['token'],
+                [$token['slot']],
+                $nameMap,
+                $this->importAliases,
+                $this->siblingImportNames,
+            );
+            $from = $token['offset'] + strlen($token['token']);
+        }
+
+        return $respelled.substr($type, $from);
     }
 }

@@ -5122,7 +5122,7 @@
                 },
                 {
                     "name": "author_rows",
-                    "type": "({ author: Pick<User, 'id' | 'name'> })[]"
+                    "type": "{ author: Pick<User, 'id' | 'name'> }[]"
                 },
                 {
                     "name": "bulletins",
@@ -5931,7 +5931,7 @@
                 },
                 {
                     "name": "legs",
-                    "type": "({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]"
+                    "type": "{ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[]"
                 },
                 {
                     "name": "created_at",
@@ -6119,7 +6119,7 @@
                 },
                 {
                     "name": "assigned_users",
-                    "type": "(User & { pivot: unknown })[]"
+                    "type": "(User & { pivot: TaskAssignment })[]"
                 },
                 {
                     "name": "ability_map",
@@ -11238,12 +11238,12 @@
                 },
                 {
                     "name": "rows",
-                    "type": "({ author: Pick<User, 'id' | 'name'> })[]",
+                    "type": "{ author: Pick<User, 'id' | 'name'> }[]",
                     "optional": false
                 },
                 {
                     "name": "own_picks",
-                    "type": "(Pick<Bulletin, 'id' | 'title'>)[]",
+                    "type": "Pick<Bulletin, 'id' | 'title'>[]",
                     "optional": false
                 }
             ]
@@ -11268,7 +11268,7 @@
                 },
                 {
                     "name": "summary",
-                    "type": "{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }",
+                    "type": "{ comment_lists: Comment[][]; lead_author: Pick<User, 'id' | 'name'> | null; id: number }",
                     "optional": false
                 }
             ]
@@ -11458,7 +11458,7 @@
                 },
                 {
                     "name": "own_picks",
-                    "type": "(Pick<Bulletin, 'id' | 'title'>)[]",
+                    "type": "Pick<Bulletin, 'id' | 'title'>[]",
                     "optional": true
                 }
             ]
@@ -12577,12 +12577,12 @@
                 },
                 {
                     "name": "summary",
-                    "type": "{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
+                    "type": "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; reply_previews: { id: number; content: string }[] }",
                     "optional": false
                 },
                 {
                     "name": "summary_via_resource",
-                    "type": "{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
+                    "type": "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; reply_previews: { id: number; content: string }[] }",
                     "optional": false
                 },
                 {
@@ -12592,7 +12592,7 @@
                 },
                 {
                     "name": "picks_summary",
-                    "type": "{ id: number; picks: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] } }",
+                    "type": "{ id: number; picks: { id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; reply_previews: { id: number; content: string }[] } }",
                     "optional": false
                 }
             ]
@@ -13152,7 +13152,7 @@
                 },
                 {
                     "name": "legs",
-                    "type": "({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]",
+                    "type": "{ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[]",
                     "optional": false
                 }
             ]
@@ -13980,7 +13980,7 @@
                 },
                 {
                     "name": "member_role_snapshot",
-                    "type": "({ role: RoleType | null })[]",
+                    "type": "{ role: RoleType | null }[]",
                     "optional": true
                 },
                 {
@@ -15595,7 +15595,7 @@
                 },
                 {
                     "name": "collected_reads",
-                    "type": "({ content: string; who: string | null })[]",
+                    "type": "{ content: string; who: string | null }[]",
                     "optional": false
                 },
                 {
@@ -15605,12 +15605,12 @@
                 },
                 {
                     "name": "local_rows",
-                    "type": "({ who: string | null })[]",
+                    "type": "{ who: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "loaded_rows",
-                    "type": "(Pick<Comment, 'id' | 'content'>)[]",
+                    "type": "Pick<Comment, 'id' | 'content'>[]",
                     "optional": false
                 },
                 {
@@ -15850,7 +15850,7 @@
                 },
                 {
                     "name": "staff_map_only",
-                    "type": "({ id: number; name: string; role: RoleType | null; last_login_at: string | null })[]",
+                    "type": "{ id: number; name: string; role: RoleType | null; last_login_at: string | null }[]",
                     "optional": true
                 },
                 {
@@ -17329,12 +17329,12 @@
                 },
                 {
                     "name": "authors",
-                    "type": "({ id: number; who: string | null; who_or: string | null })[]",
+                    "type": "{ id: number; who: string | null; who_or: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "loaded",
-                    "type": "({ who: string | null })[]",
+                    "type": "{ who: string | null }[]",
                     "optional": true
                 }
             ]
@@ -17528,12 +17528,12 @@
                 },
                 {
                     "name": "status_label",
-                    "type": "{ label: 'Draft' | 'Published'; value: 0 | 1 }",
+                    "type": "{ label: StatusKind; value: StatusType }",
                     "optional": false
                 },
                 {
                     "name": "status_payload",
-                    "type": "{ payload_status: unknown; payload_name: 'Draft' | 'Published' }",
+                    "type": "{ payload_status: StatusType; payload_name: StatusKind }",
                     "optional": false
                 },
                 {
@@ -19016,12 +19016,12 @@
                 },
                 {
                     "name": "member_profiles",
-                    "type": "({ id: number; role: RoleType | null; owner: User })[]",
+                    "type": "{ id: number; role: RoleType | null; owner: User }[]",
                     "optional": false
                 },
                 {
                     "name": "member_map_only",
-                    "type": "({ id: number; role: RoleType | null })[]",
+                    "type": "{ id: number; role: RoleType | null }[]",
                     "optional": false
                 },
                 {
@@ -19131,7 +19131,7 @@
                 },
                 {
                     "name": "columns",
-                    "type": "{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }",
+                    "type": "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }",
                     "optional": false
                 },
                 {
@@ -21525,7 +21525,7 @@
                 },
                 {
                     "name": "featured_posts",
-                    "type": "({ id: number; title: string; file: string | null })[] | null",
+                    "type": "{ id: number; title: string; file: string | null }[] | null",
                     "optional": true
                 }
             ]

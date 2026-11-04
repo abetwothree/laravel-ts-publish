@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 
 /**
  * One list or object arm of an array's published type, as its named members and the keys it leaves unnamed. A write
@@ -195,7 +196,9 @@ final readonly class ArrayArm
      */
     private static function intKey(string $name): ?int
     {
-        return PhpArrayKey::storedInt(trim($name, '"\''));
+        $key = PrintedKey::decode($name);
+
+        return $key === null ? null : PhpArrayKey::storedInt($key);
     }
 
     /**
@@ -233,8 +236,8 @@ final readonly class ArrayArm
     }
 
     /**
-     * Each arm printed, once, an intersection parenthesized beside another arm, and the list the class sends the object
-     * arm as where it may, unless the list arm already holds each value that list may hold.
+     * Each arm printed, once, an intersection or an arrow parenthesized beside another arm, and the list the class
+     * sends the object arm as where it may, unless the list arm already holds each value that list may hold.
      *
      * @param  array<string, self>  $arms  by kind
      * @param  list<ArrayWrite>|null  $writes  the writes the arms settled under; null leaves out the list
@@ -248,10 +251,7 @@ final readonly class ArrayArm
         $held = $listed === null || (isset($arms['list']) && array_diff($listed, $arms['list']->rest) === []);
         $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
 
-        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(
-            fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : $arm,
-            $printed,
-        ));
+        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(TsTypeShape::groupedArm(...), $printed));
     }
 
     /**

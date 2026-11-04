@@ -7,10 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
@@ -206,11 +206,17 @@ final class AnalysisScope
     public ?array $collectedElement = null;
 
     /**
-     * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
-     * with no FQCN channel and drops the whole shape once a value names a token. Filter code reads it to publish the
-     * most specific answer that names none.
+     * False while a reader that keeps no FQCN channel reads an accessor's getter, through AccessorBodyAnalyzer and
+     * AstEngine::analyzeModelClosure(), so filter code publishes the most specific answer naming no token. No publish
+     * run seeds it since the body fallback carries channels: only tests reach that mode, and #96 decides its fate.
      */
     public bool $carriesImports = true;
+
+    /**
+     * True while MethodReturnTypeResolver's body fallback analyzes a method, so a plain backed enum's case, alone or
+     * in a list, types as the literal it sends: ValueResolver::resolveConstantValue(). Its enum's type is vaguer.
+     */
+    public bool $casesAsLiterals = false;
 
     /**
      * Whether the response the runtime class's analysis feeds re-indexes a numeric-keyed array into a list, as an API
@@ -921,6 +927,27 @@ final class AnalysisScope
             return $read();
         } finally {
             $this->readsCallableReturn = $returned;
+        }
+    }
+
+    /**
+     * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off, then
+     * restore it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingCasesAsEnums(Closure $read): mixed
+    {
+        $literals = $this->casesAsLiterals;
+        $this->casesAsLiterals = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->casesAsLiterals = $literals;
         }
     }
 

@@ -32,7 +32,7 @@ export interface BulletinArchive
 export interface BulletinArchiveMutators
 {
     comment_lists: Comment[][];
-    author_rows: ({ author: Pick<User, 'id' | 'name'> })[];
+    author_rows: { author: Pick<User, 'id' | 'name'> }[];
 }
 
 export interface BulletinArchiveRelations

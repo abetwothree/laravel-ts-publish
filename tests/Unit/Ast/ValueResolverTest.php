@@ -188,9 +188,9 @@ it('types a pure enum case as its enum too, the names a model or a metadata file
     expect($result)->toBe(['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class]);
 });
 
-it('types an enum case in a scope that carries no import as the value it sends, or not at all for a pure enum', function () {
+it('types an enum case under casesAsLiterals as the value it sends, or not at all for a pure enum', function () {
     $scope = valueResolverTestScope();
-    $scope->carriesImports = false;
+    $scope->casesAsLiterals = true;
     $resolve = fn (string $enum, string $case): ?array => new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch($enum, $case), $scope);
 
     expect($resolve(Status::class, 'Draft'))->toBe(['type' => '0', 'optional' => false])
@@ -198,6 +198,15 @@ it('types an enum case in a scope that carries no import as the value it sends, 
         ->and($resolve(UnsafeIntegerBackedStatus::class, 'Huge'))->toBe(['type' => 'number', 'optional' => false])
         ->and($resolve(Visibility::class, 'Public'))->toBeNull()
         ->and($resolve(UiTone::class, 'Bright'))->toMatchArray(['type' => 'UiToneDto', 'customImports' => ['@js/types/ui' => ['UiToneDto']]]);
+});
+
+it('types the cases a constant value holds under casesAsLiterals as the values they send, at any depth', function () {
+    $resolve = fn (mixed $value): ?array => new ValueResolver()->resolveConstantValue($value, casesAsLiterals: true);
+
+    expect($resolve([Status::Draft, Status::Published]))->toBe(['type' => '(0 | 1)[]', 'optional' => false])
+        ->and($resolve(['kind' => ChartKind::Bar, 'n' => 1]))->toBe(['type' => "{ kind: 'bar'; n: number }", 'optional' => false])
+        ->and($resolve([Visibility::Public]))->toBeNull()
+        ->and(new ValueResolver()->resolveConstantValue([Status::Draft]))->toMatchArray(['type' => 'StatusType[]']);
 });
 
 it('declines a constant whose lazily-evaluated initializer throws, instead of aborting', function () {

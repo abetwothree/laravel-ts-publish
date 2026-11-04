@@ -88,13 +88,13 @@ it('adds a wrap\'s null arm only where filter() reaches the mapped items', funct
         'profiles?' => '(Profile | null)[]',
         'wrapped?' => '{ profile: ProfileResource }[]',
         'wrapped_values?' => '{ profile: ProfileResource }[]',
-        'wrapped_all?' => '({ profile: ProfileResource | null })[]',
+        'wrapped_all?' => '{ profile: ProfileResource | null }[]',
         'chain_wrapped' => '{ profile: ProfileResource }[]',
-        'chain_wrapped_all' => '({ profile: ProfileResource | null })[]',
+        'chain_wrapped_all' => '{ profile: ProfileResource | null }[]',
         'pipe_owner_wrapped' => '{ profile: ProfileResource }[]',
-        'pipe_owner_wrapped_all' => '({ profile: ProfileResource | null })[]',
+        'pipe_owner_wrapped_all' => '{ profile: ProfileResource | null }[]',
         'pipe_member_wrapped' => '{ profile: ProfileResource }[]',
-        'pipe_member_wrapped_all' => '({ profile: ProfileResource | null })[]',
+        'pipe_member_wrapped_all' => '{ profile: ProfileResource | null }[]',
         'owner_wrapped?' => '{ profile: ProfileResource | null }',
     ])
         ->and(mappedProfileWrapSends('wrapped'))->toBe('throws')

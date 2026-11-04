@@ -19,8 +19,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -105,6 +107,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
  *
@@ -173,6 +176,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      *                           the subject publishes: a JSON:API resource's toArray() is then its body
      * @param  Reading  $reading  how the values read reach the client: an Inertia reading runs the subject's profile
      *                            through ResourceExpressionHandlers::forInertia(), and every body it reads the same way
+     * @param  bool  $casesAsLiterals  seeds AnalysisScope::$casesAsLiterals; a supplied scope keeps its own
      *
      * @throws LogicException for a $handlerProfile under an Inertia reading, whose CallSite binds a callable as called
      */
@@ -188,6 +192,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         ?RuntimeClass $runtime = null,
         private readonly bool $readsCall = false,
         private readonly Reading $reading = Reading::Encoded,
+        bool $casesAsLiterals = false,
     ) {
         if ($handlerProfile !== null && ! $reading->encodes()) {
             throw new LogicException('An injected handler profile reads as json_encode() sends; an Inertia reading builds its own.');
@@ -200,6 +205,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
+            $this->scope->casesAsLiterals = $casesAsLiterals;
         }
 
         if ($runtime !== null) {
@@ -423,6 +429,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
     ): ResourceAnalysis {
+        if ($dropsUntypedBranches) {
+            $analyses = BranchJoin::withUnalikeFillsUntyped($analyses);
+        }
+
         $branchCount = count($analyses);
 
         /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
@@ -437,9 +447,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
+        /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
+        $declaredMap = [];
+
         foreach ($analyses as $analysis) {
             foreach ($analysis->properties as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
+                $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
             }
 
@@ -453,16 +467,33 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var AnalyzedPropertyList */
         $properties = [];
 
+        /** @var array<array-key, Slots> $slots */
+        $slots = [];
+        $unalike = [];
+
         foreach ($propertyMap as $name => $entries) {
-            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
+            // A dropping join has read an unalike fill as untyped already, so only a strict one meets one here.
+            [$declared, $unalikeTexts] = BranchJoin::declaredBranches($declaredMap[$name], $dropsUntypedBranches);
+            $bound = $unalikeTexts === [];
+            [$type, $keySlots] = $bound
+                ? BranchJoin::slottedBranchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull, $declared)
+                : ['unknown', []];
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
+            $bodyType = $bound ? BranchJoin::branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull, $declared) : $type;
             // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
             // type is a fill, and a reconcile that puts it back must find it again.
             $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
-            $fillType = array_column($entries, 'fillType') === []
+            $fillType = array_column($entries, 'fillType') === [] || ! $bound
                 ? null
-                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
+                : BranchJoin::branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
+
+            if ($keySlots !== []) {
+                $slots[$name] = $keySlots;
+            }
+
+            if (! $bound) {
+                $unalike[] = (string) $name;
+            }
 
             $presentInAll = count($entries) === $branchCount;
             $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
@@ -506,7 +537,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
             enumResourceArmShapes: $channels->enumResourceArmShapes,
-            casts: $this->castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
+            casts: BranchJoin::castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
             carried: $channels->carried,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
@@ -515,7 +546,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
+        $merged->declaredTokenFqcns = $slots;
         $merged->queueSplitClasses($analyses);
+
+        // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.
+        foreach ($unalike as $name) {
+            $merged->untype($name);
+        }
 
         return $merged;
     }
@@ -2084,6 +2121,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             carriesImports: $this->scope->carriesImports,
             runtime: $this->scope->runtime,
             reading: $this->reading,
+            casesAsLiterals: $this->scope->casesAsLiterals,
         );
         $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
         $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
@@ -2247,7 +2285,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 ];
             }
 
-            // The publisher fits the key's import channels to this text once it knows which cast is in force.
+            // The publisher fits the key's import channels to this text once it knows which cast is in force; the slots
+            // a fill declared described the value this text replaces.
+            unset($analysis->declaredTokenFqcns[$property]);
             $analysis->casts[$property] = $optional === null
                 ? ['type' => $type, 'import' => $import]
                 : ['type' => $type, 'import' => $import, 'optional' => $optional];
@@ -2302,86 +2342,5 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $merged->merge($skipped);
-    }
-
-    /**
-     * The cast entry of each key every branch that sets it casts to one text and import, as only then does the union
-     * publish that cast. It is optional where any branch's cast says so, since the union is; otherwise it keeps a flag
-     * only where every branch's cast sets the same one.
-     *
-     * @param  list<MethodAnalysis>  $analyses
-     * @param  list<array-key>  $names
-     * @return CastMap
-     */
-    private function castsEveryBranchAgrees(array $analyses, array $names): array
-    {
-        $casts = [];
-
-        foreach ($names as $name) {
-            $branchCasts = [];
-
-            foreach ($analyses as $analysis) {
-                if (in_array((string) $name, array_column($analysis->properties, 'name'), true)) {
-                    $branchCasts[] = $analysis->casts[$name] ?? null;
-                }
-            }
-
-            $cast = $branchCasts[0] ?? null;
-
-            if ($cast === null || ! array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast !== null
-                && $branchCast['type'] === $cast['type'] && $branchCast['import'] === $cast['import'])) {
-                continue;
-            }
-
-            $anyOptional = array_any(
-                $branchCasts,
-                static fn (?array $branchCast): bool => ($branchCast['optional'] ?? null) === true,
-            );
-
-            $casts[(string) $name] = match (true) {
-                $anyOptional => ['type' => $cast['type'], 'import' => $cast['import'], 'optional' => true],
-                array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast) => $cast,
-                default => ['type' => $cast['type'], 'import' => $cast['import']],
-            };
-        }
-
-        return $casts;
-    }
-
-    /**
-     * One property's branch types as one type: the type itself when every branch agrees.
-     *
-     * @param  list<string>  $types
-     */
-    private function branchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull): string
-    {
-        $unique = array_values(array_unique($types));
-
-        if ($dropsUntypedBranches && count($unique) > 1) {
-            $typed = array_values(array_diff($unique, ['unknown']));
-
-            // A lone `null` left once the untypable branches are gone says nothing about a spread helper's value, but
-            // a merge call keeps it, as a ternary keeps its one typed arm.
-            $unique = $typed === [] || ($typed === ['null'] && ! $keepsLoneNull) ? ['unknown'] : $typed;
-        }
-
-        return count($unique) === 1 ? $unique[0] : $this->unionBranchTypes($unique);
-    }
-
-    /**
-     * Union branch type strings, hoisting one trailing `| null` rather than repeating the marker each
-     * nullsafe branch already carries. Only top-level nulls move; a nested one belongs to its member.
-     *
-     * @param  list<string>  $types
-     */
-    private function unionBranchTypes(array $types): string
-    {
-        // `unknown` absorbs whatever it is unioned with, so one untypable branch makes the whole
-        // union `unknown` — never a `string` that the untypable branch does not actually promise.
-        if (in_array('unknown', $types, true)) {
-            return 'unknown';
-        }
-
-        return TsTypeString::hoistNull($types);
     }
 }
