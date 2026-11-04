@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use Illuminate\Contracts\Pagination\CursorPaginator as CursorPaginatorContract;
 use Illuminate\Contracts\Pagination\Paginator as PaginatorContract;
@@ -258,7 +259,7 @@ final class ModelFinderHandler implements ExpressionHandler
             return $read;
         }
 
-        return ['result' => [...$read['result'], 'type' => ValueResult::withNullArm($read['result']['type'])], 'element' => null];
+        return ['result' => [...$read['result'], 'type' => TsTypeString::withNullArm($read['result']['type'])], 'element' => null];
     }
 
     /**
@@ -481,7 +482,7 @@ final class ModelFinderHandler implements ExpressionHandler
         }
 
         return match ($kind) {
-            'nullableElement' => ['result' => [...$element, 'type' => ValueResult::withNullArm($element['type'])], 'element' => null],
+            'nullableElement' => ['result' => [...$element, 'type' => TsTypeString::withNullArm($element['type'])], 'element' => null],
             'element' => ['result' => $element, 'element' => null],
             'list' => $step === 'values' ? [...$inner, 'keyed' => false] : $this->keptKeys($inner, $inner['keyed'] ?? false),
             'count' => ['result' => ['type' => 'number', 'optional' => false], 'element' => null],
@@ -656,7 +657,7 @@ final class ModelFinderHandler implements ExpressionHandler
         $value = $this->analyzeRelatedModelProperty($column->value, $scope, $modelFqcn);
 
         return $terminal === 'value'
-            ? ['result' => [...$value, 'type' => ValueResult::withNullArm($value['type'])], 'element' => null]
+            ? ['result' => [...$value, 'type' => TsTypeString::withNullArm($value['type'])], 'element' => null]
             : ['result' => [...$value, 'type' => ValueResult::arrayWrapType($value['type'])], 'element' => $value];
     }
 
