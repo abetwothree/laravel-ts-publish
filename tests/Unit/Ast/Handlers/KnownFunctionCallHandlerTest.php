@@ -84,6 +84,12 @@ it('reads array_values() of each arm as the list of its values', function () {
     ]);
 });
 
+it('reads array_values() of an empty object as no values', function (string $php) {
+    expect(knownFunctionCallType($php))->toBe('never[]');
+})->with([
+    'an empty object cast to an array' => ['array_values((array) (object) [])'],
+]);
+
 it('keeps the element type through array_values()', function () {
     expect(analyzedKeyTypes(ReshapedListsPayload::class))->toMatchArray([
         'tags' => 'string[]',

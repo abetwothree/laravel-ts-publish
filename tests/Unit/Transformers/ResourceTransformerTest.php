@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
@@ -1624,6 +1625,15 @@ describe('ResourceTransformer import collision deconfliction', function () {
         // The wraps' own list must keep all three entries, or the third occurrence reads the last entry's alias.
         expect((new ResourceTransformer(EnumResourceWrapTrioResource::class))->properties['trio']['type'])
             ->toBe('{ a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof CrmStatus>; c: AsEnum<typeof WorkbenchStatus> }');
+    });
+
+    test('EnumResource::make() over a relation chain and a nullsafe read types the enum', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $properties = (new ResourceTransformer(EnumResourceRelationChainResource::class))->properties;
+
+        expect($properties['chain']['type'])->toBe('AsEnum<typeof Status>')
+            ->and($properties['nullsafe']['type'])->toBe('AsEnum<typeof Status> | null');
     });
 });
 

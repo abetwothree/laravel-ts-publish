@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnum
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperBodyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
@@ -7736,6 +7737,14 @@ test('a resource method whose own declaration is vague publishes what its return
     'a vague array delegating to the model\'s shape' => ['summary', '{ a: number }'],
     'a string or a number' => ['branchy', 'string | number'],
 ]);
+
+// A spread reads the helper's returns as the payload's own keys, the one literal arm's key optional.
+test('a spread of a helper whose returns differ publishes the keys of each', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperSpreadResource::class), Post::class)->analyze()->properties);
+
+    expect($props->mapWithKeys(fn (array $prop): array => [$prop['name'].($prop['optional'] ? '?' : '') => $prop['type']])->all())
+        ->toBe(['id' => 'number', 'a' => 'number', 'b?' => 'string', 'slug' => 'string', 'active' => 'number']);
+});
 
 // The last two need rules of their own: a finder in this profile, keys() in a pipeline.
 test('a helper read as a value publishes what its returns hold, and two whenHas() callbacks stay unread', function (string $key, string $type) {

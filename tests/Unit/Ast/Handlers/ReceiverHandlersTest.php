@@ -2305,6 +2305,13 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        'map() of a @var collection over a value that names no class' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $vague */ '
+                .'$vague = $this->resource->getRelationValue(\'comments\'); return $vague->map(fn ($c) => $c->content)->all();',
+            'string[]',
+            $same,
+            ['beta', 'alpha'],
+        ],
         'a @var collection over an Eloquent collection the value names no element of' => [
             '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $rows */ '
                 .'$rows = new \Illuminate\Database\Eloquent\Collection($this->comments->all()); return $rows->first()?->content;',
