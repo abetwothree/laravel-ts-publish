@@ -206,9 +206,9 @@ final class AnalysisScope
     public ?array $collectedElement = null;
 
     /**
-     * False while an accessor's getter is read for a reader that keeps no FQCN channel, through AccessorBodyAnalyzer
-     * and AstEngine::analyzeModelClosure(), as ReceiverMethodReturnResolver::serializedModelShape()'s filters read.
-     * Filter code reads it to publish the most specific answer that names no token.
+     * False while a reader that keeps no FQCN channel reads an accessor's getter, through AccessorBodyAnalyzer and
+     * AstEngine::analyzeModelClosure(), so filter code publishes the most specific answer naming no token. No publish
+     * run seeds it since the body fallback carries channels: only tests reach that mode, and #96 decides its fate.
      */
     public bool $carriesImports = true;
 

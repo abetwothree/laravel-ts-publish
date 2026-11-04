@@ -43,7 +43,7 @@ final class SubjectHelperReturnResolver
      */
     public function resolveEnumResourceReturn(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // Without imports the body fallback would drop its whole shape for the enum a wrap names.
+        // A reader that keeps no FQCN channel could not import the enum a typed wrap names.
         if (! $scope->carriesImports
             || ! $this->hasThisReceiver($call)
             || ! $call->name instanceof Identifier

@@ -97,10 +97,13 @@ Callers fill their queues in one of three ways:
   generated index signature key, whose text is a value or a key, and the class channel never reads the name after
   `typeof`, which is a const's. A key a `share()` docblock retypes, or a method's `@return` fills, reads each token of
   its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the
-  override's `User` where another key brings that import. `FileImportNames::declaredTokens()` is the one reading of
-  those slots: the docblock engine's keep check and key fill, the branch join, `ResourceTransformer` and this file all
-  read them through it, the join by way of `joinedSlots()`, which reads a cut arm against its whole text's own names,
-  and none respells a token inside a literal or after `typeof`.
+  override's `User` where another key brings that import. `FileImportNames::declaredTokensOf()` is the one reading of
+  those slots, and every writer and reader goes through it: `declaredTokens()` reads a whole declaration (the docblock
+  engine's keep check, key fill and container slots, `ResourceTransformer`, this file), `joinedSlots()` arms joined
+  into one type (a docblock union, shape or container's union, the branch join), a cut arm against its whole text's
+  own names, and `classLess()` a member `InlineObjectResult::of()` folds into a value, which carries no slots. Each
+  names a token by `typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot. None respells a token
+  inside a literal or after `typeof`.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter
