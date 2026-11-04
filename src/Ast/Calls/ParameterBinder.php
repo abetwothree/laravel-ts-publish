@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -42,6 +44,9 @@ use ReflectionParameter;
  * A body write that replaces a parameter with another class, or a collection's models with other values, ends its
  * binding there, and the parameter's own `$x = …;` the value it binds: the caller seeds the body (seedBody()) once its
  * parameters are bound.
+ *
+ * A callback's parameters bind to what its caller passes them: a collection's element (elementBinding()) or the value
+ * at their position (bindCallbackArgument()).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
@@ -116,6 +121,84 @@ final class ParameterBinder
         $scope->varDeclaredBindings[$name] = [$class];
 
         return false;
+    }
+
+    /**
+     * How a callback's parameter binds a collection's element: by the element's model, or the concrete model its
+     * non-null declaration names where the element's is not one; else by the element's value; null for neither.
+     *
+     * A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is. The
+     * caller declines a variadic parameter, which collects the element and the key into one list.
+     *
+     * @param  class-string<Model>|null  $elementModel
+     * @param  ValueExpressionResult|null  $elementValue
+     * @return PassedBinding|null
+     */
+    public static function elementBinding(?string $elementModel, ?array $elementValue, ?Param $param, AnalysisScope $scope): ?array
+    {
+        $declared = $param === null ? null : self::declaredClass($param, $scope);
+        $declaredModel = $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
+        $model = $elementModel !== null && ($declaredModel === null || is_a($elementModel, $declaredModel, true))
+            ? $elementModel
+            : $declaredModel;
+
+        if ($model === null && $elementValue === null) {
+            return null;
+        }
+
+        return [
+            'model' => $model,
+            'classes' => null,
+            'elementModel' => null,
+            'value' => $model === null ? $elementValue : null,
+            'unsaved' => false,
+            'refines' => false,
+            'declaredOnly' => $model !== null && $model !== $elementModel && $param !== null && self::spellsRelativeClass($param),
+        ];
+    }
+
+    /**
+     * Bind a callback's parameter at $position to what its caller passes there: an expression as itself, a typed value
+     * as its value, and for a variadic parameter the list it collects. A `$filled` argument is never null.
+     *
+     * @param  Expr|ValueExpressionResult  $argument
+     */
+    public static function bindCallbackArgument(
+        ArrowFunction|ClosureExpr $callback,
+        int $position,
+        Expr|array $argument,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        bool $filled = false,
+    ): void {
+        $param = $callback->params[$position] ?? null;
+
+        if ($param === null || ! $param->var instanceof Variable || ! is_string($param->var->name)) {
+            return;
+        }
+
+        $name = $param->var->name;
+
+        if ($param->variadic) {
+            $element = $argument instanceof Expr ? $engine->resolve($argument) : $argument;
+            $element = $filled ? [...$element, 'type' => TsTypeString::withoutNullArm($element['type'])] : $element;
+
+            if ($element['type'] !== 'unknown') {
+                $scope->varValueBindings[$name] = [...$element, 'type' => ValueResult::arrayWrapType($element['type']), 'optional' => false];
+            }
+
+            return;
+        }
+
+        if ($filled) {
+            $scope->nonNullReads[$name][] = ['read' => $param->var, 'after' => null, 'before' => null];
+        }
+
+        if ($argument instanceof Expr) {
+            $scope->closureParamExprBindings[$name] = $argument;
+        } elseif ($argument['type'] !== 'unknown') {
+            $scope->varValueBindings[$name] = $argument;
+        }
     }
 
     /**

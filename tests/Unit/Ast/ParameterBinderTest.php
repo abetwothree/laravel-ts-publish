@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\BindsMapCallbacks;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -24,9 +27,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParamete
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Expression;
@@ -89,6 +95,26 @@ function parameterBinderKinds(): array
     return parameterBinderKeyTypes(
         resolve(AstEngine::class)->analyze(HelperParameterKindsResource::class, 'toArray', Post::class)->properties,
     );
+}
+
+/**
+ * The closure or arrow function a parsed `$f = …;` assigns.
+ */
+function parameterBinderClosure(string $closure): ArrowFunction|Closure
+{
+    $statement = new AstParser()->parseSource('<?php $f = '.$closure.';')[0];
+    assert($statement instanceof Expression && $statement->expr instanceof Assign);
+    assert($statement->expr->expr instanceof ArrowFunction || $statement->expr->expr instanceof Closure);
+
+    return $statement->expr->expr;
+}
+
+/**
+ * The resource profile over a scope the caller also holds, as production shares one.
+ */
+function parameterBinderEngine(AnalysisScope $scope): ResourceAstAnalyzer
+{
+    return new ResourceAstAnalyzer(new ReflectionClass(HelperParameterKindsResource::class), Post::class, 'toArray', null, $scope);
 }
 
 test('a helper body reads its typed parameters through every reading of it', function () {
@@ -469,6 +495,98 @@ test('binds a passed Eloquent collection of one model by its element, unless a s
         ->and($scope->varDeclaredBindings)->toBe(['keyed' => [EloquentCollection::class]])
         ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('listed'), $scope)?->elementModel)->toBe(Comment::class)
         ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('keyed'), $scope)?->elementModel)->toBeNull();
+});
+
+// A hint the element's model extends keeps the element's model; an abstract or nullable hint names no row's shape,
+// and a `self` one may be any subclass.
+test('binds a callback parameter to a collection element: its model, a concrete model hint, else its value', function () {
+    $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
+    $bound = fn (?string $model, ?array $value, string $closure): ?array => ParameterBinder::elementBinding(
+        $model,
+        $value,
+        parameterBinderClosure($closure)->params[0] ?? null,
+        $scope,
+    );
+    $binding = fn (?string $model, ?array $value = null, bool $relative = false): array => [
+        'model' => $model,
+        'classes' => null,
+        'elementModel' => null,
+        'value' => $value,
+        'unsaved' => false,
+        'refines' => false,
+        'declaredOnly' => $relative,
+    ];
+    $title = ['type' => 'string', 'optional' => false];
+
+    expect($bound(Comment::class, null, 'fn ($c) => $c'))->toBe($binding(Comment::class))
+        ->and($bound(Comment::class, $title, 'fn () => 1'))->toBe($binding(Comment::class))
+        ->and($bound(null, null, 'fn (\\Workbench\\App\\Models\\Post $p) => $p'))->toBe($binding(Post::class))
+        ->and($bound(Comment::class, null, 'fn (\\Workbench\\App\\Models\\Post $p) => $p'))->toBe($binding(Post::class))
+        ->and($bound(Comment::class, null, 'fn (\\Illuminate\\Database\\Eloquent\\Model $m) => $m'))->toBe($binding(Comment::class))
+        ->and($bound(null, null, 'fn (self $m) => $m'))->toBe($binding(SelfTypedHelpers::class, relative: true))
+        ->and($bound(null, null, 'fn (\\Illuminate\\Database\\Eloquent\\Model $m) => $m'))->toBeNull()
+        ->and($bound(null, null, 'fn (?\\Workbench\\App\\Models\\Post $p) => $p'))->toBeNull()
+        ->and($bound(null, $title, 'fn (\\Illuminate\\Database\\Eloquent\\Model $m) => $m'))->toBe($binding(null, $title))
+        ->and($bound(null, $title, 'fn ($t) => $t'))->toBe($binding(null, $title));
+});
+
+test('binds a callback parameter at each position to the value its caller passes there', function () {
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    $closure = parameterBinderClosure('function ($value, $key) {}');
+
+    ParameterBinder::bindCallbackArgument($closure, 0, ['type' => 'string', 'optional' => false], $scope, parameterBinderEngine($scope));
+    ParameterBinder::bindCallbackArgument($closure, 1, ['type' => 'number', 'optional' => false], $scope, parameterBinderEngine($scope));
+    ParameterBinder::bindCallbackArgument($closure, 2, ['type' => 'boolean', 'optional' => false], $scope, parameterBinderEngine($scope));
+
+    expect($scope->varValueBindings)->toBe([
+        'value' => ['type' => 'string', 'optional' => false],
+        'key' => ['type' => 'number', 'optional' => false],
+    ])->and($scope->closureParamExprBindings)->toBe([]);
+});
+
+// A read binds as itself, so the closure reads it where it reads its own names; a filled argument is never null.
+test('binds a passed read as itself, a variadic parameter to the list it collects, and a filled argument non-null', function () {
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    $closure = parameterBinderClosure('fn ($read, $vague, ...$rest) => $read');
+    $read = new PropertyFetch(new Variable('this'), 'title');
+    $engine = parameterBinderEngine($scope);
+
+    ParameterBinder::bindCallbackArgument($closure, 0, $read, $scope, $engine, filled: true);
+    ParameterBinder::bindCallbackArgument($closure, 1, ['type' => 'unknown', 'optional' => false], $scope, $engine);
+    ParameterBinder::bindCallbackArgument($closure, 2, ['type' => 'string | null', 'optional' => true], $scope, $engine, filled: true);
+
+    $nested = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    ParameterBinder::bindCallbackArgument(parameterBinderClosure('fn (...$all) => $all'), 0, $read, $nested, parameterBinderEngine($nested));
+
+    expect($scope->closureParamExprBindings)->toBe(['read' => $read])
+        ->and($scope->varValueBindings)->toBe(['rest' => ['type' => 'string[]', 'optional' => false]])
+        ->and(array_keys($scope->nonNullReads))->toBe(['read'])
+        ->and($nested->varValueBindings)->toBe(['all' => ['type' => 'string[]', 'optional' => false]]);
+});
+
+test('a map callback\'s second parameter holds the key its caller passes, and nothing where it passes none', function () {
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    $host = new class
+    {
+        use BindsMapCallbacks;
+
+        /**
+         * Resolve a map callback over string elements, passing it $key where one is given.
+         *
+         * @param  array<string, mixed>|null  $key
+         * @return array<string, mixed>|null
+         */
+        public function mapped(Expr $callback, ?array $key, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return $this->resolveMapCallback($callback, null, ['type' => 'string', 'optional' => false], false, $scope, $engine, $key);
+        }
+    };
+    $closure = parameterBinderClosure('fn ($row, $key) => [\'row\' => $row, \'key\' => $key]');
+
+    expect($host->mapped($closure, ['type' => 'number', 'optional' => false], $scope, parameterBinderEngine($scope))['type'] ?? null)
+        ->toBe('{ row: string; key: number }')
+        ->and($host->mapped($closure, null, $scope, parameterBinderEngine($scope))['type'] ?? null)
+        ->toBe('{ row: string; key: unknown }');
 });
 
 test('reads one parameter\'s @phpstan-param, @psalm-param or @param tag, and declines a form the whitelist refuses', function (string $doc, ?string $expected) {

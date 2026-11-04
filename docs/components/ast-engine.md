@@ -360,11 +360,14 @@ one class and that no writer bound to a class, or to a value that names one or i
 `varModelBindings`, any other class in `varDeclaredBindings`, before it seeds the body, so a write that replaces the
 parameter ends that binding.
 
-Each writer binds the first parameter to what Laravel passes the closure:
+Each writer binds the first parameter to what Laravel passes the closure, through [`ParameterBinder`]:
+`elementBinding()` names a collection element's binding, which `bindPassed()` makes, and `bindCallbackArgument()` binds
+an expression or a value at a position. `whenLoaded()`'s relation classes and `transform()`'s passed variable and filled
+model bind in `ConditionalMethodHandler`, whose value closures read through `ResolvesCallbackValues::callbackValue()`.
 
 | Writer | Laravel passes | First parameter bound to |
 | --- | --- | --- |
-| `BindsMapCallbacks::resolveMapCallback()`, for every `map()` | `($value, $key)` | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value. Never the key |
+| `BindsMapCallbacks::resolveMapCallback()`, for every `map()` | `($value, $key)` | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value. The second holds the key only where the caller passes one |
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
@@ -417,7 +420,7 @@ class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a uni
 `Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
 closure itself, where `AstParser` also moves one written before the call argument holding it. An untyped one binds
 nothing, since no call is read. A closure's `self` and `parent` name the classes `relativeClass()` names, there and in
-a `map()` callback's model (`BindsMapCallbacks::declaredMapModel()`), and mark the name in `relativeParameters`, so its
+a `map()` callback's model (`ParameterBinder::elementBinding()`), and mark the name in `relativeParameters`, so its
 receiver reads members as a spelled inline `@var`'s does.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.

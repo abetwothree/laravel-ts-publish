@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\BindsMapCallbacks;
@@ -590,15 +591,11 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): array {
-        return $scope->within(function () use ($callback, $element, $key, $scope): void {
+        return $scope->within(function () use ($callback, $element, $key, $scope, $engine): void {
             $scope->enterClosureBody($callback);
 
-            foreach ([$element, $key] as $index => $type) {
-                $parameter = $callback->params[$index] ?? null;
-
-                if ($parameter !== null && $parameter->var instanceof Variable && is_string($parameter->var->name)) {
-                    $scope->varValueBindings[$parameter->var->name] = ['type' => $type, 'optional' => false];
-                }
+            foreach ([$element, $key] as $position => $type) {
+                ParameterBinder::bindCallbackArgument($callback, $position, ['type' => $type, 'optional' => false], $scope, $engine);
             }
 
             if ($callback instanceof ClosureExpr) {
@@ -636,7 +633,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
-        $declared = $this->declaredMapModel($callback->params[0] ?? null, $scope);
+        // The model the first parameter binds over an element nothing names: the one its declaration names.
+        $declared = ParameterBinder::elementBinding(null, null, $callback->params[0] ?? null, $scope)['model'] ?? null;
 
         // A resource collection's items are the API resources it built, or what it was given if it collects none.
         if ($receiver === null

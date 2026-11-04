@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
@@ -63,6 +64,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNonNullGuards;
+    use ResolvesCallbackValues;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
@@ -253,7 +255,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             0,
             $engine,
             fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall(FirstClassCallableHandler::heldCallable($valueArg->value, $scope))),
-            bind: fn () => $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope),
+            bind: fn () => $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope, $engine),
             // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
             // closure parameter named like a proven read drops its proof.
             beforeClaim: fn () => $this->proveNonNull($this->nonNullReads($condition->value, $method === 'when'), $scope),
@@ -720,15 +722,19 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     private function resolveConditionalDefault(Expr $default, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $default = FirstClassCallableHandler::heldCallable($default, $scope);
-        $default = $passed === null ? $default : FirstClassCallableHandler::passingOneValue($default);
+        if ($passed === null) {
+            return $this->callbackValue($default, [], $scope, $engine);
+        }
+
+        // transform()'s value binds by what it held before the claim, which callbackValue() cannot carry.
+        $default = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($default, $scope));
 
         return $scope->readClaimedClosure(
             $default,
-            $passed === null ? 0 : 1,
+            1,
             $engine,
             fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($default)),
-            $passed === null ? null : fn () => $this->bindPassedValue(
+            fn () => $this->bindPassedValue(
                 $default,
                 $passed['value'],
                 $passed['resolved'],
@@ -795,39 +801,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return null;
         }
 
-        $value = FirstClassCallableHandler::heldCallable($value, $scope);
-        $value = $argument === null ? $value : FirstClassCallableHandler::passingOneValue($value);
-
-        return $scope->readClaimedClosure(
-            $value,
-            $argument === null ? 0 : 1,
-            $engine,
-            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($value)),
-            $argument === null ? null : fn () => $this->bindValueArgument($value, $argument, $scope, $engine),
-        );
-    }
-
-    /**
-     * Bind the first parameter of a value closure to the one argument Laravel passes it: a variadic one to its list.
-     *
-     * @param  Expr|ValueExpressionResult  $argument
-     */
-    private function bindValueArgument(Expr $value, Expr|array $argument, AnalysisScope $scope, ExpressionEngine $engine): void
-    {
-        $this->bindVariadicList($value, $argument, $scope, $engine);
-
-        // A variadic parameter collects the argument into a list, so it never holds the argument itself.
-        $name = AnalysisScope::firstParameterName($value);
-
-        if ($name === null) {
-            return;
-        }
-
-        if ($argument instanceof Expr) {
-            $scope->closureParamExprBindings[$name] = $argument;
-        } elseif ($argument['type'] !== 'unknown') {
-            $scope->varValueBindings[$name] = $argument;
-        }
+        return $this->callbackValue($value, $argument === null ? [] : [$argument], $scope, $engine);
     }
 
     /**
@@ -844,28 +818,18 @@ final class ConditionalMethodHandler implements ExpressionHandler
      * resolves like `EnumResource::make($this->status)`. when() passes the closure nothing, so that call throws; an
      * optional parameter holds its default and a variadic one an empty list, so neither is bound here.
      */
-    private function bindClosureParamsFromCondition(Expr $condition, Expr $valueExpr, AnalysisScope $scope): void
+    private function bindClosureParamsFromCondition(Expr $condition, Expr $valueExpr, AnalysisScope $scope, ExpressionEngine $engine): void
     {
         $thisPropExpr = $this->extractThisPropertyFromCondition($condition);
 
-        if ($thisPropExpr === null) {
+        if ($thisPropExpr === null || (! $valueExpr instanceof ArrowFunction && ! $valueExpr instanceof ClosureExpr)) {
             return;
         }
 
-        $firstParam = null;
+        $first = $valueExpr->params[0] ?? null;
 
-        if ($valueExpr instanceof ArrowFunction && $valueExpr->params !== []) {
-            $firstParam = $valueExpr->params[0];
-        } elseif ($valueExpr instanceof ClosureExpr && $valueExpr->params !== []) {
-            $firstParam = $valueExpr->params[0];
-        }
-
-        if ($firstParam === null || $firstParam->variadic || $firstParam->default !== null) {
-            return;
-        }
-
-        if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
-            $scope->closureParamExprBindings[$firstParam->var->name] = $thisPropExpr;
+        if ($first !== null && ! $first->variadic && $first->default === null) {
+            ParameterBinder::bindCallbackArgument($valueExpr, 0, $thisPropExpr, $scope, $engine);
         }
     }
 
@@ -877,22 +841,27 @@ final class ConditionalMethodHandler implements ExpressionHandler
     {
         $relationInfo = $relationship instanceof String_ ? $this->resolveModelRelationTypeInfo($relationship->value, $scope) : null;
 
-        if ($relationInfo === null) {
+        if ($relationInfo === null || (! $closure instanceof ArrowFunction && ! $closure instanceof ClosureExpr)) {
             return;
         }
 
         // A variadic parameter collects the relation into a list, which never holds null: the closure runs only for a
         // loaded value that is not null.
-        if ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== []) {
-            $this->bindVariadicList($closure, [
-                'type' => TsTypeString::withoutNullArm($relationInfo['type']),
-                'optional' => false,
-                ...($relationInfo['modelFqcn'] !== null
-                    ? ['modelFqcn' => $relationInfo['modelFqcn']]
-                    : ['embeddedModelFqcns' => $relationInfo['morphFqcns']]),
-            ], $scope, $engine);
+        if (($closure->params[0] ?? null)?->variadic === true) {
+            if ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== []) {
+                ParameterBinder::bindCallbackArgument($closure, 0, [
+                    'type' => TsTypeString::withoutNullArm($relationInfo['type']),
+                    'optional' => false,
+                    ...($relationInfo['modelFqcn'] !== null
+                        ? ['modelFqcn' => $relationInfo['modelFqcn']]
+                        : ['embeddedModelFqcns' => $relationInfo['morphFqcns']]),
+                ], $scope, $engine);
+            }
+
+            return;
         }
 
+        // The relation binds by its classes, where bindCallbackArgument() binds a value alone.
         $name = AnalysisScope::firstParameterName($closure);
 
         if ($name !== null && $relationInfo['modelFqcn'] !== null) {
@@ -929,7 +898,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $this->warnOfUnpassedArgument('whenNotNull', $value, $scope);
         }
 
-        return $scope->readClaimedClosure($value, 0, $engine, fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($value)));
+        return $this->callbackValue($value, [], $scope, $engine);
     }
 
     /**
@@ -954,33 +923,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $method,
             $closure->getStartLine(),
         ));
-    }
-
-    /**
-     * Bind a variadic first parameter to the list Laravel's one argument collects into; any other parameter is left.
-     *
-     * @param  Expr|ValueExpressionResult  $argument
-     */
-    private function bindVariadicList(Expr $closure, Expr|array $argument, AnalysisScope $scope, ExpressionEngine $engine): void
-    {
-        if ((! $closure instanceof ArrowFunction && ! $closure instanceof ClosureExpr)
-            || ! isset($closure->params[0])
-            || ! $closure->params[0]->variadic
-            || ! $closure->params[0]->var instanceof Variable
-            || ! is_string($closure->params[0]->var->name)
-        ) {
-            return;
-        }
-
-        $element = $argument instanceof Expr ? $engine->resolve($argument) : $argument;
-
-        if ($element['type'] !== 'unknown') {
-            $scope->varValueBindings[$closure->params[0]->var->name] = [
-                ...$element,
-                'type' => ValueResult::arrayWrapType($element['type']),
-                'optional' => false,
-            ];
-        }
     }
 
     /**
@@ -1012,14 +954,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return;
         }
 
-        // A variadic parameter collects the value into a list, so it never holds the value itself.
-        if ($firstParam->variadic) {
-            if ($resolvedValue !== null) {
-                $element = $keepNull
-                    ? $resolvedValue
-                    : [...$resolvedValue, 'type' => TsTypeString::withoutNullArm($resolvedValue['type'])];
+        // A variadic parameter collects the value into a list, and a `$this->prop` read binds as itself.
+        if ($firstParam->variadic || $this->isThisPropertyFetch($value)) {
+            $argument = $firstParam->variadic ? $resolvedValue : $value;
 
-                $this->bindVariadicList($callback, $element, $scope, $engine);
+            if ($argument !== null) {
+                ParameterBinder::bindCallbackArgument($callback, 0, $argument, $scope, $engine, filled: ! $keepNull);
             }
 
             return;
@@ -1030,12 +970,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // The callback runs only for a filled value, so the parameter holding it is not null; a default's may be.
         if (! $keepNull) {
             $this->proveNonNull([$firstParam->var], $scope);
-        }
-
-        if ($this->isThisPropertyFetch($value)) {
-            $scope->closureParamExprBindings[$name] = $value;
-
-            return;
         }
 
         if ($value instanceof Variable) {

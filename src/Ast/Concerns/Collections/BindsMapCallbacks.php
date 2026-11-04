@@ -8,18 +8,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Param;
 
 /**
- * The one way a `map()` callback's first parameter is bound, shared by RelationCollectionChainHandler,
- * CollectionPipelineHandler and VariableHandler. The body resolves through ClosureHandler, which seeds its locals and
- * binds the class any other parameter declares.
+ * The one way a `map()` callback's parameters are bound, shared by RelationCollectionChainHandler,
+ * CollectionPipelineHandler, VariableHandler and ModelFinderHandler. The body resolves through ClosureHandler, which
+ * seeds its locals and binds the class any other parameter declares.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -28,9 +26,9 @@ use PhpParser\Node\Param;
 trait BindsMapCallbacks
 {
     /**
-     * Resolve a `map()` callback's body with its first parameter bound to the element: its model, or the concrete model
-     * the parameter declares where the element model is not one; else its value. Null for a callable that is no
-     * closure, or a variadic first parameter.
+     * Resolve a `map()` callback's body with its first parameter bound to the element as elementBinding() binds it,
+     * and its second to $keyValue where the caller passes one. Null for a callable that is no closure, or a variadic
+     * first parameter.
      *
      * The answer is each element the callback returns, as the reading sends it in an array, apart from the callback.
      *
@@ -38,6 +36,7 @@ trait BindsMapCallbacks
      *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
+     * @param  ValueExpressionResult|null  $keyValue
      * @return ValueExpressionResult|null
      */
     protected function resolveMapCallback(
@@ -47,6 +46,7 @@ trait BindsMapCallbacks
         bool $arrayed,
         AnalysisScope $scope,
         ExpressionEngine $engine,
+        ?array $keyValue = null,
     ): ?array {
         if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
             return null;
@@ -58,26 +58,21 @@ trait BindsMapCallbacks
             return null;
         }
 
-        $declared = $this->declaredMapModel($first, $scope);
-        $model = $elementModel !== null && ($declared === null || is_a($elementModel, $declared, true)) ? $elementModel : $declared;
         $name = AnalysisScope::firstParameterName($callback);
-        // A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is.
-        $relative = $model !== null && $model !== $elementModel && $first !== null && ParameterBinder::spellsRelativeClass($first);
+        $binding = ParameterBinder::elementBinding($elementModel, $elementValue, $first, $scope);
 
         $returned = $scope->readClaimedClosure(
             $callback,
             null,
             $engine,
             fn (): array => $engine->resolve($callback),
-            function () use ($scope, $name, $model, $elementValue, $relative): void {
-                if ($name !== null && $model !== null) {
-                    $scope->varModelBindings[$name] = $model;
+            function () use ($callback, $scope, $engine, $name, $binding, $keyValue): void {
+                if ($name !== null && $binding !== null) {
+                    resolve(ParameterBinder::class)->bindPassed([$name => $binding], $scope);
+                }
 
-                    if ($relative) {
-                        $scope->relativeParameters[$name] = true;
-                    }
-                } elseif ($name !== null && $elementValue !== null) {
-                    $scope->varValueBindings[$name] = $elementValue;
+                if ($keyValue !== null) {
+                    ParameterBinder::bindCallbackArgument($callback, 1, $keyValue, $scope, $engine);
                 }
             },
             function () use ($scope, $arrayed): void {
@@ -87,18 +82,5 @@ trait BindsMapCallbacks
         );
 
         return ValueResult::withoutHeldObject($engine->reading()->arrayValue(ValueResult::calledValue($returned)));
-    }
-
-    /**
-     * The concrete model a map callback's first parameter declares, which PHP holds every element to; null for an
-     * abstract one, such as `Model`, which names no shape of its own.
-     *
-     * @return class-string<Model>|null
-     */
-    protected function declaredMapModel(?Param $param, AnalysisScope $scope): ?string
-    {
-        $declared = $param === null ? null : ParameterBinder::declaredClass($param, $scope);
-
-        return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
     }
 }
