@@ -7081,6 +7081,8 @@ test('a spread helper\'s `@return` publishes its literal types, and each union a
     'two arms typed alike' => ['amount', 'number'],
     'a name no class answers to' => ['custom', 'CustomObject'],
     'a class the shape cannot import' => ['text', 'unknown'],
+    'an unimported interface of the same namespace' => ['captioned', 'unknown'],
+    'an unimported trait of the same namespace' => ['labelled', 'unknown'],
     'a quoted key spaced before its optional marker' => ['quoted-key', "'a' | 'b'"],
 ]);
 
