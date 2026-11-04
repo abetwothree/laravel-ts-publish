@@ -123,6 +123,22 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType("{ 'a\\'b': string; c: number }", 'c'))->toBe('number');
     });
 
+    // Probe S2direct: a key is matched by the name its printed spelling decodes to, never by its raw text.
+    test('reads a member by the key its printed key names, escaped or quoted', function () {
+        expect(TsTypeShape::memberType("{ 'it\\'s': number }", "it's"))->toBe('number')
+            ->and(TsTypeShape::memberType('{ "a\\": b": string; other: number }', 'other'))->toBe('number')
+            ->and(TsTypeShape::memberType('{ "a\\/b": string }', 'a/b'))->toBe('string')
+            ->and(TsTypeShape::memberType('{ "\\u00e9"?: string }', 'é'))->toBe('string')
+            ->and(TsTypeShape::memberType('{ "a\\": b": string }', 'a": b'))->toBe('string')
+            ->and(TsTypeShape::memberType("{ 'it\\'s': number }", "it\\'s"))->toBeNull();
+    });
+
+    test('reads a tuple member only by an index a list holds', function () {
+        expect(TsTypeShape::memberType('[number, string]', '01'))->toBeNull()
+            ->and(TsTypeShape::memberType('[number, string]', '-1'))->toBeNull()
+            ->and(TsTypeShape::memberType('[number, string]', '9223372036854775808'))->toBeNull();
+    });
+
     test('returns null for a missing key or an opaque type', function () {
         expect(TsTypeShape::memberType('{ a: number }', 'b'))->toBeNull()
             ->and(TsTypeShape::memberType('Foo', 'a'))->toBeNull()
@@ -246,6 +262,8 @@ describe('isNumericKey', function () {
         'a written int' => ['42', true],
         'an optional quoted decimal' => ["'1.5'?", true],
         'a number signature' => ['[key: number]', true],
+        'a JSON-escaped int' => ['"\\u0031"', true],
+        'a key quoted around an escaped quote' => ["'1\\''", false],
         'a name' => ['week', false],
         'a string signature' => ['[key: string]', false],
     ]);
@@ -269,6 +287,16 @@ describe('tupleMembers', function () {
         'two members' => ['[string, number]', ['string', 'number']],
         'a template literal holding a comma' => ['[`a,b`, number]', ['`a,b`', 'number']],
         'an optional union' => ['[number, (string | null)?]', ['number', 'string | null']],
+    ]);
+
+    test('says which tuple member is optional, a rest element read as written', function (string $tuple, array $elements) {
+        expect(TsTypeShape::tupleElements($tuple))->toBe($elements);
+    })->with([
+        'two members' => ['[string, number]', [['string', false], ['number', false]]],
+        'an optional member' => ['[string, number?]', [['string', false], ['number', true]]],
+        'an optional union' => ['[number, (string | null)?]', [['number', false], ['string | null', true]]],
+        'a rest element' => ['[number, ...string[]]', [['number', false], ['...string[]', false]]],
+        'the empty tuple' => ['[]', []],
     ]);
 });
 

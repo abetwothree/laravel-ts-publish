@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 
 /**
@@ -14,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
  * Intersections and arrow-function types are opaque.
  *
  * Every reader nests and splits as TypeScanner reads the type, so a string or template literal is read whole.
+ *
+ * @phpstan-type TupleElement = array{string, bool}
  */
 final class TsTypeShape
 {
@@ -60,14 +63,14 @@ final class TsTypeShape
             }
 
             if (self::isWrapped($arm, '[', ']')) {
-                return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
-                    ? self::tupleMembers($arm)[(int) $key] ?? null
-                    : null;
+                $index = PhpArrayKey::listIndex($key);
+
+                return $index === null ? null : self::tupleMembers($arm)[$index] ?? null;
             }
 
             foreach (self::members($arm) ?? [] as [$name, $value]) {
-                // `[key: string]: T` answers every key; a literal key may be quoted and/or optional.
-                if (str_starts_with($name, '[') || trim(rtrim($name, '?'), '\'"') === $key) {
+                // `[key: string]: T` answers every key.
+                if (str_starts_with($name, '[') || PrintedKey::names($name, $key)) {
                     return $value;
                 }
             }
@@ -83,7 +86,17 @@ final class TsTypeShape
      */
     public static function tupleMembers(string $tuple): array
     {
-        return array_map(self::tupleMember(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
+        return array_column(self::tupleElements($tuple), 0);
+    }
+
+    /**
+     * Each member of one tuple, in order, as its type without its optional marker and whether it carries one.
+     *
+     * @return list<TupleElement>
+     */
+    public static function tupleElements(string $tuple): array
+    {
+        return array_map(self::tupleElement(...), self::splitTopLevel(substr($tuple, 1, -1), [',']));
     }
 
     /**
@@ -98,9 +111,7 @@ final class TsTypeShape
             return true;
         }
 
-        $unquoted = preg_match('/^([\'"])(.*)\1$/s', $key, $match) === 1 ? stripcslashes($match[2]) : $key;
-
-        return is_numeric($unquoted);
+        return is_numeric(PrintedKey::decode($key) ?? $key);
     }
 
     /**
@@ -279,17 +290,20 @@ final class TsTypeShape
     }
 
     /**
-     * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union.
+     * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union,
+     * and whether it carries one.
+     *
+     * @return TupleElement
      */
-    private static function tupleMember(string $member): string
+    private static function tupleElement(string $member): array
     {
         if (! str_ends_with($member, '?')) {
-            return $member;
+            return [$member, false];
         }
 
         $member = trim(substr($member, 0, -1));
 
-        return self::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member;
+        return [self::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member, true];
     }
 
     /**
