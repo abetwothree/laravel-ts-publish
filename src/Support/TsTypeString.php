@@ -88,9 +88,9 @@ class TsTypeString
         // A key goes with its optional `?`, no token separator, or `name?` would read as a value. A quoted key (`"1"`,
         // from an int or constant array key) and a generated index signature are keys too, and nothing imports them.
         $withoutKeys = (string) preg_replace(
-            '/(?:'.IndexSignatureKey::PATTERN.'|\b\w+|"(?:[^"\\\\]|\\\\.)*")\s*\??\s*:/',
+            '/(?:'.IndexSignatureKey::PATTERN.'|\b\w+)\s*\??\s*:/',
             '',
-            $type,
+            $this->withoutQuotedKeys($type),
         );
 
         // A literal's text and a number need no import, whatever they spell; a template literal's placeholder may.
@@ -652,5 +652,20 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * The type without each quoted key, its `?` and its `:`: a string literal, as the scanner reads one, followed by
+     * a colon.
+     */
+    private function withoutQuotedKeys(string $type): string
+    {
+        foreach (array_reverse(TypeScanner::literalSpans($type)) as [$start, $end]) {
+            if (str_contains('"\'', $type[$start]) && preg_match('/\G\s*\??\s*:/', $type, $colon, 0, $end) === 1) {
+                $type = substr_replace($type, '', $start, $end - $start + strlen($colon[0]));
+            }
+        }
+
+        return $type;
     }
 }

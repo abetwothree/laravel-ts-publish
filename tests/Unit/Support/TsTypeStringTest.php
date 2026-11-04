@@ -1162,6 +1162,10 @@ describe('shapeValueHasUnimportableToken', function () {
         'a shape member of template text' => ['{ slug: `User-${string}`; n: number }', false],
         'a key holding an escaped quote, before a class' => ['{ "a\\"b": User }', true],
         'a key holding an escaped quote, before a primitive' => ['{ "a\\"b": number }', false],
+        'a quoted key holding a colon' => ['{ "a:b"?: number }', false],
+        'a single-quoted key, before a primitive' => ["{ 'a-b': number }", false],
+        'a single-quoted key holding an escaped quote, before a class' => ["{ 'it\\'s': User }", true],
+        'a string literal value beside a class' => ["{ a: 'x' | User }", true],
     ]);
 
     // A nested shape prints its signature bare, so the template text must read as a key rather than as a value token.
