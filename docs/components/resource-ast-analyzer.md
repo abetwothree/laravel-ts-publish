@@ -15,7 +15,7 @@ These are the classes a change to resource analysis usually touches:
 | Class | Owns |
 | --- | --- |
 | [`ResourceAstAnalyzer`](../../src/Analyzers/ResourceAstAnalyzer.php) | The walk over a method body: return branches, spreads, `merge()`, arrays built in a variable, delegation |
-| [`ReadsReturnedVariables`](../../src/Ast/Concerns/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
+| [`ReadsReturnedVariables`](../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
 | [`InspectsResourceCalls`](../../src/Ast/Concerns/Resources/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
@@ -24,12 +24,12 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
 | [`ResourceCollectionBody`](../../src/Ast/Resources/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
 | [`ResourceExpressionHandlers`](../../src/Ast/Dispatch/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
-| [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
-| [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
-| [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
+| [`RelationFilterHandler`](../../src/Ast/Handlers/Collections/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
+| [`ConditionalMethodHandler`](../../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
+| [`ToResourceHandler`](../../src/Ast/Handlers/Resources/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
+| [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
-| [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
+| [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
 | [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
 | [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
@@ -214,7 +214,7 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
 
 `only()` and `except()` type against any receiver holding a model, and two owners answer them:
 
-- **[`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php)**: a relation or model accessor read as
+- **[`RelationFilterHandler`](../../src/Ast/Handlers/Collections/RelationFilterHandler.php)**: a relation or model accessor read as
   `$this->relation` or `$this->resource->relation`, and the `map` proxy, as in `$this->comments->map->only([...])`.
 - **[`ReceiverMethodReturnResolver::attributeFilterRule()`](../../src/Ast/Receivers/ReceiverMethodReturnResolver.php)**: every
   other receiver holding one model class, such as a bare `$this->only([...])` the resource forwards to its model, a
@@ -386,7 +386,7 @@ describes, so two rules keep each arm's FQCN beside its own token:
 
 ## The `when*()` family
 
-[`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) maps each call against
+[`ConditionalMethodHandler`](../../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) maps each call against
 `JsonResource`'s own signature with `CallArguments`, so a positional or named argument lands where Laravel binds it.
 Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transform()` helper:
 
@@ -475,7 +475,7 @@ on a key no cast covers.
 ## `$this->resource` inside a relation closure is the resource's own model
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
-[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
+[`PropertyChainHandler`](../../src/Ast/Handlers/Members/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
 chain at `$modelClass`, and `RelationCollectionChainHandler` and `StaticCallHandler` type a `$this->prop` call from it
 too, never from the model the closure's parameter holds. A model that declares a real `resource` relation
 reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call
@@ -484,14 +484,14 @@ on `$this->resource` inside such a closure.
 ## Collection pipelines
 
 Two handlers type a chain of collection operations.
-[`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
+[`RelationCollectionChainHandler`](../../src/Ast/Handlers/Collections/RelationCollectionChainHandler.php) takes a chain rooted at
 `$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
-[`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
+[`CollectionPipelineHandler`](../../src/Ast/Handlers/Collections/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
 and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
 since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
-[`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
+[`KnownFunctionCallHandler`](../../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
 is its element types. A list literal, bare or collected, is typed by
 [`ValueResolver::resolveListLiteral()`](../../src/Ast/Values/ValueResolver.php).
 
@@ -521,7 +521,7 @@ agrees with `CollectionPipelineHandler`.
 
 ## Inline-array spreads become intersection arms
 
-In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) turns a spread into an
+In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) turns a spread into an
 arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes four kinds:
 
 - **Resource arm**: a spread of one named resource, such as `UserResource::make($m)->resolve($request)`, never an
@@ -554,7 +554,7 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
   pin both directions.
 
 PHP's array union `$a + $b` keeps every key `$a` sets. In value position
-[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
+[`BinaryOpHandler`](../../src/Ast/Handlers/Operators/BinaryOpHandler.php) types it as the one literal
 `InspectsAstNodes::arrayUnionLiteral()` builds, or, where a local operand's read sees several literal writes, one
 literal per write, joined. With every key a literal, that literal holds the items PHP keeps, in
 PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
@@ -975,8 +975,8 @@ since its name map holds type names and never `enumConstMap`. See
 A mixed ternary wraps the enum in one arm and reads it directly in the other, as in
 `$flag ? EnumResource::make($this->status) : $this->status`. `ValueResult::mergeUnion()` marks it by setting both
 `enumFqcn` and `directEnumFqcn`, but the merged type string can collapse both arms into one token. So
-`ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/TernaryHandler.php) and
-[`MatchHandler`](../../src/Ast/Handlers/MatchHandler.php) call, reads each arm's own result and records the shape,
+`ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/Operators/TernaryHandler.php) and
+[`MatchHandler`](../../src/Ast/Handlers/Operators/MatchHandler.php) call, reads each arm's own result and records the shape,
 `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
 mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand builds a
 resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is always

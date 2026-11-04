@@ -67,7 +67,7 @@ its short class names resolve against that class's file.
 `config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A
 `config('key')` or `config()->get('key')` read follows that machine's configuration, so a `.env` that differs from
 production changes the type. The package runs inside the booted app, where the live value is the only answer
-([`KnownFunctionCallHandler`](../src/Ast/Handlers/KnownFunctionCallHandler.php)). Only an absent key types from its
+([`KnownFunctionCallHandler`](../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php)). Only an absent key types from its
 default. A key set to `null`, such as an `env()` value unset on that machine, types as `null` whatever the default. A
 typed accessor such as `config()->string('key')` types from its declared return instead.
 
@@ -203,7 +203,7 @@ resource's override, repeat it on the host resource.
 ### `$request->validated('key')` declines a wildcard key, and ignores a dotted `#[TsCasts]` key
 
 A literal or dotted key types from the bound request's `rules()`, as the request's own interface does, with three
-exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/KnownMethodRuleHandler.php)):
+exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/Calls/KnownMethodRuleHandler.php)):
 
 - **A key with a `*` segment publishes `unknown`**, because `data_get()` returns a list of every match, while the rule
   under `*` types one element. A direct `data_get($target, 'a.*.b')` declines for the same reason.
@@ -499,7 +499,7 @@ Check which spelling you wrote before you assume a value is `unknown`:
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
   on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
-  ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
+  ([`TernaryHandler`](../src/Ast/Handlers/Operators/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
   the one model a test on it leaves. An `if` binds no chain other than `$this->resource`: inside
   `if ($this->imageable instanceof Post) { … }`, `$this->imageable` reads the whole `morphTo` union.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
@@ -683,7 +683,7 @@ resource's own model declares `label()`, since the related model could be any. N
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
-[`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php) publishes `unknown` for
+[`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) publishes `unknown` for
 `$this->whenHas('title', fn ($t) => json_decode($t))`, not the `title` column's `string`, because Laravel returns what
 the value returns and a plain title decodes to `null`, as `WhenHasValueResource` pins. Give the closure a return type,
 such as `fn ($t): ?string => json_decode($t)`, or a `@return` docblock written before the closure, and the key types
@@ -702,7 +702,7 @@ defined only at runtime, or only on another OS or extension, leaves the value `u
 
 ### On a class that is not an API resource, `$this->when()` publishes `unknown`
 
-Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php), as
+Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php), as
 [ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
 On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
 every other `when*()` call as that class's own method. So Laravel's `Conditionable::when()` publishes `unknown`,

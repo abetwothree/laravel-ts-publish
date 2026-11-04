@@ -18,7 +18,7 @@ These classes and files produce and consume the analysis:
   top-level fields.
 - [`form-request.blade.php`](../../resources/views/form-request.blade.php): skips prohibited fields, appends a field's
   `| null`, and renders a dynamic request as `Record<string, unknown>`.
-- [`KnownMethodRuleHandler`](../../src/Ast/Handlers/KnownMethodRuleHandler.php): types `$request->validated('key')`
+- [`KnownMethodRuleHandler`](../../src/Ast/Handlers/Calls/KnownMethodRuleHandler.php): types `$request->validated('key')`
   through `analyzeField()`.
 
 ## `rules()` runs for real

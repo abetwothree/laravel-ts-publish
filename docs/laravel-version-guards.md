@@ -10,8 +10,8 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 
 | Class | Min Laravel | Guarded at | Tests skipped at | Convert when floor ≥ |
 | --- | --- | --- | --- | --- |
-| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/Resources/ModelClassResolver.php`, `src/Ast/Concerns/GuessesModelResources.php`, `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/Resources/ModelClassResolver.php`, `src/Ast/Concerns/Resources/GuessesModelResources.php`, `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/Resources/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php`, `tests/Unit/Analyzers/CollectionWrapAndCollectsTest.php` (see below) | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
@@ -111,10 +111,10 @@ These string FQCNs exist for reasons other than version support, so never conver
 
 - `src/RelationMap.php` builds a relation class name from a type string.
 - `src/Support/TolkiTypes.php` maps always-present framework classes by name.
-- `src/Ast/Handlers/ModelFinderHandler.php` names
+- `src/Ast/Handlers/Collections/ModelFinderHandler.php` names
   `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` in its `PAGINATORS` map, the same
   always-present-class-by-name shape as `TolkiTypes.php`.
-- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/Parsing/InertiaRenderLocator.php` name the dev-only
+- `src/Ast/Handlers/Inertia/InertiaWrapperHandler.php` and `src/Ast/Parsing/InertiaRenderLocator.php` name the dev-only
   `Inertia\ResponseFactory` by string behind `class_exists()`. That is not a Laravel version guard, but the same rule
   applies for the same reason. Importing a `require-dev` package from `src/` would declare a hard dependency this
   package does not have.

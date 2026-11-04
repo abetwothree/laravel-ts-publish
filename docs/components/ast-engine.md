@@ -16,10 +16,10 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
 | `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
-| `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
+| `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
-| `Handlers/` | One handler per expression family |
+| `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
@@ -937,7 +937,7 @@ These pages cover the engine's neighbors:
 [`AstParser`]: ../../src/Ast/Parsing/AstParser.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
-[`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
+[`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
@@ -949,7 +949,7 @@ These pages cover the engine's neighbors:
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
-[`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
+[`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
 [`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
