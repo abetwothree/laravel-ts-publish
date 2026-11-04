@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -19,18 +20,13 @@ trait ResolvesClassNames
      * Resolve a type name from a docblock to its FQCN by consulting the declaring class's
      * `use` imports, its own namespace, and then falling back to the original name.
      *
-     * Delegates to the canonical implementation on LaravelTsPublish.
-     *
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
      */
     protected function resolveDocblockType(string $type, ReflectionClass $declaringClass): string
     {
-        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
-        $namespace = $declaringClass->getNamespaceName();
-
-        return LaravelTsPublish::resolveDocblockTypeName($type, $useMap, $namespace);
+        return DocblockNames::resolve($type, $declaringClass);
     }
 
     /**

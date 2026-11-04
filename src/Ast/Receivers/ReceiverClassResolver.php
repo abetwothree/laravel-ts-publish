@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -672,11 +673,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $element = LaravelTsPublish::resolveDocblockTypeName(
-            $generic['element'],
-            LaravelTsPublish::parseFileUseStatements($span['context']),
-            $span['context']->getNamespaceName(),
-        );
+        $element = DocblockNames::resolve($generic['element'], $span['context']);
 
         return ReceiverType::isConcreteModel($element) ? $element : null;
     }

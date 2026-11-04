@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -122,11 +123,9 @@ final class ReturnShapeRefiner
     /** Whether a docblock name resolves to a class, through its file's `use` statements and namespace. */
     private function namesClass(string $name, ReflectionMethod $method): bool
     {
-        $file = LaravelTsPublish::methodDeclaringFileClass($method);
-        $useMap = LaravelTsPublish::parseFileUseStatements($file);
-        $fqcn = LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $file->getNamespaceName());
+        $fqcn = DocblockNames::resolve($name, LaravelTsPublish::methodDeclaringFileClass($method));
 
-        return class_exists($fqcn) || interface_exists($fqcn) || enum_exists($fqcn) || trait_exists($fqcn);
+        return DocblockNames::isClassLike($fqcn);
     }
 
     /**

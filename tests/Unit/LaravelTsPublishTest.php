@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedUseItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\AliasCacheLaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\BoardJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Gauge as ClashGauge;
@@ -2005,6 +2006,16 @@ describe('phpstan type aliases', function () {
             ->and($read())->toContain($source);
     });
 
+    test('imports an alias an interface or a trait defines', function (string $importer, string $source) {
+        $alias = $this->service->resolvePhpstanTypeAlias('Point', new ReflectionClass($importer));
+
+        expect($alias['definition'] ?? null)->toBe('array{x: int}')
+            ->and(($alias['class'] ?? null)?->getName())->toBe($source);
+    })->with([
+        'an interface' => [PointFromInterface::class, PointAliasInterface::class],
+        'a trait' => [PointFromTrait::class, PointAliasTrait::class],
+    ]);
+
     test('a cyclical @phpstan-import-type chain terminates instead of recursing forever', function () {
         $alias = $this->service->resolvePhpstanTypeAlias(
             'LoopAlias', new ReflectionClass(PhpstanTypeAliasCycleA::class),
@@ -2027,6 +2038,22 @@ describe('phpstan type aliases', function () {
         );
 
         expect($alias)->toBeNull();
+    });
+
+    test('looks a docblock name up as an alias only when it is a bare name', function () {
+        $service = new AliasCacheLaravelTsPublish;
+
+        $type = $service->docblockReturnTypes(new ReflectionMethod(PairAliasHost::class, 'pairs'))['type'];
+
+        expect($type)->toBe('{ p: { a: number }; list: { a: number }[]; key: string | number; name: string; count: number }')
+            ->and($service->cachedAliasNames(PairAliasHost::class))->toContain('Pair')
+            ->and(preg_grep('/^\\w+$/', $service->cachedAliasNames(PairAliasHost::class), PREG_GREP_INVERT))->toBe([]);
+    });
+
+    test('an imported alias whose definition names the alias it is imported as, in its own class, expands', function () {
+        $context = new ReflectionClass(PairRowImporter::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias('Pair', [], '', $context)['type'])->toBe('{ p: { a: number } }');
     });
 });
 
@@ -3531,6 +3558,67 @@ class PhpstanTypeAliasHyphenSuffixHost {}
  * @phpstan-type PunctuationAlias.Suffix array{x: int}
  */
 class PhpstanTypeAliasDotSuffixHost {}
+
+/**
+ * Defines `Point` for a class to import.
+ *
+ * @phpstan-type Point array{x: int}
+ */
+interface PointAliasInterface {}
+
+/**
+ * Defines `Point` for a class to import.
+ *
+ * @phpstan-type Point array{x: int}
+ */
+trait PointAliasTrait {}
+
+/**
+ * Imports `Point` from an interface.
+ *
+ * @phpstan-import-type Point from PointAliasInterface
+ */
+class PointFromInterface {}
+
+/**
+ * Imports `Point` from a trait.
+ *
+ * @phpstan-import-type Point from PointAliasTrait
+ */
+class PointFromTrait {}
+
+/**
+ * Names its `Pair` alias bare and inside a list in one return shape, beside types no alias can be named.
+ *
+ * @phpstan-type Pair array{a: int}
+ */
+class PairAliasHost
+{
+    /**
+     * Declare a pair, a list of them, and three keys typed by PHPDoc keywords.
+     *
+     * @return array{p: Pair, list: list<Pair>, key: array-key, name: non-empty-string, count: int<0, max>}
+     */
+    public function pairs(): array
+    {
+        return ['p' => ['a' => 1], 'list' => [], 'key' => 1, 'name' => 'n', 'count' => 0];
+    }
+}
+
+/**
+ * Imports `PairRowSource`'s `Row` as `Pair`, the name `Row`'s own definition gives another alias of that class.
+ *
+ * @phpstan-import-type Row from PairRowSource as Pair
+ */
+class PairRowImporter {}
+
+/**
+ * Defines `Row` over its own `Pair`.
+ *
+ * @phpstan-type Row array{p: Pair}
+ * @phpstan-type Pair array{a: int}
+ */
+class PairRowSource {}
 
 /** Types a property and a return as `self`, which PHP reflects as written in a trait on every version. */
 trait DeclaresSelfTypedMembers

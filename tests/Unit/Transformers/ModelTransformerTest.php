@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Grade as FixtureGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
@@ -2052,4 +2053,14 @@ test('a relation built through a helper and named only by @phpstan-return publis
     $data = (new ModelTransformer(PhpstanRelationPost::class))->data();
 
     expect($data->relations['comments']['type'] ?? null)->toBe('Comment[]');
+});
+
+// LinksComments shares LinkingPost's namespace and is not imported, so only that namespace resolves its `@use` tag.
+test('a trait of the model\'s own namespace, used with no import, binds its template through @use', function () {
+    $data = (new ModelTransformer(LinkingPost::class))->data();
+
+    expect($data->appends['linked_items']['type'] ?? null)->toBe('Comment[]')
+        ->and($data->appends['first_linked']['type'] ?? null)->toBe('Comment | null')
+        ->and($data->appends['latest']['type'] ?? null)->toBe('Comment | null')
+        ->and($data->typeImports)->toBe(['../../../../../workbench/app/models' => ['Comment']]);
 });

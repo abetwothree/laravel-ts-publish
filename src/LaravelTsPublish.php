@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -599,13 +600,9 @@ class LaravelTsPublish
                         continue;
                     }
 
-                    $sourceClass = $this->resolveDocblockTypeName(
-                        $import[2],
-                        $this->parseFileUseStatements($context),
-                        $context->getNamespaceName(),
-                    );
+                    $sourceClass = DocblockNames::resolve($import[2], $context);
 
-                    if (class_exists($sourceClass)) {
+                    if (DocblockNames::isClassLike($sourceClass)) {
                         $resolved = $this->resolvePhpstanTypeAlias($import[1], new ReflectionClass($sourceClass), $seen);
                     }
 
@@ -1098,7 +1095,7 @@ class LaravelTsPublish
         }
 
         if (str_starts_with($type, '\\')) {
-            return substr($type, 1); // @codeCoverageIgnore
+            return substr($type, 1);
         }
 
         $root = Str::before($type, '\\');
@@ -1109,15 +1106,9 @@ class LaravelTsPublish
             return $rest !== $type ? $useMap[$root].'\\'.$rest : $useMap[$root];
         }
 
-        if ($namespace !== '') { // @codeCoverageIgnoreStart
-            $qualified = $namespace.'\\'.$type;
+        $qualified = $namespace.'\\'.$type;
 
-            if (class_exists($qualified) || enum_exists($qualified)) {
-                return $qualified;
-            }
-        } // @codeCoverageIgnoreEnd
-
-        return $type;
+        return $namespace !== '' && DocblockNames::isClassLike($qualified) ? $qualified : $type;
     }
 
     /**
@@ -2330,8 +2321,8 @@ class LaravelTsPublish
         $useMap = $this->parseFileUseStatements($context);
         $namespace = $context->getNamespaceName();
 
-        $dateArm = function (string $arm) use ($useMap, $namespace): ?array {
-            $class = $this->resolveDocblockTypeName(ltrim($arm, '?'), $useMap, $namespace);
+        $dateArm = function (string $arm) use ($context): ?array {
+            $class = DocblockNames::resolve(ltrim($arm, '?'), $context);
 
             return is_a($class, DateTimeInterface::class, true)
                 ? ['class' => $class, 'nullable' => str_starts_with($arm, '?')]
@@ -2400,9 +2391,6 @@ class LaravelTsPublish
                 continue;
             }
 
-            $useMap = $this->parseFileUseStatements($class);
-            $namespace = $class->getNamespaceName();
-
             foreach ($finder->findInstanceOf($classNode->stmts, TraitUse::class) as $traitUse) {
                 $traitNames = array_map(fn (Name $name): string => ltrim($name->toString(), '\\'), $traitUse->traits);
 
@@ -2412,13 +2400,13 @@ class LaravelTsPublish
 
                 foreach (DocblockTags::all((string) $traitUse->getDocComment()?->getText(), 'use') as $used) {
                     if (preg_match('/^([\w\\\\]+)\s*<(.+)>$/s', $used, $match) !== 1
-                        || ltrim($this->resolveDocblockTypeName($match[1], $useMap, $namespace), '\\') !== $trait->getName()
+                        || DocblockNames::resolve($match[1], $class) !== $trait->getName()
                     ) {
                         continue;
                     }
 
                     return array_map(
-                        fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $namespace), '\\'),
+                        fn (string $arg): string => DocblockNames::resolve(trim($arg), $class),
                         $this->splitAtTopLevelCommas($match[2]),
                     );
                 }
@@ -2459,9 +2447,14 @@ class LaravelTsPublish
     protected function docblockAliasType(string $name): ?array
     {
         $context = end($this->aliasContextStack);
-        $alias = $context === false ? null : $this->resolvePhpstanTypeAlias($name, $context);
 
-        if ($context === false || $alias === null) {
+        if ($context === false || preg_match('/^\w+$/', $name) !== 1) {
+            return null;
+        }
+
+        $alias = $this->resolvePhpstanTypeAlias($name, $context);
+
+        if ($alias === null) {
             return null;
         }
 

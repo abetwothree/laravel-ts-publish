@@ -279,9 +279,8 @@ argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-
 prefixed one first ([`DocblockTags`](../../src/Ast/Docblocks/DocblockTags.php)). `traitUseArguments()`
 reads that tag only from the doc comment of the `use` statement inside the class, never from a prose mention, and
 checks the consumer before its parents. It parses the file through `AstParser::parseFile()`, which records the file as
-a cache dependency. The trait name in the tag must resolve through a `use` import or the namespace.
-`resolveDocblockTypeName()`'s namespace fallback checks `class_exists()` and `enum_exists()`, not `trait_exists()`, so
-a same-namespace trait with no `use` import silently fails to bind.
+a cache dependency. A docblock name, the tag's trait included, resolves through the file's `use` imports, then its
+namespace, for any class-like kind ([`DocblockNames`](../../src/Ast/Docblocks/DocblockNames.php)).
 
 ## `@property` refinement
 

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -221,13 +222,7 @@ final class InertiaTableHandler implements ExpressionHandler
             return true;
         }
 
-        $file = LaravelTsPublish::methodDeclaringFileClass($method);
-
-        return $this->namesTable(LaravelTsPublish::resolveDocblockTypeName(
-            $arm,
-            LaravelTsPublish::parseFileUseStatements($file),
-            $file->getNamespaceName(),
-        ));
+        return $this->namesTable(DocblockNames::resolve($arm, LaravelTsPublish::methodDeclaringFileClass($method)));
     }
 
     /**

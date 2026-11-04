@@ -34,9 +34,9 @@ final readonly class VarTypeWhitelist
     private const KEY = '(?:-?\d+|[a-z_][\w-]*|\'[^\'\\\\]*\'|"[^"\\\\]*")\s*\??\s*:(?!:)';
 
     /**
-     * @param  array<string, class-string>  $useMap
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve a name
      */
-    private function __construct(private array $useMap, private string $namespace) {}
+    private function __construct(private ReflectionClass $context) {}
 
     /**
      * The whitelist for a type written in a class's file.
@@ -45,7 +45,7 @@ final readonly class VarTypeWhitelist
      */
     public static function for(ReflectionClass $context): self
     {
-        return new self(LaravelTsPublish::parseFileUseStatements($context), $context->getNamespaceName());
+        return new self($context);
     }
 
     /**
@@ -296,8 +296,10 @@ final readonly class VarTypeWhitelist
             return null;
         }
 
-        $resolved = LaravelTsPublish::resolveDocblockTypeName($name, $this->useMap, $this->namespace);
-        $throughFile = $resolved !== $name || $this->namespace === '' || isset($this->useMap[Str::before($name, '\\')]);
+        $resolved = DocblockNames::resolve($name, $this->context);
+        $throughFile = $resolved !== $name
+            || $this->context->getNamespaceName() === ''
+            || isset(LaravelTsPublish::parseFileUseStatements($this->context)[Str::before($name, '\\')]);
 
         return $throughFile && (class_exists($resolved) || interface_exists($resolved)) ? $resolved : null;
     }

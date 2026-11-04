@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
@@ -1268,12 +1269,7 @@ class ModelAttributeResolver
             return null;
         }
 
-        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
-        $class = LaravelTsPublish::resolveDocblockTypeName(
-            $match[1],
-            LaravelTsPublish::parseFileUseStatements($declaringClass),
-            $declaringClass->getNamespaceName(),
-        );
+        $class = DocblockNames::resolve($match[1], LaravelTsPublish::methodDeclaringFileClass($method));
 
         return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
     }
@@ -1469,13 +1465,11 @@ class ModelAttributeResolver
         }
 
         $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
-        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
-        $namespace = $declaringClass->getNamespaceName();
 
         // Only the first generic argument names the target(s) — the second ($this, by Laravel's
         // own convention) carries no target information and is discarded here.
         return array_map(
-            fn (string $part): string => LaravelTsPublish::resolveDocblockTypeName(trim($part), $useMap, $namespace),
+            fn (string $part): string => DocblockNames::resolve(trim($part), $declaringClass),
             LaravelTsPublish::splitPhpDocUnionType(trim(Str::before($m[1], ','))),
         );
     }
