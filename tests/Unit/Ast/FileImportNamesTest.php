@@ -59,74 +59,54 @@ test('joinedSlots() of a declaration\'s arms gives back its slots', function (st
     'no class' => ['string | number', []],
 ]);
 
+test('classLess() reads a declared type without the classes its tokens name, member by member', function (string $type, array $slots, string $read) {
+    expect(FileImportNames::classLess($type, $slots))->toBe($read);
+})->with([
+    'an override beside its model' => ['User | User', [null, User::class], 'unknown'],
+    'the two and a null' => ['User | User | null', [null, User::class], 'unknown'],
+    'a list of the two' => ['(User | User)[]', [null, User::class], 'unknown'],
+    'the override alone' => ['User', [null], 'User'],
+    'a literal beside the model' => ["{ kind: 'User'; r: User }", [null, User::class], "{ kind: 'User'; r: unknown }"],
+    'a list of that object' => ["{ kind: 'User'; r: User }[]", [null, User::class], "{ kind: 'User'; r: unknown }[]"],
+    'that object or a null' => ["{ kind: 'User'; r: User } | null", [null, User::class], "{ kind: 'User'; r: unknown } | null"],
+    'an object of the override and the model' => ['{ a: User; b: User }', [null, User::class], '{ a: User; b: unknown }'],
+    'a nested object' => ['{ y: { a: User; p: Post }; n: number }', [Post::class], '{ y: { a: User; p: unknown }; n: number }'],
+    'an override nested beside the model in another object' => [
+        '{ y: { a: User; p: Post } } | { u: User }',
+        [null, Post::class, User::class],
+        '{ y: { a: User; p: unknown } } | { u: unknown }',
+    ],
+    'a record of objects' => ['Record<string, { a: User; b: User }>', [null, User::class], 'Record<string, { a: User; b: unknown }>'],
+    'an object arm beside the model' => ['{ a: User; p: Post } | User', [null, Post::class, User::class], 'unknown'],
+    'an optional member' => ['{ a?: User; b?: User }', [User::class, null], '{ a?: unknown; b?: User }'],
+    'no class' => ['string | null', [], 'string | null'],
+]);
+
+test('classLess() of generated declarations reads each as the oracle says', function () {
+    $cases = fileImportNamesCases(98, 500);
+    $unknownMembers = 0;
+
+    foreach ($cases as $case => $declarations) {
+        foreach ($declarations as ['type' => $type, 'slots' => $slots, 'classLess' => $read]) {
+            expect(FileImportNames::classLess($type, $slots))->toBe($read, "case {$case}: {$type} ".json_encode($slots));
+            $unknownMembers += substr_count($read, ': unknown');
+        }
+    }
+
+    expect($unknownMembers)->toBeGreaterThan(50);
+});
+
 // Each generated declaration is built with its slots, so the oracle never reads the code under test.
 test('joinedSlots() of generated declarations\' arms gives one slot per token of their names, as the oracle says', function () {
-    $random = new Randomizer(new Xoshiro256StarStar(98));
-    $classes = ['User' => User::class, 'Post' => Post::class, 'Comment' => Comment::class];
-    $names = array_keys($classes);
-
-    // A text beside its tokens, each [name, class] for a class's token, [name, null] for an override's or a literal's.
-    $token = function () use ($random, $classes, $names): array {
-        $name = $names[$random->getInt(0, 2)];
-
-        return match ($random->getInt(0, 2)) {
-            0 => [$name, [[$name, $classes[$name]]]],
-            1 => [$name, [[$name, null]]],
-            default => ["{ kind: '{$name}' }", [[$name, null]]],
-        };
-    };
-    $union = null;
-    $arm = function (int $depth) use ($random, $token, &$arm, &$union): array {
-        $wrap = static fn (string $open, array $members, string $glue, string $close): array => [
-            $open.implode($glue, array_column($members, 0)).$close,
-            array_merge([], ...array_column($members, 1)),
-        ];
-        $member = static function (string $key) use ($union, $depth): array {
-            [$type, $tokens] = $union($depth + 1);
-
-            return ["{$key}: {$type}", $tokens];
-        };
-
-        return match ($depth >= 2 ? $random->getInt(0, 2) : $random->getInt(0, 6)) {
-            0, 1 => $token(),
-            2 => [['string', 'number', 'null'][$random->getInt(0, 2)], []],
-            3 => $wrap('', [$arm($depth + 1)], '', '[]'),
-            4 => $wrap('(', [$union($depth + 1)], '', ')[]'),
-            5 => $wrap('{ ', array_map($member, array_slice(['a', 'b', 'c'], 0, $random->getInt(1, 3))), '; ', ' }'),
-            default => $wrap('Record<string, ', [$union($depth + 1)], '', '>'),
-        };
-    };
-    $union = function (int $depth) use ($random, $arm): array {
-        $arms = array_map(static fn (): array => $arm($depth), range(1, $random->getInt(1, 3)));
-
-        return [implode(' | ', array_column($arms, 0)), array_merge([], ...array_column($arms, 1))];
-    };
-    $own = static fn (array $tokens): array => array_values(array_unique(array_column(
-        array_filter($tokens, static fn (array $token): bool => $token[1] !== null),
-        0,
-    )));
-    $slotsOf = static fn (array $tokens, array $ownNames): array => array_values(array_column(
-        array_filter($tokens, static fn (array $token): bool => in_array($token[0], $ownNames, true)),
-        1,
-    ));
-
-    $cases = 500;
+    $own = static fn (array $tokens): array => fileImportNamesOwn($tokens);
+    $slotsOf = static fn (array $tokens, array $ownNames): array => fileImportNamesSlots($tokens, $ownNames);
     $misreadArms = 0;
 
-    for ($case = 0; $case < $cases; $case++) {
-        $declarations = [];
-
-        foreach (range(1, $random->getInt(1, 3)) as $ignored) {
-            $arms = array_map(static fn (): array => $arm(0), range(1, $random->getInt(1, 4)));
-            $tokens = array_merge([], ...array_column($arms, 1));
-            $declarations[] = [$arms, $slotsOf($tokens, $own($tokens))];
-        }
-
+    foreach (fileImportNamesCases(98, 500) as $case => $declarations) {
         $joinedArms = [];
         $allTokens = [];
 
-        foreach ($declarations as [$arms, $slots]) {
-            $type = implode(' | ', array_column($arms, 0));
+        foreach ($declarations as ['arms' => $arms, 'type' => $type, 'slots' => $slots]) {
             $tokens = array_merge([], ...array_column($arms, 1));
             $cut = FileImportNames::declaredArms($type, $slots);
             $context = "case {$case}: {$type} ".json_encode($slots);
@@ -151,3 +131,114 @@ test('joinedSlots() of generated declarations\' arms gives one slot per token of
 
     expect($misreadArms)->toBeGreaterThan(50);
 });
+
+/**
+ * Generated declarations of 1 to 4 top-level arms, 1 to 3 a case, each beside its arms, its slots and the type it
+ * reads class-less: a member whose tokens outside its nested objects name a class is `unknown`.
+ *
+ * Each arm is [text, tokens, class-less text, whether a token outside its nested objects names a class]; a token is
+ * [name, class] for a class's, [name, null] for an override's or a literal's.
+ *
+ * @return list<list<array{arms: list<list<mixed>>, type: string, slots: list<class-string|null>, classLess: string}>>
+ */
+function fileImportNamesCases(int $seed, int $cases): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $classes = ['User' => User::class, 'Post' => Post::class, 'Comment' => Comment::class];
+    $names = array_keys($classes);
+
+    $token = function () use ($random, $classes, $names): array {
+        $name = $names[$random->getInt(0, 2)];
+
+        return match ($random->getInt(0, 2)) {
+            0 => [$name, [[$name, $classes[$name]]], $name, true],
+            1 => [$name, [[$name, null]], $name, false],
+            default => ["{ kind: '{$name}' }", [[$name, null]], "{ kind: '{$name}' }", false],
+        };
+    };
+    $union = null;
+    $arm = function (int $depth) use ($random, $token, &$arm, &$union): array {
+        $wrap = static fn (string $open, array $members, string $glue, string $close): array => [
+            $open.implode($glue, array_column($members, 0)).$close,
+            array_merge([], ...array_column($members, 1)),
+            $open.implode($glue, array_column($members, 2)).$close,
+            array_any(array_column($members, 3), static fn (bool $named): bool => $named),
+        ];
+        $member = static function (string $key) use ($union, $depth): array {
+            [$type, $tokens, $read, $named] = $union($depth + 1);
+
+            return ["{$key}: {$type}", $tokens, "{$key}: ".($named ? 'unknown' : $read), false];
+        };
+
+        return match ($depth >= 2 ? $random->getInt(0, 2) : $random->getInt(0, 6)) {
+            0, 1 => $token(),
+            2 => [$type = ['string', 'number', 'null'][$random->getInt(0, 2)], [], $type, false],
+            3 => $wrap('', [$arm($depth + 1)], '', '[]'),
+            4 => $wrap('(', [$union($depth + 1)], '', ')[]'),
+            5 => $wrap('{ ', array_map($member, array_slice(['a', 'b', 'c'], 0, $random->getInt(1, 3))), '; ', ' }'),
+            default => $wrap('Record<string, ', [$union($depth + 1)], '', '>'),
+        };
+    };
+    $union = function (int $depth) use ($random, $arm): array {
+        $arms = array_map(static fn (): array => $arm($depth), range(1, $random->getInt(1, 3)));
+
+        return [
+            implode(' | ', array_column($arms, 0)),
+            array_merge([], ...array_column($arms, 1)),
+            implode(' | ', array_column($arms, 2)),
+            array_any(array_column($arms, 3), static fn (bool $named): bool => $named),
+        ];
+    };
+
+    $generated = [];
+
+    for ($case = 0; $case < $cases; $case++) {
+        $declarations = [];
+
+        foreach (range(1, $random->getInt(1, 3)) as $ignored) {
+            $arms = array_map(static fn (): array => $arm(0), range(1, $random->getInt(1, 4)));
+            $tokens = array_merge([], ...array_column($arms, 1));
+            $declarations[] = [
+                'arms' => $arms,
+                'type' => implode(' | ', array_column($arms, 0)),
+                'slots' => fileImportNamesSlots($tokens, fileImportNamesOwn($tokens)),
+                'classLess' => array_any(array_column($arms, 3), static fn (bool $named): bool => $named)
+                    ? 'unknown'
+                    : implode(' | ', array_column($arms, 2)),
+            ];
+        }
+
+        $generated[] = $declarations;
+    }
+
+    return $generated;
+}
+
+/**
+ * The names a generated declaration's tokens take slots for: those its class tokens spell.
+ *
+ * @param  list<array{string, class-string|null}>  $tokens
+ * @return list<string>
+ */
+function fileImportNamesOwn(array $tokens): array
+{
+    return array_values(array_unique(array_column(
+        array_filter($tokens, static fn (array $token): bool => $token[1] !== null),
+        0,
+    )));
+}
+
+/**
+ * The slot each token of an own name takes: its class, or null for an override's or a literal's.
+ *
+ * @param  list<array{string, class-string|null}>  $tokens
+ * @param  list<string>  $ownNames
+ * @return list<class-string|null>
+ */
+function fileImportNamesSlots(array $tokens, array $ownNames): array
+{
+    return array_values(array_column(
+        array_filter($tokens, static fn (array $token): bool => in_array($token[0], $ownNames, true)),
+        1,
+    ));
+}

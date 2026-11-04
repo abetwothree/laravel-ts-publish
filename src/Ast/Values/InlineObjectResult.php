@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -52,6 +53,8 @@ final class InlineObjectResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
     {
+        $this->readNullSlotsClassLess($analysis);
+
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 
@@ -232,6 +235,21 @@ final class InlineObjectResult
     private static function channelFqcns(?string $single, array $embedded): array
     {
         return [...($single !== null ? [$single] : []), ...$embedded];
+    }
+
+    /**
+     * Read class-less each member whose declared slots hold an override's null: the object's per-name queues cannot
+     * hold that null, so the override's token would take the class its name spells.
+     */
+    private function readNullSlotsClassLess(MethodAnalysis $analysis): void
+    {
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name]) && in_array(null, $slots, true)) {
+                $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
+            }
+        }
     }
 
     /**

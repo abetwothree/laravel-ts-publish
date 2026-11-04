@@ -170,6 +170,25 @@ it('reads a key as untyped: unknown, with no channel, and no custom import only 
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
 });
 
+it('retypes a key class-less, keeping a custom import its new text still spells', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'pair', 'type' => '{ a: User; b: User; n: UiNode }', 'optional' => false, 'description' => ''],
+            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode']],
+        inlineModelFqcns: ['pair' => ['Workbench\\App\\Models\\User'], 'either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['pair' => [null, 'Workbench\\App\\Models\\User']];
+
+    $analysis->retypeClassLess('pair', '{ a: User; b: unknown; n: unknown }');
+
+    expect($analysis->properties[0]['type'])->toBe('{ a: User; b: unknown; n: unknown }')
+        ->and($analysis->inlineModelFqcns)->toBe(['either' => ['Workbench\\App\\Models\\User']])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [

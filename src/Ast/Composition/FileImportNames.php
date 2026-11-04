@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -236,6 +237,18 @@ final class FileImportNames
     }
 
     /**
+     * A declaration's type read with no class, for a reader whose per-name queues cannot hold its slots' null: a member
+     * whose tokens outside its nested objects take a class's slot is `unknown`, at any depth, and an override's or a
+     * literal's token stays.
+     *
+     * @param  TokenFqcns  $slots
+     */
+    public static function classLess(string $type, array $slots): string
+    {
+        return self::classLessOf($type, $slots, self::ownNames($slots));
+    }
+
+    /**
      * Respell each member's class tokens under the names the registries gave their classes.
      */
     protected function rewriteTypeReferences(): void
@@ -287,6 +300,111 @@ final class FileImportNames
         }
 
         return $tokens;
+    }
+
+    /**
+     * classLess() of slots that belong to a declaration whose own names are `$own`.
+     *
+     * @param  TokenFqcns  $slots
+     * @param  list<string>  $own
+     */
+    private static function classLessOf(string $type, array $slots, array $own): string
+    {
+        $tokens = self::declaredTokensOf($type, $slots, $own, []);
+        $classed = static fn (array $token): bool => $token['read'] && $token['slot'] !== null;
+
+        if (! array_any($tokens, $classed)) {
+            return $type;
+        }
+
+        $spans = self::objectSpans($type);
+        $inSpan = static fn (array $token, array $span): bool => $token['offset'] >= $span[0]
+            && $token['offset'] < $span[1];
+        $outside = static fn (array $token): bool => ! array_any($spans, static fn (array $span): bool => $inSpan($token, $span));
+
+        if (array_any($tokens, static fn (array $token): bool => $classed($token) && $outside($token))) {
+            return 'unknown';
+        }
+
+        $read = '';
+        $from = 0;
+
+        foreach ($spans as [$start, $end]) {
+            $inside = array_values(array_filter($tokens, static fn (array $token): bool => $inSpan($token, [$start, $end])));
+
+            if (array_any($inside, $classed)) {
+                $object = self::classLessObject(substr($type, $start, $end - $start), array_column($inside, 'slot'), $own);
+                $read .= substr($type, $from, $start - $from).$object;
+                $from = $end;
+            }
+        }
+
+        return $read.substr($type, $from);
+    }
+
+    /**
+     * An object type with each member's value read by classLessOf() against its share of the slots, or `unknown` for
+     * one TsTypeShape cannot split into keys and values.
+     *
+     * @param  TokenFqcns  $slots
+     * @param  list<string>  $own
+     */
+    private static function classLessObject(string $object, array $slots, array $own): string
+    {
+        $members = TsTypeShape::members($object);
+
+        if ($members === null) {
+            return 'unknown';
+        }
+
+        $read = [];
+        $at = 0;
+
+        foreach ($members as [$key, $value]) {
+            $at += count(self::declaredTokensOf($key, [], $own, []));
+            $count = count(self::declaredTokensOf($value, [], $own, []));
+            $read[] = $key.': '.self::classLessOf($value, array_slice($slots, $at, $count), $own);
+            $at += $count;
+        }
+
+        return '{ '.implode('; ', $read).' }';
+    }
+
+    /**
+     * The spans, end exclusive, of each object literal a type holds outside any other, its quoted literals skipped.
+     *
+     * @return list<array{int, int}>
+     */
+    private static function objectSpans(string $type): array
+    {
+        $skip = [];
+
+        foreach (TsTypeString::literalSpans($type) as [$start, $end]) {
+            $skip[$start] = $end;
+        }
+
+        $spans = [];
+        $depth = 0;
+        $open = 0;
+        $at = 0;
+
+        while ($at < strlen($type)) {
+            if (isset($skip[$at])) {
+                $at = $skip[$at];
+
+                continue;
+            }
+
+            if ($type[$at] === '{' && $depth++ === 0) {
+                $open = $at;
+            } elseif ($type[$at] === '}' && $depth > 0 && --$depth === 0) {
+                $spans[] = [$open, $at + 1];
+            }
+
+            $at++;
+        }
+
+        return $spans;
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
@@ -1056,6 +1057,16 @@ it('binds an arm\'s override and other class beside the model in another arm, jo
             '../../../../../../app/models' => ['Post', 'User as ModelsUser'],
         ])
         ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
+});
+
+it('reads a props helper\'s override-beside-model fill folded into a page prop class-less, as before', function () {
+    app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: User } }')
+        ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->folded())->nested->y->k)->toBeNull();
 });
 
 it('imports the model an import-less cast spells over the key whose value embeds it', function () {

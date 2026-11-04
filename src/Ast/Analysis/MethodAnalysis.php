@@ -554,8 +554,17 @@ class MethodAnalysis
      */
     public function untype(string $name): void
     {
+        $this->retypeClassLess($name, 'unknown');
+    }
+
+    /**
+     * Retype a key with a text naming no class, as FileImportNames::classLess() reads one: with no import channel, and
+     * without each custom import only its old text spelled. Whether the value may be left out stays.
+     */
+    public function retypeClassLess(string $name, string $type): void
+    {
         $spelled = [];
-        $others = [];
+        $others = [$type];
 
         foreach ($this->properties as $index => $property) {
             if ($property['name'] !== $name) {
@@ -565,7 +574,7 @@ class MethodAnalysis
             }
 
             $spelled[] = $property['type'];
-            $this->properties[$index]['type'] = 'unknown';
+            $this->properties[$index]['type'] = $type;
             unset($this->properties[$index]['bodyType'], $this->properties[$index]['fillType']);
         }
 

@@ -18,6 +18,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingLiteralResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppingMixedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedFillResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeFoldedLiteralResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeLiteralJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeMixedArmJoinResource;
@@ -25,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeModelReco
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeNestedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeOverrideUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeTopLevelFillResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
@@ -3551,6 +3554,61 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             ->and(sentAsJson(new DocShapeMixedArmJoinResource($other)->resolve(request())))
             ->beside_null->name->toBe('Ada')
             ->and(sentAsJson(new DocShapeDroppingMixedArmResource($comment)->resolve(request())))->k->toBeNull();
+    });
+
+    test('reads a fill folded into a nested literal class-less where its slots hold an override\'s null, as before', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedFillResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'x' => '{ k: unknown; m: number }',
+            'direct' => '{ k: unknown }',
+            'nested' => '{ y: { k: unknown } }',
+            'beside' => '{ k: unknown; m: number }',
+            'local' => '{ k: unknown }',
+            'model_only' => '{ k: WorkbenchUser }',
+            'object_pair' => '{ k: { a: User; b: unknown } }',
+            'listed_literal' => "{ k: { kind: 'User'; r: unknown }[] }",
+            'object_or_null' => "{ k: { kind: 'User'; r: unknown } | null }",
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        ]);
+    });
+
+    test('keeps a folded fill\'s literal as written where the file aliases the model it names, and a slotted pair', function () {
+        $transformer = new ResourceTransformer(DocShapeFoldedLiteralResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'literal' => "{ k: { kind: 'User'; r: unknown } }",
+            'pair' => '{ k: WorkbenchUser | CrmUser }',
+        ])->and($transformer->typeImports)->toBe([
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ]);
+    });
+
+    test('binds the same fills spread at the top level, where their slots reach the publisher', function () {
+        $transformer = new ResourceTransformer(DocShapeTopLevelFillResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'k' => "{ kind: 'User'; r: WorkbenchUser }",
+            'p' => 'WorkbenchUser | CrmUser',
+            'o' => 'User | WorkbenchUser',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ]);
+    });
+
+    test('sends what each folded fill admits', function () {
+        $sent = sentAsJson(new DocShapeFoldedFillResource(new Comment(['content' => '{"name":"Ada"}']))->resolve(request()));
+
+        expect($sent->direct->k->name)->toBe('Ada')
+            ->and($sent->nested->y->k->name)->toBe('Ada')
+            ->and($sent->beside->m)->toBe(1)
+            ->and($sent->local->k->name)->toBe('Ada')
+            ->and($sent->object_pair->k->name)->toBe('Ada');
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {
