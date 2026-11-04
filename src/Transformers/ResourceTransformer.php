@@ -467,7 +467,7 @@ class ResourceTransformer extends CoreTransformer
             $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
-            $nullable = str_contains($type, 'null');
+            $nullable = TsTypeString::hasNullArm($type);
             $isCollection = ValueResult::isListShaped($type);
             // ValueResult::withEnumArmShapes() records each arm's own shape for a mixed EnumResource/direct-access
             // ternary or match; anything else mixed (e.g. a `??`) falls back to the merged-string guess, which never
