@@ -254,7 +254,7 @@ final class BinaryOpHandler implements ExpressionHandler
      */
     private function operandKind(array $result): string
     {
-        $type = ValueResult::stripNullArm($result['type']);
+        $type = TsTypeString::withoutNullArm($result['type']);
         // An enum's import channel rides a list of the enum too, so only the enum's own token counts as a scalar.
         $enumTokens = array_map(
             ValueResult::enumTypeName(...),
