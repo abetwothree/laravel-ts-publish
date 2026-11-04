@@ -13,6 +13,16 @@ test('slottedBranchUnion() joins a declared text\'s arms whole, an override\'s a
         ->toBe(['User | User', [null, User::class]]);
 });
 
+// Parentheses add no token, so an arrow arm joined beside its class keeps the slot its own token takes.
+test('a join parenthesizes an arrow branch, so the branches after it stay outside its return type', function () {
+    expect(BranchJoin::branchUnion(['() => void', 'string | null'], false, false))->toBe('(() => void) | string | null')
+        ->and(BranchJoin::branchUnion(['() => A | null', 'string'], false, false))->toBe('(() => A | null) | string')
+        ->and(BranchJoin::slottedBranchUnion(['() => User', 'User'], false, false, [['() => User', [User::class]]]))
+        ->toBe(['(() => User) | User', [User::class, null]])
+        ->and(BranchJoin::slottedBranchUnion(['User | User', '() => void'], false, false, [['User | User', [null, User::class]]]))
+        ->toBe(['User | User | (() => void)', [null, User::class]]);
+});
+
 test('branchUnion() makes a strict join unknown beside an untypable branch, and a dropping join drops it', function () {
     expect(BranchJoin::branchUnion(['string', 'unknown'], false, false))->toBe('unknown')
         ->and(BranchJoin::branchUnion(['string', 'unknown'], true, false))->toBe('string')

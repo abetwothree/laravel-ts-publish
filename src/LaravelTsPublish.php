@@ -1588,7 +1588,9 @@ class LaravelTsPublish
         }
 
         $result = $this->emptyTypeScriptInfo();
-        $result['type'] = implode(' | ', $types);
+        $result['type'] = count($types) === 1
+            ? $types[0]
+            : implode(' | ', array_map(TsTypeShape::unionArm(...), $types));
         $result['enums'] = $enums;
         $result['enumTypes'] = $enumTypes;
         $result['classes'] = array_values($classFqcnToName);
@@ -2637,9 +2639,7 @@ class LaravelTsPublish
      * @return TypeScriptTypeInfo */
     protected function wrapAsArray(array $info): array
     {
-        $info['type'] = str_contains($info['type'], '|') || str_contains($info['type'], '&')
-            ? '('.$info['type'].')[]'
-            : $info['type'].'[]';
+        $info['type'] = TsTypeShape::listType([$info['type']]);
 
         return $info;
     }
@@ -2758,9 +2758,14 @@ class LaravelTsPublish
                 $member = $kept($entry['type']);
                 $pieces[] = $member;
                 $type = $member['type'];
-                $members[] = $optional
-                    ? (count(TsTypeShape::splitTopLevel($type, ['|', '&'])) > 1 ? "({$type})?" : "{$type}?")
-                    : $type;
+
+                // `?` binds as `[]` does, tighter than `|`, `&` and `=>`.
+                if ($optional) {
+                    $grouped = count(TsTypeShape::splitTopLevel($type, ['|', '&'])) > 1;
+                    $type = ($grouped ? "({$type})" : TsTypeShape::unionArm($type)).'?';
+                }
+
+                $members[] = $type;
             }
 
             return $this->shapeOfPieces('['.implode(', ', $members).']', $pieces);

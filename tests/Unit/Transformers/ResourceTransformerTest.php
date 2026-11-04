@@ -60,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
@@ -2599,7 +2600,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
         expect($data->properties['member_role_snapshot']['type'])
-            ->toBe('({ role: RoleType | null })[]');
+            ->toBe('{ role: RoleType | null }[]');
 
         expect($data->typeImports)->toHaveKey('../../enums');
         expect($data->typeImports['../../enums'])->toContain('RoleType');
@@ -4076,5 +4077,18 @@ test('a helper documented by @return and @phpstan-return publishes the prefixed 
         'reversed' => '{ a: number; b: string }',
         'phpstan_only' => '{ a: number; b: string }',
         'precise_plain' => '{ a: number }',
+    ]);
+});
+
+// A template literal's text is a value, so a `| null |` inside it names no null arm to hoist or to skip appending.
+test('a template-literal override keeps its text whole beside null, a string and in a list', function () {
+    $properties = new ResourceTransformer(TemplateSlugResource::class)->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        'slug' => '`a | null | b`',
+        'slug_ternary' => '`a | null | b` | null',
+        'slug_or_string' => '`a | null | b` | string',
+        'slug_list' => '`a | null | b`[]',
+        'slug_helper' => '`a | null | b` | null',
     ]);
 });

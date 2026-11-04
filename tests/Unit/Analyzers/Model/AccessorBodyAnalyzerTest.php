@@ -217,7 +217,7 @@ describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', 
         'a relation chain' => [BulletinFeed::class, 'lead_comments', 'Comment[]', [Comment::class]],
         'an untyped closure parameter over a docblock accessor' => [BulletinFeed::class, 'owners', 'User[]', [User::class]],
         'pluck()' => [BulletinArchive::class, 'comment_lists', 'Comment[][]', [Comment::class]],
-        'a shape a closure parameter builds' => [BulletinArchive::class, 'author_rows', "({ author: Pick<User, 'id' | 'name'> })[]", [User::class]],
+        'a shape a closure parameter builds' => [BulletinArchive::class, 'author_rows', "{ author: Pick<User, 'id' | 'name'> }[]", [User::class]],
     ]);
 
     test('a method body making the same reads carries the classes they name', function () {

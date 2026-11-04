@@ -120,8 +120,8 @@ pins it.
   that spells its name with no class of its own behind it: another key's cast without import channels, an extends
   clause, a type alias. So a carried class no such text keeps never forces an alias. A route file, shared data and a
   companion apply **the unclaimed-token rule** instead: such a text's token takes the one class of its name on any
-  channel or carried, unless a custom import brings that name. A token inside a quoted literal, or after `typeof`,
-  names no class and takes none ([`FileImportNames`](import-name-registry.md#fileimportnames)).
+  channel or carried, unless a custom import brings that name. A token inside a string literal or a template literal's
+  text, or after `typeof`, names no class and takes none ([`FileImportNames`](import-name-registry.md#fileimportnames)).
   `ResourceTransformer::keepSpelled()` applies the same test to the classes it holds, and `pruneUnspelledImports()`,
   after the `AsEnum` rewrite, drops any import whose local name no published type spells.
 - For a cast key, `resolveMultiEnumAccessorFqcns()` and `resolveMultiClassAccessorFqcns()` register through

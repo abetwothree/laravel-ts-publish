@@ -36,6 +36,14 @@ test('declaredArms() gives each top-level arm the slots its own names\' tokens t
     ])->and(TokenSlots::declaredArms('string | number', []))->toBe([['string', [], []], ['number', [], []]]);
 });
 
+// A pipe in template text cuts no arm, and the text's token keeps its slot, unread.
+test('declaredArms() keeps a template literal holding a pipe in one arm', function () {
+    expect(TokenSlots::declaredArms('`a|User` | User', [null, User::class]))->toBe([
+        ['`a|User`', [null], ['User']],
+        ['User', [User::class], ['User']],
+    ])->and(array_column(TokenSlots::declaredTokens('`User-${string}` | User', [null, User::class]), 'read'))->toBe([false, true]);
+});
+
 test('joinedSlots() gives every arm one slot per token of the names any arm\'s slots hold, a non-own token null', function () {
     expect(TokenSlots::joinedSlots([
         ["{ kind: 'User' }", []],
@@ -56,6 +64,8 @@ test('joinedSlots() of a declaration\'s arms gives back its slots', function (st
     'two arms, each an override of the other\'s class' => ['{ a: User; p: Post } | { u: User; o: Post }', [null, Post::class, User::class, null]],
     'an override beside its model' => ['User | User[] | string | null', [null, User::class]],
     'a class after an override in a list' => ['(User | Post)[] | User', [null, Post::class, User::class]],
+    'a template literal holding a pipe before the model' => ['`a|User` | User', [null, User::class]],
+    'a class in a template placeholder beside a pipe in its text' => ['`${User}|x` | Post | User', [User::class, Post::class, null]],
     'no class' => ['string | number', []],
 ]);
 
@@ -68,7 +78,9 @@ test('typeLeftToImports() blanks each read token a class stands behind, leaving 
 test('uniqueArms() keeps each arm once, two of one text whose slots name different classes apart', function () {
     expect(TokenSlots::uniqueArms('User | User | null', [null, User::class]))->toBe(['User | User | null', [null, User::class]])
         ->and(TokenSlots::uniqueArms('User | User', [User::class, User::class]))->toBe(['User', [User::class]])
-        ->and(TokenSlots::uniqueArms('string | string | null', []))->toBe(['string | null', []]);
+        ->and(TokenSlots::uniqueArms('string | string | null', []))->toBe(['string | null', []])
+        ->and(TokenSlots::uniqueArms('User | User | () => User', [User::class, User::class, User::class]))
+        ->toBe(['User | (() => User)', [User::class, User::class]]);
 });
 
 test('classLess() reads a declared type without the classes its tokens name, member by member', function (string $type, array $slots, string $read) {
@@ -102,6 +114,9 @@ test('readsName() reads a name only where a reader binds it to an import', funct
     'in the second type' => [['unknown', 'User | null'], true],
     'only in a literal' => [["{ k: unknown; kind: 'User' }"], false],
     'only in a double-quoted literal' => [['"User"'], false],
+    'only in template text' => [['`User-${string}`'], false],
+    'in a template placeholder' => [['`${User}-x`'], true],
+    'only in a string with an escaped quote' => [["'it\\'s User'"], false],
     'only after typeof' => [['typeof User'], false],
     'only in a longer name' => [['CrmUser | Users'], false],
     'only after a dot' => [['ui.User'], false],

@@ -306,7 +306,7 @@ describe('ReceiverMethodReturnResolver', function () {
         expect($resolver->resolve($probe, 'interval', receiverProbeScope())['type'] ?? null)->toBe($interval)
             ->and($resolver->resolve($probe, 'docblockInterval', receiverProbeScope())['type'] ?? null)->toBe($interval)
             ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'diff', receiverProbeScope())['type'] ?? null)->toBe($interval)
-            ->and($resolver->resolve($probe, 'docblockIntervals', receiverProbeScope())['type'] ?? null)->toBe('('.$interval.')[]')
+            ->and($resolver->resolve($probe, 'docblockIntervals', receiverProbeScope())['type'] ?? null)->toBe($interval.'[]')
             ->and($resolver->resolve($probe, 'text', receiverProbeScope())['type'] ?? null)->toBe('string');
     });
 

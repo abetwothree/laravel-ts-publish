@@ -793,9 +793,8 @@ none, since a later write or cast may still make the key joinable.
 A key cannot join a union when any of these holds:
 
 - its type has a top-level `unknown` arm, which would swallow the typed arms
-- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name, a global name or a template
-  literal type, where a string or number literal is fine
-- it holds a string literal with a backslash, which the union splitter can cut apart
+- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name or a global name, where a string
+  or number literal and a template literal's text are fine
 - it is not a cast key and carries an FQCN channel, whose token is rewritten under its own key's name
 
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for

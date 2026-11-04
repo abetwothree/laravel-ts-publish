@@ -462,13 +462,15 @@ final class ResourceResponseType
      */
     private function beside(string $body, array $blocks): string
     {
-        $grouped = static fn (string $type): string => count(TsTypeString::splitTopLevelUnion($type)) > 1 ? "({$type})" : $type;
+        $grouped = static fn (string $type): string => count(TsTypeString::splitTopLevelUnion($type)) > 1
+            ? "({$type})"
+            : TsTypeShape::unionArm($type);
 
         return $grouped($body).' & '.$grouped(implode(' | ', $blocks));
     }
 
     /**
-     * Types as the arms of one union, once each, each intersection grouped so the union reads as its arms.
+     * Types as the arms of one union, once each, each intersection or arrow grouped so the union reads as its arms.
      *
      * @param  list<string>  $types
      */
@@ -478,7 +480,11 @@ final class ResourceResponseType
         $grouped = count($types) > 1;
 
         return implode(' | ', array_map(
-            static fn (string $type): string => $grouped && count(TsTypeShape::splitTopLevel($type, ['&'])) > 1 ? "({$type})" : $type,
+            static fn (string $type): string => match (true) {
+                ! $grouped => $type,
+                count(TsTypeShape::splitTopLevel($type, ['&'])) > 1 => "({$type})",
+                default => TsTypeShape::unionArm($type),
+            },
             $types,
         ));
     }

@@ -94,7 +94,12 @@ final class TokenSlots
             $arms[serialize([$arm, $armSlots])] ??= [$arm, $armSlots];
         }
 
-        return [implode(' | ', array_column($arms, 0)), array_merge([], ...array_column($arms, 1))];
+        $texts = array_column($arms, 0);
+
+        return [
+            count($texts) === 1 ? $texts[0] : implode(' | ', array_map(TsTypeShape::unionArm(...), $texts)),
+            array_merge([], ...array_column($arms, 1)),
+        ];
     }
 
     /**

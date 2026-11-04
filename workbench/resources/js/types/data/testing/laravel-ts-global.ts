@@ -338,7 +338,7 @@ declare global {
             is_pinned: boolean;
             // Mutators
             comment_lists: Comment[][];
-            author_rows: ({ author: Pick<User, 'id' | 'name'> })[];
+            author_rows: { author: Pick<User, 'id' | 'name'> }[];
             // Relations
             bulletins: Bulletin[];
             bulletins_count: number;
@@ -596,7 +596,7 @@ declare global {
             id: number;
             scanned_at: number | null;
             declared_value: string;
-            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+            legs: { code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[];
             created_at: string | null;
             updated_at: string | null;
         }
@@ -2757,8 +2757,8 @@ declare global {
         export interface BulletinArchiveResource {
             id: number;
             plucked: workbench.app.models.Comment[][];
-            rows: ({ author: Pick<workbench.app.models.User, 'id' | 'name'> })[];
-            own_picks: (Pick<workbench.app.models.Bulletin, 'id' | 'title'>)[];
+            rows: { author: Pick<workbench.app.models.User, 'id' | 'name'> }[];
+            own_picks: Pick<workbench.app.models.Bulletin, 'id' | 'title'>[];
         }
         /**
          * Reads Bulletin's accessors through a typed closure parameter and a nullsafe relation chain, beside a model method
@@ -2820,7 +2820,7 @@ declare global {
             id: number;
             lead_list?: workbench.app.models.Comment[];
             lead_owner?: workbench.app.models.User;
-            own_picks?: (Pick<workbench.app.models.Bulletin, 'id' | 'title'>)[];
+            own_picks?: Pick<workbench.app.models.Bulletin, 'id' | 'title'>[];
         }
         /**
          * Spreads a related BulletinOwnership's toArray(), whose appended `owner` accessor names `User`.
@@ -3328,7 +3328,7 @@ declare global {
             id: number;
             scanned_at: number | null;
             declared_value: string;
-            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+            legs: { code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[];
         }
         /**
          * Exercises collectDirectReturns elseif, else, and loop branches
@@ -3562,7 +3562,7 @@ declare global {
             week_days_when_has_default: workbench.app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: workbench.app.enums.StatusType[];
             members_via_var?: workbench.app.enums.RoleType[];
-            member_role_snapshot?: ({ role: workbench.app.enums.RoleType | null })[];
+            member_role_snapshot?: { role: workbench.app.enums.RoleType | null }[];
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
             wrapped_history_or_scalar: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
@@ -4020,10 +4020,10 @@ declare global {
          */
         export interface MappedCollectionsResource {
             collected_spread: (Omit<workbench.app.models.Comment, 'flag'> & { flag: boolean })[];
-            collected_reads: ({ content: string; who: string | null })[];
+            collected_reads: { content: string; who: string | null }[];
             collected_spread_in_author?: (Omit<workbench.app.models.Comment, 'flag'> & { flag: boolean })[];
-            local_rows: ({ who: string | null })[];
-            loaded_rows: (Pick<workbench.app.models.Comment, 'id' | 'content'>)[];
+            local_rows: { who: string | null }[];
+            loaded_rows: Pick<workbench.app.models.Comment, 'id' | 'content'>[];
             local_proxy: { id: number; content: string }[];
             reassigned_parameter: string[];
             keyed_rows: { id: number }[] | Record<string, { id: number }>;
@@ -4095,7 +4095,7 @@ declare global {
             suppliers?: SupplierCollection | never[];
             unpublished_guess?: unknown;
             unpublished_guess_collection?: unknown;
-            staff_map_only?: ({ id: number; name: string; role: workbench.app.enums.RoleType | null; last_login_at: string | null })[];
+            staff_map_only?: { id: number; name: string; role: workbench.app.enums.RoleType | null; last_login_at: string | null }[];
             registrars_map_except?: { name: string }[];
             history_event_map_only?: unknown;
         }
@@ -4574,8 +4574,8 @@ declare global {
          */
         export interface PostCommentAuthorsResource {
             id: number;
-            authors: ({ id: number; who: string | null; who_or: string | null })[];
-            loaded?: ({ who: string | null })[];
+            authors: { id: number; who: string | null; who_or: string | null }[];
+            loaded?: { who: string | null }[];
         }
         /**
          * A bare enum case in every position a resource key reads one, with two enums that share a basename. A backed case
@@ -5080,8 +5080,8 @@ declare global {
         export interface RelationChainResource {
             first_members: workbench.app.models.User[];
             member_cards: { id: number; name: string }[];
-            member_profiles: ({ id: number; role: workbench.app.enums.RoleType | null; owner: workbench.app.models.User })[];
-            member_map_only: ({ id: number; role: workbench.app.enums.RoleType | null })[];
+            member_profiles: { id: number; role: workbench.app.enums.RoleType | null; owner: workbench.app.models.User }[];
+            member_map_only: { id: number; role: workbench.app.enums.RoleType | null }[];
             member_emails: string[];
             member_roles: (workbench.app.enums.RoleType | null)[];
             member_role_resources: workbench.app.enums.RoleType[];
@@ -5841,7 +5841,7 @@ declare global {
          */
         export interface UserFeaturedPostsResource {
             id: number;
-            featured_posts?: ({ id: number; title: string; file: string | null })[] | null;
+            featured_posts?: { id: number; title: string; file: string | null }[] | null;
         }
         /**
          * Exercises return $this->only([...]) naming a $hidden column explicitly.

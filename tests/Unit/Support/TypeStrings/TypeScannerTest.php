@@ -48,6 +48,7 @@ test('splits a PHPDoc type with quotes and no template literals', function (stri
     ["A&'x&y'", ['&'], ['A', "'x&y'"]],
     ["'it\\'s'|null", ['|'], ["'it\\'s'", 'null']],
     ['`a|b`', ['|'], ['`a', 'b`']],
+    ["'x'|a => b|c", ['|'], ["'x'", 'a => b', 'c']],
 ]);
 
 test('lists and masks literal text, keeping interpolations as code', function () {

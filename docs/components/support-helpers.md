@@ -57,7 +57,7 @@ The helpers and the test that pins them live in these files:
 - [`Support\TypeStrings\TypeScanner`](../../src/Support/TypeStrings/TypeScanner.php): the type scanner. It reads a
   type string's bracket depths, its parts between top-level separators, and its string and template literals.
   `TypeScannerCorpusTest` proves it against TypeScript's parser on golden, hand-written and generated types. Static
-  and `@internal`; nothing reads it yet.
+  and `@internal`. `TsTypeShape` splits, nests and lists on it, and `TsTypeString` reads its literal spans and masks.
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
   TypeScript type or a PHPDoc type, where a backtick is plain text and no arrow owns a union. `@internal`.
 - [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
@@ -90,6 +90,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does a registered route dispatch to this class? | `RoutedControllers` |
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
+| How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | Is this union arm a JSON scalar: a number, string or boolean, or a literal of one? | `TsTypeShape::isScalar()` |
 | What are the key and value types of this one `Record<K, V>`? | `TsTypeShape::recordArguments()` |
 | What is each member type of this tuple? | `TsTypeShape::tupleMembers()` |
@@ -153,9 +154,18 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
-`IndexSignatureKey::PATTERN` and `ImportMaps::localNames()`. That one-way dependency is what made the class safe to lift
-out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
-[docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`
+and `ImportMaps::localNames()`; `TsTypeShape`'s only one is `TypeScanner`. That one-way dependency is what made the
+class safe to lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind
+as the [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+
+Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
+a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and
+`shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
+`typeNameOccursIn()` alone stays literal-blind, as its [known gap][literal-blind] says. A joiner that unions arms passes
+each through `unionArm()` once there are two or more, and every list goes through `TsTypeShape::listType()`.
+
+[literal-blind]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
 `ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, and

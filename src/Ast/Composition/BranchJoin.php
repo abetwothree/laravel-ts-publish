@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
  * Joins one key's branch types into one type, beside the token slots a declared text's arms bring to it, and keeps the
@@ -223,7 +224,12 @@ final class BranchJoin
         }
 
         $arms = array_column($joined, 0);
+        $arms = $nullable ? [...$arms, 'null'] : $arms;
 
-        return [implode(' | ', $nullable ? [...$arms, 'null'] : $arms), TokenSlots::joinedSlots($joined)];
+        // Parentheses add no token, so the slots read the arms as they were declared.
+        return [
+            count($arms) === 1 ? $arms[0] : implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)),
+            TokenSlots::joinedSlots($joined),
+        ];
     }
 }

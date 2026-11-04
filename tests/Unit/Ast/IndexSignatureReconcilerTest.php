@@ -190,15 +190,29 @@ test('a union keeps its undefined arm when another arm names undefined only insi
     ],
 ]);
 
-test('a string literal holding a backslash cannot join, so the fill goes back', function (string $cast) {
+test('a string literal holding a backslash joins the union as its unescaped twin does', function (string $cast, string $twin) {
+    $typeWith = fn (string $literal): string => reconciledTypes(reconciled(
+        [[TAG_SIGNATURE, 'number | undefined', UNTYPED_SIGNATURE_VALUE]],
+        castKeys: ['state_tag' => $literal],
+    ))[TAG_SIGNATURE];
+
+    expect($typeWith($cast))->toBe("number | {$cast} | undefined")
+        ->and($typeWith($twin))->toBe("number | {$twin} | undefined");
+})->with([
+    'an undefined in single quotes' => ["'it\\'s | undefined | x'", "'its | undefined | x'"],
+    'a null in single quotes' => ["'it\\'s | null | x'", "'its | null | x'"],
+    'an undefined in double quotes' => ['"q\\" | undefined | r"', '"q | undefined | r"'],
+    'an escaped backslash' => ["'a\\\\' | 'b'", "'a' | 'b'"],
+]);
+
+// A template literal's text is a value, as a string literal's is; a class in its placeholder still needs an import.
+test('a template literal joins the union unless its placeholder names a class', function (string $cast, string $expected) {
     $types = reconciledTypes(reconciled([[TAG_SIGNATURE, 'number | undefined', UNTYPED_SIGNATURE_VALUE]], castKeys: ['state_tag' => $cast]));
 
-    expect($types[TAG_SIGNATURE])->toBe(UNTYPED_SIGNATURE_VALUE);
+    expect($types[TAG_SIGNATURE])->toBe($expected);
 })->with([
-    'an undefined in single quotes' => ["'it\\'s | undefined | x'"],
-    'a null in single quotes' => ["'it\\'s | null | x'"],
-    'an undefined in double quotes' => ['"q\\" | undefined | r"'],
-    'an escaped backslash' => ["'a\\\\' | 'b'"],
+    'text around a string placeholder' => ['`User-${string}`', 'number | `User-${string}` | undefined'],
+    'a class in the placeholder' => ['`${User}-x`', UNTYPED_SIGNATURE_VALUE],
 ]);
 
 test('a lone fill is never put back, whatever its type', function () {

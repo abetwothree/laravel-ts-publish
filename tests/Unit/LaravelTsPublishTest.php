@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
@@ -47,6 +48,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableCallback;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
@@ -498,7 +500,7 @@ describe('castToTsType', function () {
 describe('custom cast get() docblock', function () {
     test('reads a vague get()\'s @return list<Dto> as the element\'s public properties', function () {
         expect($this->service->toTsType(ConsignmentLegsCast::class)['type'])
-            ->toBe('({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]');
+            ->toBe('{ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null }[]');
     });
 
     test('keeps the native type when the @return names a class no cast type can import', function () {
@@ -1851,7 +1853,7 @@ describe('PHPDoc shapes, tuples and callables', function () {
         expect($this->service->resolvePhpDocTypeToTs($phpType, $useMap, ''))->toBe($expected)
             ->and($this->service->resolveDocblockTypePart($phpType, $useMap, '')['type'])->toBe($expected)
             ->and($this->service->resolveGenericContainerType("list<{$phpType}>", $useMap, '')['type'] ?? null)
-            ->toBe(str_contains($expected, '|') ? "({$expected})[]" : "{$expected}[]");
+            ->toBe(TsTypeShape::listType([$expected]));
     })->with([
         'a positional list shape' => ['list{int, string}', '[number, string]'],
         'a positional array shape' => ['array{int, string}', '[number, string]'],
@@ -1996,6 +1998,23 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'an optional member before a required one, which no list holds' => ['list{0?: int, 1: string}', '[number?, string?]'],
         'an optional union member, parenthesized for its marker' => ['list{0: int, 1?: string|null}', '[number, (string | null)?]'],
         'an optional member before a required one in an array' => ['array{0?: int, 1: string}', '{ 0?: number; 1: string }'],
+    ]);
+
+    // A shape keeps no arrow member, since its `=>` reads as a name no import brings; a subclass that keeps one prints
+    // its marker outside the arrow's return type.
+    test('parenthesizes an optional arrow member for its marker or its list, an arrow owning the union after it', function (string $phpType, string $expected) {
+        $service = new class extends LaravelTsPublish
+        {
+            protected function keptShapeMember(array $info): array
+            {
+                return ['type' => $info['type'], 'customImports' => []];
+            }
+        };
+
+        expect($service->resolvePhpDocTypeToTs($phpType, ['NullableCallback' => NullableCallback::class], ''))->toBe($expected);
+    })->with([
+        'an arrow' => ['list{0: int, 1?: NullableCallback}', '[number, (() => string | null)?]'],
+        'an arrow in a list' => ['list{0: int, 1?: list<NullableCallback>}', '[number, (() => string | null)[]?]'],
     ]);
 
     test('reads a nullable shape or list once, adding a top-level null a nested one does not count as', function (string $phpType, string $expected) {
@@ -2550,6 +2569,17 @@ describe('emptyTypeScriptInfo', function () {
 });
 
 describe('mergeTypeScriptInfos', function () {
+    // An arrow owns each pipe after it, so an arrow arm joined with others is parenthesized; alone it stays as it is.
+    test('joins an arrow function arm parenthesized, so the arms after it stay outside its return type', function (array $types, string $joined) {
+        $infos = array_map(fn (string $type): array => [...$this->service->emptyTypeScriptInfo(), 'type' => $type], $types);
+
+        expect($this->service->mergeTypeScriptInfos($infos)['type'])->toBe($joined);
+    })->with([
+        'beside null' => [['() => void', 'null'], '(() => void) | null'],
+        'one returning a union, beside a string' => [['() => A | null', 'string'], '(() => A | null) | string'],
+        'alone' => [['() => A | null'], '() => A | null'],
+    ]);
+
     // An object's own JSON keeps its keys; the re-index rewrites only an arm holding an object.
     test('keeps an object\'s keys beside an arm holding no object, and drops them beside an array shape', function () {
         $object = [...$this->service->emptyTypeScriptInfo(), 'type' => '{ 1: string }', 'keepsKeys' => true];

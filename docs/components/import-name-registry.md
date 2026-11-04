@@ -95,11 +95,12 @@ Callers fill their queues in one of three ways:
   token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`. Under
   [the unclaimed-token rule](ts-casts.md#imports), a key's token whose name no custom import brings takes the one class
   of that name on any channel or in `MethodAnalysis::$carried` instead: an import-less cast that spells a class another
-  key holds or another cast displaced has none of its own. Neither channel reads a token inside a quoted literal or a
-  generated index signature key, whose text is a value or a key, and the class channel never reads the name after
-  `typeof`, which is a const's. A key a `share()` docblock retypes, or a method's `@return` fills, reads each token of
-  its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null included, so `Person|User` keeps the
-  override's `User` where another key brings that import. `TokenSlots::declaredTokensOf()` is the one reading of
+  key holds or another cast displaced has none of its own. Neither channel reads a token inside a string literal, a
+  template literal's text or a generated index signature key, whose text is a value or a key, and the class channel
+  never reads the name after `typeof`, which is a const's. A key a `share()` docblock retypes, or a method's `@return`
+  fills, reads each token of its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null
+  included, so `Person|User` keeps the override's `User` where another key brings that import.
+  `TokenSlots::declaredTokensOf()` is the one reading of
   those slots, and every writer and reader goes through it: `declaredTokens()` reads a whole declaration (the docblock
   engine's keep check, key fill and container slots, `ResourceTransformer`, `FileImportNames`), `joinedSlots()` arms
   joined into one type (a docblock union, shape or container's union, the branch join), a cut arm against its whole

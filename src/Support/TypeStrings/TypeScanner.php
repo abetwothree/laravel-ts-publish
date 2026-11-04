@@ -35,7 +35,8 @@ final class TypeScanner
     private const string TEMPLATE_STOPS = '\\`$';
 
     /**
-     * The bracket depth of each offset outside literal text, by offset.
+     * The bracket depth of each offset outside literal text, by offset; a `|` or `&` an arrow owns reads one level
+     * deeper than the arrow, so no depth-0 split cuts its return type.
      *
      * @return array<int, int>
      */
@@ -185,7 +186,7 @@ final class TypeScanner
                     }
                 }
             } else {
-                // A `,` or `;` ends the arrow's return type on its level.
+                // The one stop left is a `,` or `;`, which ends the arrow's return type on its level.
                 $arrow = $arrow === $depth ? self::popArrow($arrows) : $arrow;
                 $depths[$offset] = $depth;
             }

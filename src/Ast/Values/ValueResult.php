@@ -126,14 +126,11 @@ final class ValueResult
     }
 
     /**
-     * Suffix a type with `[]`, parenthesizing a union or intersection first: TypeScript binds `[]`
-     * tighter than both, so `A & B[]` parses as `A & (B[])`, not `(A & B)[]`.
-     *
-     * FormRequestRulesAnalyzer's same-named method is a different rule (nesting-aware) and stays there.
+     * A list of a type, as TsTypeShape::listType() prints one.
      */
     public static function arrayWrapType(string $type): string
     {
-        return str_contains($type, '|') || str_contains($type, '&') ? '('.$type.')[]' : $type.'[]';
+        return TsTypeShape::listType([$type]);
     }
 
     /**

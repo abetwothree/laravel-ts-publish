@@ -524,14 +524,13 @@ describe('qualifyGlobalType', function () {
         'a nested index signature\'s key' => ['{ [key: `${string}Post`]: Post | undefined }', '{ [key: `${string}Post`]: app.models.Post | undefined }'],
     ]);
 
-    test('reads a template literal as before: its text is qualified, and a quote inside opens no string', function () {
-        $result = $this->service->qualifyGlobalType(
-            "`User's-\${string}` | 'Post'",
-            ['app.models' => ['Post', 'User']],
-        );
-
-        expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
-    });
+    test('reads a template literal\'s text as a value and its placeholders as types, and a quote inside opens no string', function (string $type, string $qualified) {
+        expect($this->service->qualifyGlobalType($type, ['app.models' => ['Post', 'User']]))->toBe($qualified);
+    })->with([
+        'a quote in template text' => ["`User's-\${string}` | 'Post'", "`User's-\${string}` | 'Post'"],
+        'a quoted backtick in a placeholder' => ["`\${'`'}` | 'Post' | User", "`\${'`'}` | 'Post' | app.models.User"],
+        'a name in a placeholder' => ['`${User}-x` | Post', '`${app.models.User}-x` | app.models.Post'],
+    ]);
 
     test('reads a name spelled with non-ASCII letters whole, as a type name and as an alias', function (string $type, string $qualified) {
         $result = $this->service->qualifyGlobalType(
@@ -589,6 +588,30 @@ describe('qualifyGlobalType', function () {
         expect($service->qualifyGlobalType('User', $types))->toBe('app.models.User')
             ->and($service->qualifications)->toBe(2);
     });
+});
+
+describe('substituteEnumType', function () {
+    test('replaces a bare enum token with its AsEnum wrap and keeps every other arm', function () {
+        expect($this->service->substituteEnumType('Role | null', 'Role', 'AsEnum<typeof RoleEnum>'))
+            ->toBe('AsEnum<typeof RoleEnum> | null');
+    });
+
+    test('leaves a qualified or a longer name alone', function () {
+        expect($this->service->substituteEnumType('foo.Role | RoleExtra', 'Role', 'AsEnum<typeof RoleEnum>'))
+            ->toBe('foo.Role | RoleExtra');
+    });
+});
+
+describe('literalSpans', function () {
+    test('spans each string literal, each template text segment and each generated index signature key', function (string $type, array $spans) {
+        expect($this->service->literalSpans($type))->toBe($spans);
+    })->with([
+        'a string with an escaped quote' => ["'it\\'s' | User", [[0, 7]]],
+        'template text around a placeholder' => ['`a${User}b`', [[0, 4], [8, 11]]],
+        'an index signature key, whole' => ['{ [key: `${string}_tag`]: User }', [[2, 24]]],
+        'a key spelled inside a string' => ["'[key: string]' | User", [[0, 15]]],
+        'no literal' => ['User | null', []],
+    ]);
 });
 
 describe('rewriteAsEnumToType', function () {
@@ -739,6 +762,11 @@ describe('hoistNull', function () {
         'null arm only' => [['{ a: string | null }', 'null'], '{ a: string | null } | null'],
         'no null' => [['string', 'number'], 'string | number'],
         'duplicate member across arms' => [['A | null', 'A'], 'A | null'],
+        'a null in template text' => [['`a | null | b`'], '`a | null | b`'],
+        'a null in a string with an escaped quote' => [["'it\\'s | null' | null"], "'it\\'s | null' | null"],
+        'an arrow function beside null' => [['() => void', 'null'], '(() => void) | null'],
+        'an arrow function beside another arm' => [['() => A', 'B'], '(() => A) | B'],
+        'a lone arrow function whose return type holds the null' => [['() => A | null'], '() => A | null'],
     ]);
 });
 
@@ -1120,6 +1148,22 @@ describe('typeNameOccursIn', function () {
 });
 
 describe('shapeValueHasUnimportableToken', function () {
+    test('a token an import already brings in needs no other', function () {
+        expect($this->service->shapeValueHasUnimportableToken('{ owner: User }', ['User']))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ owner: User }'))->toBeTrue();
+    });
+
+    test('a literal\'s text needs no import, and a template literal\'s placeholder may', function (string $type, bool $expected) {
+        expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
+    })->with([
+        'a name in template text' => ['`User-${string}`', false],
+        'a name in a placeholder' => ['`${User}-x`', true],
+        'a name in a string with an escaped quote' => ["'it\\'s User'", false],
+        'a shape member of template text' => ['{ slug: `User-${string}`; n: number }', false],
+        'a key holding an escaped quote, before a class' => ['{ "a\\"b": User }', true],
+        'a key holding an escaped quote, before a primitive' => ['{ "a\\"b": number }', false],
+    ]);
+
     // A nested shape prints its signature bare, so the template text must read as a key rather than as a value token.
     test('a generated index signature is a key, and only its value can need an import', function (string $type, bool $expected) {
         expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
@@ -1157,6 +1201,9 @@ describe('orUndefined', function () {
         'naming it only inside a Record' => ['Record<string, number | undefined>', 'Record<string, number | undefined> | undefined'],
         'naming it only in a string literal' => ["'undefined'", "'undefined' | undefined"],
         'a name that differs by case' => ['UndefinedThing', 'UndefinedThing | undefined'],
+        'naming it only in template text' => ['`a | undefined | b`', '`a | undefined | b` | undefined'],
+        'an arrow function' => ['() => void', '(() => void) | undefined'],
+        'an arrow function whose return type names it' => ['() => A | undefined', '(() => A | undefined) | undefined'],
     ]);
 });
 

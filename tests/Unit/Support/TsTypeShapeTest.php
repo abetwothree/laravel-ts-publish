@@ -72,6 +72,24 @@ describe('splitTopLevel', function () {
     test('floors depth at zero so an unmatched closing bracket still splits what follows', function () {
         expect(TsTypeShape::splitTopLevel('a) | b', ['|']))->toBe(['a)', 'b']);
     });
+
+    test('reads a string or template literal whole, its escapes and its text alike', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'a pipe in template text' => ['`a|b` | null', ['`a|b`', 'null']],
+        'a null in template text' => ['`x | null | y`', ['`x | null | y`']],
+        'a brace in template text' => ['`a{b` | null', ['`a{b`', 'null']],
+        'an escaped quote ending no string' => ["'it\\'s' | 'b'", ["'it\\'s'", "'b'"]],
+        'an escaped quote before a pipe' => ["'a\\'|b' | null", ["'a\\'|b'", 'null']],
+    ]);
+
+    test('gives an arrow function each pipe after it on its level', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'a union return type' => ['() => A | null', ['() => A | null']],
+        'an arrow after another arm' => ['B | (a: string) => C | D', ['B', '(a: string) => C | D']],
+        'a parenthesized arrow' => ['(() => A) | null', ['(() => A)', 'null']],
+    ]);
 });
 
 describe('memberType', function () {
@@ -99,6 +117,12 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ [key: string]: boolean }', 'anything'))->toBe('boolean');
     });
 
+    test('reads past a template literal holding a member separator', function () {
+        expect(TsTypeShape::memberType('{ x: `a;b`; y: number }', 'y'))->toBe('number')
+            ->and(TsTypeShape::memberType('{ x: `a;b`; y: number }', 'x'))->toBe('`a;b`')
+            ->and(TsTypeShape::memberType("{ 'a\\'b': string; c: number }", 'c'))->toBe('number');
+    });
+
     test('returns null for a missing key or an opaque type', function () {
         expect(TsTypeShape::memberType('{ a: number }', 'b'))->toBeNull()
             ->and(TsTypeShape::memberType('Foo', 'a'))->toBeNull()
@@ -112,8 +136,23 @@ describe('elementType', function () {
             ->and(TsTypeShape::elementType('readonly Foo[]'))->toBe('Foo')
             ->and(TsTypeShape::elementType('Array<{ a: number }>'))->toBe('{ a: number }')
             ->and(TsTypeShape::elementType('ReadonlyArray<number> | null'))->toBe('number')
-            ->and(TsTypeShape::elementType('(string | number)[]'))->toBe('string | number');
+            ->and(TsTypeShape::elementType('(string | number)[]'))->toBe('string | number')
+            ->and(TsTypeShape::elementType('`a|b`[]'))->toBe('`a|b`');
     });
+
+    test('reads a list only where its `[]` or `Array<…>` takes the whole arm', function (string $type, ?string $element) {
+        expect(TsTypeShape::elementType($type))->toBe($element);
+    })->with([
+        'an intersection ending in a list' => ['A & B[]', null],
+        'an intersection ending in the empty tuple' => ['(A | B) & []', null],
+        'an arrow returning a list' => ['() => B[]', null],
+        'an Array intersected with a Record' => ['Array<A> & Record<string, B>', null],
+        'an Array of two arguments' => ['Array<A, B>', null],
+        'a list of an intersection' => ['(A & B)[]', 'A & B'],
+        'a list of an arrow' => ['(() => B)[]', '() => B'],
+        'a list of a parenthesized arrow beside one' => ['((() => A) | (() => B))[]', '(() => A) | (() => B)'],
+        'a list arm after an intersection arm' => ['A & B[] | C[]', 'C'],
+    ]);
 
     test('returns null for non-arrays', function () {
         expect(TsTypeShape::elementType('Foo'))->toBeNull()
@@ -133,6 +172,10 @@ describe('listType', function () {
         'a union element' => [['string | null'], '(string | null)[]'],
         'an intersection element' => [['A & B'], '(A & B)[]'],
         'a function element' => [['() => void'], '(() => void)[]'],
+        'a function returning a union' => [['() => A | null'], '(() => A | null)[]'],
+        'an object holding a union' => [['{ a: A | B }'], '{ a: A | B }[]'],
+        'a template literal holding a pipe' => [['`a|b`'], '`a|b`[]'],
+        'a literal with an escaped quote' => [["'it\\'s|x'"], "'it\\'s|x'[]"],
         'an untyped element beside a typed one' => [['string', 'unknown'], 'unknown[]'],
     ]);
 });
@@ -143,6 +186,7 @@ describe('isWrapped', function () {
     })->with([
         'an object literal' => ['{ a: string }', '{', '}', true],
         'an object holding an arrow function' => ['{ a: () => void; b: string }', '{', '}', true],
+        'a closer in template text' => ['{ a: `a}b`; c: number }', '{', '}', true],
         'a quoted closer' => ['{ "}": string }', '{', '}', true],
         'two objects intersected' => ['{ a: string } & { b: number }', '{', '}', false],
         'parentheses around a union' => ['(string | null)', '(', ')', true],
@@ -164,6 +208,8 @@ describe('members', function () {
         'a quoted key holding a colon' => ['{ "a:b": string }', [['"a:b"', 'string']]],
         'an index signature' => ['{ [key: number]: User }', [['[key: number]', 'User']]],
         'an empty object' => ['{}', []],
+        'a brace in template text' => ['{ k: `a{b`; n: number }', [['k', '`a{b`'], ['n', 'number']]],
+        'a separator in template text' => ['{ k: `a;b`, n: number }', [['k', '`a;b`'], ['n', 'number']]],
         'a member with no key' => ['{ a: string; b }', null],
         'an intersection' => ['{ a: string } & { b: number }', null],
         'no object' => ['Record<string, number>', null],
@@ -179,7 +225,9 @@ describe('holdsKeyedObject', function () {
         'an empty object' => ['{}', true],
         'a number-keyed Record' => ['Record<number, string>', true],
         'a Record holding an object' => ['Record<string, { "1": string }>', true],
-        'a template literal, read as an object to be safe' => ['`${string}_label`', true],
+        'a template literal' => ['`${string}_label`', false],
+        'a brace in template text' => ['`a{b`', false],
+        'an object beside a template literal' => ['`a{b` | { a: string }', true],
         'a scalar' => ['string', false],
         'an empty list' => ['never[]', false],
         'a scalar list' => ['(string | number)[]', false],
@@ -200,5 +248,42 @@ describe('isNumericKey', function () {
         'a number signature' => ['[key: number]', true],
         'a name' => ['week', false],
         'a string signature' => ['[key: string]', false],
+    ]);
+});
+
+describe('recordArguments', function () {
+    test('reads the key and value of one Record, a template literal holding a comma read whole', function (string $type, ?array $arguments) {
+        expect(TsTypeShape::recordArguments($type))->toBe($arguments);
+    })->with([
+        'a Record' => ['Record<string, number>', ['string', 'number']],
+        'a template key holding a comma and a pipe' => ['Record<`${A | B},x`, V>', ['`${A | B},x`', 'V']],
+        'a Record beside null' => ['Record<string, number> | null', null],
+        'no Record' => ['Map<string, number>', null],
+    ]);
+});
+
+describe('tupleMembers', function () {
+    test('reads each member of a tuple, a template literal holding a comma read whole', function (string $tuple, array $members) {
+        expect(TsTypeShape::tupleMembers($tuple))->toBe($members);
+    })->with([
+        'two members' => ['[string, number]', ['string', 'number']],
+        'a template literal holding a comma' => ['[`a,b`, number]', ['`a,b`', 'number']],
+        'an optional union' => ['[number, (string | null)?]', ['number', 'string | null']],
+    ]);
+});
+
+describe('unionArm', function () {
+    test('parenthesizes an arm holding a top-level arrow, so a union beside it stays outside its return type', function (string $arm, string $expected) {
+        expect(TsTypeShape::unionArm($arm))->toBe($expected);
+    })->with([
+        'an arrow function' => ['() => void', '(() => void)'],
+        'one returning a union' => ['(a: string) => A | B', '((a: string) => A | B)'],
+        'a constructor type' => ['new () => A', '(new () => A)'],
+        'an arrow after another arm' => ['B | () => C', '(B | () => C)'],
+        'a parenthesized arrow' => ['(() => void)', '(() => void)'],
+        'an object holding an arrow' => ['{ fn: () => void }', '{ fn: () => void }'],
+        'a list of arrows' => ['(() => void)[]', '(() => void)[]'],
+        'an arrow in a string literal' => ["'() => void'", "'() => void'"],
+        'a union' => ['A | B', 'A | B'],
     ]);
 });

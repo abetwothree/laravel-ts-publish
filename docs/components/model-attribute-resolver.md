@@ -260,7 +260,8 @@ These readers apply it, each with the scope and the fallback its page gives:
 - **A leading `?`**: `?array<int, int>` has the `?` stripped, the rest resolved and `| null` appended, as `toTsType()`
   does for a plain type. Without it the container pattern would not match, and partial matching would return a
   plausible wrong scalar.
-- **Parentheses**: `wrapAsArray()` wraps a union or an intersection before it appends `[]`.
+- **Parentheses**: `wrapAsArray()` lists through `TsTypeShape::listType()`, which wraps a top-level union, intersection
+  or arrow before it appends `[]`, and no object literal.
 - **Unrecognized generics**: a part that still contains `<` resolves to `unknown`, not to the `int` that partial
   matching would find inside it.
 

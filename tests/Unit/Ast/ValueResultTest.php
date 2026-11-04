@@ -584,6 +584,20 @@ describe('ValueResult::withNullArm() and hasNullArm()', function () {
     ]);
 });
 
+describe('ValueResult::arrayWrapType()', function () {
+    test('lists a type, parenthesizing it only where a top-level union, intersection or arrow would bind the brackets', function (string $type, string $list) {
+        expect(ValueResult::arrayWrapType($type))->toBe($list);
+    })->with([
+        'an arrow function' => ['() => A', '(() => A)[]'],
+        'an object holding a union' => ['{ a: A | B }', '{ a: A | B }[]'],
+        'a union' => ['A | B', '(A | B)[]'],
+        'an intersection' => ['A & { b: B }', '(A & { b: B })[]'],
+        'a generic holding a union' => ["Pick<Post, 'id' | 'title'>", "Pick<Post, 'id' | 'title'>[]"],
+        'a string literal holding a pipe' => ["'a|b'", "'a|b'[]"],
+        'a plain type' => ['User', 'User[]'],
+    ]);
+});
+
 describe('ValueResult::unionResults() over an arm that can be a MissingValue', function () {
     test('an optional typed arm beside a required null arm makes the union optional', function () {
         expect(ValueResult::unionResults([

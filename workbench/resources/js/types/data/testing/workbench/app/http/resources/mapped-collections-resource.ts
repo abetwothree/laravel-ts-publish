@@ -10,10 +10,10 @@ import type { PostResource } from '.';
 export interface MappedCollectionsResource
 {
     collected_spread: (Omit<Comment, 'flag'> & { flag: boolean })[];
-    collected_reads: ({ content: string; who: string | null })[];
+    collected_reads: { content: string; who: string | null }[];
     collected_spread_in_author?: (Omit<Comment, 'flag'> & { flag: boolean })[];
-    local_rows: ({ who: string | null })[];
-    loaded_rows: (Pick<Comment, 'id' | 'content'>)[];
+    local_rows: { who: string | null }[];
+    loaded_rows: Pick<Comment, 'id' | 'content'>[];
     local_proxy: { id: number; content: string }[];
     reassigned_parameter: string[];
     keyed_rows: { id: number }[] | Record<string, { id: number }>;

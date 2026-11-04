@@ -1360,11 +1360,11 @@ it('types the relation filters a page reads, as Inertia sends them', function ()
         'category_id', 'visibility', 'priority', 'word_count', 'reading_time_minutes', 'featured_image_url', 'is_pinned'];
 
     expect($page['pageType'])->toBe('Inertia.SharedData & { posts: { id: number; title: string }[], '
-        .'trimmed: ({ id: number; title: string; user_id: number; status: StatusType; published_at: string | null; '
+        .'trimmed: { id: number; title: string; user_id: number; status: StatusType; published_at: string | null; '
         .'metadata: unknown[] | null; rating: string | null; category: string; options: Record<string, string> | null; '
         .'deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; '
         .'priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; '
-        .'featured_image_url: string | null; is_pinned: boolean })[], '
+        .'featured_image_url: string | null; is_pinned: boolean }[], '
         .'comments: { id: number; content: string }[], held: { id: number }[] }')
         ->and($page['classFqcns'])->toBe([Status::class, Visibility::class, Priority::class])
         ->and($sent->posts)->toEqual([(object) ['id' => $post->id, 'title' => 'First']])

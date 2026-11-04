@@ -383,7 +383,7 @@ describe('an inline @var on a local assignment', function () {
         'a nullable shape inside a shape' => ['array{a: ?array{b: int}}', '{ a: { b: number } | null }'],
         'a nullable shape inside a listed shape' => [
             'list<array{id: int, meta: ?array{k: string}}>',
-            '({ id: number; meta: { k: string } | null })[]',
+            '{ id: number; meta: { k: string } | null }[]',
         ],
         'a nullable shape' => ['?array{a: int}', '{ a: number } | null'],
         'a nullable list' => ['?list<int>', 'number[] | null'],

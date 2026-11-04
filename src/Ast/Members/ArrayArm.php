@@ -233,8 +233,8 @@ final readonly class ArrayArm
     }
 
     /**
-     * Each arm printed, once, an intersection parenthesized beside another arm, and the list the class sends the object
-     * arm as where it may, unless the list arm already holds each value that list may hold.
+     * Each arm printed, once, an intersection or an arrow parenthesized beside another arm, and the list the class
+     * sends the object arm as where it may, unless the list arm already holds each value that list may hold.
      *
      * @param  array<string, self>  $arms  by kind
      * @param  list<ArrayWrite>|null  $writes  the writes the arms settled under; null leaves out the list
@@ -249,7 +249,9 @@ final readonly class ArrayArm
         $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
 
         return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(
-            fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : $arm,
+            fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1
+                ? '('.$arm.')'
+                : TsTypeShape::unionArm($arm),
             $printed,
         ));
     }

@@ -797,7 +797,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
 
     test('map() closure body embeds both an enum-cast column and a model-backed property, and both propagate', function () {
         // role is a nullable column, so the body type is a union and gets parenthesized before '[]'.
-        expect($this->props['member_profiles']['type'])->toBe('({ id: number; role: RoleType | null; owner: User })[]')
+        expect($this->props['member_profiles']['type'])->toBe('{ id: number; role: RoleType | null; owner: User }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_profiles')
             ->and($this->analysis->inlineEnumFqcns['member_profiles'])->toContain(Role::class)
             ->and($this->analysis->inlineModelFqcns)->toHaveKey('member_profiles')
@@ -807,7 +807,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     test('->map->only() reached directly off the relation resolves the HigherOrderCollectionProxy', function () {
         // arrayWrapType() parenthesizes on any '|', including one nested inside the braces — same
         // as member_profiles above, not a defect specific to this proxy.
-        expect($this->props['member_map_only']['type'])->toBe('({ id: number; role: RoleType | null })[]')
+        expect($this->props['member_map_only']['type'])->toBe('{ id: number; role: RoleType | null }[]')
             ->and($this->props['member_map_only']['optional'])->toBeFalse()
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_map_only')
             ->and($this->analysis->inlineEnumFqcns['member_map_only'])->toContain(Role::class);
@@ -965,7 +965,7 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
     // a channel distinct from enumResources/directEnumFqcns that ResourceTransformer reads
     // separately (see propertyInlineEnumFqcns in rewriteEnumResourceTypes()'s import-GC).
     test('a bare enum read nested inside an inline array registers in inlineEnumFqcns', function () {
-        expect($this->props['member_role_snapshot']['type'])->toBe('({ role: RoleType | null })[]')
+        expect($this->props['member_role_snapshot']['type'])->toBe('{ role: RoleType | null }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_role_snapshot')
             ->and($this->analysis->inlineEnumFqcns['member_role_snapshot'])->toContain(Role::class);
     });
@@ -2571,13 +2571,13 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
         ], ['Comment', 'User']],
         'pluck() and a shape a closure parameter builds' => [BulletinArchiveResource::class, [
             'plucked' => 'Comment[][]',
-            'rows' => "({ author: Pick<User, 'id' | 'name'> })[]",
-            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+            'rows' => "{ author: Pick<User, 'id' | 'name'> }[]",
+            'own_picks' => "Pick<Bulletin, 'id' | 'title'>[]",
         ], ['Bulletin', 'Comment', 'User']],
         'a relation chain, a closure parameter and pluck() inside whenLoaded()' => [BulletinLoadedResource::class, [
             'lead_list' => 'Comment[]',
             'lead_owner' => 'User',
-            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+            'own_picks' => "Pick<Bulletin, 'id' | 'title'>[]",
         ], ['Bulletin', 'Comment', 'User']],
         'the resource\'s own model through $this->resource, whenAppended() and whenHas()' => [BulletinResource::class, [
             'list' => 'Comment[]',
@@ -6190,7 +6190,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     test('whenLoaded closure ->map->only() resolves the HigherOrderCollectionProxy per element', function () {
         // arrayWrapType() parenthesizes on any '|', including one nested inside the braces.
         expect($this->props['staff_map_only']['type'])
-            ->toBe('({ id: number; name: string; role: RoleType | null; last_login_at: string | null })[]')
+            ->toBe('{ id: number; name: string; role: RoleType | null; last_login_at: string | null }[]')
             ->and($this->props['staff_map_only']['optional'])->toBeTrue()
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('staff_map_only')
             ->and($this->analysis->inlineEnumFqcns['staff_map_only'])->toContain(Role::class);
@@ -7013,10 +7013,10 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
     });
 
-    test('a key cast to a string literal holding a backslash puts the fill back, and keeps its own cast', function () {
+    test('a key cast to a string literal holding a backslash joins the union, and keeps its own cast', function () {
         $props = ($this->shape)('escapedLiteralKey');
 
-        expect($props['[key: `${string}_a_tag`]']['type'])->toBe('unknown | undefined')
+        expect($props['[key: `${string}_a_tag`]']['type'])->toBe("number | 'it\\'s | null | x' | undefined")
             ->and($props['state_a_tag']['type'])->toBe("'it\\'s | null | x'");
     });
 
