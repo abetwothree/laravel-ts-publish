@@ -240,7 +240,7 @@ final class ParameterBinder
         $declaredOnly = $classes !== null && $held->declaredOnly;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
-        if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
+        if ($model !== null && ! $unsaved && ! TsTypeString::hasNullArm($value['type'])) {
             return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
         }
 
@@ -518,7 +518,7 @@ final class ParameterBinder
         $info = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
 
         return $type instanceof NullableType || self::defaultsToNull($param)
-            ? [...$info, 'type' => ValueResult::withNullArm($info['type'])]
+            ? [...$info, 'type' => TsTypeString::withNullArm($info['type'])]
             : $info;
     }
 }
