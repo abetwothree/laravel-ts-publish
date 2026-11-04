@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\RenamedResourceShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastChildMiddleware;
@@ -349,6 +350,20 @@ test('a share() docblock union of an override and the model spelled alike keeps 
             'listed' => [(object) ['name' => 'Ada'], (object) ['name' => 'Ada']],
             'either' => (object) ['name' => 'Ada'],
         ]);
+});
+
+test('a share() docblock list beside a resource published under its own name keeps the model\'s token on the model', function () {
+    Inertia::share(new RenamedResourceShareMiddleware()->share(request()));
+    $shared = analyzeSharedDataFor(RenamedResourceShareMiddleware::class);
+    $sent = inertiaProps(Inertia::render('Shared', []));
+
+    expect($shared['sharedPageProps'] ?? null)
+        ->toBe('{ listed: (AddressResource | User | WorkbenchUser)[], control: (User | WorkbenchUser)[] }')
+        ->and($shared['typeImports'] ?? null)->toBe([
+            './workbench/app/models' => ['User as WorkbenchUser'],
+            '@js/types/ui' => ['User'],
+        ])
+        ->and($sent)->toEqual((object) ['listed' => [(object) ['name' => 'Ada']], 'control' => [(object) ['name' => 'Ada']]]);
 });
 
 test('an optional share() docblock key the value never sets imports the model it names', function () {

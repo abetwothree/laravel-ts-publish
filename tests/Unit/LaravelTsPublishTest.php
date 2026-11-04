@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\RenamedResourceShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UiBoardShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyedItemsPost;
@@ -1714,6 +1715,20 @@ describe('docblockReturnShapeInfos', function () {
         ])->and($this->service->docblockReturnShapeInfos(new ReflectionMethod(OverrideUnionShareMiddleware::class, 'share')))->toBe([
             'listed' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'list<Person|User>'],
             'either' => ['type' => 'User | User', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'Person|User'],
+        ]);
+    });
+
+    test('names the slots of a list beside a resource published under its own name by the names its tokens spell', function () {
+        $ui = ['@js/types/ui' => ['User']];
+
+        expect($this->service->docblockReturnShapeInfos(new ReflectionMethod(RenamedResourceShareMiddleware::class, 'share')))->toBe([
+            'listed' => [
+                'type' => '(AddressResource | User | User)[]',
+                'customImports' => $ui,
+                'tokenFqcns' => [null, User::class],
+                'phpDoc' => 'list<AddressResource|Person|User>',
+            ],
+            'control' => ['type' => '(User | User)[]', 'customImports' => $ui, 'tokenFqcns' => [null, User::class], 'phpDoc' => 'list<Person|User>'],
         ]);
     });
 

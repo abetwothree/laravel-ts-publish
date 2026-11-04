@@ -91,7 +91,6 @@ use UnitEnum;
  *    phpDoc?: string,
  * }
  * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
- * @phpstan-type SlottedToken = array{string, int, class-string|null}
  * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
@@ -1607,7 +1606,7 @@ class LaravelTsPublish
         // `classFqcns` lists each class once, so it cannot say which token is whose when two classes share a name, nor
         // that an override's token spelled like a class names none. An empty queue would stop fqcnsOf() falling back.
         if ($this->overridesClassName($kept, $classFqcnToName)) {
-            $classTokenFqcns = $this->unionTokenFqcns($kept, $classFqcnToName);
+            $classTokenFqcns = $this->joinedTokenFqcns($kept);
         } elseif (count(array_unique($result['classes'])) === count($result['classes'])) {
             $classTokenFqcns = [];
         }
@@ -3248,34 +3247,6 @@ class LaravelTsPublish
     }
 
     /**
-     * Each token of the names in a type, in order, with its offset and the slot it reads: the next of `$slots` for a
-     * token of a name in `$own`, else what `$other` answers for it, null by default.
-     *
-     * @param  list<string>  $names  the names whose tokens are read
-     * @param  TokenFqcns  $slots  one per token of a name in `$own`, in order
-     * @param  list<string>  $own
-     * @param  (Closure(string): (class-string|null))|null  $other
-     * @return list<SlottedToken>
-     */
-    private function slottedTokens(string $type, array $names, array $slots, array $own, ?Closure $other = null): array
-    {
-        if ($names === []) {
-            return [];
-        }
-
-        preg_match_all(TsTypeString::queuedTokenPattern($names), $type, $matches, PREG_OFFSET_CAPTURE);
-        $tokens = [];
-        $next = 0;
-
-        foreach ($matches[0] as [$token, $at]) {
-            $slot = in_array($token, $own, true) ? $slots[$next++] ?? null : ($other === null ? null : $other($token));
-            $tokens[] = [$token, $at, $slot];
-        }
-
-        return $tokens;
-    }
-
-    /**
      * A shape's type with the custom imports of its pieces, each a member or a key in print order, and the class behind
      * each token they spell.
      *
@@ -3417,18 +3388,14 @@ class LaravelTsPublish
             return [];
         }
 
-        // ClassTokenQueue cannot hold a null, so the class tokens read their queue by position and the enums their own.
-        $names = array_combine($info['classFqcns'], $info['classes']);
-        $classNames = array_values(array_unique(array_map(fn (string $fqcn): string => $names[$fqcn], $classes)));
+        // ClassTokenQueue cannot hold a null, so the class tokens read their slots and the enums their own queue.
         $enums = new ClassTokenQueue($info['enumFqcns'], FileImportNames::typeName(...), ValueResult::enumSiblingNames(...));
+        $tokens = FileImportNames::declaredTokens($info['type'], $classTokens, FileImportNames::namesOf('classes', $info['enumFqcns']));
 
-        return array_column($this->slottedTokens(
-            $info['type'],
-            [...$classNames, ...FileImportNames::namesOf('classes', $info['enumFqcns'])],
-            $classTokens,
-            $classNames,
-            fn (string $token): ?string => $enums->take($token)[0] ?? null,
-        ), 2);
+        return array_map(
+            static fn (array $token): ?string => $token['own'] ? $token['slot'] : $enums->take($token['token'])[0] ?? null,
+            $tokens,
+        );
     }
 
     /**
@@ -3444,44 +3411,6 @@ class LaravelTsPublish
             static fn (array $piece): array => [$piece['type'], $piece['tokenFqcns'] ?? []],
             $pieces,
         ));
-    }
-
-    /**
-     * The class behind each token of a resolved union's arms that spells one of their classes' names as the union
-     * spells it, in order: the arm's own, else null, as for an override spelled like the model beside it.
-     *
-     * @param  list<ShapeTypeInfo>  $arms
-     * @param  array<string, string>  $classNames  class => the name its tokens spell
-     * @return TokenFqcns
-     */
-    private function unionTokenFqcns(array $arms, array $classNames): array
-    {
-        $classes = array_merge([], ...array_map(fn (array $arm): array => $arm['tokenFqcns'] ?? [], $arms));
-        $names = $this->tokenNames($classes, $classNames);
-        $tokens = [];
-
-        foreach ($arms as $arm) {
-            $slots = $arm['tokenFqcns'] ?? [];
-            $own = $this->tokenNames($slots, $classNames);
-            array_push($tokens, ...array_column($this->slottedTokens($arm['type'], $names, $slots, $own), 2));
-        }
-
-        return $tokens;
-    }
-
-    /**
-     * The names classes' tokens are spelled with, as `$classNames` maps each.
-     *
-     * @param  TokenFqcns  $slots
-     * @param  array<string, string>  $classNames
-     * @return list<string>
-     */
-    private function tokenNames(array $slots, array $classNames): array
-    {
-        return array_values(array_unique(array_map(
-            fn (string $fqcn): string => $classNames[$fqcn],
-            array_values(array_unique(array_filter($slots))),
-        )));
     }
 
     /**
