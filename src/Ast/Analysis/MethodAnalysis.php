@@ -611,7 +611,7 @@ class MethodAnalysis
         foreach (array_unique(array_column($this->properties, 'name')) as $name) {
             $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
 
-            if (ValueResult::everyModelPublished($models) && ! $this->namesImportedName($name)) {
+            if (ValueResult::everyModelPublished($models) && $this->importedChannelNames($name) === []) {
                 continue;
             }
 
@@ -626,14 +626,14 @@ class MethodAnalysis
     }
 
     /**
-     * Whether a property's import channels hold a class that publishes under a name the custom imports bring. A reader
-     * holding the members in one key aliases every token of a name alike, so that class would take the import's tokens.
+     * The names the classes on a property's import channels publish under that the custom imports bring. A reader
+     * holding the members in one key aliases every token of a name alike, so such a class would take the import's.
+     *
+     * @return list<string>
      */
-    public function namesImportedName(string $name): bool
+    public function importedChannelNames(string $name): array
     {
-        $imported = ImportMaps::localNames($this->customImports);
-
-        return $imported !== [] && array_intersect($this->channelNames($name), $imported) !== [];
+        return array_values(array_intersect($this->channelNames($name), ImportMaps::localNames($this->customImports)));
     }
 
     /**

@@ -45,7 +45,7 @@ final class InlineObjectResult
 
     /**
      * Read class-less each member a fill typed that the object's per-name queues cannot bind: one whose slots hold a
-     * null, an override's or a literal's, then one whose class publishes under a name a sibling's custom import brings.
+     * null, an override's or a literal's, then one whose class publishes under an imported name a sibling spells.
      * Either way a token of that name would take the class; a value written in place keeps its own.
      */
     public static function readUnbindableFillsClassLess(MethodAnalysis $analysis): void
@@ -62,9 +62,15 @@ final class InlineObjectResult
             }
         }
 
-        // After the nulls: a member read class-less can drop the only import a sibling's class would collide with.
+        // Only a sibling's spelling counts: after the nulls, an import may live on through this member's token alone.
         foreach ($analysis->declaredTokenFqcns as $name => $slots) {
-            if (isset($types[$name]) && $analysis->namesImportedName((string) $name)) {
+            $siblings = array_column(
+                array_filter($analysis->properties, static fn (array $property): bool => $property['name'] !== (string) $name),
+                'type',
+            );
+            $spelled = static fn (string $imported): bool => TsTypeString::typeNameOccursIn($imported, ...$siblings);
+
+            if (isset($types[$name]) && array_any($analysis->importedChannelNames((string) $name), $spelled)) {
                 $analysis->retypeClassLess((string) $name, FileImportNames::classLess($types[$name], $slots));
             }
         }

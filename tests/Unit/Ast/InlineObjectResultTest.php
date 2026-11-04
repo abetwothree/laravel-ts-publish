@@ -22,6 +22,18 @@ it('reads class-less only a fill whose class a sibling\'s import names, keeping 
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
 });
 
+it('keeps a fill whose class an import names where no sibling spells that name', function () {
+    $analysis = new MethodAnalysis(customImports: ['@js/types/ui' => ['User']]);
+    $analysis->addProperty('gone', ['type' => 'unknown', 'optional' => false]);
+    $analysis->addProperty('filled', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]);
+    $analysis->declaredTokenFqcns['filled'] = [User::class];
+
+    InlineObjectResult::readUnbindableFillsClassLess($analysis);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['gone' => 'unknown', 'filled' => 'User'])
+        ->and($analysis->tokenFqcns('filled'))->toBe([User::class]);
+});
+
 it('keeps a fill whose slots hold no null and whose class no import names', function () {
     $analysis = new MethodAnalysis;
     $analysis->addProperty('filled', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]);

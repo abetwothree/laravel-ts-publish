@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 /** A resource folding fills whose override (`Person` as `User`) and model sit in sibling members of one object. */
 final class DocShapeFoldedSplitResource extends JsonResource
@@ -28,6 +29,7 @@ final class DocShapeFoldedSplitResource extends JsonResource
             'two_fills' => [...$this->personAlone(), ...$this->userAlone()],
             'with_null' => [...$this->splitWithNull()],
             'x_split' => $this->bareSplit(),
+            'crm_beside' => [...$this->withCrm()],
         ];
     }
 
@@ -71,6 +73,18 @@ final class DocShapeFoldedSplitResource extends JsonResource
         $decoded = json_decode((string) $this->content);
 
         return ['k' => $decoded, 'n' => $decoded, 'm' => $decoded];
+    }
+
+    /**
+     * The override beside the model in one member, and the CRM user, spelled like both, in a sibling.
+     *
+     * @return array{k: Person|User, c: CrmUser}
+     */
+    private function withCrm(): array
+    {
+        $decoded = json_decode((string) $this->content);
+
+        return ['k' => $decoded, 'c' => $decoded];
     }
 
     /**

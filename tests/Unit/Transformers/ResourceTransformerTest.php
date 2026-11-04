@@ -3623,7 +3623,11 @@ describe("a key toArray()'s @return shape names a class for, where its body read
             'two_fills' => '{ n: User; m: unknown }',
             'with_null' => '{ k: unknown; n: User; m: unknown }',
             'x_split' => '{ n: User; m: unknown; z: number }',
-        ])->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']]);
+            'crm_beside' => '{ k: unknown; c: CrmUser }',
+        ])->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ]);
     });
 
     test('keeps a fill over the untyped branch a spread helper or a merge closure drops', function () {
