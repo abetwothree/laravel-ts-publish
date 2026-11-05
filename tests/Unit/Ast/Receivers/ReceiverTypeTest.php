@@ -50,15 +50,18 @@ test('a copy keeps the intersections, and a narrowing keeps those of the classes
         ->and($type->withClasses([Post::class])->intersections)->toBe([]);
 });
 
+// A class gets only the members every declared arm admitting it names, so a bare arm admitting it gives it none.
 test('a declared intersection joins each class it admits, less the members the class already is', function (string $class, array $declared, array $expected) {
     expect(ReceiverType::of($class)->withIntersections($declared)->intersections)->toBe($expected);
 })->with([
-    'the primary member' => [AbstractEntry::class, [AbstractEntry::class => [HasLabel::class]], [AbstractEntry::class => [HasLabel::class]]],
-    'a subtype of it' => [LabeledPost::class, [Post::class => [HasLabel::class]], [LabeledPost::class => [HasLabel::class]]],
-    'a subtype that already is every member' => [LabeledEntry::class, [AbstractEntry::class => [HasLabel::class]], []],
-    'a class only another member of a class primary admits' => [LabelingPost::class, [AbstractEntry::class => [HasLabel::class]], []],
-    'a class one member of only interfaces admits' => [Post::class, [HasLabel::class => [Arrayable::class]], [Post::class => [HasLabel::class]]],
-    'a class no member names' => [HeldStats::class, [HasLabel::class => [Arrayable::class]], []],
+    'the primary member' => [AbstractEntry::class, ['classes' => [AbstractEntry::class], 'intersections' => [AbstractEntry::class => [HasLabel::class]]], [AbstractEntry::class => [HasLabel::class]]],
+    'a subtype of it' => [LabeledPost::class, ['classes' => [Post::class], 'intersections' => [Post::class => [HasLabel::class]]], [LabeledPost::class => [HasLabel::class]]],
+    'a subtype a bare arm admits too' => [LabeledPost::class, ['classes' => [Post::class, LabeledPost::class], 'intersections' => [Post::class => [HasLabel::class]]], []],
+    'a subtype that already is every member' => [LabeledEntry::class, ['classes' => [AbstractEntry::class], 'intersections' => [AbstractEntry::class => [HasLabel::class]]], []],
+    'a class only another member of a class primary admits' => [LabelingPost::class, ['classes' => [AbstractEntry::class], 'intersections' => [AbstractEntry::class => [HasLabel::class]]], []],
+    'a class one member of only interfaces admits' => [Post::class, ['classes' => [HasLabel::class], 'intersections' => [HasLabel::class => [Arrayable::class]]], [Post::class => [HasLabel::class]]],
+    'a class an interface arm and a bare arm admit' => [Post::class, ['classes' => [HasLabel::class, Post::class], 'intersections' => [HasLabel::class => [Arrayable::class]]], []],
+    'a class no member names' => [HeldStats::class, ['classes' => [HasLabel::class], 'intersections' => [HasLabel::class => [Arrayable::class]]], []],
 ]);
 
 test('what $this->resource holds carries the intersection its declaration names', function () {

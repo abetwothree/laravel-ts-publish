@@ -82,6 +82,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCodeIntersectionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCodeOrSpecialVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostIntersectionExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVarHeldStatsChildResource;
@@ -113,6 +114,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpecialPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -4399,4 +4401,13 @@ it('reads a property or method only an intersection\'s interface declares off th
     ])
         ->and(PostCodeIntersectionResource::make((new CodedPost)->forceFill(['id' => 4, 'title' => 'T']))->response()->getData(true)['data'])
         ->toBe(['code' => 'C4', 'title' => 'T', 'stats_total' => 2, 'proxy_stats_total' => 2, 'code_stats_total' => 2]);
+});
+
+// The bare arm admits a SpecialPost alone, which has no code, so the intersection's member never reaches that arm.
+it('reads a member only an intersection arm gives as no member of a subclass a bare arm admits', function () {
+    $sent = fn (Post $post): array => PostCodeOrSpecialVarResource::make($post->forceFill(['id' => 4, 'title' => 'T']))->response()->getData(true)['data'];
+
+    expect(resourceProps(PostCodeOrSpecialVarResource::class))->toBe(['code' => 'unknown', 'proxy_code' => 'unknown', 'title' => 'string'])
+        ->and($sent(new SpecialPost))->toBe(['code' => null, 'proxy_code' => null, 'title' => 'T'])
+        ->and($sent(new CodedPost))->toBe(['code' => 'C4', 'proxy_code' => 'C4', 'title' => 'T']);
 });

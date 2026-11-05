@@ -29,6 +29,7 @@ use ReflectionUnionType;
  *
  * @phpstan-type Intersections array<class-string, non-empty-list<class-string>>
  * @phpstan-type DeclaredType array{classes: non-empty-list<class-string>, intersections: Intersections}
+ * @phpstan-type JoinedArms array{classes: list<class-string>, intersections: Intersections}
  * @phpstan-type DocblockArms array{
  *     classes: list<class-string>, named: bool, nullable: bool, intersections: Intersections,
  * }
@@ -307,7 +308,7 @@ final class DeclaredClasses
      * shares, as `(A&B)|(A&C)` holds an A and no more; an empty arm, a `null` one, names nothing.
      *
      * @param  list<list<class-string>>  $arms  each arm's members, one for an arm that is no intersection
-     * @return array{classes: list<class-string>, intersections: Intersections}
+     * @return JoinedArms
      */
     private static function joined(array $arms): array
     {

@@ -80,7 +80,7 @@ use Throwable;
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
- * @phpstan-import-type Intersections from DeclaredClasses
+ * @phpstan-import-type DeclaredType from DeclaredClasses
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
  *
@@ -404,7 +404,9 @@ final class ReceiverClassResolver
             default => new ReceiverType($classes),
         };
 
-        return $held?->withIntersections($this->proxyIntersections($scope));
+        $arms = $this->proxyArms($scope);
+
+        return $arms === null ? $held : $held?->withIntersections($arms);
     }
 
     /**
@@ -2207,7 +2209,7 @@ final class ReceiverClassResolver
     {
         $backing = $scope->forwardsUndeclaredMembersTo;
         $declared = ProxyDeclaration::of($scope->proxyDeclarer());
-        $declared = $declared === null ? null : $this->ledByBacking($declared, $backing);
+        $declared = $declared === null ? null : [...$declared, 'classes' => $this->ledByBacking($declared, $backing)];
 
         if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
             return $declared;
@@ -2221,35 +2223,27 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The declared arms with each intersection of interfaces led by a member the backing class implements, so it
+     * The declared classes with each intersection of interfaces led by a member the backing class implements, so it
      * stands in for that member as for a class it is: `@mixin HasLabel&Arrayable` over a post leads with Arrayable.
      *
      * @param  ProxyArms  $declared
-     * @return ProxyArms
+     * @return non-empty-list<class-string>
      */
     private function ledByBacking(array $declared, ?string $backing): array
     {
         if ($backing === null || $declared['intersections'] === []) {
-            return $declared;
+            return $declared['classes'];
         }
 
-        $classes = [];
-        $intersections = [];
-
-        foreach ($declared['classes'] as $class) {
-            $members = [$class, ...$declared['intersections'][$class] ?? []];
-            $lead = interface_exists($class) && ! is_a($backing, $class, true)
-                ? array_find($members, fn (string $member): bool => is_a($backing, $member, true)) ?? $class
-                : $class;
-            $others = array_values(array_diff($members, [$lead]));
-            $classes[] = $lead;
-
-            if ($others !== []) {
-                $intersections[$lead] = $others;
-            }
-        }
-
-        return [...$declared, 'classes' => array_values(array_unique($classes)), 'intersections' => $intersections];
+        return array_values(array_unique(array_map(
+            fn (string $class): string => interface_exists($class) && ! is_a($backing, $class, true)
+                ? array_find(
+                    $declared['intersections'][$class] ?? [],
+                    fn (string $member): bool => is_a($backing, $member, true),
+                ) ?? $class
+                : $class,
+            $declared['classes'],
+        )));
     }
 
     /**
@@ -2339,26 +2333,31 @@ final class ReceiverClassResolver
             ? []
             : [$scope->instanceOfWrappedClass, $backing];
         $order = array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
-        $declared = $this->proxyIntersections($scope);
+        $arms = $this->proxyArms($scope);
 
-        if ($order === [] || $declared === []) {
+        if ($order === [] || $arms === null) {
             return $order;
         }
 
         // A method only an intersection's other member declares runs there, so those members answer after every class.
-        $others = new ReceiverType($order)->withIntersections($declared)->intersections;
+        $intersections = new ReceiverType($order)->withIntersections($arms)->intersections;
 
-        return array_values(array_unique([...$order, ...array_merge(...array_values($others))]));
+        return array_values(array_unique([...$order, ...array_merge(...array_values($intersections))]));
     }
 
     /**
-     * The intersections the subject declares `$this->resource` to be, as `@extends JsonResource<Post&HasLabel>` does.
+     * The classes the subject declares `$this->resource` to be, with an intersection's other members, as
+     * `@extends JsonResource<Post&HasLabel>` names them; null for a declaration naming no intersection.
      *
-     * @return Intersections
+     * @return DeclaredType|null
      */
-    private function proxyIntersections(AnalysisScope $scope): array
+    private function proxyArms(AnalysisScope $scope): ?array
     {
-        return ProxyDeclaration::of($scope->proxyDeclarer())['intersections'] ?? [];
+        $declared = ProxyDeclaration::of($scope->proxyDeclarer());
+
+        return $declared === null || $declared['intersections'] === []
+            ? null
+            : ['classes' => $declared['classes'], 'intersections' => $declared['intersections']];
     }
 
     /**

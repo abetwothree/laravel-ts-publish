@@ -154,31 +154,36 @@ final readonly class ReceiverType
     }
 
     /**
-     * The same receiver with each class a declared intersection admits also holding the members it is not: a subtype of
-     * the primary member, or of any member where every one is an interface, which a subclass can add.
+     * The same receiver with each class holding the members it is not that every declared arm admitting it names, so a
+     * bare arm admitting it gives none. An arm admits a subtype of its primary member, or of any member where every one
+     * is an interface, which a subclass can add.
      *
-     * @param  Intersections  $declared
+     * @param  DeclaredType  $declared
      */
     public function withIntersections(array $declared): self
     {
-        if ($declared === []) {
+        if ($declared['intersections'] === []) {
             return $this;
         }
 
         $intersections = $this->intersections;
 
         foreach ($this->classes as $class) {
-            $others = $intersections[$class] ?? [];
+            $shared = null;
 
-            foreach ($declared as $primary => $members) {
-                $arm = [$primary, ...$members];
+            foreach ($declared['classes'] as $primary) {
+                $arm = [$primary, ...$declared['intersections'][$primary] ?? []];
                 $admits = interface_exists($primary)
                     ? array_any($arm, fn (string $member): bool => is_a($class, $member, true))
                     : is_a($class, $primary, true);
-                $others = $admits ? [...$others, ...$arm] : $others;
+
+                if ($admits) {
+                    $lacked = array_filter($arm, fn (string $member): bool => ! is_a($class, $member, true));
+                    $shared = $shared === null ? $lacked : array_intersect($shared, $lacked);
+                }
             }
 
-            $others = array_values(array_unique(array_filter($others, fn (string $other): bool => ! is_a($class, $other, true))));
+            $others = array_values(array_unique([...$intersections[$class] ?? [], ...$shared ?? []]));
 
             if ($others !== []) {
                 $intersections[$class] = $others;
