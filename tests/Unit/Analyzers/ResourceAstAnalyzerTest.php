@@ -7782,7 +7782,8 @@ test('a helper read as a value publishes what its returns hold, and a finder ins
 ]);
 
 // A group that did not take part is dropped from the end of the matches, or kept as null under PREG_UNMATCHED_AS_NULL,
-// and a named group keys the matches as an object; a pattern the call computes stays unread.
+// and a named group keys the matches as an object; a pattern the call computes stays unread. PHP writes a mark's MARK
+// key again over a group named MARK, which JSON.parse() reads as the last.
 it('types preg_match()\'s matches from the pattern\'s groups and its flags', function () {
     AnalysisWarnings::reset();
     $post = fn (string $title): Post => (new Post)->forceFill(['title' => $title]);
@@ -7806,20 +7807,23 @@ it('types preg_match()\'s matches from the pattern\'s groups and its flags', fun
         'all_direct' => 'string[][]',
         'marked' => '{ "0": [string, number]; "1"?: [string, number]; MARK?: string } | never[]',
         'failing' => 'string[]',
+        'mark_group' => '{ "0": string; MARK?: string; "1"?: string } | never[]',
+        'mark_text' => 'string[]',
         'computed' => 'never[]',
     ])
         ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
-            'The value on line 55 publishes `never[]`, an array that is always empty, because `$computed` could not be typed '
+            'The value on line 59 publishes `never[]`, an array that is always empty, because `$computed` could not be typed '
                 .'and was left out of its union. Give what it reads a return type or a `@return` docblock.',
         ])
         ->and($sent('aBc'))->toBe('{"plain":["B","B"],"plain_direct":["B","B"],"named":{"0":"B","first":"B","1":"B"},'
             .'"named_direct":{"0":"B","first":"B","1":"B"},"named_first":"B","first_matched":"B","offset":[["B",1],["B",1]],'
             .'"unmatched":["B","B",null],"named_unmatched":{"0":"B","first":"B","1":"B","second":null,"2":null},'
             .'"named_offset":{"0":["B",1],"first":["B",1],"1":["B",1]},"zero_flags":["B","B"],"all":[["B"],["B"]],'
-            .'"all_direct":[["B"],["B"]],"marked":{"0":["B",1],"1":["B",1],"MARK":"mk"},"failing":["B","B"],"computed":[]}')
+            .'"all_direct":[["B"],["B"]],"marked":{"0":["B",1],"1":["B",1],"MARK":"mk"},"failing":["B","B"],"mark_group":{"0":"B","MARK":"B","1":"B","MARK":"m"},'
+            .'"mark_text":["B","B"],"computed":[]}')
         ->and($sent('zzz', ['pattern' => 1]))->toBe('{"plain":[],"plain_direct":[],"named":[],"named_direct":[],"named_first":null,'
             .'"first_matched":"none","offset":[],"unmatched":[],"named_unmatched":[],"named_offset":[],"zero_flags":[],"all":[[],[]],'
-            .'"all_direct":[[],[]],"marked":[],"failing":[],"computed":[]}');
+            .'"all_direct":[[],[]],"marked":[],"failing":[],"mark_group":[],"mark_text":[],"computed":[]}');
 
     AnalysisWarnings::reset();
 });

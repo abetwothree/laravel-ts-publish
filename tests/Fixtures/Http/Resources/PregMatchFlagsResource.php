@@ -10,8 +10,8 @@ use Workbench\App\Models\Post;
 
 /**
  * The matches preg_match() and preg_match_all() write by their flags and their pattern's groups, read through `??`
- * and bare, a group read past a call that matched, a mark PHP keys beside the groups and a failing leading verb,
- * beside a pattern the call computes.
+ * and bare, a group read past a call that matched, a mark PHP keys beside the groups or over a group named for it, the
+ * text of a mark and a failing leading verb, beside a pattern the call computes.
  *
  * @mixin Post
  */
@@ -33,6 +33,8 @@ final class PregMatchFlagsResource extends JsonResource
         preg_match_all('/(B)/', (string) $this->title, $all);
         preg_match('/(*:mk)(B)/', (string) $this->title, $marked, PREG_OFFSET_CAPTURE);
         preg_match('/(*F)|(B)/', (string) $this->title, $failing);
+        preg_match('/(?<MARK>B)(*:m)/', (string) $this->title, $markGroup);
+        preg_match('/\(*:?(B)/', (string) $this->title, $markText);
         preg_match($pattern, (string) $this->title, $computed);
         $firstMatched = preg_match('/(?<first>B)/', (string) $this->title, $matched) === 1 ? $matched['first'] : 'none';
 
@@ -52,6 +54,8 @@ final class PregMatchFlagsResource extends JsonResource
             'all_direct' => $all,
             'marked' => $marked,
             'failing' => $failing ?? [],
+            'mark_group' => $markGroup,
+            'mark_text' => $markText ?? [],
             'computed' => $computed ?? [],
         ];
     }

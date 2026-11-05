@@ -583,14 +583,16 @@ parameters bound to the element and its key, and `.=` or an arithmetic operator 
 of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` and
 `preg_match_all()` with a literal pattern and constant flags write their `$matches` variable the type
 [`PregMatches`](../../src/Ast/Calls/PregMatches.php) reads, `WritesMatches`, carried as the form's `matches`: PCRE
-itself names the pattern's groups, from a probe that wraps the pattern in a `(?(DEFINE)…)` group PCRE never enters. A
-verb that names a mark adds `MARK?: string`, and declines pattern order, which keys the marks by match. A call may not
-run, so the matches replace a held value only where that is an empty list or a value they stand for, and a parameter's
-binding ends only at a call that is a statement of the body. A name no other write reaches, the form's `sole`, holds the
-matches past the call wherever no binding still holds, a parameter's included: a skipped call leaves an unbound name
-undefined, which Laravel throws on and `??` replaces. The matches carry `absentKeys`, so `$m['name']` reads a group PHP
-may leave out as required: its bare read throws, and `??` replaces it. Every other callee, a computed pattern or flag,
-or a computed key replaces the value. `seedBody()` counts no keeping call as a write and records its form in
+itself names the pattern's groups, from a probe that wraps the pattern in a `(?(DEFINE)…)` group PCRE never enters. The
+probe drops the leading `(*NOTEMPTY)` and `(*LIMIT_…)` options, which PCRE's JIT and interpreter enforce apart. A verb
+that names a mark, told from its text by renaming it to one PCRE rejects, adds `MARK?: string`, merged into a group
+named `MARK`, and declines pattern order, which keys the marks by match. A call may not run, so the matches replace a
+held value only where that is an empty list or a value they stand for, and a parameter's binding ends only at a call
+that is a statement of the body. A name no other write reaches, the form's `sole`, holds the matches past the call
+wherever no binding still holds, a parameter's included: a skipped call leaves an unbound name undefined, which Laravel
+throws on and `??` replaces. The matches carry `absentKeys`, so `$m['name']` reads a group PHP may leave out as
+required: its bare read throws, and `??` replaces it. Every other callee, a computed pattern or flag, or a computed key
+replaces the value. `seedBody()` counts no keeping call as a write and records its form in
 `AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end or gap is: a copy taken
 before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or drops a read whose
 value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a local
