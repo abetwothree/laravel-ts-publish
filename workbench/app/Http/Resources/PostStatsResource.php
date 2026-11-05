@@ -42,6 +42,7 @@ final class PostStatsResource extends JsonResource
             'stats' => $this->stats,
             'views' => $this->stats?->views,
             'share_count' => $this->stats?->shares,
+            'stats_summary' => $this->stats?->summary(),
             'blockers' => $this->checks->toArray(),
             'checks_count' => $this->checks->commentsCount(),
             'loaded_checks_count' => $this->whenLoaded('author', fn () => $this->checks->commentsCount()),

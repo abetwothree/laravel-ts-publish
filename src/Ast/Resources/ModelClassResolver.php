@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Config;
@@ -25,13 +22,11 @@ use ReflectionClass;
  */
 final class ModelClassResolver
 {
-    use ResolvesClassNames;
-
     /**
      * Resolve the backing model class.
      *
-     * Precedence: #[TsResource(model:)], own @mixin/@extends, inherited @mixin/@extends, typed
-     * $resource, naming convention, #[UseResource].
+     * Precedence: #[TsResource(model:)], the model ProxyDeclaration::model() reads off the class's and its ancestors'
+     * declarations, naming convention, #[UseResource]. A declared class other than a model stops the guess.
      *
      * @template T of object
      *
@@ -55,94 +50,14 @@ final class ModelClassResolver
             }
         }
 
-        $ownModel = $this->modelFromDocblock($resource);
+        $declared = ProxyDeclaration::model($resource);
 
-        if ($ownModel !== null) {
-            return $ownModel;
+        // A value object the resource is declared to hold, as `@extends JsonResource<PostStats>` declares, is no model.
+        if ($declared !== null || ProxyDeclaration::of($resource) !== null) {
+            return $declared;
         }
 
-        $inheritedModel = $this->modelFromAncestorDocblock($resource);
-
-        if ($inheritedModel !== null) {
-            return $inheritedModel;
-        }
-
-        $wrappedClass = $this->resolveClassOnProperty($resource);
-
-        if ($wrappedClass !== null && class_exists($wrappedClass) && is_a($wrappedClass, Model::class, true)) {
-            return $wrappedClass;
-        }
-
-        $guessed = $this->guessModelFromConvention($resource);
-
-        if ($guessed !== null) {
-            return $guessed;
-        }
-
-        return $this->guessModelFromUseResourceAttribute($resource);
-    }
-
-    /**
-     * Read the model named by one class's own @mixin or @extends docblock tag.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     * @return class-string<Model>|null
-     */
-    private function modelFromDocblock(ReflectionClass $resource): ?string
-    {
-        $docComment = $resource->getDocComment();
-
-        if ($docComment === false) {
-            return null;
-        }
-
-        $resolved = null;
-
-        if (preg_match('/^[\w\\\\]+/', DocblockTags::type($docComment, 'mixin') ?? '', $matches) === 1) {
-            $resolved = $this->resolveDocblockType($matches[0], $resource);
-        }
-
-        $arguments = DeclaredClasses::genericArguments(DocblockTags::type($docComment, 'extends') ?? '') ?? [];
-
-        if (count($arguments) === 1 && preg_match('/^[\w\\\\]+$/', $arguments[0]) === 1) {
-            $resolved = $this->resolveDocblockType($arguments[0], $resource);
-        }
-
-        if ($resolved === null || ! class_exists($resolved) || ! is_a($resolved, Model::class, true)) {
-            return null;
-        }
-
-        return $resolved;
-    }
-
-    /**
-     * Find the nearest ancestor whose own docblock names a model.
-     *
-     * Runs for any resource lacking its own @mixin/@extends, not only a body-less one, so an
-     * ancestor's model is picked up before falling back to the naming convention.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     * @return class-string<Model>|null
-     */
-    private function modelFromAncestorDocblock(ReflectionClass $resource): ?string
-    {
-        $parent = $resource->getParentClass();
-
-        while ($parent !== false) {
-            $model = $this->modelFromDocblock($parent);
-
-            if ($model !== null) {
-                return $model;
-            }
-
-            $parent = $parent->getParentClass();
-        }
-
-        return null;
+        return $this->guessModelFromConvention($resource) ?? $this->guessModelFromUseResourceAttribute($resource);
     }
 
     /**

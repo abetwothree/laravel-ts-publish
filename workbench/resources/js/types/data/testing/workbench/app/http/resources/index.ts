@@ -215,6 +215,7 @@ export * from './spread-with-closure-resource';
 export * from './spread-with-guard-clause-closure-resource';
 export * from './spread-with-guard-double-closure-return-resource';
 export * from './static-call-resource';
+export * from './stats-summary-resource';
 export * from './stockroom-except-resource';
 export * from './stockroom-only-resource';
 export * from './stockroom-pick-resource';

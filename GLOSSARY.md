@@ -134,6 +134,10 @@ _Avoid_: defining class, lexical class, scope class
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
 _Avoid_: wrapper, resource property
 
+**Held class**:
+A class other than a model that a resource proxy is declared to hold, such as a value object named by an API resource's `@extends JsonResource<PostStats>`. An API resource with one has no model guessed for it.
+_Avoid_: wrapped class, backing class
+
 **Inference**:
 Working out a property's type from PHP code when no override or docblock states it.
 

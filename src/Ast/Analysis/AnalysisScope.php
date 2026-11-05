@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -170,6 +171,15 @@ final class AnalysisScope
      * @var class-string|null
      */
     public ?string $forwardsUndeclaredMembersTo = null;
+
+    /**
+     * The classes other than a model an API resource subject declares `$this->resource` to hold, by a `@var` or a tag
+     * such as `@extends JsonResource<PostStats>` (ProxyDeclaration::of()), or null. Derived by the constructor and
+     * rebase(); it backs no proxy target, so a scope given no model keeps none.
+     *
+     * @var non-empty-list<class-string>|null
+     */
+    public ?array $declaredHeld = null;
 
     /**
      * The classes an `instanceof` proof holds `$this->resource` to inside the ternary arm, or the value in an `if`
@@ -485,6 +495,7 @@ final class AnalysisScope
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+        $this->declaredHeld = self::declaredHeldBy($subjectReflection);
     }
 
     /**
@@ -583,6 +594,7 @@ final class AnalysisScope
     {
         $this->subjectReflection = $subject;
         $this->runtime = $this->runtime->withClass($subject);
+        $this->declaredHeld = self::declaredHeldBy($subject);
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -1364,6 +1376,27 @@ final class AnalysisScope
         if (isset($snapshot['passedValues'][$from])) {
             $this->passedValues[$to] = $snapshot['passedValues'][$from];
         }
+    }
+
+    /**
+     * The classes other than a model a subject declares its `$this->resource` to hold; null for a subject with no
+     * resource proxy, or one declaring only models or nothing.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return non-empty-list<class-string>|null
+     */
+    private static function declaredHeldBy(ReflectionClass $subject): ?array
+    {
+        if (! $subject->isSubclassOf(JsonResource::class) || $subject->isSubclassOf(ResourceCollection::class)) {
+            return null;
+        }
+
+        $held = array_values(array_filter(
+            ProxyDeclaration::of($subject)['classes'] ?? [],
+            fn (string $class): bool => ! is_a($class, Model::class, true),
+        ));
+
+        return $held === [] ? null : $held;
     }
 
     /**

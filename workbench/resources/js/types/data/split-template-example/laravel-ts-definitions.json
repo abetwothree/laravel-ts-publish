@@ -17977,6 +17977,11 @@
                     "optional": false
                 },
                 {
+                    "name": "stats_summary",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
                     "name": "blockers",
                     "type": "{ message: string; route?: string }[]",
                     "optional": false
@@ -20361,6 +20366,26 @@
                 {
                     "name": "summaries",
                     "type": "{ key: string; label: string }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StatsSummaryResource": {
+            "name": "StatsSummaryResource",
+            "properties": [
+                {
+                    "name": "views",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "shares",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "string",
                     "optional": false
                 }
             ]

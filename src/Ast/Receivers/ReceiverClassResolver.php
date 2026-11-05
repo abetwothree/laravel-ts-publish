@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -75,10 +76,10 @@ use Throwable;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
- * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool, nullable: bool}
  * @phpstan-type CollectionGeneric array{key: string|null, element: string}
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
+ * @phpstan-import-type ProxyArms from ProxyDeclaration
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
  *
@@ -373,8 +374,8 @@ final class ReceiverClassResolver
 
     /**
      * What `$this->resource` holds as a receiver: the classes an `instanceof` proof holds it to, else those the subject
-     * redeclares it as, or the backing class AnalysisScope::proxyReceiver() names when every one of them admits it, as
-     * `@var Model` admits a post; null without a resource proxy, or when a redeclared arm names no class.
+     * declares it to hold, or the backing class AnalysisScope::proxyReceiver() names when every one of them admits it,
+     * as `@var Model` admits a post; null without a resource proxy, or when a declared arm names no class.
      */
     public function proxyHeld(AnalysisScope $scope): ?ReceiverType
     {
@@ -2186,30 +2187,22 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class arms of a subject's own redeclaration of `$resource`, as in `@var MediaType|string`, whether each arm
-     * but `null` names a class, and whether it admits null; null for JsonResource's own `@var mixed`, or for one that
-     * names no class.
+     * The class arms of what a subject declares `$resource` to hold, as `@var MediaType|string` or
+     * `@extends JsonResource<PostStats>` does, whether each arm but `null` names a class, and whether it admits null;
+     * null for JsonResource's own `@var mixed`, for one that names no class, and for a tag naming one model.
      *
      * @param  ReflectionClass<object>  $subject
      * @return ProxyArms|null
      */
     private function redeclaredProxyArms(ReflectionClass $subject): ?array
     {
-        $property = $subject->getProperty('resource');
-        $declaring = $property->getDeclaringClass();
+        $declared = ProxyDeclaration::of($subject);
 
-        // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
-        $tag = FrameworkClasses::is(DeclaringFile::ofProperty($property, $subject)->getName())
-            ? null
-            : resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
+        // `@mixin Post` names the backing model, so the proxy keeps holding that model and calling it last.
+        $namesModel = $declared !== null && $declared['source'] !== 'var' && ! $declared['nullable']
+            && count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true);
 
-        if ($tag === null) {
-            return null;
-        }
-
-        $arms = DeclaredClasses::docblockArms($tag['type'], $tag['context'], $subject->getName(), $declaring->getName());
-
-        return $arms['classes'] === [] ? null : $arms;
+        return $namesModel ? null : $declared;
     }
 
     /**
@@ -2279,8 +2272,8 @@ final class ReceiverClassResolver
 
     /**
      * The classes a call forwarded to `$this->resource` may run on, in the order they answer: those an `instanceof`
-     * proof holds it to, then those the subject redeclares it as, each the backing model is or extends standing for it,
-     * then the guard's class and the backing class, unless the redeclaration names a class other than a model.
+     * proof holds it to, then those the subject declares it to hold, each the backing model is or extends standing for
+     * it, then the guard's class and the backing class, unless the declaration names a class other than a model.
      *
      * @return list<class-string>
      */

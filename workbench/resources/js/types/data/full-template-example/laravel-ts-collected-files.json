@@ -342,6 +342,7 @@
     "app\/Http\/Resources\/SpreadWithGuardClauseClosureResource.php",
     "app\/Http\/Resources\/SpreadWithGuardDoubleClosureReturnResource.php",
     "app\/Http\/Resources\/StaticCallResource.php",
+    "app\/Http\/Resources\/StatsSummaryResource.php",
     "app\/Http\/Resources\/StockroomExceptResource.php",
     "app\/Http\/Resources\/StockroomOnlyResource.php",
     "app\/Http\/Resources\/StockroomPickResource.php",

@@ -15,15 +15,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
+use ReflectionClass;
 
 /**
  * `$this->property` — resolved against the backing model, attributes before relations, matching
@@ -125,7 +128,8 @@ final class ThisPropertyHandler implements ExpressionHandler
                 $items !== null => $items,
                 $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
                 default => $this->proxiedModel($receivers, $scope)
-                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName, $scope->runtime),
+                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName, $scope->runtime)
+                    ?? $this->declaredHeldValue($receivers, $scope),
             };
 
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
@@ -166,6 +170,12 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $result;
         }
 
+        $held = $this->heldMemberValue($owner, $propName, $scope);
+
+        if ($held !== null) {
+            return $held;
+        }
+
         // Subject mode: with no backing model, `$this->prop` can only mean a property `$this` declares.
         if ($scope->modelClass === null) {
             return resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName, $scope->runtime) ?? $result;
@@ -198,14 +208,47 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * The classes an `instanceof` proof holds the proxy to, as their published types; null when one has none.
+     * The proxy read whole where only a tag declares what it holds, as `@extends JsonResource<PostStats>` does: those
+     * classes other than a model, with any null the tag admits; null where none is declared.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function declaredHeldValue(ReceiverClassResolver $receivers, AnalysisScope $scope): ?array
+    {
+        return $scope->declaredHeld === null
+            ? null
+            : $this->provenValue($scope->declaredHeld, $scope, $receivers->redeclaresNullableProxy($scope));
+    }
+
+    /**
+     * `$this->name` where the subject declares no such property and the proxy holds only classes other than a model,
+     * read off them as JsonResource::__get() forwards it; null otherwise.
+     *
+     * @param  ReflectionClass<object>  $owner
+     * @return ValueExpressionResult|null
+     */
+    private function heldMemberValue(ReflectionClass $owner, string $name, AnalysisScope $scope): ?array
+    {
+        if ($scope->modelClass !== null || ! $scope->hasResourceProxy() || $owner->hasProperty($name)) {
+            return null;
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->proxyHeld($scope);
+        $holdsModel = $held !== null && array_any($held->classes, fn (string $class): bool => is_a($class, Model::class, true));
+
+        return $held === null || $held->collectedItems || $holdsModel ? null : ReceiverMemberReader::value($held, $name, $scope);
+    }
+
+    /**
+     * The classes an `instanceof` proof holds the proxy to, as their published types, with a null arm where it admits
+     * null; null when one has none.
      *
      * @param  non-empty-list<class-string>  $proven
      * @return ValueExpressionResult|null
      */
-    private function provenValue(array $proven, AnalysisScope $scope): ?array
+    private function provenValue(array $proven, AnalysisScope $scope, bool $nullable = false): ?array
     {
-        $declared = implode('|', array_map(fn (string $class): string => '\\'.$class, $proven));
+        $declared = implode('|', array_map(fn (string $class): string => '\\'.$class, $proven)).($nullable ? '|null' : '');
 
         return resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->subjectReflection);
     }

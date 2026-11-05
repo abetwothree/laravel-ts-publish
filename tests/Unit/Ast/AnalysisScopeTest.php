@@ -31,6 +31,7 @@ use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\StatsSummaryResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
@@ -38,6 +39,7 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\BasePanelPayload;
 use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\PostStats;
 
 it('constructs with the given subject reflection and model class', function () {
     $reflection = new ReflectionClass(stdClass::class);
@@ -79,6 +81,20 @@ it('derives no forwarding target without both a proxying subject and a backing m
 
     expect($nonResource->forwardsUndeclaredMembersTo)->toBeNull()
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
+});
+
+// The held class is a separate field, so a scope built with no model still forwards nowhere.
+it('derives the classes other than a model a subject declares it holds, and no forwarding target from them', function () {
+    $held = new AnalysisScope(new ReflectionClass(StatsSummaryResource::class));
+    $model = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    expect($held->declaredHeld)->toBe([PostStats::class])
+        ->and($held->forwardsUndeclaredMembersTo)->toBeNull()
+        ->and($model->declaredHeld)->toBeNull();
+
+    $held->rebase(new ReflectionClass(PostResource::class), Post::class);
+
+    expect($held->declaredHeld)->toBeNull();
 });
 
 it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file and declaring class', function () {
@@ -436,7 +452,8 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 function analysisScopeSetOnceFields(): array
 {
     return [
-        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'casesAsLiterals', 'reindexesNumericKeys',
+        'subjectReflection', 'declaredHeld', 'instanceOfWrappedClass', 'carriesImports', 'casesAsLiterals',
+        'reindexesNumericKeys',
     ];
 }
 

@@ -4764,6 +4764,7 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            stats_summary: string | null;
             blockers: { message: string; route?: string }[];
             checks_count: string;
             loaded_checks_count?: string;
@@ -5473,6 +5474,12 @@ declare global {
             order_or_base: app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
+        }
+        /** A resource over a value object rather than a model, read through `$this->resource` and the proxy. */
+        export interface StatsSummaryResource {
+            views: number;
+            shares: number;
+            summary: string;
         }
         /** Filters itself through `$this->except()`, dropping the one accessor that names only the `#[TsType]` class. */
         export interface StockroomExceptResource {

@@ -33,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapePairResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeTopLevelFillResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DraftPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
@@ -42,11 +43,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsMixinResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsPropertyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullablePostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
@@ -59,6 +67,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
@@ -67,10 +77,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -161,6 +175,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\PostStateCastResource;
 use Workbench\App\Http\Resources\PostStateResource;
+use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProductSalesResource;
@@ -170,6 +185,7 @@ use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\StatsSummaryResource;
 use Workbench\App\Http\Resources\StockroomExceptResource;
 use Workbench\App\Http\Resources\StockroomOnlyResource;
 use Workbench\App\Http\Resources\StockroomPickResource;
@@ -197,6 +213,7 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
+use Workbench\App\ValueObjects\PostStats;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Crm\Http\Resources\DealEnumInlineResource;
 use Workbench\Crm\Http\Resources\DealEnumTrioResource;
@@ -4101,4 +4118,88 @@ test('a template-literal override keeps its text whole beside null, a string and
         'slug_list' => '`a | null | b`[]',
         'slug_helper' => '`a | null | b` | null',
     ]);
+});
+
+// O9: a declared class other than a model is what `$this->resource` holds, so the proxy reads it as `@var` does.
+it('reads a resource over a class other than a model named by @extends, @mixin or @property as a redeclared @var does', function (string $resource) {
+    $data = new ResourceTransformer($resource)->data();
+    $sent = $resource::make(new HeldStats(3, 'x', 0.5))->response()->getData(true)['data'];
+
+    expect($data->modelClass)->toBeNull()
+        ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'total' => 'number',
+            'label' => 'string',
+            'ratio' => 'number | null',
+            'summary' => 'string',
+            'proxy_total' => 'number',
+            'proxy_summary' => 'string',
+            'whole' => '{ total: number; label: string; ratio: number | null }',
+        ])
+        ->and($sent)->toBe([
+            'total' => 3,
+            'label' => 'x',
+            'ratio' => 0.5,
+            'summary' => 'x:3',
+            'proxy_total' => 3,
+            'proxy_summary' => 'x:3',
+            'whole' => ['total' => 3, 'label' => 'x', 'ratio' => 0.5],
+        ]);
+})->with([
+    '@extends' => [HeldStatsExtendsResource::class],
+    '@mixin' => [HeldStatsMixinResource::class],
+    '@property' => [HeldStatsPropertyResource::class],
+    '@var' => [HeldStatsVarResource::class],
+]);
+
+it('reads the class other than a model an ancestor\'s @extends names', function () {
+    expect(resourceProps(HeldStatsChildResource::class))->toBe([
+        'total' => 'number',
+        'proxy_total' => 'number',
+        'proxy_summary' => 'string',
+    ]);
+});
+
+it('reads @extends JsonResource<Post|null> as Post, and $this->resource read whole as Post | null', function () {
+    $data = new ResourceTransformer(NullablePostExtendsResource::class)->data();
+
+    expect($data->modelClass)->toBe(Post::class)
+        ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'title' => 'string',
+            'proxy_title' => 'string',
+            'id' => 'number',
+            'whole' => 'Post | null',
+        ]);
+});
+
+// An IDE-helper mixin documents the model's magic; it names no class the resource holds, so the guess stands.
+it('keeps the naming-convention model behind a mixin naming nothing loadable, the Eloquent alias or Model itself', function (string $resource, string $model) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect($data->modelClass)->toBe($model)
+        ->and($data->properties['title']['type'])->toBe('string');
+})->with([
+    'a missing IDE-helper class' => [DraftPostResource::class, DraftPost::class],
+    'the Eloquent alias' => [ListingPostResource::class, ListingPost::class],
+    'Model itself' => [ScopedPostResource::class, ScopedPost::class],
+]);
+
+it('guesses no model by naming convention for a resource declared over a class other than a model', function () {
+    $data = new ResourceTransformer(SearchedPostResource::class)->data();
+
+    expect($data->modelClass)->toBeNull()
+        ->and($data->properties['total']['type'])->toBe('number');
+});
+
+// #73: a workbench value object's method, read through the resource that holds it and the one that carries it.
+it('reads a workbench value object\'s method through a resource over it and a resource carrying it', function () {
+    $stats = new PostStats(1.5, 2);
+
+    expect(resourceProps(StatsSummaryResource::class))->toBe([
+        'views' => 'number',
+        'shares' => 'number',
+        'summary' => 'string',
+    ])
+        ->and(resourceProps(PostStatsResource::class)['stats_summary'])->toBe('string | null')
+        ->and(StatsSummaryResource::make($stats)->response()->getData(true)['data'])
+        ->toBe(['views' => 1.5, 'shares' => 2, 'summary' => '1.5 views, 2 shares']);
 });

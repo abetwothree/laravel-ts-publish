@@ -184,9 +184,15 @@ facts (`ResourceAstAnalyzer::$runtimeClass`), so its `$this->collection` reads `
 ### An inherited shape needs an inherited model
 
 A subclass's inherited analysis types its columns only when a model backs it.
-[`ModelClassResolver::resolve()`](../../src/Ast/Resources/ModelClassResolver.php) reads the nearest ancestor's `@mixin` or
-`@extends` when the class has none of its own; its docblock lists the full precedence. That step runs for any resource
-without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
+[`ModelClassResolver::resolve()`](../../src/Ast/Resources/ModelClassResolver.php) takes the model
+[`ProxyDeclaration::model()`](../../src/Ast/Resources/ProxyDeclaration.php) reads, an ancestor's `@extends`, `@mixin` or
+`@property … $resource` when the class has none of its own; its docblock lists the full precedence. That step runs for
+any resource without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
+
+A declaration naming a [held class](../../GLOSSARY.md) rather than a model, as `@extends JsonResource<PostStats>` does,
+stops the naming-convention and `#[UseResource]` guesses, so the resource has no model and its proxy reads the held
+class. A tag naming only a class nothing loads, `Model` or `\Eloquent`, which IDE helpers write, declares nothing and
+the guess stands. `HeldStats*Resource` and the IDE-helper `*PostResource` test fixtures pin both.
 
 ## JSON:API resources
 

@@ -12,7 +12,8 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms |
+| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
+| [`ProxyDeclaration`] | What an API resource's `$this->resource` is declared to hold, from its `@var`, `@extends`, `@mixin` or `@property`, and the model that names |
 | [`CollectionSteps`] | A chain's steps, root first, what each does to the items and their keys, and which hands back one item, for the receiver resolvers and the model-finder, relation-chain and `collect()` handlers, the last two walking a chain through `walk()` |
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
@@ -36,7 +37,7 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the ternary arm or `if` block it proves (`AnalysisScope::$provenProxy`), and in a block past a member or key write that keeps its class (`CollectsInstanceofGuards::keepsProvenClass()`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `collectedElement` the element `$this->collection` lists. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration |
+| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the ternary arm or `if` block it proves (`AnalysisScope::$provenProxy`), and in a block past a member or key write that keeps its class (`CollectsInstanceofGuards::keepsProvenClass()`), else every class `ProxyDeclaration::of()` reads: the subject's own redeclaration, such as `/** @var MediaType\|null */ public $resource`, else a tag naming a [held class][glossary], `@extends JsonResource<PostStats>`, `@mixin PostStats` or class-level `@property PostStats $resource`, the class's own before an ancestor's. A tag naming one model, as `@mixin Post` does, names the backing model instead, and one naming only a class nothing loads, `Model` or `\Eloquent` declares nothing. Else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `collectedElement` the element `$this->collection` lists. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration; else the held classes a tag declares (`AnalysisScope::$declaredHeld`), with that `\| null` |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
@@ -495,7 +496,9 @@ It shares the `method-body:` cycle guard with the shape, so a recursion through 
 `ReceiverPropertyFetchHandler` claims `PropertyFetch` and `NullsafePropertyFetch`, and does for a property read what
 `ReceiverMethodCallHandler` does for a call. So `$post?->title` is `string | null` once `$post` is known to hold a
 `Post`. A `$this->prop` leaf declines outright, since `ThisPropertyHandler` owns it and reads the subject's own
-declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode).
+declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode). With no backing model, a `$this->prop`
+the subject does not declare reads through `ReceiverMemberReader::value()` on what `proxyHeld()` names, when that is
+only classes other than a model, as `JsonResource::__get()` forwards it.
 A read on `$this->prop` types from the class `prop` holds, as a call does.
 
 [`ReceiverMemberReader::value()`][`ReceiverMemberReader`] types the property on each class one of two ways:
@@ -552,6 +555,7 @@ These pages cover the neighbors of receiver resolution:
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/Narrowing/NarrowsInstanceofSubjects.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`PropertyDocblockTypeReader::tag()`]: ../../src/Ast/Docblocks/PropertyDocblockTypeReader.php
+[`ProxyDeclaration`]: ../../src/Ast/Resources/ProxyDeclaration.php
 [`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/Narrowing/ReadsInstanceofChains.php
@@ -562,6 +566,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/Members/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
 [`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
+[glossary]: ../../GLOSSARY.md
 [gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
