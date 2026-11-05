@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -128,12 +129,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      */
     private function analyzeRelationCollectionChain(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $identityOps = [
-            'take', 'skip', 'filter', 'reject', 'values', 'unique',
-            'sortBy', 'sortByDesc', 'slice', 'reverse', 'where', 'whereNotNull',
-            'load', 'loadMissing', 'all',
-        ];
-
         [$steps, $root] = CollectionSteps::chain($call);
 
         // `$this->resource?->relation`: the `?->` ends the chain as null where the resource wraps none.
@@ -165,50 +160,28 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             array_pop($steps);
         }
 
-        $mapNode = null;
         $pluckNode = null;
-
-        // A relation collection starts keyed 0..n-1; each op below says whether that still holds.
-        $sequentialKeys = true;
-
-        foreach ($steps as $step) {
-            if (in_array($step['name'], $identityOps, true)) {
-                $sequentialKeys = $step['name'] === 'all' || CollectionSteps::keepsKeys($step['name'])
-                    ? $sequentialKeys
-                    : ! CollectionSteps::keyedAfter($step['node'], $step['name'], ! $sequentialKeys, true);
-
-                continue;
-            }
-
-            if ($step['name'] === 'map' && $mapNode === null && $pluckNode === null) {
-                // map() preserves the receiver's keys, so it neither breaks nor restores sequentiality.
-                $mapNode = $step['node'];
-
-                continue;
-            }
-
-            if ($step['name'] === 'pluck' && $pluckNode === null && $mapNode === null) {
+        $walk = CollectionSteps::walk($steps, true, function (array $step, bool $keyed) use (&$pluckNode, $relationInfo, $engine): ?bool {
+            if ($step['name'] === 'pluck' && $pluckNode === null) {
                 $pluckNode = $step['node'];
-                $sequentialKeys = $this->collectionArguments($step['node'], 'pluck')->named('key') === null;
 
-                continue;
+                return $this->collectionArguments($step['node'], 'pluck')->named('key') !== null;
             }
 
             // concat() is identity only when it appends the very same collection type; a different
             // element type makes a genuinely different collection, so that declines instead.
-            if ($step['name'] === 'concat') {
-                $argument = $this->collectionArguments($step['node'], 'concat')->named('source')?->value;
+            $argument = $step['name'] === 'concat' ? $this->collectionArguments($step['node'], 'concat')->named('source')?->value : null;
 
-                if ($argument !== null && $engine->resolve($argument)['type'] === $relationInfo['type']) {
-                    continue;
-                }
+            return $argument !== null && $engine->resolve($argument)['type'] === $relationInfo['type'] ? $keyed : null;
+        });
 
-                return null;
-            }
-
-            // Unsupported op, including a 2nd map()/pluck() or map()+pluck() combined.
+        // A 2nd map()/pluck() or map()+pluck() combined declines.
+        if ($walk === null || ($walk['map'] !== null && $pluckNode !== null)) {
             return null;
         }
+
+        $mapNode = $walk['map'];
+        $sequentialKeys = ! $walk['keyed'];
 
         if ($isTerminal) {
             if ($mapNode !== null || $pluckNode !== null) {
@@ -226,7 +199,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         if ($mapNode === null && $pluckNode === null) {
             return [
                 ...ValueResult::unknown(),
-                'type' => $sequentialKeys ? $relationInfo['type'] : $this->keyedObjectArm($relationInfo['type']),
+                'type' => $sequentialKeys ? $relationInfo['type'] : ArrayArms::keyedList($relationInfo['type']),
                 'optional' => false,
                 'modelFqcn' => $elementModel,
             ];
@@ -242,7 +215,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             }
 
             if (! $sequentialKeys) {
-                $pluckResult['type'] = $this->keyedObjectArm($pluckResult['type']);
+                $pluckResult['type'] = ArrayArms::keyedList($pluckResult['type']);
             }
 
             return [...ValueResult::unknown(), ...$pluckResult];

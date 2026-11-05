@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -22,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -45,7 +45,6 @@ final class ReceiverMethodReturnResolver
 {
     use FiltersAttributeKeys;
     use ResolvesFilteredRelationTypes;
-    use SpellsKeyedCollections;
 
     /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
@@ -752,7 +751,7 @@ final class ReceiverMethodReturnResolver
     private function listedModels(string $model, bool $keyed): ?array
     {
         $list = ValueResult::arrayWrapType(class_basename($model));
-        $models = [...ValueResult::unknown(), 'type' => $keyed ? $this->keyedObjectArm($list) : $list, 'modelFqcn' => $model];
+        $models = [...ValueResult::unknown(), 'type' => $keyed ? ArrayArms::keyedList($list) : $list, 'modelFqcn' => $model];
 
         return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
     }
@@ -762,6 +761,6 @@ final class ReceiverMethodReturnResolver
      */
     private function listOrKeyed(string $list, ReceiverType $receiver): string
     {
-        return $receiver->keyed ? $this->keyedObjectArm($list) : $list;
+        return $receiver->keyed ? ArrayArms::keyedList($list) : $list;
     }
 }

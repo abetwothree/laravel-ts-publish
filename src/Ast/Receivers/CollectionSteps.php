@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
@@ -22,6 +23,7 @@ use ReflectionMethod;
  * and the collection handlers walk a chain and read each step here, so they agree on each step.
  *
  * @phpstan-type ChainStep array{name: string, node: MethodCall}
+ * @phpstan-type StepWalk array{keyed: bool, map: MethodCall|null}
  *
  * @internal
  */
@@ -94,6 +96,53 @@ final class CollectionSteps
         }
 
         return [array_reverse($steps), $node];
+    }
+
+    /**
+     * Walk a chain's steps after its root as both collection handlers read them: `all()` and a step keeping the keys
+     * leave them, another step keeping the items moves them as keyedAfter() says, and at most one `map()` maps them.
+     *
+     * $other reads any other step, handing back whether the keys are out of 0..n-1 after it, or null to decline the
+     * chain, as a chain with no $other does. $eloquent says the collection is an Eloquent\Collection.
+     *
+     * @param  list<ChainStep>  $steps
+     * @param  (Closure(ChainStep, bool): ?bool)|null  $other
+     * @return StepWalk|null
+     */
+    public static function walk(array $steps, bool $eloquent, ?Closure $other = null): ?array
+    {
+        $keyed = false;
+        $map = null;
+
+        foreach ($steps as $step) {
+            $name = $step['name'];
+
+            if ($name === 'all' || self::keepsKeys($name)) {
+                continue;
+            }
+
+            if (self::keepsItems($name)) {
+                $keyed = self::keyedAfter($step['node'], $name, $keyed, $eloquent);
+
+                continue;
+            }
+
+            if ($name === 'map' && $map === null) {
+                $map = $step['node'];
+
+                continue;
+            }
+
+            $after = $other === null ? null : $other($step, $keyed);
+
+            if ($after === null) {
+                return null;
+            }
+
+            $keyed = $after;
+        }
+
+        return ['keyed' => $keyed, 'map' => $map];
     }
 
     /**

@@ -69,8 +69,9 @@ The helpers and the test that pins them live in these files:
   template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
   keys a signature covers. Static and `@internal`.
 - [`Support\TypeStrings\ArrayArms`](../../src/Support/TypeStrings/ArrayArms.php): an array's published type read arm by
-  arm: which arm is an array or a keyed one, the list `array_values()` makes of an arm, what `array_filter()` and
-  `array_map()` make of one, the value each element of an arm holds, and the element of a one-armed list. Static and
+  arm: which arm is an array or a keyed one, the list `array_values()` makes of an arm and `values()` of a type, what
+  `array_filter()` and `array_map()` make of one, the two spellings of a list whose keys left `0..n-1`, the value each
+  element of an arm holds, and the element of a one-armed list. Static and
   `@internal`; an arm walk or a list's element is read here rather than re-wrapping `TsTypeShape::elementType()`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
@@ -99,7 +100,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does a registered route dispatch to this class? | `RoutedControllers` |
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
-| Which arm of an array's type is an array or keyed, what do `array_values()`, `array_filter()` and `array_map()` make of it, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
+| Which arm of an array's type is an array or keyed, what do `array_values()`, `values()`, `array_filter()` and `array_map()` make of it, how is a list whose keys left `0..n-1` spelled, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | Does this type have a top-level `null` arm, and what is it with one or without one? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()` |
 | How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |

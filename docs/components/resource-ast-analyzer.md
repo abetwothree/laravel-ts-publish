@@ -488,15 +488,15 @@ Two handlers type a chain of collection operations.
 `$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
 [`CollectionPipelineHandler`](../../src/Ast/Handlers/Collections/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
 and reads the element type off `$arg` when it resolves to `X[]`; any other array `$arg` holds takes only a `map()` and
-`all()`. A top-level `|` declines, since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
-`0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
-`SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
+`all()`. A top-level `|` declines, since the elements could come from either arm. Both walk their steps through
+`CollectionSteps::walk()`, which tracks whether the keys are still `0..n-1`. Once they are not, the handler adds the
+object arm `json_encode()` emits, from `ArrayArms::keyedList()`. A bare `collect($arg)` is typed by
 [`KnownFunctionCallHandler`](../../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
 is its element types. A list literal, bare or collected, is typed by
 [`ValueResolver::resolveListLiteral()`](../../src/Ast/Values/ValueResolver.php).
 
-The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
-a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:
+Both read the steps that keep the items from `CollectionSteps`, so they agree on each; a relation chain adds `pluck()`,
+`concat()` and a `first()`/`last()` terminal through the walk's hook. These rules hold around them:
 
 - **`values` restores `0..n-1`, and `all` keeps the keys**: `all()` hands back the underlying array, and a
   `Collection<X>` and its array both render `X[]`, so it is identity on the published type.

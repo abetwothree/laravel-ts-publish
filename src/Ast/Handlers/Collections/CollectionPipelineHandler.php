@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\ReadsCollectedItems;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
@@ -33,7 +32,6 @@ final class CollectionPipelineHandler implements ExpressionHandler
 {
     use BindsMapCallbacks;
     use ReadsCollectedItems;
-    use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -58,36 +56,20 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         // Only a `T[]` root lists its elements here, never an `Array<T>` one; any other root is only mapped.
         $listed = str_ends_with($rootResult['type'], '[]') && ArrayArms::listElement($rootResult['type']) !== null;
-        $identityOps = ['values', 'all', 'filter', 'reject', 'unique'];
-        $mapNode = null;
+        $walk = $listed || array_all($steps, static fn (array $step): bool => in_array($step['name'], ['all', 'map'], true))
+            ? CollectionSteps::walk($steps, false)
+            : null;
 
-        // collect() over a list starts keyed 0..n-1; each op below says whether that still holds.
-        $sequentialKeys = true;
-
-        foreach ($steps as $step) {
-            if (in_array($step['name'], $identityOps, true) && ($listed || $step['name'] === 'all')) {
-                $sequentialKeys = $step['name'] === 'all'
-                    ? $sequentialKeys
-                    : ! CollectionSteps::keyedAfter($step['node'], $step['name'], ! $sequentialKeys, false);
-
-                continue;
-            }
-
-            if ($step['name'] === 'map' && $mapNode === null) {
-                // map() preserves the receiver's keys, so it neither breaks nor restores sequentiality.
-                $mapNode = $step['node'];
-
-                continue;
-            }
-
-            // Unsupported op, including a second map().
+        if ($walk === null) {
             return null;
         }
+
+        $mapNode = $walk['map'];
 
         if ($mapNode === null) {
             return ! $listed ? null : [
                 ...$rootResult,
-                'type' => $sequentialKeys ? $rootResult['type'] : $this->keyedObjectArm($rootResult['type']),
+                'type' => $walk['keyed'] ? ArrayArms::keyedList($rootResult['type']) : $rootResult['type'],
                 'optional' => false,
             ];
         }
@@ -110,7 +92,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return $mapped === null || $steps[count($steps) - 1]['name'] === 'all' ? $mapped : [...$mapped, 'keepsKeys' => true];
         }
 
-        return $sequentialKeys ? $mapped : [...$mapped, 'type' => $this->keyedObjectArm($mapped['type'])];
+        return $walk['keyed'] ? [...$mapped, 'type' => ArrayArms::keyedList($mapped['type'])] : $mapped;
     }
 
     /**

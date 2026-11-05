@@ -218,7 +218,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         }, fn (): array => $engine->resolve($call->var));
 
         $type = match (true) {
-            $method === 'values' => $this->valuesList($receiverResult['type']),
+            $method === 'values' => ArrayArms::valuesList($receiverResult['type']),
             $receiver?->keyed === true => $this->keyedAll($receiverResult['type']),
             default => $receiverResult['type'],
         };
@@ -233,10 +233,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     private function keyedAll(string $type): string
     {
         $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
-            ? $this->valuesList($type)
+            ? ArrayArms::valuesList($type)
             : null;
 
-        return $list === null ? $type : $this->keyedObjectArm($list);
+        return $list === null ? $type : ArrayArms::keyedList($list);
     }
 
     /**

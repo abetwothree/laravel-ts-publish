@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\AnalyzesPluckCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -68,7 +67,6 @@ final class ModelFinderHandler implements ExpressionHandler
     use AnalyzesPluckCalls;
     use BindsMapCallbacks;
     use ResolvesRelatedModelTypes;
-    use SpellsKeyedCollections;
 
     /** Terminals returning the one row or model they find, which can miss and so are nullable. */
     private const NULLABLE_SINGLE = ['find', 'first', 'firstWhere'];
@@ -509,7 +507,7 @@ final class ModelFinderHandler implements ExpressionHandler
     {
         return $read === null || ! $keyed
             ? $read
-            : [...$read, 'result' => [...$read['result'], 'type' => $this->keyedObjectArm($read['result']['type'])], 'keyed' => true];
+            : [...$read, 'result' => [...$read['result'], 'type' => ArrayArms::keyedList($read['result']['type'])], 'keyed' => true];
     }
 
     /**

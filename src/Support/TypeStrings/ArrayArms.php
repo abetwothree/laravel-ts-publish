@@ -9,9 +9,9 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 
 /**
- * The arms of an array's published type, read one at a time: which arm is an array and which a keyed one, the list
- * `array_values()` makes of an arm, what `array_filter()` keeps of one, what `array_map()` makes of one and the value
- * each of its elements holds, and the element of a one-armed list.
+ * The arms of an array's published type, read one at a time: which arm is an array or a keyed one, the list each
+ * values() spelling makes, what `array_filter()` and `array_map()` make of an arm and the value each element holds,
+ * the two spellings of a list whose keys left 0..n-1, and the element of a one-armed list.
  *
  * A stateless reader; Ast\Members\ArrayArm models an arm that a write changes.
  *
@@ -92,6 +92,17 @@ final class ArrayArms
     }
 
     /**
+     * The list `values()` re-indexes a collection of this type into, each arm as valuesOf() lists it and a
+     * short-circuit `null` kept; null where an arm cannot be read.
+     */
+    public static function valuesList(string $type): ?string
+    {
+        $lists = self::arms($type, static fn (string $arm): ?string => $arm === 'null' ? $arm : self::valuesOf($arm), skipNull: false);
+
+        return $lists === null || $lists === [] ? null : TsTypeString::hoistNull($lists);
+    }
+
+    /**
      * The value each element of one arm holds: a list's element, a Record's value, a tuple's or an object literal's
      * members joined, `never` for no element, and `unknown` for an arm nothing types; null for any other arm.
      */
@@ -150,9 +161,25 @@ final class ArrayArms
             return null;
         }
 
-        $value = self::filteredValue($element, $dropsNull);
+        return self::gappedList(self::filteredValue($element, $dropsNull));
+    }
 
+    /**
+     * The arms json_encode() writes a PHP list array_filter() may leave gaps in as, its keys spelled as numbers: `X[]`
+     * or `Record<number, X>`.
+     */
+    public static function gappedList(string $value): string
+    {
         return TsTypeShape::listType([$value]).' | Record<number, '.$value.'>';
+    }
+
+    /**
+     * The arms json_encode() writes a collection list whose keys a step left out of 0..n-1 as, its keys spelled as
+     * strings: `X[]` → `X[] | Record<string, X>`.
+     */
+    public static function keyedList(string $list): string
+    {
+        return $list.' | Record<string, '.substr($list, 0, -2).'>';
     }
 
     /**

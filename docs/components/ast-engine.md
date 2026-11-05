@@ -213,7 +213,7 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   by construction, as [ResourceAstAnalyzer § Attribute filters][attribute-filters] explains. `ReceiverHandlersTest`'s
   "both claim … and answer it the same" cases pin the agreement.
 - **`CollectionPipelineHandler` and `VariableHandler`**: both claim a trailing `values()` or `all()` on a `collect()`
-  chain. They agree because the peel spells `values()` through `SpellsKeyedCollections::valuesList()` and peels only an
+  chain. They agree because the peel spells `values()` through `ArrayArms::valuesList()` and peels only an
   `Enumerable` receiver or a `map()` it types itself. Typing the `collect()` argument needs a third handler, so
   `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
 - **The map arm**: `VariableHandler` claims a `map()` over any receiver but a bare `$this`, after
