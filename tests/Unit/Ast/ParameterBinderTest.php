@@ -46,6 +46,7 @@ use Workbench\App\Http\Resources\PostHelperParamsResource;
 use Workbench\App\Http\Resources\SpreadHelperScopeResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\PostStats;
 
@@ -540,16 +541,17 @@ function parameterBinderCommentedPost(): Post
 {
     $post = new Post()->forceFill(['id' => 1, 'title' => 'Hello']);
     $post->setRelation('comments', new EloquentCollection([
-        new Comment()->forceFill(['id' => 5, 'content' => 'hi']),
-        new Comment()->forceFill(['id' => 6, 'content' => 'yo']),
+        new Comment()->forceFill(['id' => 5, 'content' => 'hi', 'post_id' => 1]),
+        new Comment()->forceFill(['id' => 6, 'content' => 'yo', 'post_id' => 1]),
     ]));
 
     return $post;
 }
 
-// The declaration holds for every call, so it outranks the element a typed argument passes, as it does for the value.
+// A docblock holds only what its author wrote, so the collection an argument is known to hold outranks it, its keys
+// too, for the receiver and the value; the declaration binds an argument whose element is unknown.
 test('binds a @param Collection<int, X> parameter by its element, untyped or natively a collection', function () {
-    $comment = fn (int $id, string $content): array => ['id' => $id, 'content' => $content];
+    $comment = fn (int $id, string $content): array => ['id' => $id, 'content' => $content, 'post_id' => 1];
 
     expect(publishedResourceKeyTypes(DeclaredCollectionParameterResource::class, Post::class))->toBe([
         'typed_callable_first?' => '{ first: string | null }',
@@ -560,7 +562,11 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'typed_arg_first' => '{ first: string | null }',
         'map_contents?' => 'string[]',
         'string_keyed_all' => 'Record<string, Comment>',
-        'either_key_all' => 'Comment[] | Record<string, Comment>',
+        'either_key_all' => 'Comment[]',
+        'keyed_list_all' => 'Comment[] | Record<string, Comment>',
+        'lying_post_id' => '{ post_id: number | null }',
+        'lying_value' => 'Comment[]',
+        'narrowed_subscriber?' => '{ sub: User | null }',
     ])->and(json_decode((string) json_encode(new DeclaredCollectionParameterResource(parameterBinderCommentedPost())->resolve(request())), true))->toBe([
         'typed_callable_first' => ['first' => 'hi'],
         'native_callable_first' => ['first' => 'hi'],
@@ -571,6 +577,9 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'map_contents' => ['hi', 'yo'],
         'string_keyed_all' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
         'either_key_all' => [$comment(5, 'hi'), $comment(6, 'yo')],
+        'keyed_list_all' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
+        'lying_post_id' => ['post_id' => 1],
+        'lying_value' => [$comment(5, 'hi'), $comment(6, 'yo')],
     ]);
 });
 
@@ -593,8 +602,36 @@ test('binds a @param collection generic with its class and kind of key, in place
     'keys of either kind' => ['eitherKeyAll', ['type' => 'Comment[] | Record<string, Comment>', 'modelFqcn' => Comment::class, 'classes' => [EloquentCollection::class], 'key' => 'array-key'], [true, false]],
 ]);
 
+// A narrowing argument outranks a `@param` collection, an `unread` one included, so no declared binding or value stays.
+test('replaces a declared collection binding with what a narrowing argument binds, guarded or not', function (?string $element, ?string $guard, array $collections, array $declared) {
+    $scope = new AnalysisScope(new ReflectionClass(DeclaredCollectionParameterResource::class), Post::class);
+    $binder = resolve(ParameterBinder::class);
+    $value = ['type' => 'SubscribedTeam[]', 'optional' => false];
+
+    $binder->bindCall(new ReflectionMethod(DeclaredCollectionParameterResource::class, 'teamSubscriber'), [], $scope);
+    $binder->bindPassed(['teams' => [
+        'model' => null,
+        'classes' => [EloquentCollection::class],
+        'elementModel' => $element,
+        'value' => $value,
+        'unsaved' => false,
+        'refines' => true,
+        'declaredOnly' => false,
+        'guard' => $guard,
+    ]], $scope);
+
+    expect($scope->varCollectionBindings)->toBe($collections)
+        ->and($scope->varDeclaredBindings)->toBe($declared)
+        ->and($scope->varValueBindings)->toBe(['teams' => $value])
+        ->and($scope->guardedParameters)->toBe($guard === null ? [] : ['teams' => $guard]);
+})->with([
+    'its element' => [SubscribedTeam::class, null, ['teams' => ['type' => 'SubscribedTeam[]', 'modelFqcn' => SubscribedTeam::class]], []],
+    'its element, unread' => [SubscribedTeam::class, 'unread', ['teams' => ['type' => 'SubscribedTeam[]', 'modelFqcn' => SubscribedTeam::class]], []],
+    'its class alone, unread' => [null, 'unread', [], ['teams' => [EloquentCollection::class]]],
+]);
+
 // A hint the element's model extends keeps the element's model; an abstract or nullable hint names no row's shape,
-// and a `self` one may be any subclass. A `@param` names the class as the native type would.
+// and a `self` one may be any subclass. A `@param` names the class where the element names none, and gives way to it.
 test('binds a callback parameter to a collection element: its model, a concrete model hint, else its value', function () {
     $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
     $bound = fn (?string $model, ?array $value, string $closure, bool $unread = false, bool $guardsElement = false): ?array => ParameterBinder::elementBinding(
@@ -633,7 +670,7 @@ test('binds a callback parameter to a collection element: its model, a concrete 
         ->and($bound(Comment::class, null, 'fn ($c) => $c', guardsElement: true))->toBe($binding(Comment::class, guard: 'guarded'))
         ->and($bound(Comment::class, null, 'fn (\\Workbench\\App\\Models\\Comment $c) => $c', guardsElement: true))->toBe($binding(Comment::class))
         ->and($bound(null, $title, 'fn ($t) => $t', unread: true))->toBe($binding(null, $title))
-        ->and($bound(Comment::class, null, '/** @param \\Workbench\\App\\Models\\Post $p */ fn ($p) => $p'))->toBe($binding(Post::class))
+        ->and($bound(Comment::class, null, '/** @param \\Workbench\\App\\Models\\Post $p */ fn ($p) => $p'))->toBe($binding(Comment::class))
         ->and($bound(null, null, '/** @param \\Workbench\\App\\Models\\Post $p */ fn ($p) => $p'))->toBe($binding(Post::class))
         ->and($bound(null, null, '/** @param \\Workbench\\App\\Models\\Post|null $p */ fn ($p) => $p'))->toBeNull()
         ->and($bound(Comment::class, null, '/** @param \\Workbench\\App\\Models\\Comment $c */ fn ($c) => $c', guardsElement: true))->toBe($binding(Comment::class));

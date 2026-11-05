@@ -111,6 +111,8 @@ final readonly class CallSite
      * classes it holds where the declaration names an abstract class, interface or union, or a model no row backs yet
      * where it names that concrete model; null otherwise.
      *
+     * A `@param` collection generic gives way to the collection the argument holds where that names its element.
+     *
      * A guarded argument leaves a declaration to read as it does with nothing passed, but one read off a callback's
      * `unread` parameter keeps its guard across any declaration, as no reading reaches that callback without it.
      *
@@ -119,6 +121,15 @@ final readonly class CallSite
     private function bindingFor(ReflectionParameter $parameter, ReflectionMethod $method, Expr $argument): ?array
     {
         $binder = resolve(ParameterBinder::class);
+        $documented = $binder->documentedCollection($parameter, $method);
+
+        // A docblock holds what its author wrote, so the collection the argument holds outranks it where it is known.
+        if ($documented !== null) {
+            $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
+
+            return $binder->passedCollection($this->engine->resolve($argument), $receiver, $documented, $this->passesUnreadParameter($argument));
+        }
+
         $takes = $binder->takesPassedValue($parameter, $method);
         $declared = $takes ? null : $binder->narrowableClasses($parameter);
         $model = $takes || $declared !== null ? null : $binder->declaredModel($parameter);

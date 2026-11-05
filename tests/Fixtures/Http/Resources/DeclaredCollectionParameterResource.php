@@ -8,12 +8,16 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Enumerable;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 
 /**
- * Helpers whose parameter only a `@param` collection generic types, read through `first()`, `map()` and `all()` in
- * each spelling: a first-class callable, a closure, and a direct call passed a typed or untyped value.
+ * Helpers whose parameter a `@param` collection generic types, read through `first()`, `map()` and `all()` in each
+ * spelling: a first-class callable, a closure, and a direct call passed a typed or untyped value, whose known
+ * collection outranks the declaration, a narrower or another model's and its keys included.
  *
  * @mixin Post
  */
@@ -34,6 +38,10 @@ class DeclaredCollectionParameterResource extends JsonResource
             'map_contents' => $this->whenLoaded('comments', $this->typedMap(...)),
             'string_keyed_all' => $this->stringKeyedAll($this->resource->comments->keyBy('content')),
             'either_key_all' => $this->eitherKeyAll($this->resource->comments),
+            'keyed_list_all' => $this->listedAll($this->resource->comments->keyBy('content')),
+            'lying_post_id' => $this->postsPostId($this->resource->comments),
+            'lying_value' => $this->postsValue($this->resource->comments),
+            'narrowed_subscriber' => $this->when(false, fn () => $this->teamSubscriber(SubscribedTeam::all())),
         ];
     }
 
@@ -95,6 +103,46 @@ class DeclaredCollectionParameterResource extends JsonResource
     private function eitherKeyAll($comments)
     {
         return $comments->all();
+    }
+
+    /**
+     * The comments, under whatever keys the argument holds.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function listedAll(Enumerable $comments)
+    {
+        return $comments->all();
+    }
+
+    /**
+     * The first item's `post_id`, the declaration naming another model than the argument holds.
+     *
+     * @param  Collection<int, Post>  $posts
+     */
+    private function postsPostId($posts)
+    {
+        return ['post_id' => $posts->first()?->post_id];
+    }
+
+    /**
+     * The collection as passed, the declaration naming another model than the argument holds.
+     *
+     * @param  Collection<int, Post>  $posts
+     */
+    private function postsValue($posts)
+    {
+        return $posts;
+    }
+
+    /**
+     * The first team's subscriber, a relation only the narrower model the argument holds declares.
+     *
+     * @param  Collection<int, Team>  $teams
+     */
+    private function teamSubscriber(Enumerable $teams)
+    {
+        return ['sub' => $teams->first()?->subscriber];
     }
 
     /** A value no rule types. */

@@ -7,8 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -59,10 +57,11 @@ use ReflectionParameter;
  * @phpstan-import-type ParameterGuard from AnalysisScope
  * @phpstan-import-type CollectionBinding from AnalysisScope
  * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
+ * @phpstan-import-type KeyKind from ReceiverType
  *
  * @phpstan-type PassedBinding = array{model: class-string<Model>|null, classes: non-empty-list<class-string>|null,
  *     elementModel: class-string<Model>|null, value: ValueExpressionResult|null, unsaved: bool, refines: bool,
- *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true}
+ *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true, key?: KeyKind}
  *
  * @internal
  */
@@ -146,7 +145,8 @@ final class ParameterBinder
 
     /**
      * How a callback's parameter binds a collection's element: by the element's model, or the concrete model its
-     * non-null declaration names where the element's is not one; else by the element's value; null for neither.
+     * non-null declaration names where the element names none, or where its native type names another, which PHP
+     * enforces; else by the element's value; null for neither. A `@param` gives way to any model the element names.
      *
      * A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is. The
      * caller declines a variadic parameter, which collects the element and the key into one list.
@@ -169,7 +169,8 @@ final class ParameterBinder
         ?string $docComment = null,
     ): ?array {
         $declaredModel = self::declaredClosureModel($param, $scope, $docComment);
-        $model = $elementModel !== null && ($declaredModel === null || is_a($elementModel, $declaredModel, true))
+        $documented = $param?->type === null;
+        $model = $elementModel !== null && ($declaredModel === null || $documented || is_a($elementModel, $declaredModel, true))
             ? $elementModel
             : $declaredModel;
 
@@ -383,7 +384,9 @@ final class ParameterBinder
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
      * An argument spelled `self`, `static` or `parent` marks the parameter in relativeParameters: it may be a subclass.
-     * One a guarded receiver binds keeps its guard in guardedParameters; an `unread` one replaces a declared binding.
+     * One a guarded receiver binds keeps its guard in guardedParameters; an `unread` one replaces a declared binding,
+     * and a refining one a declared collection binding too.
+     *
      * A relation whenLoaded() passes binds a morphTo's targets in varClassBindings, and no value of its own.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -395,8 +398,8 @@ final class ParameterBinder
             $loaded = $binding['loaded'] ?? false;
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
-            if ($refines && isset($scope->varDeclaredBindings[$name])) {
-                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            if ($refines && (isset($scope->varDeclaredBindings[$name]) || isset($scope->varCollectionBindings[$name]))) {
+                unset($scope->varDeclaredBindings[$name], $scope->varCollectionBindings[$name], $scope->varValueBindings[$name]);
             } elseif ($unsaved && $classes !== null && $declaredModel !== null && is_a($classes[0], $declaredModel, true)) {
                 // A declared concrete model binds as a saved row, so a passed one no row backs yet replaces it.
                 unset($scope->varModelBindings[$name]);
@@ -428,6 +431,8 @@ final class ParameterBinder
                 $scope->varCollectionBindings[$name] = [
                     'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),
                     'modelFqcn' => $elementModel,
+                    ...($classes === null || $classes === [EloquentCollection::class] ? [] : ['classes' => $classes]),
+                    ...(isset($binding['key']) ? ['key' => $binding['key']] : []),
                 ];
             } elseif ($classes !== null && $loaded) {
                 $scope->varClassBindings[$name] = $classes;
@@ -483,7 +488,9 @@ final class ParameterBinder
     }
 
     /**
-     * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call.
+     * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call: one
+     * whose declaration binds nothing, one a narrower argument refines, a declared model, or a `@param` collection,
+     * whose element a known argument outranks.
      */
     public function takesPassedValues(ReflectionMethod $method): bool
     {
@@ -491,8 +498,68 @@ final class ParameterBinder
             $method->getParameters(),
             fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method)
                 || $this->narrowableClasses($parameter) !== null
-                || $this->declaredModel($parameter) !== null,
+                || $this->declaredModel($parameter) !== null
+                || $this->documentedCollection($parameter, $method) !== null,
         );
+    }
+
+    /**
+     * The collection a method parameter's `@param` generic declares, as bindDeclared() binds it; null for none.
+     *
+     * @return CollectionBinding|null
+     */
+    public function documentedCollection(ReflectionParameter $parameter, ReflectionMethod $method): ?array
+    {
+        $context = LaravelTsPublish::methodDeclaringFileClass($method);
+        $docComment = (string) $method->getDocComment();
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter);
+        $value = $this->declaredValue($parameter, $docComment, $context);
+
+        return $this->parameterCollection($parameter, $classes, $docComment, $context, $value);
+    }
+
+    /**
+     * How an argument binds a parameter a `@param` collection generic declares: by the collection it holds, its value
+     * and keys, the declaration naming only the kind a moved key is; null where it names no element, may end as null,
+     * or is guarded and not `unread`, so the declaration binds.
+     *
+     * @param  ValueExpressionResult  $value
+     * @param  CollectionBinding  $declared
+     * @return PassedBinding|null
+     */
+    public function passedCollection(array $value, ?ReceiverType $receiver, array $declared, bool $unread = false): ?array
+    {
+        if ($receiver === null
+            || $receiver->shortCircuits
+            || $receiver->elementModel === null
+            || ($receiver->guarded && ! $unread)
+            || ! $receiver->within([Enumerable::class])
+        ) {
+            return null;
+        }
+
+        $key = match (true) {
+            $receiver->stringKeyed => 'string',
+            $receiver->keyed => ($declared['key'] ?? null) === 'string' ? 'string' : 'array-key',
+            default => null,
+        };
+        unset($value['absentReadsNull']);
+
+        return [
+            'model' => null,
+            'classes' => $receiver->classes,
+            'elementModel' => $receiver->elementModel,
+            'value' => $value['type'] === 'unknown' ? null : [...$value, 'optional' => false],
+            'unsaved' => false,
+            'refines' => true,
+            'declaredOnly' => $receiver->declaredOnly,
+            'guard' => match (true) {
+                $unread => 'unread',
+                $receiver->guardsElement => 'element',
+                default => null,
+            },
+            ...($key === null ? [] : ['key' => $key]),
+        ];
     }
 
     /**
@@ -587,27 +654,26 @@ final class ParameterBinder
 
     /**
      * The class a closure parameter's `@param` names, alone or beside `null`, read against the scope's declaring file,
-     * with whether `null` is there; null for any other type, a `self`, `static` or `parent`, or no tag.
+     * with whether `null` is there; null for a tag the local gate refuses, any other type, or a `self`, `static`,
+     * `parent` or `$this`, which may be a subclass.
      *
      * @return array{class-string, bool}|null
      */
     private static function documentedClass(Param $param, AnalysisScope $scope, string $docComment): ?array
     {
         $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
-        $tag = $name === null ? null : DocblockTags::named($docComment, 'param')[$name] ?? null;
-        $arms = $tag === null ? [] : LaravelTsPublish::splitPhpDocUnionType($tag);
-        $named = array_values(array_filter($arms, fn (string $arm): bool => strtolower($arm) !== 'null'));
-        $spelled = count($named) === 1 ? ltrim($named[0], '?') : '';
+        $context = $scope->declaringFileClass;
+        $tag = $name === null ? null : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context);
 
-        if (preg_match('/^\\\\?[A-Za-z_\\x80-\\xff][\\w\\x80-\\xff\\\\]*$/', $spelled) !== 1
-            || in_array(strtolower($spelled), ['self', 'static', 'parent'], true)
-        ) {
+        if ($tag === null || preg_match('/(?<![\\w\\\\$])(?:self|static|parent|\\$this)(?![\\w\\\\])/i', $tag) === 1) {
             return null;
         }
 
-        $class = DocblockNames::resolve($spelled, $scope->declaringFileClass);
+        $arms = DeclaredClasses::docblockArms($tag, $context, $context->getName(), $context->getName());
 
-        return DeclaredClasses::isValueClass($class) ? [$class, count($arms) > 1 || $spelled !== $named[0]] : null;
+        return $arms['named'] && count($arms['classes']) === 1 && $arms['intersections'] === []
+            ? [$arms['classes'][0], $arms['nullable']]
+            : null;
     }
 
     /**
@@ -671,9 +737,7 @@ final class ParameterBinder
             }
 
             $value = $this->declaredValue($parameter, $docComment, $context);
-            $collection = $value === null || $parameter->isVariadic() || ($parameter->hasType() && $classes === null)
-                ? null
-                : $this->declaredCollection($docComment, $name, $context, $classes, $value);
+            $collection = $this->parameterCollection($parameter, $classes, $docComment, $context, $value);
 
             if ($collection !== null) {
                 $scope->varCollectionBindings[$name] = $collection;
@@ -711,6 +775,27 @@ final class ParameterBinder
         $declaring = $parameter->getDeclaringClass()?->getName() ?? '';
 
         return DeclaredClasses::nativeClasses($parameter->getType(), $declaring, $declaring);
+    }
+
+    /**
+     * The collection a method parameter's `@param` generic declares over its native classes and the value it reads as;
+     * null for a variadic one, a native type naming no class, or a value that does not read.
+     *
+     * @param  non-empty-list<class-string>|null  $classes  the classes the native type names
+     * @param  ReflectionClass<object>  $context
+     * @param  ValueExpressionResult|null  $value
+     * @return CollectionBinding|null
+     */
+    private function parameterCollection(
+        ReflectionParameter $parameter,
+        ?array $classes,
+        string $docComment,
+        ReflectionClass $context,
+        ?array $value,
+    ): ?array {
+        return $value === null || $parameter->isVariadic() || ($parameter->hasType() && $classes === null)
+            ? null
+            : $this->declaredCollection($docComment, $parameter->getName(), $context, $classes, $value);
     }
 
     /**
