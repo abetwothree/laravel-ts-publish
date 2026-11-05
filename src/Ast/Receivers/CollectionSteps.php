@@ -190,20 +190,27 @@ final class CollectionSteps
     }
 
     /**
-     * Whether a chain's last step is an argless `toArray()` after a `map()`: it hands back the mapped items as `all()`
-     * does, keys and all, converting only an Arrayable item, so filter() reaches each resource a callback returns.
+     * The argless `toArray()` or `jsonSerialize()` a chain ends in after a `map()`, which hands the mapped items back
+     * as `all()` does, keys and all: `toArray()` converts an Arrayable item, and `jsonSerialize()` resolves a
+     * JsonSerializable one, a resource included, at once; null for any other last step.
      *
      * @param  list<ChainStep>  $steps
+     * @return 'toArray'|'jsonSerialize'|null
      */
-    public static function endsInMappedToArray(array $steps): bool
+    public static function mappedSerializer(array $steps): ?string
     {
         $last = $steps === [] ? null : $steps[count($steps) - 1];
 
-        return $last !== null
-            && $last['name'] === 'toArray'
-            && ! $last['node']->isFirstClassCallable()
-            && $last['node']->getArgs() === []
-            && array_any(array_slice($steps, 0, -1), static fn (array $step): bool => $step['name'] === 'map');
+        if ($last === null
+            || ! in_array($last['name'], ['toArray', 'jsonSerialize'], true)
+            || $last['node']->isFirstClassCallable()
+            || $last['node']->getArgs() !== []
+            || ! array_any(array_slice($steps, 0, -1), static fn (array $step): bool => $step['name'] === 'map')
+        ) {
+            return null;
+        }
+
+        return $last['name'] === 'toArray' ? 'toArray' : 'jsonSerialize';
     }
 
     /**

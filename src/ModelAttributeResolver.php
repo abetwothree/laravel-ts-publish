@@ -1542,7 +1542,8 @@ class ModelAttributeResolver
     }
 
     /**
-     * An accessor's waterfall type, worked out once per model, attribute, import mode and case reading for the run.
+     * An accessor's waterfall type, worked out once per model, attribute, import mode, case reading and filter() reach
+     * for the run: a wrap its body builds sends null where filter() reaches its reader's value, else `[]`.
      *
      * An import-less read refines its spelling against the type with imports, so the two share this one memo.
      *
@@ -1555,9 +1556,11 @@ class ModelAttributeResolver
         bool $carriesImports = true,
         bool $casesAsLiterals = false,
     ): array {
-        return resolve(AnalysisMemo::class)->remember(
+        $memo = resolve(AnalysisMemo::class);
+
+        return $memo->remember(
             'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless')
-                .($casesAsLiterals ? '@casesAsLiterals' : ''),
+                .($casesAsLiterals ? '@casesAsLiterals' : '').($memo->filterReachesValue() ? '@filtered' : ''),
             fn (): array => $casesAsLiterals
                 ? $this->readAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports, true)
                 : $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports),

@@ -651,14 +651,14 @@ to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
 
-### A mapped API resource read through `jsonSerialize()` publishes `unknown`
+### A map of resources ending in `toArray()` or `jsonSerialize()` publishes `unknown` where an item could be either
 
-`$this->members->map(fn ($m) => new ProfileResource($m->profile))->all()` publishes `(ProfileResource | null)[]`, since
-Laravel sends `null` for a profile loaded as `null`, and so does the same map ending in `->toArray()`. Ending in
-`->jsonSerialize()`, it publishes `unknown`: that call resolves each resource at once, so a null payload sends what the
-resource's own body makes of it, `[]` for an `EnumResource`, while `filter()` still sends a wrap inside an array the
-callback returns as `null`. A wrap in a map nested inside one ending in `->toArray()` publishes the `[]` a kept map
-sends, though `toArray()` turns that inner map into an array `filter()` enters. End the chain with `->all()`.
+`$this->members->map(fn ($m) => new ProfileResource($m->profile))->toArray()` publishes `(ProfileResource | null)[]`,
+as `->all()` does. With `->jsonSerialize()`, a resource the callback returns bare is resolved at once, so it publishes
+what that resource sends, `never[]` for an `EnumResource` around `null`, while one inside an array the callback returns
+takes `| null` from `filter()`. The map publishes `unknown` where, under `->jsonSerialize()`, the callback returns a
+resource on one path and an array on another, or, under either call, a list or a Record, such as a nested map: each may
+be an array or a `Collection`, which these calls send apart. End the chain with `->all()`.
 
 ### A relation method that declares no relation class and builds it through a helper is left out
 

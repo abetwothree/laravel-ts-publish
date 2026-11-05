@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\BuildsJsonApiResourceObject;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -156,6 +157,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /** How often a `parent::` spread re-entered a method on the stack, so a read that met one can tell. */
     private int $spreadReentries = 0;
+
+    /** The run's memo, held for the value site each expression marks. */
+    private ?AnalysisMemo $memo = null;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -1295,7 +1299,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function dispatchValue(Expr $expr): array
     {
-        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+        $memo = $this->memo ??= resolve(AnalysisMemo::class);
+        $outer = $memo->markValueSite([$this->reading, $this->scope]);
+
+        try {
+            return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+        } finally {
+            $memo->markValueSite($outer);
+        }
     }
 
     /**

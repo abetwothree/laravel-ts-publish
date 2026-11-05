@@ -69,6 +69,9 @@ final class AnalysisMemo
     /** How many reads under way need each enum case as its enum: readingCasesAsEnums(). */
     private int $enumReadings = 0;
 
+    /** @var array{Reading, AnalysisScope}|null the reading and scope of the value the innermost read under way types */
+    private ?array $valueSite = null;
+
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
 
@@ -234,6 +237,28 @@ final class AnalysisMemo
     public function readsCasesAsEnums(): bool
     {
         return $this->enumReadings > 0;
+    }
+
+    /**
+     * Mark the value a read under way types by its reading and scope, handing back the mark it replaces for the reader
+     * to restore: a body memoized apart from its reader's reading, an accessor's, asks filterReachesValue() of it.
+     *
+     * @param  array{Reading, AnalysisScope}|null  $site
+     * @return array{Reading, AnalysisScope}|null
+     */
+    public function markValueSite(?array $site): ?array
+    {
+        [$previous, $this->valueSite] = [$this->valueSite, $site];
+
+        return $previous;
+    }
+
+    /**
+     * Whether `JsonResource::filter()` reaches the value the innermost read under way types, as its reading says there.
+     */
+    public function filterReachesValue(): bool
+    {
+        return $this->valueSite !== null && $this->valueSite[0]->filterReaches($this->valueSite[1]);
     }
 
     /**

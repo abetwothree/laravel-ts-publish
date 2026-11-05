@@ -14,8 +14,8 @@ use Workbench\App\Models\User;
 
 /**
  * Maps a team's members, or its owner's posts, to `EnumResource` wraps of a nullable enum: kept as a Collection, handed
- * to filter() as an array by `->all()` or `->toArray()`, or each resolved at once by `->jsonSerialize()`; and maps each
- * member to such a map of its posts, which `->toArray()` turns into an array too.
+ * to filter() as an array by `->all()` or `->toArray()`, or by `->jsonSerialize()`, which resolves a bare wrap at once
+ * but keeps one inside an array; and maps each member to such a map of its posts, which `->toArray()` turns into one.
  *
  * @mixin Team
  */
@@ -37,6 +37,12 @@ class KeptEnumMapResource extends JsonResource
             'backed_all' => $this->owner->posts->map(fn (Post $p) => EnumResource::make($p->priority))->all(),
             'to_array' => $this->members->map(fn (User $u) => EnumResource::make($u->role))->toArray(),
             'json_serialized' => $this->members->map(fn (User $u) => EnumResource::make($u->role))->jsonSerialize(),
+            'element_serialized' => $this->members->map(fn (User $u) => ['role' => EnumResource::make($u->role)])->jsonSerialize(),
+            'mixed_serialized' => $this->members->map(fn (User $u) => $u->id > 1 ? ['role' => EnumResource::make($u->role)] : EnumResource::make($u->role))->jsonSerialize(),
+            'collect_serialized' => collect($this->members)->map(fn (User $u) => EnumResource::make($u->role))->jsonSerialize(),
+            'collect_element_serialized' => collect($this->members)->map(fn (User $u) => ['role' => EnumResource::make($u->role)])->jsonSerialize(),
+            'loaded_serialized' => $this->whenLoaded('members', fn ($members) => $members->map(fn (User $u) => EnumResource::make($u->role))->jsonSerialize()),
+            'loaded_element_serialized' => $this->whenLoaded('members', fn ($members) => $members->map(fn (User $u) => ['role' => EnumResource::make($u->role)])->jsonSerialize()),
             'nested_all' => $this->members->map(fn (User $u) => $u->posts->map(fn (Post $p) => EnumResource::make($p->priority)))->all(),
             'nested_to_array' => $this->members->map(fn (User $u) => $u->posts->map(fn (Post $p) => EnumResource::make($p->priority)))->toArray(),
             'nested_collect_to_array' => collect($this->members)->map(fn (User $u) => $u->posts->map(fn (Post $p) => EnumResource::make($p->priority)))->toArray(),

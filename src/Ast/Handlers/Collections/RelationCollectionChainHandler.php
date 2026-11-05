@@ -147,9 +147,9 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         $elementModel = $relationInfo['modelFqcn'];
-        $convertsItems = CollectionSteps::endsInMappedToArray($steps);
+        $serializer = CollectionSteps::mappedSerializer($steps);
 
-        if ($convertsItems) {
+        if ($serializer !== null) {
             array_pop($steps);
         }
 
@@ -239,17 +239,14 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         // filter() reaches a mapped item only where the chain hands back an array.
         /** @var MethodCall $mapNode */
-        $bodyResult = $this->resolveMapCallback(
-            $this->collectionArguments($mapNode, 'map')->named('callback')?->value,
-            $elementModel,
-            null,
-            $convertsItems || $terminalOp === 'all',
-            $scope,
-            $engine,
+        $callback = $this->collectionArguments($mapNode, 'map')->named('callback')?->value;
+        $mapped = fn (bool $arrayed): ?array => $this->mappedList(
+            $this->resolveMapCallback($callback, $elementModel, null, $arrayed, $scope, $engine),
+            ! $sequentialKeys,
+            false,
         );
-        $mapped = $this->mappedList($bodyResult, ! $sequentialKeys, false);
 
-        return $mapped !== null && $convertsItems && $this->convertsMappedItems($mapped) ? null : $mapped;
+        return $serializer === null ? $mapped($terminalOp === 'all') : $this->serializedMapResult($serializer, $mapped);
     }
 
     /**

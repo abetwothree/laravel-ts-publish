@@ -56,10 +56,10 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return null;
         }
 
-        $convertsItems = CollectionSteps::endsInMappedToArray($steps);
-        $arrayed = $convertsItems || $steps[count($steps) - 1]['name'] === 'all';
+        $serializer = CollectionSteps::mappedSerializer($steps);
+        $arrayed = $serializer !== null || $steps[count($steps) - 1]['name'] === 'all';
 
-        if ($convertsItems) {
+        if ($serializer !== null) {
             array_pop($steps);
         }
         // A leading values() lists a Record's or a shape's values.
@@ -87,8 +87,9 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         $listed = $this->isList($rootResult['type']);
         $keys = $walk['keys'] ? $rootResult : null;
-        $result = $walk['map'] === null ? $rootResult : $this->mappedItems(
-            $walk['map'],
+        $map = $walk['map'];
+        $mapped = fn (bool $arrayedItems): ?array => $map === null ? $rootResult : $this->mappedItems(
+            $map,
             $rootResult,
             // A closure: an arrow function would make PHPStan take the first read's non-null result for the re-read.
             function () use ($items, $scope, $engine, $listsValues, $keys): ?array {
@@ -96,15 +97,12 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
                 return $keys === null && $listsValues ? $this->valuesListed($reread) : $reread;
             },
-            $arrayed,
+            $arrayedItems,
             $walk['keys'] ? null : $this->elementModel($items, $scope),
             $scope,
             $engine,
         );
-
-        if ($result !== null && $convertsItems && $this->convertsMappedItems($result)) {
-            return null;
-        }
+        $result = $serializer === null ? $mapped($arrayed) : $this->serializedMapResult($serializer, $mapped);
 
         if ($result === null || $listed) {
             return $result !== null && $walk['keyed'] ? [...$result, 'type' => ArrayArms::keyedList($result['type'])] : $result;

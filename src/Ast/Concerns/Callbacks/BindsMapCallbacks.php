@@ -84,19 +84,28 @@ trait BindsMapCallbacks
     }
 
     /**
-     * Whether `toArray()` may turn an item a map hands back into an array before filter() reaches it: a list or a
-     * Record may be a Collection, whose kept wraps filter() would then enter, which the callback's read cannot tell.
+     * What a map ending in `toArray()` or `jsonSerialize()` hands filter(), by what its callback returns at the top
+     * level. `toArray()` keeps each resource for filter() but turns a Collection into an array filter() enters, and
+     * `jsonSerialize()` resolves a bare resource at once, as a kept map does, but keeps one in an array for filter().
      *
-     * @param  ValueExpressionResult  $mapped
+     * Null where the callback may return a list or a Record, an array or a Collection alike, or, for `jsonSerialize()`,
+     * a resource beside an array.
+     *
+     * @param  'toArray'|'jsonSerialize'  $serializer
+     * @param  Closure(bool): (ValueExpressionResult|null)  $map  the map's result, its callback read as arrayed or not
+     * @return ValueExpressionResult|null
      */
-    protected function convertsMappedItems(array $mapped): bool
+    protected function serializedMapResult(string $serializer, Closure $map): ?array
     {
-        $elements = ArrayArms::arms($mapped['type'], ArrayArms::elementOf(...));
+        $mapped = $map($serializer === 'toArray');
+        $kinds = $mapped === null ? null : $this->itemKinds($mapped);
 
-        return $elements === null || array_any(
-            TsTypeShape::splitTopLevel(implode(' | ', $elements), ['|']),
-            static fn (string $arm): bool => $arm !== 'never[]' && ArrayArms::isArray($arm) && TsTypeShape::members($arm) === null,
-        );
+        return match (true) {
+            $kinds === null || isset($kinds['ambiguous']) => null,
+            $serializer === 'toArray' || ! isset($kinds['array']) => $mapped,
+            isset($kinds['value']) => null,
+            default => $map(true),
+        };
     }
 
     /**
@@ -195,5 +204,39 @@ trait BindsMapCallbacks
         }
 
         return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine);
+    }
+
+    /**
+     * The kinds of item a map hands back, from its element's top-level arms: `array` for an object literal, `ambiguous`
+     * for a list or a Record, and `value` for anything else; a `null` or `[]` arm counts as none. Null where an arm
+     * holds no element.
+     *
+     * @param  ValueExpressionResult  $mapped
+     * @return array<'array'|'ambiguous'|'value', true>|null
+     */
+    private function itemKinds(array $mapped): ?array
+    {
+        $elements = ArrayArms::arms($mapped['type'], ArrayArms::elementOf(...));
+
+        if ($elements === null) {
+            return null;
+        }
+
+        $kinds = [];
+
+        foreach (TsTypeShape::splitTopLevel(implode(' | ', $elements), ['|']) as $arm) {
+            $kind = match (true) {
+                $arm === 'null' || $arm === 'never[]' => null,
+                TsTypeShape::members($arm) !== null => 'array',
+                ArrayArms::isArray($arm) => 'ambiguous',
+                default => 'value',
+            };
+
+            if ($kind !== null) {
+                $kinds[$kind] = true;
+            }
+        }
+
+        return $kinds;
     }
 }

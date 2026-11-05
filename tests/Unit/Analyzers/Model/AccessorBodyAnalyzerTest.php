@@ -5,12 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
@@ -308,4 +310,21 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         'a union with another arm' => ['state_or_none', 'StatusType | string'],
         'the enum alone' => ['plain_state', 'StatusType'],
     ]);
+});
+
+// filter() sends a wrap an accessor builds as null where a resource's value reaches it, though the model's own JSON,
+// and a map kept as a Collection, serialize it as the `[]` resolve() returns.
+test('an accessor\'s EnumResource wrap publishes what its reader sends for a null enum', function () {
+    $post = (new WrappedPriorityPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes(WrappedPriorityPostResource::class, WrappedPriorityPost::class))->toBe([
+        'accessor' => 'PriorityType | null',
+        'accessor_kept' => '(PriorityType | never[])[]',
+        'accessor_all' => '(PriorityType | null)[]',
+    ])
+        ->and((string) new WrappedPriorityPostResource($post)->response(request())->getContent())
+        ->toBe('{"data":{"accessor":null,"accessor_kept":[[]],"accessor_all":[null]}}')
+        ->and(new ModelTransformer(WrappedPriorityPost::class)->data()->mutators['priority_wrap']['type'])
+        ->toBe('PriorityType | never[]')
+        ->and(json_encode($post->append('priority_wrap')->only('priority_wrap')))->toBe('{"priority_wrap":[]}');
 });

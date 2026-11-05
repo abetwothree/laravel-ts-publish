@@ -192,8 +192,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A trailing argument-less values()/all() on a collection, or a toArray() after a map(), typed from the receiver
-     * chain, which alone knows its element: all() and toArray() hand the array back, keys and all, and values() lists
+     * A trailing argument-less values()/all() on a collection, or a toArray()/jsonSerialize() after a map(), typed from
+     * the receiver chain, which alone knows its element: all() hands the array back, keys and all, and values() lists
      * it. On any other class the method is its own, so the receiver's type says nothing about what it returns.
      *
      * @return ValueExpressionResult|null
@@ -203,7 +203,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         if ((! $call->var instanceof MethodCall && ! $this->isPlainVariable($call->var))
             || ! $call->name instanceof Identifier
             || ! (in_array($call->name->toString(), ['values', 'all'], true)
-                || CollectionSteps::endsInMappedToArray(CollectionSteps::chain($call)[0]))
+                || CollectionSteps::mappedSerializer(CollectionSteps::chain($call)[0]) !== null)
             || $call->isFirstClassCallable()
             || ! CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $call->name->toString()))->isEmpty()
         ) {
@@ -217,11 +217,16 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         $method = $call->name->toString();
-        $receiverResult = $scope->within(function () use ($scope, $method): void {
-            $scope->mapResultArrayed = $scope->mapResultArrayed || $method !== 'values';
+        $mapped = fn (bool $arrayed): array => $scope->within(function () use ($scope, $arrayed): void {
+            $scope->mapResultArrayed = $scope->mapResultArrayed || $arrayed;
         }, fn (): array => $engine->resolve($call->var));
+        $receiverResult = match ($method) {
+            'values', 'all' => $mapped($method === 'all'),
+            'toArray', 'jsonSerialize' => $this->serializedMapResult($method, $mapped),
+            default => null,
+        };
 
-        if ($method === 'toArray' && $this->convertsMappedItems($receiverResult)) {
+        if ($receiverResult === null) {
             return null;
         }
 

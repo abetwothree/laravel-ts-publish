@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMeth
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FirstClassMapChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
@@ -867,7 +868,9 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     // The Closure it builds is sent as the `{}` json_encode() writes for an object with no public property.
     test('map()/pluck() as a first-class callable publishes the Closure it builds instead of throwing', function () {
         expect($this->props['member_mapped_fcc']['type'])->toBe('Record<string, never>')
-            ->and($this->props['member_plucked_fcc']['type'])->toBe('Record<string, never>');
+            ->and($this->props['member_plucked_fcc']['type'])->toBe('Record<string, never>')
+            ->and(publishedResourceKeyTypes(FirstClassMapChainResource::class, Team::class))
+            ->toBe(['mapped' => 'unknown', 'plucked' => 'unknown']);
     });
 
     test('first() as the outermost op yields the element type or null', function () {

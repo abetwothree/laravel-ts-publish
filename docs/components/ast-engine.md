@@ -142,7 +142,9 @@ it; `Reading::encodes()` groups the three encoded ones. Either Inertia reading r
   `CallSite`, a nested analyzer such as `parent::share()`'s, and a spread resource's `toArray()`. So a share
   middleware's helper an API resource reads runs the resource's reading.
 - **Who reads `Encoded`**: a read of what a class publishes for itself (`ResourceResponseBody`, `EmptyReceiverGuess`),
-  a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
+  a property's written value and a macro's body, each memoized under a key with no reading suffix, and an accessor
+  body, read `EncodedFiltered` where `filter()` reaches its reader's value. `ResourceAstAnalyzer` marks each value it
+  types in `AnalysisMemo`, whose `filterReachesValue()` lets `ModelAttributeResolver` key an accessor by that reach.
   The keys a resource's response adds beside its body (below) reach Inertia already JSON and unfiltered, so they read
   `EncodedUnfiltered`, which `entering()` turns into `Encoded` where it enters a `JsonResource`'s `toArray()` whole.
 - **The filtered readings**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a

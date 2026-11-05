@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Model;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -60,14 +61,15 @@ final class AccessorBodyAnalyzer
         bool $carriesImports = true,
         bool $casesAsLiterals = false,
     ): ?array {
-        // Keyed per import mode and case reading, so no other reading's analysis stands in for this one. Its guard
-        // can still cut short the check with imports that an import-less read makes of a vague spelling.
+        // Keyed per import mode, case reading and filter() reach, so no other reading's analysis stands in for this
+        // one. Its guard can still cut short the check with imports that an import-less read makes of a vague spelling.
+        $reading = resolve(AnalysisMemo::class)->filterReachesValue() ? Reading::EncodedFiltered : Reading::Encoded;
         $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless')
-            .($casesAsLiterals ? '@casesAsLiterals' : '');
+            .($casesAsLiterals ? '@casesAsLiterals' : '').$reading->memoKey();
 
         return resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $key),
+            fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $key, $reading),
         );
     }
 
@@ -83,6 +85,7 @@ final class AccessorBodyAnalyzer
         bool $carriesImports,
         bool $casesAsLiterals,
         string $key,
+        Reading $reading,
     ): ?array {
         $memo = resolve(AnalysisMemo::class);
 
@@ -95,7 +98,7 @@ final class AccessorBodyAnalyzer
         try {
             // A body declined here gives way to what the model declares, so its placeholder is never published.
             return DroppedUnionArms::replaceable(
-                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $dropped),
+                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $dropped, $reading),
                 fn (?array $info): bool => $info !== null,
             );
         } finally {
@@ -115,8 +118,9 @@ final class AccessorBodyAnalyzer
         bool $carriesImports,
         bool $casesAsLiterals,
         int $dropped,
+        Reading $reading,
     ): ?array {
-        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $reading);
 
         if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
@@ -185,8 +189,13 @@ final class AccessorBodyAnalyzer
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private function resolveBody(string $modelFqcn, string $attributeName, bool $carriesImports, bool $casesAsLiterals): ?array
-    {
+    private function resolveBody(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports,
+        bool $casesAsLiterals,
+        Reading $reading,
+    ): ?array {
         $locator = resolve(MethodLocator::class);
         $engine = resolve(AstEngine::class);
         ['newStyle' => $newStyleName, 'oldStyle' => $oldStyleName] = $this->accessorMethodNames($attributeName);
@@ -195,7 +204,7 @@ final class AccessorBodyAnalyzer
         $getter = $newStyle === null ? null : $this->getterClosure($newStyle->method);
 
         if ($newStyle !== null && $getter !== null) {
-            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports, $casesAsLiterals);
+            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports, $casesAsLiterals, $reading);
         }
 
         // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
@@ -213,6 +222,7 @@ final class AccessorBodyAnalyzer
             $oldStyle,
             $carriesImports,
             $casesAsLiterals,
+            $reading,
         );
     }
 

@@ -262,6 +262,7 @@ final class AstEngine
      * @param  class-string<Model>  $modelClass
      * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
      * @param  bool  $casesAsLiterals  true when the body fallback reads the accessor, whose cases keep their literals
+     * @param  Reading  $reading  filtered where `filter()` reaches the value the accessor's reader reads
      * @return ValueExpressionResult
      *
      * @internal
@@ -272,6 +273,7 @@ final class AstEngine
         MethodContext $context,
         bool $carriesImports = true,
         bool $casesAsLiterals = false,
+        Reading $reading = Reading::Encoded,
     ): array {
         $scope = $this->bindingsFor($context);
 
@@ -287,6 +289,7 @@ final class AstEngine
             ResourceExpressionHandlers::forModelClosures(),
             $scope,
             $context,
+            reading: $reading,
         );
 
         return $analyzer->resolve($closure);

@@ -88,7 +88,7 @@ it('types a variable read inside whenLoaded() only from the variable\'s own bind
 });
 
 // JsonResource::filter() recurses into arrays only: inside a Collection the null-payload wrap serializes itself.
-// `->toArray()` keeps each wrap for filter(), as a helper on another class does; `->jsonSerialize()` stays unknown.
+// `->toArray()` keeps each wrap for filter(), as a helper on another class does, and `->jsonSerialize()` an array's.
 it('adds a wrap\'s null arm only where filter() reaches the mapped items', function () {
     expect(publishedResourceKeyTypes(MappedProfileWrapResource::class, Team::class))->toBe([
         'profiles?' => '(Profile | null)[]',
@@ -103,7 +103,7 @@ it('adds a wrap\'s null arm only where filter() reaches the mapped items', funct
         'pipe_member_wrapped_all' => '{ profile: ProfileResource | null }[]',
         'owner_wrapped?' => '{ profile: ProfileResource | null }',
         'wrapped_to_array?' => '{ profile: ProfileResource | null }[]',
-        'wrapped_serialized?' => 'unknown',
+        'wrapped_serialized?' => '{ profile: ProfileResource | null }[]',
         'direct?' => 'ProfileResource[]',
         'direct_all?' => '(ProfileResource | null)[]',
         'direct_to_array?' => '(ProfileResource | null)[]',
@@ -286,9 +286,9 @@ function keptEnumMapSends(): array
     return json_decode((string) new KeptEnumMapResource($team)->response(request())->getContent(), true)['data'];
 }
 
-// A wrap a kept Collection serializes sends the `[]` resolve() returns for a null enum, as on a page. jsonSerialize()
-// sends it too but null for a wrap in an array, and toArray() turns an inner map into an array filter() enters, so
-// both stay unknown there (docs/known-gaps.md).
+// A wrap a kept Collection serializes sends the `[]` resolve() returns for a null enum, as on a page; jsonSerialize()
+// resolves a bare one so too, but filter() reaches one inside an array. A callback returning both, or toArray() over
+// an inner map, which it turns into an array filter() enters, stays unknown (docs/known-gaps.md).
 it('publishes the [] a null enum sends from an EnumResource map kept as a Collection', function () {
     $admin = json_decode((string) json_encode(EnumResource::make(Role::Admin)), true);
     $high = json_decode((string) json_encode(EnumResource::make(Priority::High)), true);
@@ -304,7 +304,13 @@ it('publishes the [] a null enum sends from an EnumResource map kept as a Collec
         'backed_kept' => '(AsEnum<typeof Priority> | never[])[]',
         'backed_all' => '(AsEnum<typeof Priority> | null)[]',
         'to_array' => '(AsEnum<typeof Role> | null)[]',
-        'json_serialized' => 'unknown',
+        'json_serialized' => '(AsEnum<typeof Role> | never[])[]',
+        'element_serialized' => '{ role: AsEnum<typeof Role> | null }[]',
+        'mixed_serialized' => 'unknown',
+        'collect_serialized' => '(AsEnum<typeof Role> | never[])[]',
+        'collect_element_serialized' => '{ role: AsEnum<typeof Role> | null }[]',
+        'loaded_serialized?' => '(AsEnum<typeof Role> | never[])[]',
+        'loaded_element_serialized?' => '{ role: AsEnum<typeof Role> | null }[]',
         'nested_all' => '(AsEnum<typeof Priority> | never[])[][]',
         'nested_to_array' => 'unknown',
         'nested_collect_to_array' => 'unknown',
@@ -322,6 +328,12 @@ it('publishes the [] a null enum sends from an EnumResource map kept as a Collec
         'backed_all' => [$high, null],
         'to_array' => [$admin, null],
         'json_serialized' => [$admin, []],
+        'element_serialized' => [['role' => $admin], ['role' => null]],
+        'mixed_serialized' => [$admin, ['role' => null]],
+        'collect_serialized' => [$admin, []],
+        'collect_element_serialized' => [['role' => $admin], ['role' => null]],
+        'loaded_serialized' => [$admin, []],
+        'loaded_element_serialized' => [['role' => $admin], ['role' => null]],
         'nested_all' => [[$high, []], []],
         'nested_to_array' => [[$high, null], []],
         'nested_collect_to_array' => [[$high, null], []],
