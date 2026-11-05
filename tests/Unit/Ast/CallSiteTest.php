@@ -147,12 +147,14 @@ test('the signature is empty for a call that binds nothing, and one for two argu
     $held = $binder->passedBinding(['type' => 'unknown', 'optional' => false], ReceiverType::of(Post::class));
     $typed = $binder->passedBinding(['type' => 'Post', 'optional' => true, 'modelFqcn' => Post::class], ReceiverType::of(Post::class));
     $nullable = $binder->passedBinding(['type' => 'Post | null', 'optional' => false, 'modelFqcn' => Post::class], ReceiverType::of(Post::class));
+    $guarded = $binder->passedBinding(['type' => 'unknown', 'optional' => false], ReceiverType::of(Post::class)->asGuarded());
 
     expect(CallSite::signature([]))->toBe('')
         ->and($binder->passedBinding(['type' => 'unknown', 'optional' => false], null))->toBeNull()
-        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => false, 'declaredOnly' => false])
+        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => false, 'declaredOnly' => false, 'guarded' => false, 'guardsElement' => false])
         ->and(CallSite::signature(['post' => $held]))->toBe(CallSite::signature(['post' => $typed]))
-        ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $nullable]));
+        ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $nullable]))
+        ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $guarded]));
 });
 
 test('a call binds nothing in a method whose parameters all declare a type, and resolves none of its arguments', function () {

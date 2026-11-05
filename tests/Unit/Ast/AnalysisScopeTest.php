@@ -147,6 +147,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
         $scope->passedValues[$name] = $expr;
         $scope->relativeParameters[$name] = true;
+        $scope->guardedParameters[$name] = true;
     }
 
     return $scope;

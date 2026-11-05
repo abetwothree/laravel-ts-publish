@@ -122,15 +122,17 @@ final readonly class CallSite
         $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
 
         // A declared model binds as a row that exists; only an argument no row backs yet reads differently, as a new
-        // declared model whichever of its classes it holds, since passedBinding() marks only one class unsaved.
+        // declared model whichever of its classes it holds, since passedBinding() marks only one class unsaved. The
+        // declaration names its class, so no guard rides in.
         if ($model !== null) {
             if ($receiver === null || ! $receiver->unsaved || ! $receiver->within([$model])) {
                 return null;
             }
 
             $held = count($receiver->classes) === 1 ? $receiver : new ReceiverType([$model], unsaved: true);
+            $binding = $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
 
-            return $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
+            return $binding === null ? null : [...$binding, 'guarded' => false, 'guardsElement' => false];
         }
 
         if ($declared !== null && ! $binder->narrows($declared, $receiver)) {

@@ -377,7 +377,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $inputs,
             $read,
             fn (array $inputs): ?array => count($inputs) === 1
-                ? $this->mappedOneArray($callback, $inputs[0], $zips, $scope, $engine)
+                ? $this->mappedOneArray($callback, $inputs[0], $arrays[0], $zips, $scope, $engine)
                 : $this->mappedArrays($callback, $inputs, $zips, $scope, $engine),
             $scope,
         );
@@ -415,15 +415,17 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * What array_map() returns for one array: the array itself for a `null` callback, else each arm mapped with its
-     * keys kept.
+     * keys kept, the callback's parameter guarded where the array is read off a guarded receiver.
      *
      * @param  ValueExpressionResult  $input
      * @return ValueExpressionResult|null
      */
-    private function mappedOneArray(Expr $callback, array $input, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function mappedOneArray(Expr $callback, array $input, Expr $array, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if (! $zips) {
-            return $this->mappedArrayResult($callback, $input, true, $scope, $engine);
+            $guarded = resolve(ReceiverClassResolver::class)->readsGuarded($array, $scope);
+
+            return $this->mappedArrayResult($callback, $input, true, $scope, $engine, guarded: $guarded);
         }
 
         $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::isArray($arm) ? $arm : null);

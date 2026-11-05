@@ -404,7 +404,7 @@ test('binds a Request parameter as a request, unless the subject is an API resou
 // The parameter holds the value, so whether the caller's key may be absent, and whether `??` fills it, stays there.
 test('passes a value without the caller\'s optional or its absent-field marker', function () {
     expect(resolve(ParameterBinder::class)->passedBinding(['type' => 'string', 'optional' => true, 'absentReadsNull' => true], null))
-        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false, 'declaredOnly' => false]);
+        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false, 'declaredOnly' => false, 'guarded' => false, 'guardsElement' => false]);
 });
 
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {
@@ -414,6 +414,26 @@ test('binds a non-null concrete model parameter in varModelBindings, as a route-
 
     expect($scope->varModelBindings)->toBe(['post' => Post::class])
         ->and($scope->varValueBindings)->toBe([]);
+});
+
+// The parameter keeps a guarded receiver's guard, or only its element's, and its receiver reads as guarded too.
+test('binds a parameter passed a guarded receiver with that guard', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostHelperParamsResource::class), Post::class);
+    $binder = resolve(ParameterBinder::class);
+    $value = ['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class];
+    $listed = new ReceiverType([EloquentCollection::class], elementModel: Comment::class);
+
+    $binder->bindPassed([
+        'guarded' => $binder->passedBinding($value, $listed->asGuarded()),
+        'listed' => $binder->passedBinding($value, $listed->asGuardingElement()),
+        'plain' => $binder->passedBinding($value, $listed),
+    ], $scope);
+    $resolved = fn (string $name): ?ReceiverType => resolve(ReceiverClassResolver::class)->resolve(new Variable($name), $scope);
+
+    expect($scope->guardedParameters)->toBe(['guarded' => true, 'listed' => false])
+        ->and([$resolved('guarded')?->guarded, $resolved('guarded')?->guardsElement])->toBe([true, false])
+        ->and([$resolved('listed')?->guarded, $resolved('listed')?->guardsElement])->toBe([false, true])
+        ->and([$resolved('plain')?->guarded, $resolved('plain')?->guardsElement])->toBe([false, false]);
 });
 
 // seedBody() ends each binding where a write replaces it, so a read before the write still has the parameter's value.
@@ -501,13 +521,15 @@ test('binds a passed Eloquent collection of one model by its element, unless a s
 // and a `self` one may be any subclass.
 test('binds a callback parameter to a collection element: its model, a concrete model hint, else its value', function () {
     $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
-    $bound = fn (?string $model, ?array $value, string $closure): ?array => ParameterBinder::elementBinding(
+    $bound = fn (?string $model, ?array $value, string $closure, bool $guarded = false, bool $guardsElement = false): ?array => ParameterBinder::elementBinding(
         $model,
         $value,
         parameterBinderClosure($closure)->params[0] ?? null,
         $scope,
+        $guarded,
+        $guardsElement,
     );
-    $binding = fn (?string $model, ?array $value = null, bool $relative = false): array => [
+    $binding = fn (?string $model, ?array $value = null, bool $relative = false, bool $guarded = false): array => [
         'model' => $model,
         'classes' => null,
         'elementModel' => null,
@@ -515,6 +537,8 @@ test('binds a callback parameter to a collection element: its model, a concrete 
         'unsaved' => false,
         'refines' => false,
         'declaredOnly' => $relative,
+        'guarded' => $guarded,
+        'guardsElement' => false,
     ];
     $title = ['type' => 'string', 'optional' => false];
 
@@ -527,7 +551,12 @@ test('binds a callback parameter to a collection element: its model, a concrete 
         ->and($bound(null, null, 'fn (\\Illuminate\\Database\\Eloquent\\Model $m) => $m'))->toBeNull()
         ->and($bound(null, null, 'fn (?\\Workbench\\App\\Models\\Post $p) => $p'))->toBeNull()
         ->and($bound(null, $title, 'fn (\\Illuminate\\Database\\Eloquent\\Model $m) => $m'))->toBe($binding(null, $title))
-        ->and($bound(null, $title, 'fn ($t) => $t'))->toBe($binding(null, $title));
+        ->and($bound(null, $title, 'fn ($t) => $t'))->toBe($binding(null, $title))
+        ->and($bound(Comment::class, null, 'fn ($c) => $c', guarded: true))->toBe($binding(Comment::class, guarded: true))
+        ->and($bound(Comment::class, null, 'fn (\\Workbench\\App\\Models\\Comment $c) => $c', guarded: true))->toBe($binding(Comment::class, guarded: true))
+        ->and($bound(Comment::class, null, 'fn ($c) => $c', guardsElement: true))->toBe($binding(Comment::class, guarded: true))
+        ->and($bound(Comment::class, null, 'fn (\\Workbench\\App\\Models\\Comment $c) => $c', guardsElement: true))->toBe($binding(Comment::class))
+        ->and($bound(null, $title, 'fn ($t) => $t', guarded: true))->toBe($binding(null, $title));
 });
 
 test('binds a callback parameter at each position to the value its caller passes there', function () {

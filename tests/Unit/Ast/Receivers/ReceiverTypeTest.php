@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedCallbacksResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledHolderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingShelfReadsResource;
@@ -18,6 +19,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -105,6 +108,16 @@ test('a copy keeps the guard', function () {
         ->and($type->withClasses([Comment::class])->guarded)->toBeTrue();
 });
 
+test('a copy keeps a declared element\'s guard', function () {
+    $type = new ReceiverType([Collection::class], elementModel: Comment::class, guardsElement: true);
+
+    expect($type->withShortCircuit(true)->guardsElement)->toBeTrue()
+        ->and($type->asGuarded()->guardsElement)->toBeTrue()
+        ->and($type->asDeclaredOnly()->guardsElement)->toBeTrue()
+        ->and($type->withClasses([EloquentCollection::class])->guardsElement)->toBeTrue()
+        ->and(new ReceiverType([Collection::class], elementModel: Comment::class)->guardsElement)->toBeFalse();
+});
+
 // The guard starts at `$this->collection` and at what a resource forwards to, and every step and union carries it on.
 test('a receiver reached from $this->collection or a forward is guarded down its chain', function (string $subject, string $php, bool $guarded) {
     $scope = new AnalysisScope(new ReflectionClass($subject), null);
@@ -133,3 +146,39 @@ test('a method declared to list a published model hands that model on as the ele
         ->and($resolver->resolve(receiverTypeExpr('$this->resource->abstracts()'), $scope)?->elementModel)->toBeNull()
         ->and($resolver->resolve(receiverTypeExpr('$this->resource->words()'), $scope)?->elementModel)->toBeNull();
 });
+
+// A declared list's element is named by its declaration alone: an item it yields is guarded, while a step keeping the
+// items hands the element and its guard on, and one replacing them reads as the list's own steps always did.
+test('a list a method declares guards the item it yields, never its own steps', function (string $php, bool $guarded, bool $guardsElement) {
+    $scope = new AnalysisScope(new ReflectionClass(GuardedCallbacksResource::class), null);
+    $type = resolve(ReceiverClassResolver::class)->resolve(receiverTypeExpr($php), $scope);
+
+    expect([$type?->guarded, $type?->guardsElement])->toBe([$guarded, $guardsElement]);
+})->with([
+    'the list' => ['$this->resource->comments()', false, true],
+    'a step keeping its items' => ['$this->resource->comments()->sortBy("id")', false, true],
+    'a step adding none' => ['$this->resource->comments()->merge([])', false, true],
+    'a union of the list' => ['$flag ? $this->resource->comments() : $this->resource->comments()->values()', false, true],
+    'its first item' => ['$this->resource->comments()->first()', true, false],
+    'an item found by key' => ['$this->resource->comments()->find(3)', true, false],
+    'a query of its items' => ['$this->resource->comments()->toQuery()', true, false],
+    'a step replacing its items' => ['$this->resource->comments()->pluck("id")', false, false],
+]);
+
+test('a step the engine presumes keeps a declared list\'s items keeps its guard too', function () {
+    $scope = new AnalysisScope(new ReflectionClass(GuardedCallbacksResource::class), null);
+    $type = resolve(ReceiverClassResolver::class)->resolvePresumingSteps(receiverTypeExpr('$this->resource->comments()->chunk(2)'), $scope);
+
+    expect([$type?->elementModel, $type?->guardsElement])->toBe([Comment::class, true]);
+});
+
+test('a list a method declares under string keys is keyed', function (string $php, bool $keyed) {
+    $scope = new AnalysisScope(new ReflectionClass(GuardedCallbacksResource::class), null);
+
+    expect(resolve(ReceiverClassResolver::class)->resolve(receiverTypeExpr($php), $scope)?->keyed)->toBe($keyed);
+})->with([
+    'int keys' => ['$this->resource->comments()', false],
+    'string keys' => ['$this->resource->keyedComments()', true],
+    'string keys, Eloquent' => ['$this->resource->keyedEloquent()', true],
+    'keys of either kind' => ['$this->resource->anyKeyed()', true],
+]);

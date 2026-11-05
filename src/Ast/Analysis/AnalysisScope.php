@@ -106,7 +106,8 @@ use ReflectionMethod;
  *      bindingGaps: BindingGapsMap,
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap,
- *      relativeParameters: array<string, true>
+ *      relativeParameters: array<string, true>,
+ *      guardedParameters: array<string, bool>
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -154,6 +155,7 @@ final class AnalysisScope
         'keyBuiltLocals' => [],
         'passedValues' => [],
         'relativeParameters' => [],
+        'guardedParameters' => [],
     ];
 
     /**
@@ -331,6 +333,14 @@ final class AnalysisScope
      * @var array<string, true>
      */
     public array $relativeParameters = [];
+
+    /**
+     * The parameters bound from a guarded receiver (ReceiverType::$guarded): true where the parameter is guarded, false
+     * where only what its element yields is, as a list a method declares hands on.
+     *
+     * @var array<string, bool>
+     */
+    public array $guardedParameters = [];
 
     /**
      * Closure params bound to a whole relation collection rather than one element — a to-many
@@ -1125,6 +1135,7 @@ final class AnalysisScope
             'keyBuiltLocals' => $this->keyBuiltLocals,
             'passedValues' => $this->passedValues,
             'relativeParameters' => $this->relativeParameters,
+            'guardedParameters' => $this->guardedParameters,
         ];
     }
 
@@ -1153,6 +1164,7 @@ final class AnalysisScope
         $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
         $this->passedValues = $snapshot['passedValues'];
         $this->relativeParameters = $snapshot['relativeParameters'];
+        $this->guardedParameters = $snapshot['guardedParameters'];
     }
 
     /**
@@ -1362,6 +1374,10 @@ final class AnalysisScope
 
             if (isset($snapshot['relativeParameters'][$from])) {
                 $this->relativeParameters[$to] = true;
+            }
+
+            if (isset($snapshot['guardedParameters'][$from])) {
+                $this->guardedParameters[$to] = $snapshot['guardedParameters'][$from];
             }
 
             if (isset($snapshot['varCollectionBindings'][$from])) {
@@ -1587,7 +1603,7 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
-        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters];
+        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters, $this->guardedParameters];
     }
 
     /**
@@ -1640,6 +1656,7 @@ final class AnalysisScope
                 $this->keyBuiltLocals[$name],
                 $this->passedValues[$name],
                 $this->relativeParameters[$name],
+                $this->guardedParameters[$name],
             );
         }
     }

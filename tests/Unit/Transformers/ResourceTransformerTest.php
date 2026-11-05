@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BracketedReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedItemsPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
@@ -58,6 +59,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsMixin
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardRulesPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedCallbacksResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedJsonSerializableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedSummarizableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
@@ -75,6 +77,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingSupplierCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedRackReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledEntryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledHolderResource;
@@ -129,6 +132,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BracketedBag;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FlaggedStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
@@ -4683,4 +4687,105 @@ it('leaves random() unread on a collection derived from $this->collection whose 
         ->and($sent['filtered'])->toBeIn($items)
         ->and($sent['mapped'])->toBeIn([1, 2])
         ->and($sent['mapped_pair'])->toEqualCanonicalizing([1, 2]);
+});
+
+it('keeps the guard on a variable a branch reassigns from $this->collection', function () {
+    $collection = new BranchedItemsPostCollection(collect([
+        (new Post)->forceFill(['id' => 1, 'title' => 'T1']),
+        (new Post)->forceFill(['id' => 2, 'title' => 'T2']),
+    ]));
+    $sent = fn (Request $request): array => json_decode((string) json_encode($collection->resolve($request)), true);
+
+    expect(resourceProps(BranchedItemsPostCollection::class))->toBe([
+        'picked' => 'unknown',
+        'picked_pair' => 'unknown',
+    ])
+        ->and($sent(Request::create('/'))['picked'])->toBeIn(['T1', 'T2'])
+        ->and($sent(Request::create('/'))['picked_pair'])->toEqualCanonicalizing(['T1', 'T2'])
+        ->and($sent(Request::create('/', 'GET', ['ids' => 1]))['picked'])->toBeIn([1, 2]);
+});
+
+// A parameter takes the guard from what binds it: a guarded collection's element, a declared list's element, or a
+// guarded argument. A declaration binding the class alone, and the list's own steps, keep their reading. A map whose
+// callback the guard leaves unread is unread, as on any receiver.
+it('carries the guard into a parameter bound from a guarded collection or a declared list\'s element', function () {
+    $sent = fn (Request $request): array => json_decode((string) json_encode(GuardedCallbacksResource::make(new CommentRack)->resolve($request)), true);
+    $plain = $sent(Request::create('/'));
+
+    expect(resourceProps(GuardedCallbacksResource::class))->toBe([
+        'forwarded' => 'unknown',
+        'built' => 'unknown',
+        'built_typed' => 'unknown',
+        'own' => 'unknown',
+        'own_ids' => 'number[]',
+        'own_typed_ids' => 'number[]',
+        'own_first' => 'unknown',
+        'own_sorted' => 'unknown',
+        'own_id' => 'number',
+        'collected' => 'unknown',
+        'array_mapped' => 'unknown',
+        'helper' => 'unknown',
+        'helper_first' => 'unknown',
+        'helper_own_id' => 'number',
+        'branched' => 'unknown',
+        'held_typed_ids' => 'number[]',
+        'helper_copy_id' => 'number',
+    ])
+        ->and($plain['forwarded'])->toBe(['in3', 'in4'])
+        ->and($plain['built'])->toBe(['in3', 'in4'])
+        ->and($plain['built_typed'])->toBe(['in3', 'in4'])
+        ->and($plain['own'])->toBe(['in3', 'in4'])
+        ->and($plain['own_ids'])->toBe([3, 4])
+        ->and($plain['own_typed_ids'])->toBe([3000, 4000])
+        ->and($plain['own_first'])->toBe('in3')
+        ->and($plain['own_sorted'])->toBe(['in3', 'in4'])
+        ->and($plain['own_id'])->toBeIn([3, 4])
+        ->and($plain['collected'])->toBe(['in3', 'in4'])
+        ->and($plain['array_mapped'])->toBe(['in3', 'in4'])
+        ->and($plain['helper'])->toBeIn(['c3', 'c4'])
+        ->and($plain['helper_first'])->toBe('in3')
+        ->and($plain['helper_own_id'])->toBeIn([3, 4])
+        ->and($plain['branched'])->toBeIn(['c3', 'c4'])
+        ->and($plain['held_typed_ids'])->toBe([3000, 4000])
+        ->and($plain['helper_copy_id'])->toBe(3000)
+        ->and($sent(Request::create('/', 'GET', ['again' => 1]))['branched'])->toBeIn(['c3', 'c4']);
+});
+
+// PHP turns a numeric string key into an int, so keys a list declares as strings may still send a list, as `[]` does.
+it('reads a list a method declares under string keys as keyed, so a step keeping them sends an object', function () {
+    $sent = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack)->resolve()), true);
+    $numbered = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack(['0', '1']))->resolve()), true);
+    $comment = fn (int $id): array => CommentRack::comment($id)->toArray();
+
+    expect(resourceProps(KeyedRackReadsResource::class))->toBe([
+        'ids' => 'number[] | Record<string, number>',
+        'ids_all' => 'number[] | Record<string, number>',
+        'all' => 'Comment[] | Record<string, Comment>',
+        'arrays' => 'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
+        'eloquent_arrays' => 'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
+        'model_keys' => 'number[] | Record<string, number>',
+        'built_model_keys' => 'number[] | Record<string, number>',
+        'built_ids' => 'number[] | Record<string, number>',
+        'any_ids' => 'number[] | Record<string, number>',
+        'random' => 'Comment',
+        'random_pair' => 'Comment[]',
+        'only' => 'Comment[]',
+        'sorted' => 'Comment[] | Record<string, Comment>',
+    ])
+        ->and($sent['ids'])->toBe(['a' => 3, 'b' => 4])
+        ->and($sent['ids_all'])->toBe(['a' => 3, 'b' => 4])
+        ->and($sent['all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['arrays'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['eloquent_arrays'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['model_keys'])->toBe(['a' => 3, 'b' => 4])
+        ->and($sent['built_model_keys'])->toBe(['a' => 3, 'b' => 4])
+        ->and($sent['built_ids'])->toBe(['a' => 3, 'b' => 4])
+        ->and($sent['any_ids'])->toBe(['a' => 3])
+        ->and($sent['random'])->toBeIn([$comment(3), $comment(4)])
+        ->and($sent['random_pair'])->toEqualCanonicalizing([$comment(3), $comment(4)])
+        ->and($sent['only'])->toBe([$comment(3)])
+        ->and($sent['sorted'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($numbered['all'])->toBe([$comment(3), $comment(4)])
+        ->and($numbered['ids'])->toBe([3, 4])
+        ->and($numbered['model_keys'])->toBe([3, 4]);
 });

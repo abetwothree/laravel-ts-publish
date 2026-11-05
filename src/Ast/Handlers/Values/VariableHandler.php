@@ -642,7 +642,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * wraps as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
      *
      * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), a resource collection's
-     * items, an unnamed one but a variable a model hint binds, and a receiver whose element nothing names.
+     * items, an unnamed one but a variable a model hint binds, and a receiver whose element nothing names. The param
+     * takes a guarded receiver's guard, and a declared list's where its element names the model.
      *
      * @return ValueExpressionResult|null
      */
@@ -679,6 +680,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             }
         }
 
+        // A model the declaration alone names is the parameter's own, as it is where nothing names the receiver.
         $bodyResult = $this->resolveMapCallback(
             $callback,
             $elementModel,
@@ -686,6 +688,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             $scope->mapResultArrayed,
             $scope,
             $engine,
+            guarded: $receiver?->guarded === true && ! $this->mayHoldCollection($call->var, $declared, $scope),
+            guardsElement: $receiver?->guardsItems() === true,
         );
 
         return $this->mappedList($bodyResult, $receiver?->keyed === true, $receiver?->shortCircuits === true);

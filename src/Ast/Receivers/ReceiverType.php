@@ -42,6 +42,8 @@ final readonly class ReceiverType
      *                                        that is also a B: memberOwner() reads a member A lacks off B
      * @param  bool  $guarded  reached from a resource collection's `$collection` or what an API resource forwards to,
      *                         where a conditional `@return` publishes no guess at an arm, as its own reading would
+     * @param  bool  $guardsElement  set with an element only a method's declared list names: an item the element
+     *                               yields, or a callback parameter it binds, is guarded; the list's own steps are not
      */
     public function __construct(
         public array $classes,
@@ -58,6 +60,7 @@ final readonly class ReceiverType
         public bool $declaredOnly = false,
         public array $intersections = [],
         public bool $guarded = false,
+        public bool $guardsElement = false,
     ) {}
 
     /**
@@ -248,6 +251,22 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver marked as holding an element only a declared list names, so what the element yields is guarded.
+     */
+    public function asGuardingElement(): self
+    {
+        return $this->guardsElement ? $this : $this->copy(guardsElement: true);
+    }
+
+    /**
+     * Whether an item the receiver's element yields, or a callback's parameter it binds, is guarded.
+     */
+    public function guardsItems(): bool
+    {
+        return $this->guarded || $this->guardsElement;
+    }
+
+    /**
      * The same value holding other classes, as an `instanceof` test narrows it: the proof names them, not a spelling.
      *
      * @param  non-empty-list<class-string>  $classes
@@ -325,6 +344,7 @@ final readonly class ReceiverType
         ?bool $declaredOnly = null,
         ?array $intersections = null,
         ?bool $guarded = null,
+        ?bool $guardsElement = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -341,6 +361,7 @@ final readonly class ReceiverType
             declaredOnly: $declaredOnly ?? $this->declaredOnly,
             intersections: $intersections ?? $this->intersections,
             guarded: $guarded ?? $this->guarded,
+            guardsElement: $guardsElement ?? $this->guardsElement,
         );
     }
 }

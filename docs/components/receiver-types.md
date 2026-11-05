@@ -18,7 +18,7 @@ These classes carry receiver inference:
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
 | [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()` and `merge()` hand down the chain |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
@@ -55,7 +55,7 @@ reflection answers, a decline included.
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()`, and `user()` on `auth()`, the `Auth` facade, `request()`, `Auth::guard()` or `auth()->guard()` | `AuthUserResolver::model()`, when that is not `null`, for `$request->user()`. The other spellings take `AuthUserResolver::soleModel()`, that model only while no configured guard's provider names another Eloquent model, since a route's guard middleware can make any guard the default ([known gap][gap-guards]). Only the default guard is read, so a guard named on any spelling but `$request->user()`, such as `auth('admin')`, `Auth::guard('admin')` or `request()->user('admin')`, names nothing ([`ResolvesAuthHelperCalls`]) |
-| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`). On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
+| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`), `keyed` for a `string` or `array-key` key, and `guardsElement`. On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
 | `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare, or to an attribute scope, reads as the same call on `X::query()`, since `Model::__callStatic()` runs it on a new query (`QueryForwarding::queriesStatically()`), and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
@@ -94,6 +94,11 @@ answers:
 
 Steps 1, 3 and 4's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
 first write that replaces a parameter, step 4's `localVarBindings` answers.
+
+A parameter `ParameterBinder` bound from a guarded receiver, a callback's from its element or a helper's from its
+argument, keeps that guard through `AnalysisScope::$guardedParameters`: whole, or only its element's for a declared
+list. A callback parameter's declared model stays unguarded where the declaration alone would read the callback, and
+`array_map()` and `collect()->map()` take the guard where `readsGuarded()` finds the array read off a guarded receiver.
 
 Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
@@ -379,8 +384,8 @@ Two more read the call's own arguments:
   throws; a list for an integer literal or a callable; both where the argument may be null. A list picked with
   `$preserveKeys` adds the object arm, and an unpacked call keeps every arm. Any other receiver keeps the docblock
   reading.
-- **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, or on what an API resource
-  forwards a call to: where the docblock reader keeps only the first token of one naming more than strings
+- **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, a callback or helper
+  parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first token of one naming more than strings
   (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that token's type is withdrawn, so
   `$this->collection->random()` with no element, and `$this->collection->pluck('title')->random()`, publish `unknown`,
   never a word of the condition. A rule's answer, a body's and a bracketed type that is no conditional, such as

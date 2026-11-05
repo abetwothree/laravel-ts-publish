@@ -585,6 +585,37 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Whether a value, such as the array a callback maps, is read off a guarded receiver: the nearest object its calls
+     * and reads hold, or that of the one write a variable holding no object sees.
+     */
+    public function readsGuarded(Expr $expr, AnalysisScope $scope): bool
+    {
+        // The bound keeps a variable that reads its own write from walking without end.
+        for ($step = 0; $step < 8; $step++) {
+            $receiver = $this->resolve($expr, $scope);
+
+            if ($receiver !== null) {
+                return $receiver->guarded;
+            }
+
+            $next = match (true) {
+                $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall,
+                $expr instanceof PropertyFetch, $expr instanceof NullsafePropertyFetch => $expr->var,
+                $expr instanceof Variable => $scope->soleWriteSeenBy($expr),
+                default => null,
+            };
+
+            if ($next === null) {
+                return false;
+            }
+
+            $expr = $next;
+        }
+
+        return false;
+    }
+
+    /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
      * what the body assigned, narrowed by the `instanceof` proof the read falls within; an unbound variable declines
      * unless a proof names its classes.
@@ -710,12 +741,17 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
-     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys. A parameter a
-     * `self` or `parent` spelled, or one passed such a receiver, reads by its declarations (relativeParameters).
+     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys. A parameter
+     * in relativeParameters reads by its declarations, and one in guardedParameters keeps its guard.
      */
     private function fromBindings(string $name, AnalysisScope $scope, ?Variable $read = null): ?ReceiverType
     {
         $held = $this->boundReceiver($name, $scope, $read);
+        $held = match ($scope->guardedParameters[$name] ?? null) {
+            true => $held?->asGuarded(),
+            false => $held?->asGuardingElement(),
+            null => $held,
+        };
 
         return isset($scope->relativeParameters[$name]) ? $held?->asDeclaredOnly() : $held;
     }
@@ -775,7 +811,7 @@ final class ReceiverClassResolver
     /**
      * Resolve a variable inside a gap through the values its writes assigned, a `null` aside, joined with the binding
      * the name came in with where that may still hold, or where the gap keeps it for a write naming no class; null when
-     * one names none.
+     * one names none. The join is guarded where any value is.
      *
      * @param  BindingGap  $gap
      */
@@ -811,6 +847,7 @@ final class ReceiverClassResolver
                     $receivers,
                 )))),
                 declaredOnly: array_any($receivers, fn (ReceiverType $receiver): bool => $receiver->declaredOnly),
+                guarded: array_any($receivers, fn (ReceiverType $receiver): bool => $receiver->guarded),
             );
     }
 
@@ -1037,12 +1074,15 @@ final class ReceiverClassResolver
         $element = $this->collectedElement($call, $method, $receiver);
 
         if ($element !== null) {
-            return ReceiverType::of($element, $shortCircuits);
+            return $this->yielded($receiver, ReceiverType::of($element, $shortCircuits));
         }
 
         // An Eloquent collection's toQuery() queries the models it holds.
         if ($method === 'toQuery' && $receiver->elementModel !== null && $receiver->within([EloquentCollection::class])) {
-            return new ReceiverType([QueryForwarding::builderClass($receiver->elementModel)], $shortCircuits, relatedModel: $receiver->elementModel);
+            return $this->yielded(
+                $receiver,
+                new ReceiverType([QueryForwarding::builderClass($receiver->elementModel)], $shortCircuits, relatedModel: $receiver->elementModel),
+            );
         }
 
         $kept = $this->keptItems($call, $method, $receiver, $shortCircuits) ?? $this->addedItems($call, $method, $receiver, $shortCircuits, $scope);
@@ -1079,7 +1119,13 @@ final class ReceiverClassResolver
         $result ??= $this->inheritedCollectionStep($method, $receiver, $shortCircuits);
 
         if ($this->presumesCollectionStep($method, $receiver, $result)) {
-            return new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed);
+            return new ReceiverType(
+                $receiver->classes,
+                $shortCircuits,
+                elementModel: $receiver->elementModel,
+                keyed: $receiver->keyed,
+                guardsElement: $receiver->guardsElement,
+            );
         }
 
         // A fluent call such as fill() hands the same model back, so no row backs it yet either.
@@ -1981,7 +2027,9 @@ final class ReceiverClassResolver
         if (($classes !== null && $classes !== [Builder::class]) || ! is_a($class, Model::class, true)) {
             $listed = $classes === null ? null : $this->listedReturnModel($class, $method, $classes);
 
-            return $listed === null ? ReceiverType::declared($returned) : new ReceiverType($classes, elementModel: $listed);
+            return $listed === null
+                ? ReceiverType::declared($returned)
+                : new ReceiverType($classes, elementModel: $listed['model'], keyed: $listed['keyed'], guardsElement: true);
         }
 
         $declared = $classes === null ? null : $this->declaredReturn($class, $method);
@@ -1997,27 +2045,28 @@ final class ReceiverClassResolver
 
     /**
      * The model a method's `@return` lists in a collection, as `EloquentCollection<int, Comment>` does, where the
-     * method's value names it too: a concrete model the run publishes; null otherwise.
+     * method's value names it too: a concrete model the run publishes, keyed where the list's keys may be strings, as
+     * `Collection<string, Comment>` spells; null otherwise.
      *
      * @param  non-empty-list<class-string>  $classes  the classes the method returns
-     * @return class-string<Model>|null
+     * @return array{model: class-string<Model>, keyed: bool}|null
      */
-    private function listedReturnModel(string $class, string $method, array $classes): ?string
+    private function listedReturnModel(string $class, string $method, array $classes): ?array
     {
         $declared = $this->declaredReturn($class, $method);
 
         if ($declared === null
             || ! new ReceiverType($classes)->within([Enumerable::class])
-            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:(?:int|array-key|string)\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
+            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:(int|array-key|string)\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
         ) {
             return null;
         }
 
-        $element = DocblockNames::resolve($match[1], DeclaringFile::ofMethod(new ReflectionMethod($class, $method)));
+        $element = DocblockNames::resolve($match[2], DeclaringFile::ofMethod(new ReflectionMethod($class, $method)));
 
         return ReceiverType::isConcreteModel($element)
             && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $element])
-            ? $element
+            ? ['model' => $element, 'keyed' => in_array($match[1], ['string', 'array-key'], true)]
             : null;
     }
 
@@ -2330,7 +2379,7 @@ final class ReceiverClassResolver
      *
      * An element or related model, a resource collection's items, and an intersection survive only when every part
      * agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read by declarations or
-     * guarded, when any part is.
+     * guarded, when any part is, and a surviving element guarded where any part's is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -2348,6 +2397,7 @@ final class ReceiverClassResolver
         $filled = null;
         $declaredOnly = false;
         $guarded = false;
+        $guardsElement = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -2365,6 +2415,7 @@ final class ReceiverClassResolver
             $attributeless = $attributeless || $type->attributeless;
             $declaredOnly = $declaredOnly || $type->declaredOnly;
             $guarded = $guarded || $type->guarded;
+            $guardsElement = $guardsElement || $type->guardsElement;
             if ($type->attributeless) {
                 // Each part with no attributes holds only the columns written into all of them.
                 $filled = $filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled));
@@ -2375,10 +2426,12 @@ final class ReceiverClassResolver
             return null;
         }
 
+        $elementModel = count($elementModels) === 1 ? reset($elementModels) : null;
+
         return new ReceiverType(
             classes: array_values(array_unique($classes)),
             shortCircuits: $shortCircuits,
-            elementModel: count($elementModels) === 1 ? reset($elementModels) : null,
+            elementModel: $elementModel,
             relatedModel: count($relatedModels) === 1 ? reset($relatedModels) : null,
             unsaved: $unsaved,
             collectedItems: $collectedItems,
@@ -2389,6 +2442,7 @@ final class ReceiverClassResolver
             declaredOnly: $declaredOnly,
             intersections: ReceiverType::agreedIntersections($parts),
             guarded: $guarded,
+            guardsElement: $elementModel !== null && $guardsElement,
         );
     }
 
@@ -2401,6 +2455,15 @@ final class ReceiverClassResolver
         $member = $receiver->guarded ? $member?->asGuarded() : $member;
 
         return $receiver->declaredOnly ? $member?->asDeclaredOnly() : $member;
+    }
+
+    /**
+     * What a collection's element yields, an item or a query of the items, guarded where only a declared list names
+     * the element.
+     */
+    private function yielded(ReceiverType $receiver, ReceiverType $item): ReceiverType
+    {
+        return $receiver->guardsElement ? $item->asGuarded() : $item;
     }
 
     /**
@@ -2456,6 +2519,7 @@ final class ReceiverClassResolver
             keyed: $keepsKeys
                 ? $receiver->keyed
                 : CollectionSteps::keyedAfter($call, $method, $receiver->keyed, $receiver->within([EloquentCollection::class])),
+            guardsElement: $receiver->guardsElement,
         );
     }
 
@@ -2481,7 +2545,9 @@ final class ReceiverClassResolver
         $same = ($added instanceof Array_ && $added->items === [])
             || ($held?->elementModel === $receiver->elementModel && $held->within([Enumerable::class]));
 
-        return $same ? new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed) : null;
+        return $same
+            ? new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed, guardsElement: $receiver->guardsElement)
+            : null;
     }
 
     /**

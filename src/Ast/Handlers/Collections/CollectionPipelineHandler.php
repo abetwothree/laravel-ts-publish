@@ -99,6 +99,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             },
             $arrayedItems,
             $walk['keys'] ? null : $this->elementModel($items, $scope),
+            resolve(ReceiverClassResolver::class)->readsGuarded($items, $scope),
             $scope,
             $engine,
         );
@@ -140,7 +141,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
     /**
      * What one `map()` makes of a root's items, read again with each enum case as its enum where the first read leaves
-     * its callback unread.
+     * its callback unread; $guarded says the items are read off a guarded receiver.
      *
      * @param  ValueExpressionResult  $items
      * @param  Closure(): (ValueExpressionResult|null)  $read
@@ -153,6 +154,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         Closure $read,
         bool $arrayed,
         ?string $elementModel,
+        bool $guarded,
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
@@ -161,7 +163,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         return $callback === null ? null : $this->mappedReadingCases(
             $items,
             $read,
-            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel),
+            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel, $guarded),
             $scope,
         );
     }

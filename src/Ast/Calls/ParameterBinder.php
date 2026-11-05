@@ -59,6 +59,8 @@ use ReflectionParameter;
  *     unsaved: bool,
  *     refines: bool,
  *     declaredOnly: bool,
+ *     guarded: bool,
+ *     guardsElement: bool,
  * }
  *
  * @internal
@@ -144,12 +146,21 @@ final class ParameterBinder
      * A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is. The
      * caller declines a variadic parameter, which collects the element and the key into one list.
      *
+     * A bound model is guarded where $guarded says the collection is, or where $guardsElement says its element is and
+     * the element, not the declaration alone, names the model.
+     *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
      * @return PassedBinding|null
      */
-    public static function elementBinding(?string $elementModel, ?array $elementValue, ?Param $param, AnalysisScope $scope): ?array
-    {
+    public static function elementBinding(
+        ?string $elementModel,
+        ?array $elementValue,
+        ?Param $param,
+        AnalysisScope $scope,
+        bool $guarded = false,
+        bool $guardsElement = false,
+    ): ?array {
         $declaredModel = self::declaredClosureModel($param, $scope);
         $model = $elementModel !== null && ($declaredModel === null || is_a($elementModel, $declaredModel, true))
             ? $elementModel
@@ -167,6 +178,8 @@ final class ParameterBinder
             'unsaved' => false,
             'refines' => false,
             'declaredOnly' => $model !== null && $model !== $elementModel && $param !== null && self::spellsRelativeClass($param),
+            'guarded' => $model !== null && ($guarded || ($guardsElement && $model !== $declaredModel)),
+            'guardsElement' => false,
         ];
     }
 
@@ -216,8 +229,8 @@ final class ParameterBinder
 
     /**
      * Bind a callback's parameters by position to what its caller passes, each as bindCallbackArgument() binds it; or,
-     * where $elements says the values are an array's elements, each typed one as elementBinding() binds it, the first
-     * by $firstElementModel too, so a model a parameter declares binds. A variadic parameter collects the rest.
+     * where $elements says the values are an array's elements, each typed one as elementBinding() binds it, so a model
+     * a parameter declares binds, the first with $firstElementModel and the guards. A variadic one collects the rest.
      *
      * @param  list<Expr|ValueExpressionResult>  $passed
      * @param  class-string<Model>|null  $firstElementModel
@@ -229,6 +242,8 @@ final class ParameterBinder
         ExpressionEngine $engine,
         ?string $firstElementModel = null,
         bool $elements = false,
+        bool $guarded = false,
+        bool $guardsElement = false,
     ): void {
         foreach ($passed as $position => $argument) {
             $param = $callback->params[$position] ?? null;
@@ -243,7 +258,9 @@ final class ParameterBinder
 
             // An element nothing types binds nothing, so the parameter's own declaration binds it.
             $value = $argument['type'] === 'unknown' ? null : $argument;
-            $binding = self::elementBinding($position === 0 ? $firstElementModel : null, $value, $param, $scope);
+            $binding = $position === 0
+                ? self::elementBinding($firstElementModel, $value, $param, $scope, $guarded, $guardsElement)
+                : self::elementBinding(null, $value, $param, $scope);
 
             if ($binding !== null) {
                 resolve(self::class)->bindPassed([$param->var->name => $binding], $scope);
@@ -305,12 +322,13 @@ final class ParameterBinder
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
      * An argument spelled `self`, `static` or `parent` marks the parameter in relativeParameters: it may be a subclass.
+     * One a guarded receiver binds keeps its guard in guardedParameters.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $passed, AnalysisScope $scope): void
     {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly]) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guarded' => $guarded, 'guardsElement' => $guardsElement]) {
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
             if ($refines && isset($scope->varDeclaredBindings[$name])) {
@@ -326,6 +344,12 @@ final class ParameterBinder
                 $scope->relativeParameters[$name] = true;
             } else {
                 unset($scope->relativeParameters[$name]);
+            }
+
+            if ($guarded || $guardsElement) {
+                $scope->guardedParameters[$name] = $guarded;
+            } else {
+                unset($scope->guardedParameters[$name]);
             }
 
             if ($model !== null) {
@@ -356,6 +380,7 @@ final class ParameterBinder
      * other classes and its value otherwise; null when it binds nothing. A `?->` can end it as null: no class binds.
      *
      * A binding that refines a declared class names a class, or is null, since its value alone would lose the class.
+     * The receiver's guard, and its element's, ride along.
      *
      * @param  ValueExpressionResult  $value
      * @return PassedBinding|null
@@ -371,10 +396,12 @@ final class ParameterBinder
         // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
         $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
         $declaredOnly = $classes !== null && $held->declaredOnly;
+        $guarded = $classes !== null && $held->guarded;
+        $guardsElement = $elementModel !== null && $held->guardsElement;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! TsTypeString::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guarded' => $guarded, 'guardsElement' => false];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -383,7 +410,7 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guarded' => $guarded, 'guardsElement' => $guardsElement];
     }
 
     /**
