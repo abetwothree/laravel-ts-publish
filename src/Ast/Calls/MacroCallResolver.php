@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -173,7 +174,7 @@ final class MacroCallResolver
     private function functionType(ReflectionFunction $function, RuntimeClass $subject, ?string $modelClass): ?array
     {
         $acceptor = resolve(ReflectedTypeAcceptor::class);
-        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType(), $subject->class));
+        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType(DeclaredClasses::reflectedReturnType($function), $subject->class));
 
         if ($declared !== null && ! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;

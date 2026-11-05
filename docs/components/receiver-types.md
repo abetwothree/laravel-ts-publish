@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms, an intersection's members, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
+| [`DeclaredClasses`] | The classes a declaration names: a method's native return, else the tentative one PHP declares on its own classes' methods (`reflectedReturnType()`, which reads the return of any method a receiver may name), else its `@return`; a native type, a docblock union's class arms, an intersection's members, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
 | [`ProxyDeclaration`] | What an API resource's `$this->resource` is declared to hold, from its `@var`, `@extends`, `@mixin` or `@property`, and the model that names; what it holds over its backing class (`heldOver()`), for the subject and, through `held()` and `forwarded()`, for a member read off another API resource |
 | [`CollectionSteps`] | A chain's steps, root first, what each does to the items and their keys, and which hands back one item, for the receiver resolvers and the model-finder, relation-chain and `collect()` handlers, the last two walking a chain through `walk()` |
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |

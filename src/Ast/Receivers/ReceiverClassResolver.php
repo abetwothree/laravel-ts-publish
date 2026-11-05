@@ -1419,8 +1419,10 @@ final class ReceiverClassResolver
             return null;
         }
 
-        if ($function->hasReturnType()) {
-            return DeclaredClasses::nativeClasses($function->getReturnType(), $subjectClass, $subjectClass);
+        $native = DeclaredClasses::reflectedReturnType($function);
+
+        if ($native !== null) {
+            return DeclaredClasses::nativeClasses($native, $subjectClass, $subjectClass);
         }
 
         $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $function->getDocComment());
@@ -1750,7 +1752,7 @@ final class ReceiverClassResolver
      */
     private function scopeQuery(ReflectionMethod $scope, ReceiverType $query): ?ReceiverType
     {
-        $declared = $scope->getReturnType();
+        $declared = DeclaredClasses::reflectedReturnType($scope);
 
         if ($declared instanceof ReflectionNamedType && $declared->getName() === 'void') {
             return $query;
@@ -1995,7 +1997,7 @@ final class ReceiverClassResolver
      */
     private function declaresNoObject(string $class, string $method): bool
     {
-        $native = new ReflectionMethod($class, $method)->getReturnType();
+        $native = DeclaredClasses::reflectedReturnType(new ReflectionMethod($class, $method));
 
         if ($native instanceof ReflectionNamedType && $native->getName() !== 'mixed') {
             return $native->isBuiltin() && ! in_array($native->getName(), ['object', 'static', 'self', 'iterable', 'callable'], true);

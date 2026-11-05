@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinksComments;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedAuthorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DocumentedFormatDate;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
@@ -96,3 +97,21 @@ test('a native intersection or DNF type names each arm\'s primary member, and it
         ->toBe(['classes' => [$primary], 'intersections' => [$primary => [HasLabel::class]]])
         ->and(DeclaredClasses::nativeClasses($type, LabeledHolder::class, LabeledHolder::class))->toBe([$primary]);
 })->with(['an intersection' => ['post'], 'a DNF type beside null' => ['entry']]);
+
+test('a reflected return is the native type, else the tentative one PHP declares on its own method', function (Closure $function, ?string $expected) {
+    expect(DeclaredClasses::reflectedReturnType($function())?->__toString())->toBe($expected);
+})->with([
+    'an internal method\'s tentative type' => [fn () => new ReflectionMethod(DateTimeImmutable::class, 'format'), 'string'],
+    'a nullable tentative union' => [fn () => new ReflectionMethod(DateTimeImmutable::class, 'getTimezone'), 'DateTimeZone|false'],
+    'an internal method\'s native type' => [fn () => new ReflectionMethod(Exception::class, 'getMessage'), 'string'],
+    'an override that drops the tentative type' => [fn () => new ReflectionMethod(DocumentedFormatDate::class, 'format'), null],
+    'a typed closure' => [fn () => new ReflectionFunction(fn (): int => 1), 'int'],
+    'an untyped closure' => [fn () => new ReflectionFunction(fn () => 1), null],
+]);
+
+test('an internal method\'s tentative return names its classes, and its static return', function () {
+    expect(DeclaredClasses::returnClasses(DateTimeImmutable::class, 'diff'))->toBe([DateInterval::class])
+        ->and(DeclaredClasses::returnClasses(DateTimeImmutable::class, 'getTimezone'))->toBeNull()
+        ->and(DeclaredClasses::returnClasses(DocumentedFormatDate::class, 'diff'))->toBe([DateInterval::class])
+        ->and(DeclaredClasses::returnsStatic(DateTimeImmutable::class, 'createFromTimestamp'))->toBeTrue();
+});

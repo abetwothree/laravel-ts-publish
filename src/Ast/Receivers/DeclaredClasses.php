@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use ReflectionClass;
+use ReflectionFunctionAbstract;
 use ReflectionIntersectionType;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -73,8 +74,10 @@ final class DeclaredClasses
         $reflection = new ReflectionMethod($class, $method);
         $declaring = $reflection->getDeclaringClass()->getName();
 
-        if ($reflection->hasReturnType()) {
-            return self::nativeType($reflection->getReturnType(), $staticClass ?? $class, $declaring);
+        $native = self::reflectedReturnType($reflection);
+
+        if ($native !== null) {
+            return self::nativeType($native, $staticClass ?? $class, $declaring);
         }
 
         $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
@@ -93,6 +96,15 @@ final class DeclaredClasses
             'returns-static:'.$class.'::'.$method,
             static fn (): bool => self::declaresStaticReturn($class, $method),
         );
+    }
+
+    /**
+     * A function's native return type, else the tentative one PHP declares on its own classes' methods, which only an
+     * internal method carries, so an override that drops it reads as untyped.
+     */
+    public static function reflectedReturnType(ReflectionFunctionAbstract $function): ?ReflectionType
+    {
+        return $function->getReturnType() ?? $function->getTentativeReturnType();
     }
 
     /**
@@ -423,7 +435,7 @@ final class DeclaredClasses
     private static function declaresStaticReturn(string $class, string $method): bool
     {
         $reflection = new ReflectionMethod($class, $method);
-        $type = $reflection->getReturnType();
+        $type = self::reflectedReturnType($reflection);
 
         if ($type !== null) {
             return $type instanceof ReflectionNamedType && $type->getName() === 'static';

@@ -614,7 +614,7 @@ class LaravelTsPublish
 
         $reflection = $class->getMethod($method);
 
-        return $this->resolveReflectionType($reflection->getReturnType(), $reflection->getDeclaringClass());
+        return $this->resolveReflectionType(DeclaredClasses::reflectedReturnType($reflection), $reflection->getDeclaringClass());
     }
 
     /**
@@ -637,7 +637,7 @@ class LaravelTsPublish
         $reflectionMethod = $class->getMethod($method);
 
         return $this->declaredOrDocblockTypes(
-            $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass()),
+            $this->resolveReflectionType(DeclaredClasses::reflectedReturnType($reflectionMethod), $reflectionMethod->getDeclaringClass()),
             fn (): array => $this->docblockReturnTypes($reflectionMethod),
         );
     }

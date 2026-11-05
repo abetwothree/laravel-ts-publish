@@ -1203,6 +1203,16 @@ describe('methodReturnedTypes', function () {
 
         expect($result['type'])->toBe('unknown');
     });
+
+    test('an internal method\'s tentative return type reads as its declaration, with or without the docblock fallback', function (string $method, string $type) {
+        $reflection = new ReflectionClass(DateTimeImmutable::class);
+
+        expect($this->service->methodReturnedTypes($reflection, $method)['type'])->toBe($type)
+            ->and($this->service->methodOrDocblockReturnTypes($reflection, $method)['type'])->toBe($type);
+    })->with([
+        'format()' => ['format', 'string'],
+        'getTimestamp()' => ['getTimestamp', 'number'],
+    ]);
 });
 
 describe('methodOrDocblockReturnTypes', function () {

@@ -922,7 +922,7 @@ final class ReceiverMethodReturnResolver
      */
     private function returnAllowsNull(ReflectionMethod $method): bool
     {
-        $native = $method->getReturnType();
+        $native = DeclaredClasses::reflectedReturnType($method);
 
         if ($native !== null) {
             return $native->allowsNull();

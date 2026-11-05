@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -311,6 +312,6 @@ trait ResolvesEnumPropertyArgTypes
         $classes = resolve(ReceiverClassResolver::class)->resolveStaticReceiver($call, $scope)->classes ?? [];
 
         return array_any($classes, static fn (string $class): bool => method_exists($class, $method)
-            && (new ReflectionMethod($class, $method)->getReturnType()?->allowsNull() ?? false));
+            && (DeclaredClasses::reflectedReturnType(new ReflectionMethod($class, $method))?->allowsNull() ?? false));
     }
 }

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -196,7 +197,7 @@ final class InertiaTableHandler implements ExpressionHandler
         }
 
         $reflection = new ReflectionMethod($table, $method);
-        $type = $reflection->getReturnType();
+        $type = DeclaredClasses::reflectedReturnType($reflection);
 
         if ($type !== null) {
             return $type instanceof ReflectionNamedType && $this->namesTable($type->getName()) ? $type->allowsNull() : null;

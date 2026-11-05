@@ -28,6 +28,8 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DateHolderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
@@ -2709,5 +2711,48 @@ describe('getAttribute() and getAttributeValue() of a literal key', function () 
 
         expect($analyzer->resolve(receiverHandlerExpr('$this->resource?->getAttribute(\'title\')'))['type'])->toBe('string | null')
             ->and($analyzer->resolve(receiverHandlerExpr('$this->author?->getAttributeValue(\'name\')'))['type'])->toBe('string | null');
+    });
+});
+
+describe('a method PHP declares only a tentative return type for', function () {
+    /** Runs the PHP expression as a resource body would, around a post created on 2020-01-02. */
+    $runAsResource = function (string $php): mixed {
+        $resource = new class((new Post)->forceFill(['created_at' => '2020-01-02 00:00:00'])) extends JsonResource {};
+
+        return Closure::bind(eval('return fn () => '.$php.';'), $resource, $resource)();
+    };
+
+    test('reads an internal method\'s tentative return type, and the runtime sends that', function (string $php, string $type, mixed $sent) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and(json_decode((string) json_encode($runAsResource($php)), true))->toBe($sent);
+    })->with([
+        'DateTimeImmutable::format()' => ['(new \DateTimeImmutable(\'2020-01-02\'))->format(\'Y\')', 'string', '2020'],
+        'ArrayIterator::count()' => ['(new \ArrayIterator([1, 2]))->count()', 'number', 2],
+        'Carbon\'s own format()' => ['$this->created_at->format(\'Y\')', 'string', '2020'],
+        'DateTime::getTimestamp(), which Carbon inherits' => ['$this->created_at->getTimestamp()', 'number', 1577923200],
+    ]);
+
+    test('reads a local and a @var holding an internal class, and an override\'s own @return over the tentative type', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(InternalMethodResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new InternalMethodResource(new Post)->toArray(request())), true);
+
+        expect($props->all())->toBe([
+            'native_year' => 'string',
+            'declared_year' => 'string',
+            'iterator_count' => 'number',
+            'documented_year' => 'number',
+        ])->and($sent)->toBe(['native_year' => '2020', 'declared_year' => '2020', 'iterator_count' => 2, 'documented_year' => 2020]);
+    });
+
+    test('keeps the tentative type on a held class, which a guarded forwarded call reads too', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DateHolderResource::class))->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new DateHolderResource(new DateTimeImmutable('2020-01-02'))->toArray(request())), true);
+
+        expect($props->all())->toBe(['forwarded_year' => 'string', 'held_year' => 'string', 'forwarded_timestamp' => 'number'])
+            ->and($sent)->toBe(['forwarded_year' => '2020', 'held_year' => '2020', 'forwarded_timestamp' => 1577923200]);
     });
 });

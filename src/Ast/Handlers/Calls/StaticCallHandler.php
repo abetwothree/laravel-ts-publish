@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
@@ -404,7 +405,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function methodPreservesReceiverType(ReflectionMethod $method, string $resourceFqcn): bool
     {
-        $returnType = $method->getReturnType();
+        $returnType = DeclaredClasses::reflectedReturnType($method);
 
         if ($returnType instanceof ReflectionNamedType) {
             $name = $returnType->getName();
@@ -434,7 +435,7 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function methodReturnAllowsNull(ReflectionMethod $method): bool
     {
-        $returnType = $method->getReturnType();
+        $returnType = DeclaredClasses::reflectedReturnType($method);
 
         return $returnType instanceof ReflectionNamedType && $returnType->allowsNull();
     }
