@@ -497,9 +497,10 @@ of the proven models types; a write of `$this->resource` itself always ends the 
 ends at each. [`ThisPathWrites`] answers for a chain on `$this`: an assignment to it or to a chain it reads through,
 `unset()` or a by-reference argument of either, a call on `$this` or on a chain it reads through, the conditional
 helpers `JsonResource` declares aside, `$this` or a chain it reads through passed to any call but an ability or `Gate`
-check, `route()` or `url()`, and a call of a callable value end its proof; on an API resource a chain the subject does
-not declare reads through `$this->resource`. Only a write through the chain itself keeps it, by `keepsProvenClass()`'s
-rule. An `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess publishes.
+check, `route()` or `url()`, and a callable value called, or passed from a local whose write makes one, end its proof;
+on an API resource a chain the subject does not declare reads through `$this->resource`. Only a write through the
+chain itself keeps it, by `keepsProvenClass()`'s rule. An `if` proof on a chain no class names reads as its classes,
+guarded, so no conditional guess publishes.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an

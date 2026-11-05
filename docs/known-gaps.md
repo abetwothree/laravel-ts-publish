@@ -502,7 +502,8 @@ Check which spelling you wrote before you assume a value is `unknown`:
   `$this->reload()` or `$this->getKey()`, or on a chain it reads through, such as `$this->resource->refresh()`, means
   no binding; `JsonResource`'s own helpers, such as `whenLoaded()`, do not. So does passing `$this` or a chain it reads
   through to any call, such as `PostResource::make($this->resource)`, but `can()`, `cannot()`, `canAny()`, a `Gate`
-  check, `route()` or `url()`, and calling a closure or callable variable, even one made before the test.
+  check, `route()` or `url()`, and calling a closure or callable variable, even one made before the test, or passing a
+  local that holds one to any call, such as `$this->when($cond, $swap)`.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads

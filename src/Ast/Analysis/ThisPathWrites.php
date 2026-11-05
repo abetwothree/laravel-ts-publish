@@ -36,7 +36,7 @@ use PhpParser\Node\Stmt\Unset_;
 /**
  * What in a body may change what a chain of property reads on `$this` holds, so the guard pass binds no `instanceof`
  * proof of it across: an assignment to it or a chain it reads through, `unset()` of either, either passed by reference,
- * `$this` or a chain it reads through passed at all, a call on either, or a call of a callable value.
+ * `$this` or a chain it reads through passed at all, a call on either, or a callable value called or passed.
  *
  * Only a write through the chain itself keeps the proof, and only an authorization check, `route()` or `url()` a pass.
  * On an API resource a chain the subject does not declare reads through `$this->resource`.
@@ -332,9 +332,37 @@ final class ThisPathWrites
             foreach (self::thisValues($arg->value) as $value) {
                 $effects[] = ['pass', $node, $value];
             }
+
+            // A callable a local holds may run in the call it is passed to, as one called directly does.
+            foreach ($this->callableLocals($arg->value) as $local) {
+                $effects[] = ['invoke', $node, $local];
+            }
         }
 
         return $effects;
+    }
+
+    /**
+     * The locals an argument passes, itself or inside an array literal, whose reaching write is a closure, an arrow
+     * function or a first-class callable.
+     *
+     * @return list<Variable>
+     */
+    private function callableLocals(Expr $value): array
+    {
+        if ($value instanceof Array_) {
+            return array_merge(...array_map(
+                fn (?ArrayItem $item): array => $item === null ? [] : $this->callableLocals($item->value),
+                $value->items,
+            ));
+        }
+
+        if (! $value instanceof Variable || $value->name === 'this') {
+            return [];
+        }
+
+        return array_any($this->scope->writesSeenBy($value) ?? [], fn (Expr $write): bool => $write instanceof ClosureExpr
+            || $write instanceof ArrowFunction || ($write instanceof CallLike && $write->isFirstClassCallable())) ? [$value] : [];
     }
 
     /**

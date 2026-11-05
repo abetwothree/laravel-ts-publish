@@ -1030,11 +1030,12 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed.
+ * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed; with $seed, after
+ * the body's locals, as seedBody() runs the pass.
  *
  * @return array{AnalysisScope, string}
  */
-function guardPassScope(string $body): array
+function guardPassScope(string $body, bool $seed = false): array
 {
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
     $source = '<?php '.$body;
@@ -1046,13 +1047,13 @@ function guardPassScope(string $body): array
         use CollectsLocalVarBindings;
 
         /** @param  array<Stmt>  $stmts */
-        public function run(array $stmts, AnalysisScope $scope): void
+        public function run(array $stmts, AnalysisScope $scope, bool $seed): void
         {
-            $this->collectInstanceofGuards($stmts, $scope);
+            $seed ? $this->seedBody($stmts, $scope) : $this->collectInstanceofGuards($stmts, $scope);
         }
     };
 
-    $host->run($stmts, $scope);
+    $host->run($stmts, $scope, $seed);
 
     return [$scope, $source];
 }
@@ -1075,9 +1076,9 @@ function narrowingBindings(string $body): array
  *
  * @return array<string, list<array{list<class-string>, string}>>
  */
-function blockNarrowingBindings(string $body): array
+function blockNarrowingBindings(string $body, bool $seed = false): array
 {
-    [$scope, $source] = guardPassScope($body);
+    [$scope, $source] = guardPassScope($body, $seed);
 
     return array_map(fn (array $guards): array => array_map(fn (array $guard): array => [
         $guard['classes'],
@@ -1356,6 +1357,7 @@ describe('narrowing', function () {
         'a call on what the chain reads through' => ['$this->resource->refresh();', []],
         'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
         'a call on the proven value itself' => ['$this->author->refresh();', ['$this->author' => [[[User::class], '$this->author->refresh(); $x = 1;']]]],
+        'the chain\'s own value passed to a resource' => ['\\Workbench\\App\\Http\\Resources\\PostResource::make($this->author);', ['$this->author' => [[[User::class], '\\Workbench\\App\\Http\\Resources\\PostResource::make($this->author); $x = 1;']]]],
         '$this->resource passed by value' => ['tap($this->resource);', []],
         '$this passed by value' => ['is_object($this);', []],
         '$this inside an array passed to new' => ['new \\ArrayObject([$this]);', []],
@@ -1374,6 +1376,22 @@ describe('narrowing', function () {
         'Gate::denies() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource); $x = 1;']]]],
         'route() given $this->resource' => ['route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]],
         'url() given $this->resource' => ['url(\'posts\', [$this->resource]);', ['$this->author' => [[[User::class], 'url(\'posts\', [$this->resource]); $x = 1;']]]],
+    ]);
+
+    // A callable a local holds may run in the call it is passed to, and may replace the chain there (R46).
+    test('binds a test on a $this chain unless a local holding a callable is passed in its span', function (string $before, string $body, array $bindings) {
+        $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
+
+        expect(blockNarrowingBindings($before.$test.$body.' $x = 1; }', seed: true))->toBe($bindings);
+    })->with([
+        'a closure passed to a conditional helper' => ['$swap = function () {};', '$this->when(true, $swap);', []],
+        'an arrow function passed to array_map()' => ['$swap = fn ($i) => $i;', 'array_map($swap, [1]);', []],
+        'a first-class callable passed to each()' => ['$swap = $this->toArray(...);', 'collect([1])->each($swap);', []],
+        'a closure passed to tap()' => ['$swap = function () {};', 'tap($x, $swap);', []],
+        'a closure in an array argument' => ['$swap = function () {};', 'call_user_func_array(\'array_map\', [$swap, [1]]);', []],
+        'a closure assigned in the block' => ['', '$swap = function () {}; $this->when(true, $swap);', []],
+        'a local holding no callable' => ['$value = 1;', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
+        'a variable no write reaches' => ['', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
     ]);
 
     test('binds a test on a nested $this chain until a write to a chain it reads through', function () {
