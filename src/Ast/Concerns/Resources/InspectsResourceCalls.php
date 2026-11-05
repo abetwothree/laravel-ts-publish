@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
@@ -35,21 +36,21 @@ trait InspectsResourceCalls
      *
      * @param  string  $className  the resolved receiver class, whose constructor names the payload parameter
      */
-    protected function hasConditionalArgument(StaticCall $call, string $className): bool
+    protected function hasConditionalArgument(StaticCall $call, string $className, AnalysisScope $scope): bool
     {
         $inner = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        return $inner !== null && $this->isConditionalMethodCall($inner);
+        return $inner !== null && $this->isConditionalMethodCall($inner, $scope);
     }
 
     /**
      * Check if a `new Resource(...)` call's payload argument is a conditional expression.
      */
-    protected function hasConditionalNewArgument(New_ $expr, string $className): bool
+    protected function hasConditionalNewArgument(New_ $expr, string $className, AnalysisScope $scope): bool
     {
         $inner = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-        return $inner !== null && $this->isConditionalMethodCall($inner);
+        return $inner !== null && $this->isConditionalMethodCall($inner, $scope);
     }
 
     /**
@@ -70,9 +71,16 @@ trait InspectsResourceCalls
 
     /**
      * Whether an expression is one of the `$this->when*()` family, whose result can be a MissingValue.
+     *
+     * Only an API resource's own `when*()` returns one; any other subject's `$this->when()` is its own method, such as
+     * `Conditionable::when()`, which returns the callback's value or the object itself.
      */
-    protected function isConditionalMethodCall(Expr $expr): bool
+    protected function isConditionalMethodCall(Expr $expr, AnalysisScope $scope): bool
     {
+        if (! $scope->hasResourceProxy()) {
+            return false;
+        }
+
         foreach ($this->conditionalMethods as $method) {
             if ($this->isThisMethodCall($expr, $method)) {
                 return true;

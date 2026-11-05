@@ -52,12 +52,12 @@ final class ResourceExpressionHandlers
 {
     /**
      * Each handler only Inertia runs, under the handler it goes before. InertiaResourcePropHandler precedes
-     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to. The query chain and
-     * table handlers precede StaticCallHandler, whose last arm claims every static call, and so NewResourceHandler too.
+     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to. The table handler
+     * precedes StaticCallHandler, whose last arm claims every static call, and so NewResourceHandler too.
      */
     private const array INERTIA_HANDLERS = [
         ToResourceHandler::class => [InertiaResourcePropHandler::class],
-        StaticCallHandler::class => [ModelFinderHandler::class, InertiaTableHandler::class],
+        StaticCallHandler::class => [InertiaTableHandler::class],
     ];
 
     /**
@@ -175,7 +175,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 28 handlers in registration order — the single source every profile above filters.
+     * Construct all 29 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -195,6 +195,7 @@ final class ResourceExpressionHandlers
             new ConditionalMethodHandler,
             new ToResourceHandler,
             new InertiaWrapperHandler,
+            new ModelFinderHandler,
             new StaticCallHandler,
             new NewResourceHandler,
             new ThisPropertyHandler,

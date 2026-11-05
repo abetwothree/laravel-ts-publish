@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
@@ -655,6 +656,18 @@ test('a non-resource subject reads $this->when() as its own method, not as a res
 
     expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
         ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
+});
+
+// Conditionable::when() returns the callback's value or the event itself, never the MissingValue a resource's when()
+// returns, so a resource built around it is always sent.
+it('publishes a resource built around Conditionable::when() off an API resource as required', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => ConditionableWrapEvent::class]);
+
+    expect($transformer->properties)->toBe([
+        'made' => ['type' => 'UserResource', 'optional' => false],
+        'built' => ['type' => 'UserResource', 'optional' => false],
+        'listed' => ['type' => 'UserResource[]', 'optional' => false],
+    ]);
 });
 
 // No MissingValue reaches an event payload, so a `??` fallback there stays required.

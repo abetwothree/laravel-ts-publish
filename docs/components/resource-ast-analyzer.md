@@ -18,7 +18,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ReadsReturnedVariables`](../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
-| [`InspectsResourceCalls`](../../src/Ast/Concerns/Resources/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
+| [`InspectsResourceCalls`](../../src/Ast/Concerns/Resources/InspectsResourceCalls.php) | Which classes are resources, the published-set gate, and whether a resource built around an API resource's own `when*()` may be left out |
 | [`BuildsJsonApiResourceObject`](../../src/Analyzers/Concerns/BuildsJsonApiResourceObject.php) | A JSON:API resource's resource object, composed from the analyzer's reads of the runtime class |
 | [`JsonApiResources`](../../src/Ast/Resources/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
 | [`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
@@ -38,8 +38,9 @@ These are the classes a change to resource analysis usually touches:
 
 The model-getter profile drops `ConditionalMethodHandler` and `ToResourceHandler`, any other non-resource subject drops
 `ConditionalMethodHandler` alone, and the Inertia profile, which every body Inertia sends runs, adds the page-prop
-handlers to the subject's own. In every profile, the order handlers run in decides which one answers; see
-[AST engine § Handler ordering](ast-engine.md#handler-ordering).
+handlers to the subject's own. `ModelFinderHandler` runs in every profile, so a query chain rooted at a model types alike
+on a resource, an event, a page and a model getter. In every profile, the order handlers run in decides which one
+answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
 
 ## How `analyze()` reads a method
 

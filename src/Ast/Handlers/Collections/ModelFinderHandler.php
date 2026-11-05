@@ -96,7 +96,7 @@ final class ModelFinderHandler implements ExpressionHandler
     /** The factory calls that set the count; `count(null)` clears it. */
     private const FACTORY_COUNTS = ['count', 'times', 'forEachSequence'];
 
-    /** What Inertia sends for a builder it is handed: json_encode() writes its one public property. */
+    /** What a builder is sent as: json_encode() writes its one public property. */
     private const BUILDER_OBJECT = '{ pendingAttributes: Record<string, unknown> | never[] }';
 
     /** A row of a base query: the selected columns, which no model casts, hides or appends to. */
@@ -139,11 +139,12 @@ final class ModelFinderHandler implements ExpressionHandler
             return null;
         }
 
-        if ($this->isClaimed($this->nameOf($call), $call)) {
-            return $this->read($call, $scope, $engine)['result'] ?? null;
-        }
+        $result = $this->isClaimed($this->nameOf($call), $call)
+            ? $this->read($call, $scope, $engine)['result'] ?? null
+            : $this->paginatorStep($call, $scope, $engine)['result'] ?? $this->builderObject($call, $scope);
 
-        return $this->paginatorStep($call, $scope, $engine)['result'] ?? $this->builderObject($call, $scope);
+        // A model with no published file would publish a token nothing imports.
+        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**

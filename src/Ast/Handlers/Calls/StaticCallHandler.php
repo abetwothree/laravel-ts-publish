@@ -225,7 +225,7 @@ final class StaticCallHandler implements ExpressionHandler
             $nested = resolve(ResourceCollectionBody::class)->nestedValue($built);
 
             if ($nested !== null) {
-                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $built)];
+                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $built, $scope)];
             }
         }
 
@@ -233,7 +233,7 @@ final class StaticCallHandler implements ExpressionHandler
         if ($this->isResourceClass($built) && $methodName === 'make') {
             /** @var class-string $built */
             $type = $this->resourceWrapType($call, $built, $scope, $engine);
-            $optional = $this->hasConditionalArgument($call, $built);
+            $optional = $this->hasConditionalArgument($call, $built, $scope);
 
             return [
                 ...$result,
@@ -246,7 +246,7 @@ final class StaticCallHandler implements ExpressionHandler
         // SomeResource::collection(...) — array or keyed record of nested resource
         if ($this->isResourceClass($built) && $methodName === 'collection') {
             $resourceName = TsNaming::resourceTypeName($built);
-            $optional = $this->hasConditionalArgument($call, $built);
+            $optional = $this->hasConditionalArgument($call, $built, $scope);
 
             /** @var class-string $built */
             return [

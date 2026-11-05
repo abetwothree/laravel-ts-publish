@@ -699,12 +699,8 @@ Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handl
 [ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
 On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
 every other `when*()` call as that class's own method. So Laravel's `Conditionable::when()` publishes `unknown`,
-required, as `ConditionableBroadcastEvent` pins. A resource built around the call is the exception:
-`UserResource::make($this->when(…))`, or its `unless()` form, still publishes optional on any subject, because
-`InspectsResourceCalls::isConditionalMethodCall()` does not check the subject. The resource rule is wrong off a
-resource, because `Conditionable::when()` returns the callback's result, or the object itself, and the key is always
-sent. Until the package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`, adding
-`'optional' => false` for an API resource built around the call.
+required, as `ConditionableBroadcastEvent` pins. Until the package types `Conditionable::when()`, write the key as a
+ternary, or type it with `#[TsCasts]`.
 
 ### An aggregate's type follows the database of the machine that publishes
 
@@ -750,12 +746,13 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
-### An Inertia prop past a query step that provably leaves the query publishes no root-model guess
+### A query chain past a step that provably leaves the query publishes no root-model guess
 
-An Inertia prop or shared value types a query chain rooted at a model from what each step hands on. A scope, macro or
-custom builder method whose body the package cannot read, a local macro a global scope adds, a step whose branches
-hand on different things, or a collection step the package does not follow, still reads as the root model's query before
-a terminal every such chain was once typed by. A few shapes publish `unknown`:
+A query chain rooted at a model types from what each step hands on, in an Inertia prop or shared value, an API
+resource, a broadcast event or a model accessor alike. A scope, macro or custom builder method whose body the package
+cannot read, a local macro a global scope adds, a step whose branches hand on different things, or a collection step
+the package does not follow, still reads as the root model's query before a terminal every such chain was once typed
+by. A few shapes publish `unknown`:
 
 - a step after `find($id)` of a key no literal spells, such as `Post::find($id)->comments()->get()`, since the call
   returns a model or a list by the value Laravel is given;
@@ -768,7 +765,7 @@ a terminal every such chain was once typed by. A few shapes publish `unknown`:
 - a property read through a step whose hand-back the package cannot prove, such as
   `Post::query()->withArchived()->first()?->title` for a local macro, as before.
 
-Type the prop with `#[TsCasts]`.
+Type the key with `#[TsCasts]`.
 
 ### A paginator the engine cannot name publishes no pagination, and a bare paginator publishes its items only from a model's query
 

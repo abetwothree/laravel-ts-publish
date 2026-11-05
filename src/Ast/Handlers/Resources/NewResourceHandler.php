@@ -89,7 +89,7 @@ final class NewResourceHandler implements ExpressionHandler
             $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
 
             if ($nested !== null) {
-                return [...$nested, 'optional' => $this->hasConditionalNewArgument($expr, $className)];
+                return [...$nested, 'optional' => $this->hasConditionalNewArgument($expr, $className, $scope)];
             }
         }
 
@@ -106,7 +106,7 @@ final class NewResourceHandler implements ExpressionHandler
 
         /** @var class-string $className */
         $type = $this->resourceWrapType($expr, $className, $scope, $engine);
-        $optional = $this->hasConditionalNewArgument($expr, $className);
+        $optional = $this->hasConditionalNewArgument($expr, $className, $scope);
 
         return [
             ...$result,

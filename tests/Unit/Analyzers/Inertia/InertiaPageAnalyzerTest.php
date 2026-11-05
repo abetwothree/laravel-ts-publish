@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ConditionableWrapController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocumentedClosurePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EloquentStaticsController;
@@ -2391,14 +2392,20 @@ it('publishes a factory build as a list once a count is set, else as one model',
         ->and([$sent->cleared, $sent->single, $sent->firstMade, $sent->eitherFirst])->each->toHaveProperty('email');
 });
 
-// Every body Inertia sends reads the chain alike; the resource's own interface, read as json_encode() sends it,
-// stays `unknown`.
+// A controller's Conditionable::when() returns the callback's value or the controller, never the MissingValue a
+// resource's when() returns, so Inertia always sends a resource built around it.
+it('publishes a resource prop built around a controller\'s Conditionable::when() as required', function () {
+    expect(pageData(ConditionableWrapController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'made: { data: UserResource }, built: { data: UserResource }, listed: AnonymousResourceCollection<UserResource> }');
+});
+
+// Every body reads the chain alike, the resolved resource's own interface too, so the page restates none of its keys.
 it('reads a query chain past its builder in a resolved resource, a helper and a collaborator alike', function () {
     $post = eloquentStaticsPost();
     $controller = new EloquentStaticsController(new QueriedIdStats);
 
     expect(pageData(EloquentStaticsController::class.'@resolvedCard')['pageType'])
-        ->toBe("Inertia.SharedData & { card: Omit<QueriedIdCardResource, 'firstId'> & { firstId: number | null } }")
+        ->toBe('Inertia.SharedData & { card: QueriedIdCardResource }')
         ->and(pageData(EloquentStaticsController::class.'@helperMeta')['pageType'])
         ->toBe('Inertia.SharedData & { meta: { firstId: number | null } }')
         ->and(pageData(EloquentStaticsController::class.'@collaboratorStats')['pageType'])

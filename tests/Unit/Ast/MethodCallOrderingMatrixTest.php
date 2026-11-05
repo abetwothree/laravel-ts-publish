@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
@@ -112,6 +111,7 @@ function methodCallCorpus(): array
 {
     $this_ = new Variable('this');
     $arr = fn (array $keys) => new Array_(array_map(fn (string $k) => new ArrayItem(new String_($k)), $keys));
+    $query = fn (): StaticCall => new StaticCall(new Name(Post::class), 'query');
 
     return [
         new MethodCall($this_, 'when', [new VariadicPlaceholder]),
@@ -195,6 +195,13 @@ function methodCallCorpus(): array
         new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
             new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
         ]), 'filter'), 'values'),
+        // Query chains rooted at a model, which every profile reads alike.
+        new MethodCall($query(), 'paginate', [new Arg(new Int_(10))]),
+        new MethodCall(new StaticCall(new Name(Post::class), 'where', [new Arg(new String_('id')), new Arg(new Int_(1))]), 'first'),
+        new MethodCall(new MethodCall($query(), 'latest'), 'get'),
+        new MethodCall(new MethodCall($query(), 'pluck', [new Arg(new String_('id'))]), 'first'),
+        new MethodCall($query(), 'count'),
+        new MethodCall($query(), 'exists'),
     ];
 }
 
@@ -294,7 +301,7 @@ function inertiaMethodCallClaimantPairs(): array
 {
     return array_filter(
         methodCallPairsOf(inertiaMethodCallClaimants()),
-        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, ModelFinderHandler::class, InertiaTableHandler::class]) !== [],
+        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, InertiaTableHandler::class]) !== [],
     );
 }
 

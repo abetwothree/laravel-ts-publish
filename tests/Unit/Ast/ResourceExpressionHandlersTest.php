@@ -40,6 +40,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\FinderChainEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FinderChainResource;
 use Inertia\AlwaysProp;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -89,6 +91,7 @@ function resourceExpressionHandlerOrder(): array
         ConditionalMethodHandler::class,
         ToResourceHandler::class,
         InertiaWrapperHandler::class,
+        ModelFinderHandler::class,
         StaticCallHandler::class,
         NewResourceHandler::class,
         ThisPropertyHandler::class,
@@ -135,7 +138,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 28 handlers in the documented dispatch order', function () {
+it('returns all 29 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -156,7 +159,7 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMe
         fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
     ));
 
-    expect($classes)->toHaveCount(26)
+    expect($classes)->toHaveCount(27)
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
@@ -169,7 +172,7 @@ it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same r
         ResourceExpressionHandlers::forNonResourceSubjects(),
     );
 
-    expect($classes)->toHaveCount(27)
+    expect($classes)->toHaveCount(28)
         ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
 });
 
@@ -190,16 +193,40 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
 ]);
 
 // ToResourceHandler would type a resource as a nested key's value, where Inertia sends its response, and
-// StaticCallHandler would claim a query chain or a table before ModelFinderHandler or InertiaTableHandler typed it.
-it('inserts InertiaResourcePropHandler before ToResourceHandler, and ModelFinderHandler and InertiaTableHandler before StaticCallHandler, in forInertia()', function () {
+// StaticCallHandler would claim a table before InertiaTableHandler typed it.
+it('inserts InertiaResourcePropHandler before ToResourceHandler, and InertiaTableHandler before StaticCallHandler, in forInertia()', function () {
     $profile = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
     $expected = array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class]));
     array_splice($expected, (int) array_search(ToResourceHandler::class, $expected, true), 0, [InertiaResourcePropHandler::class]);
-    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [ModelFinderHandler::class, InertiaTableHandler::class]);
+    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [InertiaTableHandler::class]);
 
     expect(array_map(fn (ExpressionHandler $handler): string => $handler::class, $profile))->toBe($expected)
         ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
 });
+
+// Laravel runs the query a chain rooted at a model spells wherever the chain is, so every profile types it alike.
+it('types a finder chain in an API resource and a broadcast event as a page does', function (string $class, string $method, string $find) {
+    expect(analyzedKeyTypes($class, $method))->toBe([
+        $find => 'User | null',
+        'plain_find' => 'User | null',
+        'pluck_first' => 'number | null',
+        'where_get' => 'User[]',
+    ]);
+})->with([
+    'an API resource' => [FinderChainResource::class, 'toArray', 'find?'],
+    'a broadcast event' => [FinderChainEvent::class, 'broadcastWith', 'find'],
+]);
+
+// With no published set to read, a framework model is still known to have no file, so its name would import nothing.
+it('declines a finder chain on a model no file publishes, in every profile', function (string $subject, Reading $reading) {
+    $expr = runtimeClassCall('\\Illuminate\\Foundation\\Auth\\User::query()->first()');
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, reading: $reading)->resolve($expr)['type'])->toBe('unknown');
+})->with([
+    'an API resource' => [CommentResource::class, Reading::Encoded],
+    'a broadcast event' => [PayloadDiffersEvent::class, Reading::Encoded],
+    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, Reading::Inertia],
+]);
 
 // Without an insertion point forInertia() would drop a page-prop handler silently, and every value that handler types.
 it('throws when forInertia() is given a list without ToResourceHandler or StaticCallHandler', function (array $handlers, string $missing) {

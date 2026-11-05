@@ -83,6 +83,19 @@ event's `toResource()` into `unknown`, which the payload contradicts.
 so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,
 whose op table it shares. See [ResourceAstAnalyzer § Collection pipelines][collection-pipelines].
 
+`ModelFinderHandler` sits before `StaticCallHandler`, whose last arm claims every static call on a named class and never
+declines one, so a query chain rooted at a model types alike in every profile, as the paginator, model, list or column
+it returns. It types a terminal against the query `ReceiverClassResolver` reads its receiver as, so a step that
+provably leaves the query ends the chain, and a list step reads a list of models that receiver holds. For a terminal
+every model-rooted chain was once typed by, a user-defined step the engine cannot prove either way, or a collection step
+it does not follow that provably keeps the items' kind, reads as handing the query or models on
+(`resolvePresumingSteps()`), and a builder a model's own static returns that Eloquent does not define, such as Scout's,
+reads against the root model. `count()` on any `Enumerable` is a number, and a keyed list a step hands on gains the
+object arm `json_encode()` writes. A factory's `make()` or `create()` is a list once a count step or argument sets one,
+and a model's query with no terminal is the builder object `json_encode()` writes. A paginator's own setter, such as
+`withQueryString()`, keeps the paginator it is called on, and `through()` is that paginator over what its callback
+returns ([`PaginatorSteps`]). Like every receiver read, it declines a result naming a model with no published file.
+
 `ResourceExpressionHandlersTest` pins `make()`'s sequence, the filtered profiles and the behavioral pins below.
 `MethodCallOrderingMatrixTest` runs every pair of `MethodCall` claimants in both orders over a curated corpus. A pair in
 its `METHOD_CALL_PINNED` map must answer as `handlers()` orders it, and every other pair must agree. When a new
@@ -93,25 +106,14 @@ Its Inertia half does the same for each pair with a handler only the Inertia pro
 ### Inertia profile
 
 `ResourceExpressionHandlers::forInertia()` builds the profile every value Inertia sends runs, over the subject's own
-profile, since Inertia sends a shared value as it sends a page prop. It inserts three handlers, and throws a
+profile, since Inertia sends a shared value as it sends a page prop. It inserts two handlers, and throws a
 `LogicException` for a list that lacks an insertion point:
 
 - `InertiaResourcePropHandler` before `ToResourceHandler`, which types a resource as the value a nested key flattens it
   to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
   It also precedes `StaticCallHandler` and `NewResourceHandler`, which type a single resource as a nested key's value
   and a `ResourceCollection` as its element array.
-- `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never
-  declines one, so a query chain types as the paginator it returns. It types a terminal against the query
-  `ReceiverClassResolver` reads its receiver as, so a step that provably leaves the query ends the chain, and a list
-  step reads a list of models that receiver holds. For a terminal every model-rooted chain was once typed by, a
-  user-defined step the engine cannot prove either way, or a collection step it does not follow that provably keeps
-  the items' kind, reads as handing the query or models on (`resolvePresumingSteps()`), and a builder a model's own
-  static returns that Eloquent does not define, such as Scout's, reads against the root model. `count()` on any
-  `Enumerable` is a number, and a keyed list a step hands on gains the object arm `json_encode()` writes.
-  A factory's `make()` or `create()` is a list once a count step or argument sets one, and a model's query with no
-  terminal is the builder object Inertia `json_encode()`s. A paginator's own setter, such as `withQueryString()`, keeps
-  the paginator it is called on, and `through()` is that paginator over what its callback returns ([`PaginatorSteps`]).
-- `InertiaTableHandler` there too, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
+- `InertiaTableHandler` before `StaticCallHandler`, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
   either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
   `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
   table class, or with no native type a `@return` naming one, read against the file's use statements, or `$this`). A
@@ -236,13 +238,13 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 `VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`. It declines
 anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
-The Inertia profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants,
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants, and
-`InertiaTableHandler` to the `StaticCall`, `New_` and `MethodCall` claimants, in the places
-[§ Inertia profile](#inertia-profile) gives. The first two claim disjoint method names on a `MethodCall`, and all three
-disjoint roots on a `StaticCall`, a model, an API resource and a table, though each claims `::make()`. The matrix's
-Inertia half runs each `MethodCall` pair any of them joins, over a page's model-less scope, and pins only the prop
-handler before `ToResourceHandler`.
+The Inertia profile adds `InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and
+`NullsafeMethodCall` claimants, and `InertiaTableHandler` to the `StaticCall`, `New_` and `MethodCall` claimants, in the
+places [§ Inertia profile](#inertia-profile) gives. The prop handler and `ModelFinderHandler`, which every profile runs,
+claim disjoint method names on a `MethodCall`, and the three claim disjoint roots on a `StaticCall`, an API resource, a
+model and a table, though each claims `::make()`. The matrix's resource half runs `ModelFinderHandler`'s pairs over
+model-rooted query chains; its Inertia half runs each `MethodCall` pair either page-prop handler joins, over a page's
+model-less scope, and pins only the prop handler before `ToResourceHandler`.
 
 ## AnalysisScope
 

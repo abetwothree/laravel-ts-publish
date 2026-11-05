@@ -324,7 +324,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $added,
         ) : null;
 
-        return $result === null ? null : [...$result, 'optional' => $this->hasConditionalArgument($expr, $className)];
+        return $result === null ? null : [...$result, 'optional' => $this->hasConditionalArgument($expr, $className, $scope)];
     }
 
     /**
@@ -381,7 +381,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $added,
         );
 
-        return $result === null ? null : [...$result, 'optional' => $this->payloadIsConditional($call, $className)];
+        return $result === null ? null : [...$result, 'optional' => $this->payloadIsConditional($call, $className, $scope)];
     }
 
     /**
@@ -403,7 +403,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return null;
         }
 
-        $result = [...$instance, 'optional' => $this->payloadIsConditional($call, $className)];
+        $result = [...$instance, 'optional' => $this->payloadIsConditional($call, $className, $scope)];
         $type = $this->filteredType($call, $className, $result['type'], $scope, $engine);
 
         return $type === 'null'
@@ -414,9 +414,11 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     /**
      * Whether a construction's payload is one of the `$this->when*()` family, which can leave the key out.
      */
-    private function payloadIsConditional(StaticCall|New_ $call, string $className): bool
+    private function payloadIsConditional(StaticCall|New_ $call, string $className, AnalysisScope $scope): bool
     {
-        return $call instanceof New_ ? $this->hasConditionalNewArgument($call, $className) : $this->hasConditionalArgument($call, $className);
+        return $call instanceof New_
+            ? $this->hasConditionalNewArgument($call, $className, $scope)
+            : $this->hasConditionalArgument($call, $className, $scope);
     }
 
     /**
