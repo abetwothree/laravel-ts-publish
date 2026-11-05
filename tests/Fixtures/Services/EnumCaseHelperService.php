@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services;
 
+use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 
@@ -14,6 +15,18 @@ final class EnumCaseHelperService
     public function draft(): mixed
     {
         return Status::Draft;
+    }
+
+    /** The case another vague helper returns. */
+    public function outer(): mixed
+    {
+        return $this->draft();
+    }
+
+    /** A wrap of the case another vague helper returns. */
+    public function outerWrap(): mixed
+    {
+        return EnumResource::make($this->outer());
     }
 
     /** A grade's values, mapped by an untyped array_map() callback. */
@@ -32,5 +45,11 @@ final class EnumCaseHelperService
     public function gradeCases(): array
     {
         return ['m' => Grade::cases()];
+    }
+
+    /** A case mapped to itself, so the callback reads no member of it. */
+    public function identity(): array
+    {
+        return ['m' => collect([Status::Draft])->map(fn ($s) => $s)->all()];
     }
 }

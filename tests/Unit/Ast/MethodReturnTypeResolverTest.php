@@ -183,14 +183,15 @@ test('a body fallback reads its enum cases as literals, apart from an analysis t
         ->and(collect($filtered->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>");
 });
 
-// A value read takes the body fallback's literal as the shape does, while a wrap still needs the case's enum.
-test('a helper\'s plain enum case reads as its literal, as its shape\'s does, and wraps as its enum', function () {
-    expect(resourceProps(EnumCaseHelperResource::class))->toBe([
-        'draft' => '0',
-        'draft_resource' => 'AsEnum<typeof Status>',
-        'draft_list' => 'AsEnum<typeof Status>[]',
-    ])->and(resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, 'draft'))
-        ->toBe(['type' => '0', 'optional' => false]);
+// A value read takes the body fallback's literal as the shape does, through another helper too; a wrap the body makes
+// of another helper's case still reads that case as its enum.
+test('a helper\'s plain enum case reads as its literal, as its shape\'s does, and a wrap it returns as its enum', function () {
+    $resolve = fn (string $method): ?array => resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, $method);
+
+    expect(resourceProps(EnumCaseHelperResource::class)['draft'])->toBe('0')
+        ->and($resolve('draft'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve('outer'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve('outerWrap')['type'] ?? null)->toBe('StatusType');
 });
 
 test('a body the model inherits filters the model it runs on', function () {

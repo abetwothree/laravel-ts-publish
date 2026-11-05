@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
 use Illuminate\Http\Request;
@@ -201,4 +202,15 @@ test('a helper\'s map() or array_map() over enum cases binds its untyped paramet
     'array_map()' => ['mappedGrades', '{ m: GradeType[] }'],
     'collect()->map()->all()' => ['collectedStatuses', '{ m: StatusType[] }'],
     'the cases alone, as the literals they send' => ['gradeCases', "{ m: ('pass' | 'fail')[] }"],
+    'a callback reading no member, which keeps the literal' => ['identity', '{ m: 0[] }'],
 ]);
+
+// A vague helper's body fallback hands its case over as a literal, so the callback reads it again as its enum.
+test('a map() over the case a vague helper returns reads it as its enum', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
+        'collected_values' => 'StatusType[]',
+        'collected_icons' => 'string[]',
+        'collected_resources' => 'AsEnum<typeof Status>[]',
+        'collected_outer_resources' => 'AsEnum<typeof Status>[]',
+    ]);
+});

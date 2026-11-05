@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
@@ -685,6 +686,21 @@ it('follows a whenHas() parameter named like the local its value is assigned to'
 
     expect(array_map(fn (array $property): array => [$property['name'], $property['type'], $property['optional']], $properties))
         ->toBe([['status', 'StatusType', true]]);
+});
+
+// A wrap needs each case as its enum, so every helper its payload reaches reads its cases so, however deep.
+it('wraps the case a vague helper returns through each helper, local, closure and service its payload reaches', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
+        'draft_resource' => 'AsEnum<typeof Status>',
+        'draft_list' => 'AsEnum<typeof Status>[]',
+        'outer_resource' => 'AsEnum<typeof Status>',
+        'outer_list' => 'AsEnum<typeof Status>[]',
+        'outer_drafts_resource' => 'AsEnum<typeof Status>[]',
+        'local_outer_resource' => 'AsEnum<typeof Status>',
+        'when_outer_resource?' => 'AsEnum<typeof Status>',
+        'service_outer_resource' => 'AsEnum<typeof Status>',
+        'tagged' => '{ t: AsEnum<typeof Status>; o: AsEnum<typeof Status> }',
+    ]);
 });
 
 // Only a collection wraps a list, and two enums that share a name are not one enum.

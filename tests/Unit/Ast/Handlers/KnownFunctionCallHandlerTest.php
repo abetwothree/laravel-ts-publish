@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -234,6 +235,15 @@ it('binds an untyped map() or array_map() parameter over enum cases to the enum'
     'collect() of case literals' => ['collect([\\'.Grade::class.'::Pass, \\'.Grade::class.'::Fail])->map(fn ($t) => $t->value)->all()', 'GradeType[]', Grade::class],
     'collect()->all() of the cases' => ['collect(\\'.Grade::class.'::cases())->all()', 'GradeType[]', Grade::class],
 ]);
+
+// A vague helper's body fallback hands its cases over as literals, so the callback reads them again as their enums.
+it('maps the cases a vague helper returns with array_map(), reading each as its enum', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
+        'mapped_values' => 'StatusType[]',
+        'mapped_value' => 'StatusType[]',
+        'mapped_resources' => 'AsEnum<typeof Status>[]',
+    ]);
+});
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.
 it('leaves array_map() over a Collection, or a callable it cannot read, to unknown', function (string $php) {

@@ -83,8 +83,8 @@ trait BindsMapCallbacks
     }
 
     /**
-     * What $map makes of $input or, where that leaves a callback unread in the body fallback, of the input $read reads
-     * again with each enum case as its enum: a parameter bound to the literal a case reads as there has no member.
+     * What $map makes of $input or, where that leaves a callback unread, of the input $read reads again with each enum
+     * case as its enum: a parameter bound to the literal a body fallback reads a case as has no member to read.
      *
      * @template TInput
      *
@@ -97,13 +97,14 @@ trait BindsMapCallbacks
     {
         $mapped = $map($input);
 
-        if ($mapped !== null || ! $scope->casesAsLiterals) {
+        // Not only in a body fallback: a helper's own body fallback hands any caller its cases as literals.
+        if ($mapped !== null) {
             return $mapped;
         }
 
         $reread = $scope->readingCasesAsEnums($read);
 
-        return $reread === null ? null : $map($reread);
+        return $reread === null || $reread === $input ? null : $map($reread);
     }
 
     /**

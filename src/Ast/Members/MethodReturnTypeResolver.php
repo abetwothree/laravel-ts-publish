@@ -312,7 +312,7 @@ final class MethodReturnTypeResolver
 
         try {
             return resolve(AstEngine::class)
-                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
+                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals, ! $literals);
         } finally {
             $memo->leave($key);
         }
