@@ -131,19 +131,20 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
 
             $read = $read->var;
 
-            if ($this->isSubject($read)) {
+            if ($this->isSubject($read, $scope)) {
                 return true;
             }
         }
     }
 
     /**
-     * Whether an expression is the subject a read starts from, `$this` or a resource's `$this->resource`, which the
-     * engine reads as never null.
+     * Whether an expression is the subject a read starts from, which the engine reads as never null: `$this`, or an API
+     * resource's `$this->resource` proxy; any other class's `$this->resource` is a member that may be null.
      */
-    private function isSubject(Expr $expr): bool
+    private function isSubject(Expr $expr, AnalysisScope $scope): bool
     {
-        $root = $expr instanceof PropertyFetch && $expr->name instanceof Identifier && $expr->name->toString() === 'resource'
+        $root = $scope->hasResourceProxy() && $expr instanceof PropertyFetch && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resource'
             ? $expr->var
             : $expr;
 

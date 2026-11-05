@@ -11,7 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\CoalesceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullableResourceEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableResourceHolder;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -431,6 +433,18 @@ it('returns a left holding a collection whole, and unions the right of a left th
     'a relation of a to-one relation, which may be null' => ['$this->author->posts ?? collect($this->scores)->all()', 'Post[] | Record<string, number>'],
     'a relation of first(), which may be null' => ['$this->comments->first()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
     'a relation of last(), which may be null' => ['$this->comments->last()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+]);
+
+// Only an API resource's `$this->resource` is the proxy the engine reads as never null; elsewhere it is a member.
+it('unions the right of a relation read through a nullable member named resource, outside an API resource', function (string $class, string $method) {
+    expect(analyzedKeyTypes($class, $method))->toBe([
+        'scores' => 'Comment[] | Record<string, number>',
+        'literal' => 'Comment[] | { a: number }',
+    ])->and(json_encode($method === 'toArray' ? new NullableResourceHolder()->toArray() : new NullableResourceEvent()->broadcastWith()))
+        ->toBe('{"scores":{"x":1},"literal":{"a":1}}');
+})->with([
+    'a plain class' => [NullableResourceHolder::class, 'toArray'],
+    'a broadcast event' => [NullableResourceEvent::class, 'broadcastWith'],
 ]);
 
 it('declines a non-coalesce BinaryOp', function () {
