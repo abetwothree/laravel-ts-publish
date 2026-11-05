@@ -58,14 +58,6 @@ final readonly class CallSite
     }
 
     /**
-     * Whether the caller needs each enum case the call returns as its enum, as an `EnumResource` payload does.
-     */
-    public function readsCasesAsEnums(): bool
-    {
-        return $this->scope->casesAsEnums;
-    }
-
-    /**
      * Whether the call writes any argument a parameter could take, a first-class callable's `...` being none.
      */
     public function passesArguments(): bool

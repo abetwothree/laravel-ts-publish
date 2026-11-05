@@ -45,7 +45,7 @@ use ReflectionMethod;
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
  * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
- * runtime class, bindings, Inertia reading and a caller's need for enum cases; see docs/components/receiver-types.md.
+ * runtime class, bindings and Inertia reading; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -85,11 +85,12 @@ final class MethodReturnTypeResolver
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
         $reading = $site?->reading() ?? Reading::Encoded;
-        $literals = ! ($site?->readsCasesAsEnums() ?? false);
+        $memo = resolve(AnalysisMemo::class);
+        $literals = ! $memo->readsCasesAsEnums();
 
-        return resolve(AnalysisMemo::class)->remember(
+        return $memo->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime?->memoKey($class) ?? '').$reading->memoKey().($literals ? '' : '@casesAsEnums'),
+                .($runtime?->memoKey($class) ?? '').$reading->memoKey(),
             function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals): ?array {
                 $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
 
@@ -140,7 +141,7 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
-     * @param  bool  $literals  false for a caller that needs each case the body returns as its enum
+     * @param  bool  $literals  false while a read needs each case the body returns as its enum
      * @return ValueExpressionResult|null
      */
     private function reflectOrReadBody(
@@ -312,7 +313,7 @@ final class MethodReturnTypeResolver
 
         try {
             return resolve(AstEngine::class)
-                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals, ! $literals);
+                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
         } finally {
             $memo->leave($key);
         }

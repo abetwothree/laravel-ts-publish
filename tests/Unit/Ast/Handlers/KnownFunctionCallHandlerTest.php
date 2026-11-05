@@ -236,12 +236,17 @@ it('binds an untyped map() or array_map() parameter over enum cases to the enum'
     'collect()->all() of the cases' => ['collect(\\'.Grade::class.'::cases())->all()', 'GradeType[]', Grade::class],
 ]);
 
-// A vague helper's body fallback hands its cases over as literals, so the callback reads them again as their enums.
+// A vague helper's body fallback hands its cases over as literals, so the callback reads them again as their enums,
+// through a helper's shape and a spread too.
 it('maps the cases a vague helper returns with array_map(), reading each as its enum', function () {
     expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
         'mapped_values' => 'StatusType[]',
         'mapped_value' => 'StatusType[]',
         'mapped_resources' => 'AsEnum<typeof Status>[]',
+        'shape_values' => '{ s: StatusType }',
+        'shape_resources' => '{ s: AsEnum<typeof Status> }',
+        'shape_icons' => '{ s: string }',
+        'spread_values' => '{ s: StatusType; n: StatusType }',
     ]);
 });
 

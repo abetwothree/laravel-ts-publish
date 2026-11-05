@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
@@ -182,6 +183,17 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
 });
 
 // The `@return` before a getter closure answers where its body types nothing, as for a resource's value closure.
+// A getter reads a vague helper's case as the literal it sends, while a wrap or a map callback reading the attribute
+// needs, and gets, the case's enum through the getter and the helper.
+test('a getter returning a vague helper\'s case types its literal, and its enum where a wrap or a map reads it', function () {
+    expect(resourceProps(HelperCaseGetterResource::class))->toBe([
+        'held' => '0',
+        'held_resource' => 'AsEnum<typeof Status>',
+        'held_old_resource' => 'AsEnum<typeof Status>',
+        'held_values' => 'StatusType[]',
+    ]);
+});
+
 describe('AccessorBodyAnalyzer for a getter its closure\'s docblock types', function () {
     test('the model publishes each getter\'s documented type, passed by name or by position', function () {
         expect(array_map(fn (array $mutator): string => $mutator['type'], (new ModelTransformer(DocumentedGetterPost::class))->data()->mutators))

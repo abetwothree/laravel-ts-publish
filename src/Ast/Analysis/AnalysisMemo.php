@@ -16,6 +16,8 @@ use LogicException;
  * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms and unread
  * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
+ * It also holds whether a read under way needs each enum case as its enum, whose answers it keeps apart.
+ *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
  *     held: array<string, true>,
@@ -63,6 +65,9 @@ final class AnalysisMemo
 
     /** How many answers this run computed rather than reused. */
     private int $computations = 0;
+
+    /** How many reads under way need each enum case as its enum: readingCasesAsEnums(). */
+    private int $enumReadings = 0;
 
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
@@ -204,8 +209,37 @@ final class AnalysisMemo
     }
 
     /**
+     * Run a read that needs each enum case as its enum, such as an `EnumResource` payload: for its whole extent the
+     * body fallback of every method it reaches, however many frames deep, reads its cases so, not as literals.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function readingCasesAsEnums(Closure $read): mixed
+    {
+        $this->enumReadings++;
+
+        try {
+            return $read();
+        } finally {
+            $this->enumReadings--;
+        }
+    }
+
+    /**
+     * Whether a read under way needs each enum case as its enum.
+     */
+    public function readsCasesAsEnums(): bool
+    {
+        return $this->enumReadings > 0;
+    }
+
+    /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
      * found held, since only those can cut a fresh computation short somewhere else; one a seed shaped is kept apart.
+     * So is one computed while a read needs enum cases as their enums, under its own key.
      *
      * @template T
      *
@@ -214,6 +248,7 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
+        $key .= $this->enumReadings > 0 ? '@casesAsEnums' : '';
         $enums = PublishedEnums::version();
 
         $stored = $this->seeded === [] ? $this->entries[$key] ?? [] : [

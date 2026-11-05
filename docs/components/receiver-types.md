@@ -433,9 +433,10 @@ getter returns types the same way where the body reads the accessor whole: the g
 with memo entries of its own, so an in-place read never replays the literal. An `EnumResource` payload reads its cases
 as their enum (`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum,
 such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry. The
-value read sets it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. A caller that needs the case's
-enum, such as an `EnumResource` payload, sets `AnalysisScope::$casesAsEnums`, and the helper's body, with every call it
-makes, then reads its cases as their enums, under a `method-return:` key of its own.
+value read sets it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. While a read needs the case's
+enum, such as an `EnumResource` payload or a map callback's re-read, `AnalysisMemo::readingCasesAsEnums()` holds for its
+whole extent, so every body it reaches, however many frames deep (a helper, its shape, an accessor's getter, a macro, a
+spread), reads its cases as their enums, and each memo answer computed then is kept under a key of its own.
 
 Attribute filters know an answer that names no token, which a reader that carries no import publishes.
 `AnalysisScope::$carriesImports` is false only for an accessor's getter read that way

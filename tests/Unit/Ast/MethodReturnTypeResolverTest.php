@@ -188,7 +188,7 @@ test('a body fallback reads its enum cases as literals, apart from an analysis t
 test('a helper\'s plain enum case reads as its literal, as its shape\'s does, and a wrap it returns as its enum', function () {
     $resolve = fn (string $method): ?array => resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, $method);
 
-    expect(resourceProps(EnumCaseHelperResource::class)['draft'])->toBe('0')
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray(['draft' => '0', 'shaped_list' => '{ l: 0[] }'])
         ->and($resolve('draft'))->toBe(['type' => '0', 'optional' => false])
         ->and($resolve('outer'))->toBe(['type' => '0', 'optional' => false])
         ->and($resolve('outerWrap')['type'] ?? null)->toBe('StatusType');

@@ -13,7 +13,7 @@ use Workbench\App\Models\Post;
 
 /**
  * Reads, wraps and maps the plain enum cases helpers with a vague declaration return, directly or through another
- * helper, a local, a closure or a service.
+ * helper, a shape, a spread, a local, a closure or a service.
  *
  * @mixin Post
  */
@@ -43,6 +43,12 @@ class EnumCaseHelperResource extends JsonResource
             'collected_icons' => collect([$this->draft()])->map(fn ($d) => $d->icon())->all(),
             'collected_resources' => collect([$this->draft()])->map(fn ($d) => EnumResource::make($d))->all(),
             'collected_outer_resources' => collect([$this->outer()])->map(fn ($d) => EnumResource::make($d))->all(),
+            'shape_values' => array_map(fn ($d) => $d->value, $this->shapedOuter()),
+            'shape_resources' => array_map(fn ($d) => EnumResource::make($d), $this->shapedOuter()),
+            'shape_icons' => array_map(fn ($d) => $d->icon(), $this->shapedOuter()),
+            'collected_shape_values' => collect($this->shapedOuter())->map(fn ($d) => $d->value)->all(),
+            'spread_values' => array_map(fn ($d) => $d->value, $this->spreadShape()),
+            'shaped_list' => $this->shapedList(),
         ];
     }
 
@@ -68,6 +74,24 @@ class EnumCaseHelperResource extends JsonResource
     protected function outerDrafts(): mixed
     {
         return $this->drafts();
+    }
+
+    /** A helper's case in a shape. */
+    protected function shapedOuter(): array
+    {
+        return ['s' => $this->draft()];
+    }
+
+    /** A shape spreading another helper's shape beside another helper's case. */
+    protected function spreadShape(): array
+    {
+        return [...$this->shapedOuter(), 'n' => $this->outer()];
+    }
+
+    /** A list of a helper's case in a shape. */
+    protected function shapedList(): array
+    {
+        return ['l' => [$this->draft()]];
     }
 
     /** Wraps of a helper's case and of another helper's, in a shape. */

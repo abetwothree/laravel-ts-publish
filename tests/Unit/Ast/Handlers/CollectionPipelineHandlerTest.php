@@ -212,5 +212,6 @@ test('a map() over the case a vague helper returns reads it as its enum', functi
         'collected_icons' => 'string[]',
         'collected_resources' => 'AsEnum<typeof Status>[]',
         'collected_outer_resources' => 'AsEnum<typeof Status>[]',
+        'collected_shape_values' => '{ s: StatusType }',
     ]);
 });
