@@ -174,8 +174,8 @@ final class AnalysisScope
 
     /**
      * The classes other than a model an API resource subject declares `$this->resource` to hold, by a `@var` or a tag
-     * such as `@extends JsonResource<PostStats>` (ProxyDeclaration::of()), or null. Derived by the constructor and
-     * rebase(); it backs no proxy target, so a scope given no model keeps none.
+     * such as `@extends JsonResource<PostStats>` (ProxyDeclaration::of()), or null. Derived by seedDeclaredHeld(); it
+     * backs no proxy target, so a scope given no model keeps none.
      *
      * @var non-empty-list<class-string>|null
      */
@@ -495,7 +495,7 @@ final class AnalysisScope
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
-        $this->declaredHeld = self::declaredHeldBy($subjectReflection);
+        $this->seedDeclaredHeld();
     }
 
     /**
@@ -594,7 +594,7 @@ final class AnalysisScope
     {
         $this->subjectReflection = $subject;
         $this->runtime = $this->runtime->withClass($subject);
-        $this->declaredHeld = self::declaredHeldBy($subject);
+        $this->seedDeclaredHeld();
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -608,6 +608,15 @@ final class AnalysisScope
     {
         $this->modelClass = $modelClass;
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($this->subjectReflection, $modelClass);
+    }
+
+    /**
+     * Derive declaredHeld from what proxyDeclarer() declares: the constructor and rebase() run it, and a builder that
+     * swaps in a subclass as the runtime class runs it again.
+     */
+    public function seedDeclaredHeld(): void
+    {
+        $this->declaredHeld = self::declaredHeldBy($this->proxyDeclarer());
     }
 
     /**
@@ -764,6 +773,19 @@ final class AnalysisScope
         }
 
         return $this->forwardsUndeclaredMembersTo === null ? null : ReceiverType::of($this->forwardsUndeclaredMembersTo);
+    }
+
+    /**
+     * The class whose declarations say what `$this->resource` holds: the runtime class where it extends the subject, as
+     * a subclass running an ancestor's body does, so its own model and tags win there too; else the subject.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function proxyDeclarer(): ReflectionClass
+    {
+        $runtime = $this->runtime->class;
+
+        return $runtime->isSubclassOf($this->subjectReflection->getName()) ? $runtime : $this->subjectReflection;
     }
 
     /**

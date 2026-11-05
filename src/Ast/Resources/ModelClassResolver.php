@@ -25,7 +25,7 @@ final class ModelClassResolver
      * Resolve the backing model class.
      *
      * Precedence: the model ProxyDeclaration::model() reads, `#[TsResource(model:)]` first, then the naming convention,
-     * then `#[UseResource]`. A declared class the guess is not, such as a value object, stops the guess.
+     * then `#[UseResource]`. A declared class or union the guess is not one of, as a value object, stops the guess.
      *
      * @template T of object
      *

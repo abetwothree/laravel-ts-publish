@@ -2189,23 +2189,23 @@ final class ReceiverClassResolver
     /**
      * The class arms of what a subject declares `$resource` to hold, as `@var MediaType|string` or
      * `@extends JsonResource<PostStats>` does, whether each arm but `null` names a class, and whether it admits null;
-     * null for JsonResource's own `@var mixed`, for one that names no class, and for a tag naming only its model.
+     * null for JsonResource's own `@var mixed`, for one naming no class, and for a tag naming only its backing class.
      *
      * @return ProxyArms|null
      */
     private function redeclaredProxyArms(AnalysisScope $scope): ?array
     {
-        $declared = ProxyDeclaration::of($scope->subjectReflection);
+        $declared = ProxyDeclaration::of($scope->proxyDeclarer());
 
         if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
             return $declared;
         }
 
-        $model = $scope->modelClass;
+        $backing = $scope->forwardsUndeclaredMembersTo;
 
-        // `@mixin Post`, or `@mixin Arrayable` over a post, names only the backing model, which keeps its own path.
+        // `@mixin Post`, or `@mixin Arrayable` over a post, names only the backing class, which keeps its own path.
         $namesModel = (count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true))
-            || ($model !== null && array_all($declared['classes'], fn (string $class): bool => is_a($model, $class, true)));
+            || ($backing !== null && array_all($declared['classes'], fn (string $class): bool => is_a($backing, $class, true)));
 
         return $namesModel ? null : $declared;
     }

@@ -219,6 +219,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
         $this->scope->seedCollectionFacts($this->scope->runtime->class);
+        $this->scope->seedDeclaredHeld();
 
         $this->ownsScope = $scope === null;
 

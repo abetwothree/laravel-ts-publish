@@ -42,8 +42,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyF
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverHeldStatsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedJsonSerializableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedSummarizableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
@@ -59,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixinPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullablePostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
@@ -4231,6 +4237,33 @@ it('reads #[TsResource(model:)] over a mixin naming a value object the model is 
 it('reads a wrapped enum\'s value past a generic arm of the $resource redeclaration', function () {
     expect(resourceProps(GenericOrEnumVarResource::class))->toBe(['value' => "'pass' | 'fail'"]);
 });
+
+// The guard backs the proxy where no model does, so a tag naming only classes the guarded class is proves it too.
+it('proves an instanceof guard on a resource with no model whose tag names an interface the guarded class implements', function (string $resource, array $expected) {
+    expect(resourceProps($resource))->toBe($expected);
+})->with([
+    '@mixin JsonSerializable, guarding a post' => [GuardedJsonSerializableResource::class, ['t' => 'string | null', 'k' => 'number | null']],
+    '@extends JsonResource<Arrayable>, guarding a post' => [GuardedArrayableExtendsResource::class, ['t' => 'string | null', 'k' => 'number | null']],
+    '@mixin Summarizable, guarding its value object' => [GuardedSummarizableResource::class, [
+        't' => 'number | null',
+        's' => 'string | null',
+        'w' => '{ total: number; label: string; ratio: number | null } | null',
+    ]],
+]);
+
+// A subclass running its parent's body holds what its own declarations say, as it would in a body of its own.
+it('reads an inherited body under the subclass\'s model over its parent\'s value-object generic', function (string $resource) {
+    expect(resourceProps($resource))->toBe([
+        'title' => 'string',
+        'key' => 'number',
+        'res_key' => 'number',
+        'whole' => 'Post',
+    ]);
+})->with([
+    '#[TsResource(model:)]' => [ExplicitPostHeldStatsChildResource::class],
+    '@mixin Post' => [MixinPostHeldStatsChildResource::class],
+    '@extends Parent<Post>' => [ExtendsPostHeldStatsChildResource::class],
+]);
 
 it('guesses no model by naming convention for a resource declared over a class other than a model', function () {
     $data = new ResourceTransformer(SearchedPostResource::class)->data();
