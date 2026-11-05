@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedCallsPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CountedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
@@ -91,6 +92,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostIntersectionExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVarHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RandomPickPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
@@ -157,6 +159,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastRes
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
@@ -4494,4 +4497,85 @@ it('leaves a call a JsonResource macro answers unread, never the model\'s method
     } finally {
         JsonResource::flushMacros();
     }
+});
+
+// $this->collection is a Support\Collection of the collected items, so each call reads as Laravel runs it there.
+it('types the Support\Collection calls on a resource collection\'s $this->collection as Laravel sends them', function () {
+    $collection = new CollectedCallsPostCollection(collect([
+        (new Post)->forceFill(['id' => 1, 'title' => 'T1']),
+        (new Post)->forceFill(['id' => 2, 'title' => 'T2']),
+    ]));
+    $sent = fn (Request $request): mixed => json_decode((string) json_encode($collection->toArray($request)), true);
+    $item = fn (int $id): array => ['id' => $id, 'title' => 'T'.$id];
+    $plain = $sent(Request::create('/'));
+
+    expect(resourceProps(CollectedCallsPostCollection::class))->toBe([
+        'to_array' => 'PageItemResource[]',
+        'json' => 'PageItemResource[]',
+        'first' => 'PageItemResource | null',
+        'last' => 'PageItemResource | null',
+        'only' => 'PageItemResource[] | Record<string, PageItemResource>',
+        'except' => 'PageItemResource[] | Record<string, PageItemResource>',
+        'is_empty' => 'boolean',
+        'contains' => 'boolean',
+        'implode' => 'string',
+        'to_json' => 'string',
+        'avg' => 'number | null',
+        'median' => 'number | null',
+        'percentage' => 'number | null',
+        'mode' => 'number[] | null',
+        'random' => 'PageItemResource',
+        'random_null' => 'PageItemResource',
+        'random_two' => 'PageItemResource[]',
+        'random_kept' => 'PageItemResource[] | Record<string, PageItemResource>',
+        'random_counted' => 'PageItemResource[]',
+        'random_maybe' => 'PageItemResource | PageItemResource[]',
+    ])
+        ->and(array_diff_key($plain, array_flip(['random', 'random_null', 'random_two', 'random_kept', 'random_counted', 'random_maybe'])))->toBe([
+            'to_array' => [$item(1), $item(2)],
+            'json' => [$item(1), $item(2)],
+            'first' => $item(1),
+            'last' => $item(2),
+            'only' => [$item(1)],
+            'except' => ['1' => $item(2)],
+            'is_empty' => false,
+            'contains' => true,
+            'implode' => 'T1,T2',
+            'to_json' => '[{"id":1,"title":"T1"},{"id":2,"title":"T2"}]',
+            'avg' => 1.5,
+            'median' => 1.5,
+            'percentage' => 50,
+            'mode' => [1, 2],
+        ])
+        ->and($plain['random'])->toBeIn([$item(1), $item(2)])
+        ->and($plain['random_null'])->toBeIn([$item(1), $item(2)])
+        ->and($plain['random_two'])->toEqualCanonicalizing([$item(1), $item(2)])
+        ->and($plain['random_kept'])->toEqualCanonicalizing([$item(1), $item(2)])
+        ->and($plain['random_counted'])->toBeIn([[$item(1)], [$item(2)]])
+        ->and($plain['random_maybe'])->toBeIn([$item(1), $item(2)])
+        ->and($sent(Request::create('/', 'GET', ['count' => 1]))['random_maybe'])->toEqualCanonicalizing([$item(1), $item(2)]);
+});
+
+// R29: random() hands back one item, or a list for a count, never the condition's first word, where the item is known.
+it('types random() as the item or a list of them by its argument, and declines a guess at another conditional return', function () {
+    $post = (new Post)->forceFill(['id' => 1, 'title' => 'T'])->setRelation('comments', new EloquentCollection([
+        (new Comment)->forceFill(['id' => 3, 'content' => 'C']),
+        (new Comment)->forceFill(['id' => 4, 'content' => 'D']),
+    ]));
+    $sent = json_decode((string) json_encode(RandomPickPostResource::make($post)->resolve()), true);
+
+    expect(resourceProps(RandomPickPostResource::class))->toBe([
+        'comment' => 'Comment',
+        'comments' => 'Comment[]',
+        'base_comment' => 'Comment',
+        'built_comment' => 'Comment',
+        'label' => 'unknown',
+        'labels' => 'string[]',
+    ])
+        ->and($sent['comment']['id'])->toBeIn([3, 4])
+        ->and(array_column($sent['comments'], 'id'))->toEqualCanonicalizing([3, 4])
+        ->and($sent['base_comment']['id'])->toBeIn([3, 4])
+        ->and($sent['built_comment']['id'])->toBeIn([3, 4])
+        ->and($sent['label'])->toBe('a')
+        ->and($sent['labels'])->toBe(['a', 'b']);
 });

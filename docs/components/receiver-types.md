@@ -371,6 +371,16 @@ One more rule reads no model, and runs before the eleven on a resource collectio
   `R` is the collected element, an API resource or the raw models' model; with none it is `unknown` and the item and
   list rules decline.
 
+Two more read the call's own arguments:
+
+- **`random()`**: on a collection whose item is known, a resource collection's element or a published `elementModel`,
+  that runs `Collection`'s or `LazyCollection`'s own: the item for no `$number` or a `null` one, since an empty
+  collection throws; a list for an integer literal or a callable; both where the argument may be null. A list picked
+  with `$preserveKeys` adds the object arm. Any other receiver keeps the docblock reading.
+- **A conditional `@return`** on a resource collection's items or on what an API resource forwards a call to: one the
+  docblock reader keeps only the first token of (`LaravelTsPublish::extractReturnTypeFromDocblock()`) declines unless a
+  rule proves the arm, so `$this->collection->pop()` publishes `unknown`, never a word of its condition.
+
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
 whose `__call()` sends a name its `$passthru` lists to `Query\Builder`, and runs any other name the base query has
