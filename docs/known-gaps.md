@@ -476,6 +476,10 @@ of `methodDeclaringFileClass()` still applies, for methods only; the file declar
 An override of `resolveAccessorType()` or `resolveAccessorBodyType()` is not consulted where a helper read as a value
 reads an accessor whole, whose getter's plain enum cases keep their literals there.
 
+Overriding `resolvePhpstanTypeAlias()` or `balanceTypeDefinition()` no longer changes what the package emits either,
+since every docblock reader looks an alias up through [`TypeAliases`](../src/Ast/Docblocks/TypeAliases.php), which has
+no replacement point. `$phpstanTypeAliasCache` and `$phpstanTypeAliasPaths` read its answers and take no write.
+
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
 `TsTypeString::typeNameOccursIn()` decides which imports a type still needs, and it counts a name wherever its token

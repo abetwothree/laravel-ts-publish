@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -166,19 +167,29 @@ class LaravelTsPublish
 
     /**
      * Per-class cache of resolved phpstan/psalm type aliases: FQCN => alias name => resolved
-     * definition, or null when the class carries no such alias (cached to skip re-parsing its docblock).
+     * definition, or null when the class carries no such alias. TypeAliases holds it; this reads it.
      *
      * @var array<string, array<string, array{definition: string, class: ReflectionClass<object>}|null>>
      */
-    protected array $phpstanTypeAliasCache = [];
+    protected array $phpstanTypeAliasCache {
+        get => array_map(
+            fn (array $answers): array => array_map(
+                fn (?array $alias): ?array => $alias === null ? null : [...$alias, 'class' => new ReflectionClass($alias['class'])],
+                $answers,
+            ),
+            TypeAliases::answers(),
+        );
+    }
 
     /**
      * The files each cached alias answer read, FQCN => alias name => paths, replayed on a reuse; null when the answer
-     * was cached while nothing recorded.
+     * was cached while nothing recorded. TypeAliases holds it; this reads it.
      *
      * @var array<string, array<string, list<string>|null>>
      */
-    protected array $phpstanTypeAliasPaths = [];
+    protected array $phpstanTypeAliasPaths {
+        get => TypeAliases::answerPaths();
+    }
 
     /**
      * Per-file cache of resolved `use`-statement short-name → FQCN maps, keyed by file path.
@@ -555,78 +566,17 @@ class LaravelTsPublish
 
     /**
      * Resolve a phpstan/psalm type alias visible from a class: a local `@phpstan-type` definition
-     * first, then a `@phpstan-import-type Name from Class [as Alias]` (recursively, cycle-guarded
-     * via $seen — the same "already expanding" guard arrayableShapeType() uses for shape recursion).
+     * first, then a `@phpstan-import-type Name from Class [as Alias]`, as {@see TypeAliases::find()} reads it.
      *
      * @param  ReflectionClass<object>  $context
-     * @param  array<string, true>  $seen
+     * @param  array<string, true>  $seen  "{FQCN}::{alias}" lookups already under way, which answer null
      * @return array{definition: string, class: ReflectionClass<object>}|null
      */
     public function resolvePhpstanTypeAlias(string $name, ReflectionClass $context, array $seen = []): ?array
     {
-        $key = $context->getName();
-        $seenKey = $key.'::'.$name;
+        $alias = isset($seen[$context->getName().'::'.$name]) ? null : TypeAliases::find($name, $context);
 
-        if (isset($seen[$seenKey])) {
-            return null;
-        }
-
-        $seen[$seenKey] = true;
-
-        // A reuse replays the class files the answer read, so a later class's cache entry still names them.
-        if (array_key_exists($name, $this->phpstanTypeAliasCache[$key] ?? [])
-            && (($this->phpstanTypeAliasPaths[$key][$name] ?? null) !== null || ! DependencyRecorder::isRecording())) {
-            foreach ($this->phpstanTypeAliasPaths[$key][$name] ?? [] as $path) {
-                DependencyRecorder::record($path);
-            }
-
-            return $this->phpstanTypeAliasCache[$key][$name];
-        }
-
-        $mark = DependencyRecorder::mark();
-        // The class defines the alias or imports it, and each class an import names is read the same way below.
-        DependencyRecorder::record((string) $context->getFileName());
-        $doc = $context->getDocComment();
-        $resolved = null;
-
-        if ($doc !== false) {
-            if (preg_match(
-                '/@(?:phpstan|psalm)-type\s+'.preg_quote($name, '/').'\b(?=[\s=])\s*=?\s*(\S.*)$/m',
-                $doc,
-                $m,
-                PREG_OFFSET_CAPTURE,
-            )) {
-                $definition = $this->balanceTypeDefinition($m[1][0], $doc, $m[1][1] + strlen($m[1][0]));
-                $resolved = ['definition' => $definition, 'class' => $context];
-            }
-
-            if ($resolved === null && preg_match_all(
-                '/@(?:phpstan|psalm)-import-type\s+(\w+)\s+from\s+([\w\\\\]+)(?:\s+as\s+(\w+))?/m',
-                $doc,
-                $imports,
-                PREG_SET_ORDER,
-            )) {
-                foreach ($imports as $import) {
-                    $localName = $import[3] ?? $import[1];
-
-                    if ($localName !== $name) {
-                        continue;
-                    }
-
-                    $sourceClass = DocblockNames::resolve($import[2], $context);
-
-                    if (DeclaredClasses::isClassLike($sourceClass)) {
-                        $resolved = $this->resolvePhpstanTypeAlias($import[1], new ReflectionClass($sourceClass), $seen);
-                    }
-
-                    break;
-                }
-            }
-        }
-
-        $this->phpstanTypeAliasPaths[$key][$name] = DependencyRecorder::isRecording() ? DependencyRecorder::since($mark) : null;
-
-        return $this->phpstanTypeAliasCache[$key][$name] = $resolved;
+        return $alias === null ? null : [...$alias, 'class' => new ReflectionClass($alias['class'])];
     }
 
     /**
@@ -2169,27 +2119,7 @@ class LaravelTsPublish
      */
     protected function balanceTypeDefinition(string $firstLine, string $doc, int $offsetAfterFirstLine): string
     {
-        $definition = trim(rtrim($firstLine, " \t*/"));
-
-        if ($this->braceAngleDepth($definition) <= 0) {
-            return $definition;
-        }
-
-        foreach (explode("\n", substr($doc, $offsetAfterFirstLine)) as $line) {
-            $stripped = trim((string) preg_replace('#^\s*\*+/?\s?#', '', $line));
-
-            if ($stripped === '') {
-                continue;
-            }
-
-            $definition .= ' '.rtrim($stripped, " \t*/");
-
-            if ($this->braceAngleDepth($definition) <= 0) {
-                break;
-            }
-        }
-
-        return trim($definition);
+        return TypeAliases::balance($firstLine, $doc, $offsetAfterFirstLine);
     }
 
     /**
@@ -2441,12 +2371,11 @@ class LaravelTsPublish
     {
         $context = end($this->aliasContextStack);
 
-        // An alias name is a PHPDoc identifier, as PHPStan's lexer reads one: a hyphen or a non-ASCII byte may follow.
-        if ($context === false || preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff-]*$/', $name) !== 1) {
+        if ($context === false || ! TypeAliases::isName($name)) {
             return null;
         }
 
-        $alias = $this->resolvePhpstanTypeAlias($name, $context);
+        $alias = TypeAliases::find($name, $context);
 
         if ($alias === null) {
             return null;
@@ -2459,12 +2388,13 @@ class LaravelTsPublish
         }
 
         $this->aliasExpansionStack[$key] = true;
+        $defining = new ReflectionClass($alias['class']);
 
         try {
-            return $this->withAliasContext($alias['class'], fn (): array => $this->resolveDocblockPartToInfo(
+            return $this->withAliasContext($defining, fn (): array => $this->resolveDocblockPartToInfo(
                 $alias['definition'],
-                $this->parseFileUseStatements($alias['class']),
-                $alias['class']->getNamespaceName(),
+                $this->parseFileUseStatements($defining),
+                $defining->getNamespaceName(),
             ));
         } finally {
             unset($this->aliasExpansionStack[$key]);

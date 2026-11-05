@@ -727,7 +727,7 @@ member that does not exist yet still records its class. The readers are `Receive
 published model, `ByReferenceArguments` for the class whose method it reads by-reference parameters from, and
 `MacroCallResolver::reflect()`, which records the file that declares a closure or function macro. A cache in front of
 such a read records before its lookup, or replays what it recorded, as `resolveAttributeClass()` and
-`LaravelTsPublish::resolvePhpstanTypeAlias()`, which reads each class an alias import names, do. Recording never
+`TypeAliases::find()`, which reads each class an alias import names, do. Recording never
 deduplicates, because a memo frame keeps the paths recorded after its mark.
 
 `MethodLocator` records nothing itself: it hands a method's file to `parseFileMethods()`, which reads it through

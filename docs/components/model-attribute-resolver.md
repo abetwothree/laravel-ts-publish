@@ -267,10 +267,12 @@ These readers apply it, each with the scope and the fallback its page gives:
 
 ### Type aliases
 
-`LaravelTsPublish::resolvePhpstanTypeAlias()` looks for a `@phpstan-type` or `@psalm-type` on the class, then follows
-`@phpstan-import-type Name from Other`, with or without `as Alias`, recursively. An import chain therefore resolves to
-the class that wrote the shape. A definition spanning several docblock lines is joined until its braces and angle
-brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias give `unknown`.
+[`TypeAliases::find()`](../../src/Ast/Docblocks/TypeAliases.php) looks for a `@phpstan-type` or `@psalm-type` on the
+class, then follows `@phpstan-import-type Name from Other`, with or without `as Alias`, recursively. An import chain
+therefore resolves to the class that wrote the shape. A definition spanning several docblock lines is joined until its
+braces and angle brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias
+give `unknown`. It caches each class's answers for the run; `LaravelTsPublish::resolvePhpstanTypeAlias()` delegates to
+it.
 
 The alias resolves against its defining class's imports and namespace, not the referencing class's.
 An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
