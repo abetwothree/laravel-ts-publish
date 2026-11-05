@@ -45,6 +45,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapT
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverHeldStatsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPostHeldStatsChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsExtendsChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsMixinChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedJsonSerializableResource;
@@ -72,6 +74,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVarHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
@@ -98,6 +101,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FlaggedStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
@@ -4263,6 +4267,37 @@ it('reads an inherited body under the subclass\'s model over its parent\'s value
     '#[TsResource(model:)]' => [ExplicitPostHeldStatsChildResource::class],
     '@mixin Post' => [MixinPostHeldStatsChildResource::class],
     '@extends Parent<Post>' => [ExtendsPostHeldStatsChildResource::class],
+]);
+
+// R27: PHP has one `$resource` slot, so a subclass's own `@var` decides what its inherited body holds.
+it('reads an inherited body under the subclass\'s own @var over its parent\'s', function () {
+    $resource = new PostVarHeldStatsChildResource((new Post)->forceFill(['id' => 7, 'title' => 'T']));
+
+    expect(resourceProps(PostVarHeldStatsChildResource::class))->toBe([
+        'title' => 'string',
+        'key' => 'number',
+        'res_key' => 'number',
+        'res_total' => 'unknown',
+        'summary' => 'unknown',
+        'whole' => 'Post',
+    ])
+        ->and([$resource->title, $resource->getKey(), $resource->resource->getKey(), $resource->resource->total])
+        ->toBe(['T', 7, 7, null])
+        ->and(fn () => $resource->summary())->toThrow(BadMethodCallException::class);
+});
+
+// The nested analyzer re-seeds the held class from the subclass, so the whole read agrees with the member reads.
+it('reads an inherited body\'s whole proxy as the class the subclass declares over its parent\'s', function (string $resource) {
+    expect(resourceProps($resource))->toBe([
+        'whole' => '{ flag: boolean; total: number }',
+        'total' => 'number',
+        'flag' => 'boolean',
+    ])
+        ->and($resource::make(new FlaggedStats(true, 2))->response()->getData(true)['data'])
+        ->toBe(['whole' => ['flag' => true, 'total' => 2], 'total' => 2, 'flag' => true]);
+})->with([
+    '@mixin' => [FlaggedStatsMixinChildResource::class],
+    '@extends Parent<FlaggedStats>' => [FlaggedStatsExtendsChildResource::class],
 ]);
 
 it('guesses no model by naming convention for a resource declared over a class other than a model', function () {
