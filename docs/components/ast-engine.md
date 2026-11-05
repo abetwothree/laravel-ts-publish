@@ -435,10 +435,13 @@ classes, when it names only classes, in `varDeclaredBindings`; each puts its val
 goes in `requestVarNames`, except in an API resource, and a name already bound stays as it is.
 
 A docblock holds only what its author wrote, so a known argument outranks it: a method with a `@param` collection takes
-what its call passes (`takesPassedValues()`), and an argument whose element is known, narrower or another model, binds
-its own collection, value and keys in its place (`CallSite`, `ParameterBinder::passedCollection()`), the declaration
-naming only the kind a moved key is. The declaration binds an argument whose element is unknown, and a native type keeps
-binding natively, since PHP enforces it.
+what its call passes (`takesPassedValues()`), and an argument holding a collection binds its own class, keys and value
+in the declaration's place (`CallSite`, `ParameterBinder::passedCollection()`), its element too where it names one,
+narrower or another model. The declaration names only what the argument leaves unknown: the element, and the kind a
+moved key is; a collection whose element nothing names, such as `collect()`'s, may hold any keys its value leaves open.
+The bound class is the narrowest of the native type's and the argument's, so a wider argument never replaces a native
+class. The declaration binds whole for an argument nothing types, one a `?->` can end as null, and a guarded one not
+read off an `unread` callback parameter, and a native type keeps binding natively, since PHP enforces it.
 
 `bindClosure()` binds a closure's parameters from the declaration the AST holds through `bindClosureParameter()`, which
 `ClosureHandler` shares for a parameter no writer bound, and differs in two ways: its class goes through

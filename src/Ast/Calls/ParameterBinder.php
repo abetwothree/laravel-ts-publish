@@ -16,6 +16,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -520,36 +522,45 @@ final class ParameterBinder
 
     /**
      * How an argument binds a parameter a `@param` collection generic declares: by the collection it holds, its value
-     * and keys, the declaration naming only the kind a moved key is; null where it names no element, may end as null,
-     * or is guarded and not `unread`, so the declaration binds.
+     * and keys, the declaration naming only an element it leaves unknown and the kind a moved key is; null where it
+     * names no collection, may end as null, or is guarded and not `unread`, so the declaration binds.
      *
-     * @param  ValueExpressionResult  $value
      * @param  CollectionBinding  $declared
+     * @param  ValueExpressionResult  $value
      * @return PassedBinding|null
      */
-    public function passedCollection(array $value, ?ReceiverType $receiver, array $declared, bool $unread = false): ?array
-    {
+    public function passedCollection(
+        ReflectionParameter $parameter,
+        array $declared,
+        array $value,
+        ?ReceiverType $receiver,
+        bool $unread = false,
+    ): ?array {
         if ($receiver === null
             || $receiver->shortCircuits
-            || $receiver->elementModel === null
             || ($receiver->guarded && ! $unread)
             || ! $receiver->within([Enumerable::class])
         ) {
             return null;
         }
 
+        unset($value['absentReadsNull']);
+        $known = TsTypeString::isVagueTsType($value['type']) ? null : [...$value, 'optional' => false];
         $key = match (true) {
             $receiver->stringKeyed => 'string',
             $receiver->keyed => ($declared['key'] ?? null) === 'string' ? 'string' : 'array-key',
-            default => null,
+            // A collection whose element nothing names, such as collect()'s, may hold any keys its value leaves open.
+            $receiver->elementModel !== null || ($known !== null && self::listsOnly($known['type'])) => null,
+            default => 'array-key',
         };
-        unset($value['absentReadsNull']);
+        $native = $this->nativeClasses($parameter);
+        $element = $receiver->elementModel ?? $declared['modelFqcn'];
 
         return [
             'model' => null,
-            'classes' => $receiver->classes,
-            'elementModel' => $receiver->elementModel,
-            'value' => $value['type'] === 'unknown' ? null : [...$value, 'optional' => false],
+            'classes' => $native === null || $receiver->within($native) ? $receiver->classes : $native,
+            'elementModel' => $element,
+            'value' => $known ?? ($receiver->elementModel === null ? self::listedValue($declared, $element, $key) : null),
             'unsaved' => false,
             'refines' => true,
             'declaredOnly' => $receiver->declaredOnly,
@@ -629,6 +640,45 @@ final class ParameterBinder
     private static function defaultsToNull(Param $param): bool
     {
         return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
+    }
+
+    /**
+     * Whether every arm of a type but `null` is a list, so the value holds keys 0..n-1.
+     */
+    private static function listsOnly(string $type): bool
+    {
+        $arms = array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']);
+
+        return $arms !== [] && array_all($arms, fn (string $arm): bool => ArrayArms::listElement($arm) !== null);
+    }
+
+    /**
+     * The value a collection of a declared element reads as under the given keys, spelled from the declaration's one
+     * element type; null where the declaration spells none.
+     *
+     * @param  CollectionBinding  $declared
+     * @param  class-string<Model>  $element
+     * @param  KeyKind  $key
+     * @return ValueExpressionResult|null
+     */
+    private static function listedValue(array $declared, string $element, ?string $key): ?array
+    {
+        $types = array_values(array_unique(array_filter(
+            ArrayArms::arms($declared['type'], ArrayArms::elementOf(...)) ?? [],
+            fn (string $type): bool => $type !== 'never',
+        )));
+
+        if (count($types) !== 1) {
+            return null;
+        }
+
+        $list = TsTypeShape::listType($types);
+
+        return [...ValueResult::unknown(), 'type' => match ($key) {
+            'string' => "Record<string, {$types[0]}>",
+            'array-key' => ArrayArms::keyedList($list),
+            default => $list,
+        }, 'optional' => false, 'modelFqcn' => $element];
     }
 
     /**

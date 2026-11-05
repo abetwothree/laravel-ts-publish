@@ -42,6 +42,10 @@ class DeclaredCollectionParameterResource extends JsonResource
             'lying_post_id' => $this->postsPostId($this->resource->comments),
             'lying_value' => $this->postsValue($this->resource->comments),
             'narrowed_subscriber' => $this->when(false, fn () => $this->teamSubscriber(SubscribedTeam::all())),
+            'support_arg_only' => $this->listedOnly(collect($this->opaque($this->resource->comments->all()))),
+            'support_keyed_arg_all' => $this->listedAll(collect($this->opaque($this->resource->comments->keyBy('content')->all()))),
+            'untyped_support_arg_only' => $this->untypedOnly(collect($this->opaque($this->resource->comments->all()))),
+            'enumerable_arg_only' => $this->nativeOnly($this->enumerableComments()),
         ];
     }
 
@@ -143,6 +147,46 @@ class DeclaredCollectionParameterResource extends JsonResource
     private function teamSubscriber(Enumerable $teams)
     {
         return ['sub' => $teams->first()?->subscriber];
+    }
+
+    /**
+     * The comment under key 1, by the class the argument holds.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function listedOnly(Enumerable $comments)
+    {
+        return $comments->only([1]);
+    }
+
+    /**
+     * The comment under key 1, the parameter untyped.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function untypedOnly($comments)
+    {
+        return $comments->only([1]);
+    }
+
+    /**
+     * The comment whose primary key is 5, by the class the native type names.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function nativeOnly(Collection $comments)
+    {
+        return $comments->only([5]);
+    }
+
+    /**
+     * The comments, declared wider than the collection they are.
+     *
+     * @return Enumerable<int, Comment>
+     */
+    private function enumerableComments(): Enumerable
+    {
+        return $this->resource->comments;
     }
 
     /** A value no rule types. */

@@ -548,8 +548,9 @@ function parameterBinderCommentedPost(): Post
     return $post;
 }
 
-// A docblock holds only what its author wrote, so the collection an argument is known to hold outranks it, its keys
-// too, for the receiver and the value; the declaration binds an argument whose element is unknown.
+// A docblock holds only what its author wrote, so the collection an argument is known to hold outranks it, its class
+// and keys too, for the receiver and the value; the declaration names the element an argument leaves unknown, and no
+// argument's class widens a native one.
 test('binds a @param Collection<int, X> parameter by its element, untyped or natively a collection', function () {
     $comment = fn (int $id, string $content): array => ['id' => $id, 'content' => $content, 'post_id' => 1];
 
@@ -567,6 +568,10 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'lying_post_id' => '{ post_id: number | null }',
         'lying_value' => 'Comment[]',
         'narrowed_subscriber?' => '{ sub: User | null }',
+        'support_arg_only' => 'Record<string, unknown>',
+        'support_keyed_arg_all' => 'Comment[] | Record<string, Comment>',
+        'untyped_support_arg_only' => 'Record<string, unknown>',
+        'enumerable_arg_only' => 'Comment[]',
     ])->and(json_decode((string) json_encode(new DeclaredCollectionParameterResource(parameterBinderCommentedPost())->resolve(request())), true))->toBe([
         'typed_callable_first' => ['first' => 'hi'],
         'native_callable_first' => ['first' => 'hi'],
@@ -580,6 +585,10 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'keyed_list_all' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
         'lying_post_id' => ['post_id' => 1],
         'lying_value' => [$comment(5, 'hi'), $comment(6, 'yo')],
+        'support_arg_only' => ['1' => $comment(6, 'yo')],
+        'support_keyed_arg_all' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
+        'untyped_support_arg_only' => ['1' => $comment(6, 'yo')],
+        'enumerable_arg_only' => [$comment(5, 'hi')],
     ]);
 });
 
