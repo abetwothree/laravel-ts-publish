@@ -131,7 +131,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
     foreach (['item', 'key', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
-        $scope->varGuardBindings[$name] = [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]];
+        $scope->varGuardBindings[$name] = [AnalysisScope::armProof([User::class])];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varDeclaredBindings[$name] = [User::class];
@@ -314,8 +314,8 @@ it('passes a parameter the guard in force where its variable is passed, for ever
     };
 
     expect($passedAt(5))->toBe([])
-        ->and($passedAt(25))->toBe(['param' => [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]]])
-        ->and($passedAt(35))->toBe(['param' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]]]);
+        ->and($passedAt(25))->toBe(['param' => [AnalysisScope::armProof([SubscribedTeam::class])]])
+        ->and($passedAt(35))->toBe(['param' => [AnalysisScope::armProof([Post::class])]]);
 });
 
 // The proofs on `$this->resource` sit under a key no variable spells, and their offsets are the body's that set them.
@@ -720,10 +720,17 @@ it('assumes a callee\'s runtime class unless the call runs on this runtime insta
         ->and($assumes($scope->calleeRuntime($base, true)))->toBe([$assumed]);
 })->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
+// The mark names a proof no position bounds, so a proof at the same offsets that armProof() did not make is not one.
+it('reads a proof as an arm\'s only where armProof() made it', function () {
+    expect(AnalysisScope::isArmProof(AnalysisScope::armProof([User::class])))->toBeTrue()
+        ->and(AnalysisScope::isArmProof(['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]))->toBeFalse()
+        ->and(AnalysisScope::isArmProof(['classes' => [User::class], 'after' => 10, 'before' => 90]))->toBeFalse();
+});
+
 // An `if` proof's offsets are the caller's, so only one a ternary's arm binds, at no offsets, reaches the callee.
 it('keeps a caller\'s proof on a $this chain for a subject method\'s body only where it holds at every offset', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-    $arm = ['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null];
+    $arm = AnalysisScope::armProof([User::class]);
     $block = ['classes' => [Team::class], 'after' => 10, 'before' => 90];
     $scope->varGuardBindings = ['$this->author' => [$arm], '$this->editor' => [$block], '$this->owner' => [$block, $arm]];
 
@@ -740,9 +747,9 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $scope->provenProxy = [SubscribedTeam::class];
     $scope->varGuardBindings = [
-        '$this->author' => [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]],
-        '$this->author->team' => [['classes' => [Team::class], 'after' => PHP_INT_MIN, 'before' => null]],
-        'item' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]],
+        '$this->author' => [AnalysisScope::armProof([User::class])],
+        '$this->author->team' => [AnalysisScope::armProof([Team::class])],
+        'item' => [AnalysisScope::armProof([Post::class])],
     ];
     $before = $scope->varGuardBindings;
 

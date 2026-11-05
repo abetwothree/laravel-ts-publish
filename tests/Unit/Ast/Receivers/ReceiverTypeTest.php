@@ -118,6 +118,16 @@ test('a copy keeps a declared element\'s guard', function () {
         ->and(new ReceiverType([Collection::class], elementModel: Comment::class)->guardsElement)->toBeFalse();
 });
 
+// A step keeping the items hands on the element and its guard, with the keys as the step leaves them.
+test('a collection receiver holds the facts it is built with, and a step keeping its items hands its element on', function () {
+    $type = ReceiverType::collection([Collection::class], Comment::class, true, true, true, true);
+    $facts = fn (ReceiverType $t): array => [$t->classes, $t->elementModel, $t->keyed, $t->stringKeyed, $t->guardsElement, $t->shortCircuits];
+
+    expect($facts($type))->toBe([[Collection::class], Comment::class, true, true, true, true])
+        ->and($facts($type->keepingItems([EloquentCollection::class], false, false)))
+        ->toBe([[EloquentCollection::class], Comment::class, false, false, true, false]);
+});
+
 // The guard starts at `$this->collection` and at what a resource forwards to, and every step and union carries it on.
 test('a receiver reached from $this->collection or a forward is guarded down its chain', function (string $subject, string $php, bool $guarded) {
     $scope = new AnalysisScope(new ReflectionClass($subject), null);

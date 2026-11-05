@@ -88,7 +88,7 @@ trait NarrowsInstanceofSubjects
         if ($narrows['kind'] === 'path') {
             // Every read of the chain narrows by the tested classes, wherever it sits, while the arm resolves.
             return $scope->within(function () use ($scope, $key, $tested): void {
-                $scope->varGuardBindings[$key][] = ['classes' => $tested, 'after' => PHP_INT_MIN, 'before' => null];
+                $scope->varGuardBindings[$key][] = AnalysisScope::armProof($tested);
             }, $resolve);
         }
 

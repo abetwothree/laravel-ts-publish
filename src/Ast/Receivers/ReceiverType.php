@@ -87,6 +87,30 @@ final readonly class ReceiverType
     }
 
     /**
+     * A receiver holding a collection: its classes, the model each item is, and how its keys and element read.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     * @param  class-string<Model>|null  $element
+     */
+    public static function collection(
+        array $classes,
+        ?string $element,
+        bool $keyed,
+        bool $stringKeyed,
+        bool $guardsElement,
+        bool $shortCircuits = false,
+    ): self {
+        return new self(
+            $classes,
+            $shortCircuits,
+            elementModel: $element,
+            keyed: $keyed,
+            guardsElement: $guardsElement,
+            stringKeyed: $stringKeyed,
+        );
+    }
+
+    /**
      * Whether a class is a model a row can be read into: a subclass of Model that is not abstract.
      *
      * @phpstan-assert-if-true class-string<Model> $class
@@ -200,6 +224,17 @@ final readonly class ReceiverType
         }
 
         return $intersections === $this->intersections ? $this : $this->copy(intersections: $intersections);
+    }
+
+    /**
+     * The collection a step keeping the receiver's items hands back: the given classes, the same element and its guard,
+     * and keys read as $keyed says, no longer as a declaration names them.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    public function keepingItems(array $classes, bool $shortCircuits, bool $keyed): self
+    {
+        return self::collection($classes, $this->elementModel, $keyed, false, $this->guardsElement, $shortCircuits);
     }
 
     /**

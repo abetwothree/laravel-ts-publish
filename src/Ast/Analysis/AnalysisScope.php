@@ -57,7 +57,7 @@ use ReflectionMethod;
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
- * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
+ * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null, arm?: true}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
@@ -601,6 +601,28 @@ final class AnalysisScope
         $path = self::thisReadPath($subject);
 
         return $path === null ? null : '$this->'.implode('->', $path);
+    }
+
+    /**
+     * A proof that holds at every offset while the code it covers resolves: a ternary arm's, or the one a closure
+     * parameter takes from the variable its call passes.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     * @return VarGuardBinding
+     */
+    public static function armProof(array $classes): array
+    {
+        return ['classes' => $classes, 'after' => PHP_INT_MIN, 'before' => null, 'arm' => true];
+    }
+
+    /**
+     * Whether a proof is one armProof() made, which no position bounds, as an `if` block's is.
+     *
+     * @param  VarGuardBinding  $guard
+     */
+    public static function isArmProof(array $guard): bool
+    {
+        return isset($guard['arm']);
     }
 
     /**
@@ -1240,7 +1262,7 @@ final class AnalysisScope
 
         // An `if` proof holds at this body's offsets alone; a ternary arm's holds at every offset, a callee's too.
         foreach ($replacesProxy ? [] : $this->thisPathProofs() as $key => $guards) {
-            $held = array_values(array_filter($guards, fn (array $guard): bool => $guard['after'] === PHP_INT_MIN && $guard['before'] === null));
+            $held = array_values(array_filter($guards, self::isArmProof(...)));
 
             if ($held !== [] && ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->'))) {
                 $paths[$key] = $held;
@@ -1454,7 +1476,7 @@ final class AnalysisScope
         $guard = self::latestGuard($snapshot['varGuardBindings'][$from] ?? [], $offset);
 
         if ($guard !== null) {
-            $this->varGuardBindings[$to] = [['classes' => $guard['classes'], 'after' => PHP_INT_MIN, 'before' => null]];
+            $this->varGuardBindings[$to] = [self::armProof($guard['classes'])];
         }
 
         if (isset($snapshot['varDocBindings'][$from])) {

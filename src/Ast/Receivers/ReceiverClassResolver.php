@@ -537,9 +537,13 @@ final class ReceiverClassResolver
                 ? $this->declaredElementModel($span, $assigned)
                 : null;
 
-            return $element === null
-                ? $assigned
-                : new ReceiverType($assigned->classes, $assigned->shortCircuits, $element, keyed: $assigned->keyed, declaredOnly: $assigned->declaredOnly);
+            if ($element === null) {
+                return $assigned;
+            }
+
+            $filled = ReceiverType::collection($assigned->classes, $element, $assigned->keyed, false, false, $assigned->shortCircuits);
+
+            return $assigned->declaredOnly ? $filled->asDeclaredOnly() : $filled;
         }
 
         $declared = $this->typeOf($this->declaredClasses($span, $scope));
@@ -559,7 +563,7 @@ final class ReceiverClassResolver
 
         return $element === null && ! $keyed
             ? $declared
-            : new ReceiverType($declared->classes, elementModel: $element, keyed: $keyed);
+            : ReceiverType::collection($declared->classes, $element, $keyed, false, false);
     }
 
     /**
@@ -978,7 +982,7 @@ final class ReceiverClassResolver
         }
 
         // Only an `if` newly reaches a chain no class names; a ternary's arm, at no offsets, keeps its old reading.
-        if ($held === null && ($proof['after'] !== PHP_INT_MIN || $proof['before'] !== null)) {
+        if ($held === null && ! AnalysisScope::isArmProof($proof)) {
             return new ReceiverType($proof['classes'], guarded: true);
         }
 
@@ -1178,13 +1182,7 @@ final class ReceiverClassResolver
         $result ??= $this->inheritedCollectionStep($method, $receiver, $shortCircuits);
 
         if ($this->presumesCollectionStep($method, $receiver, $result)) {
-            return new ReceiverType(
-                $receiver->classes,
-                $shortCircuits,
-                elementModel: $receiver->elementModel,
-                keyed: $receiver->keyed,
-                guardsElement: $receiver->guardsElement,
-            );
+            return $receiver->keepingItems($receiver->classes, $shortCircuits, $receiver->keyed);
         }
 
         // A fluent call such as fill() hands the same model back, so no row backs it yet either.
@@ -2529,18 +2527,16 @@ final class ReceiverClassResolver
             DependencyRecorder::recordClass($class);
         }
 
-        return new ReceiverType(
+        return $receiver->keepingItems(
             match ($method) {
                 'collect', 'toBase' => [Collection::class],
                 'lazy' => [LazyCollection::class],
                 default => $receiver->classes,
             },
             $shortCircuits,
-            elementModel: $receiver->elementModel,
-            keyed: $keepsKeys
+            $keepsKeys
                 ? $receiver->keyed
                 : CollectionSteps::keyedAfter($call, $method, $receiver->keyed, $receiver->within([EloquentCollection::class])),
-            guardsElement: $receiver->guardsElement,
         );
     }
 
@@ -2566,9 +2562,7 @@ final class ReceiverClassResolver
         $same = ($added instanceof Array_ && $added->items === [])
             || ($held?->elementModel === $receiver->elementModel && $held->within([Enumerable::class]));
 
-        return $same
-            ? new ReceiverType($receiver->classes, $shortCircuits, elementModel: $receiver->elementModel, keyed: $receiver->keyed, guardsElement: $receiver->guardsElement)
-            : null;
+        return $same ? $receiver->keepingItems($receiver->classes, $shortCircuits, $receiver->keyed) : null;
     }
 
     /**
