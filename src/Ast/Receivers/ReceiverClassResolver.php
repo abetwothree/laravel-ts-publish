@@ -497,9 +497,7 @@ final class ReceiverClassResolver
      */
     public function provenClasses(array $held, array $tested): array
     {
-        $classes = $this->narrowedClasses($held, $tested);
-
-        return $classes === [] ? $tested : $classes;
+        return InstanceofNarrowing::proven($held, $tested);
     }
 
     /**
@@ -683,7 +681,7 @@ final class ReceiverClassResolver
      */
     private function guarded(?ReceiverType $held, array $proven): ReceiverType
     {
-        $classes = $held === null ? [] : $this->narrowedClasses($held->classes, $proven);
+        $classes = $held === null ? [] : InstanceofNarrowing::classes($held->classes, $proven);
 
         return $held === null || $classes === []
             ? new ReceiverType($proven)
@@ -923,13 +921,10 @@ final class ReceiverClassResolver
         }
 
         $name = $fetch->name->toString();
-        $path = $scope->narrowedReads === [] ? null : $this->thisReadPath($fetch);
+        $proven = $scope->varGuardBindings === [] ? null : $this->provenPath($fetch, $scope);
 
-        // An `instanceof` ternary's proven arm reads the path it tested as what the test left of it, innermost first.
-        foreach ($path === null ? [] : array_reverse($scope->narrowedReads) as [$narrowed, $receiver]) {
-            if ($narrowed === $path) {
-                return $receiver;
-            }
+        if ($proven !== null) {
+            return $proven;
         }
 
         if ($fetch->var instanceof Variable && $fetch->var->name === 'this') {
@@ -949,6 +944,39 @@ final class ReceiverClassResolver
             ),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
         ));
+    }
+
+    /**
+     * A chain of property reads on `$this` under the `instanceof` proof in force where it sits: what it holds with that
+     * proof set aside, its own classes narrowed by the proof's; null where none holds.
+     */
+    private function provenPath(PropertyFetch|NullsafePropertyFetch $fetch, AnalysisScope $scope): ?ReceiverType
+    {
+        $subject = $this->instanceofSubject($fetch, $scope);
+        $key = $subject !== null && $subject['kind'] === 'path' ? $subject['key'] : null;
+        $proof = $key === null ? null : $scope->proofAt($key, $fetch->getStartFilePos());
+
+        if ($key === null || $proof === null) {
+            return null;
+        }
+
+        // Read again without it, so the value holds what the proofs around this one leave and never re-enters it.
+        $guards = $scope->varGuardBindings[$key];
+        $others = array_values(array_filter($guards, fn (array $guard): bool => $guard !== $proof));
+
+        try {
+            if ($others === []) {
+                unset($scope->varGuardBindings[$key]);
+            } else {
+                $scope->varGuardBindings[$key] = $others;
+            }
+
+            $held = $this->resolve($fetch, $scope);
+        } finally {
+            $scope->varGuardBindings[$key] = $guards;
+        }
+
+        return $this->narrowed($held, $proof['classes'])->withShortCircuit(false);
     }
 
     /**
@@ -1465,60 +1493,10 @@ final class ReceiverClassResolver
             return new ReceiverType($tested);
         }
 
-        $classes = $this->narrowedClasses($arm->classes, $tested);
+        $classes = InstanceofNarrowing::classes($arm->classes, $tested);
 
         // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
         return $classes === [] ? $arm : $arm->withClasses($classes);
-    }
-
-    /**
-     * What some classes become under `instanceof` tests, each narrowed class by class; none where no class can pass.
-     *
-     * @param  list<class-string>  $classes
-     * @param  non-empty-list<class-string>  $tested
-     * @return list<class-string>
-     */
-    private function narrowedClasses(array $classes, array $tested): array
-    {
-        $narrowed = [];
-
-        foreach ($classes as $class) {
-            $narrowed = [...$narrowed, ...$this->narrowedClass($class, $tested)];
-        }
-
-        return array_values(array_unique($narrowed));
-    }
-
-    /**
-     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing. A
-     * tested interface keeps it, since a subclass may pass that test and no one class names the pair, but a tested
-     * class replaces an interface it resolves to, since that class names a value that is both.
-     *
-     * @param  class-string  $class
-     * @param  non-empty-list<class-string>  $tested
-     * @return list<class-string>
-     */
-    private function narrowedClass(string $class, array $tested): array
-    {
-        $subclasses = [];
-
-        foreach ($tested as $test) {
-            if (is_a($class, $test, true)) {
-                return [$class];
-            }
-
-            if (is_a($test, $class, true) || (interface_exists($class) && ! interface_exists($test))) {
-                $subclasses[] = $test;
-
-                continue;
-            }
-
-            if (interface_exists($class) || interface_exists($test)) {
-                return [$class];
-            }
-        }
-
-        return $subclasses;
     }
 
     /**
@@ -2370,7 +2348,7 @@ final class ReceiverClassResolver
         $backed = $this->backedArms($declared, $scope->forwardsUndeclaredMembersTo);
 
         return new ReceiverType(
-            array_any($backed, fn (string $class): bool => $this->narrowedClass($class, $tested) !== []) ? $backed : $declared,
+            array_any($backed, fn (string $class): bool => InstanceofNarrowing::classes([$class], $tested) !== []) ? $backed : $declared,
         );
     }
 

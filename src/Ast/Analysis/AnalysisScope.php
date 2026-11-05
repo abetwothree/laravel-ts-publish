@@ -31,8 +31,11 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
@@ -56,7 +59,6 @@ use ReflectionMethod;
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
- * @phpstan-type NarrowedRead array{list<string>, ReceiverType}
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -122,7 +124,6 @@ use ReflectionMethod;
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
- *      narrowedReads: list<NarrowedRead>,
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
  *      mapResultArrayed: bool,
@@ -192,15 +193,6 @@ final class AnalysisScope
      * @var non-empty-list<class-string>|null
      */
     public ?array $provenProxy = null;
-
-    /**
-     * The `$this` read paths, as property names outermost first, with what an `instanceof` ternary's proven arm holds
-     * each to while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
-     * reads them.
-     *
-     * @var list<NarrowedRead>
-     */
-    public array $narrowedReads = [];
 
     /**
      * The proof on `$this->resource` a value inside its span resolves under while the proof leaves provenProxy null,
@@ -279,8 +271,9 @@ final class AnalysisScope
      * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
      * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
      *
-     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS. Each holds
-     * for the offsets past its `after` and through its `before`.
+     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS, and those
+     * on a chain of property reads on `$this` under its proofKey(). Each holds for the offsets past its `after` and
+     * through its `before`; one a ternary's arm binds on a chain holds at every offset while the arm resolves.
      *
      * @var VarGuardBindingsMap
      */
@@ -596,6 +589,39 @@ final class AnalysisScope
     }
 
     /**
+     * The varGuardBindings key an `instanceof` proof on a subject sits under: a variable's name, PROXY_GUARDS for
+     * `$this->resource`, or `$this->` and the property names a chain of reads on `$this` spells; null for any other.
+     */
+    public static function proofKey(Expr $subject): ?string
+    {
+        if ($subject instanceof Variable) {
+            return is_string($subject->name) ? $subject->name : null;
+        }
+
+        $path = self::thisReadPath($subject);
+
+        return $path === null ? null : '$this->'.implode('->', $path);
+    }
+
+    /**
+     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
+     * for `$this->owner?->team`; null for any other expression.
+     *
+     * @return non-empty-list<string>|null
+     */
+    public static function thisReadPath(Expr $expr): ?array
+    {
+        $path = [];
+
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($path, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *
@@ -856,6 +882,27 @@ final class AnalysisScope
     public function proofAt(string $name, int $offset): ?array
     {
         return self::latestGuard($this->varGuardBindings[$name] ?? [], $offset);
+    }
+
+    /**
+     * The proofs on chains of property reads on `$this`, by key: a variable's are its own, and on an API resource the
+     * proxy's reach a nested body through provenProxy.
+     *
+     * @return VarGuardBindingsMap
+     */
+    public function thisPathProofs(): array
+    {
+        if ($this->varGuardBindings === []) {
+            return [];
+        }
+
+        $proxy = $this->hasResourceProxy() ? self::PROXY_GUARDS : null;
+
+        return array_filter(
+            $this->varGuardBindings,
+            fn (string $key): bool => $key !== $proxy && str_starts_with($key, '$this->'),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**
@@ -1189,13 +1236,15 @@ final class AnalysisScope
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
         $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
-        $this->narrowedReads = $replacesProxy ? [] : array_values(array_filter(
-            $this->narrowedReads,
-            fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
-        ));
+        $paths = $replacesProxy ? [] : array_filter(
+            $this->thisPathProofs(),
+            fn (string $key): bool => ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->')),
+            ARRAY_FILTER_USE_KEY,
+        );
 
         $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
         $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
@@ -1278,7 +1327,9 @@ final class AnalysisScope
         }
 
         $outer = $this->nameBindings();
+        $paths = $this->thisPathProofs();
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
 
         // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
         foreach ($closure->uses as $use) {
@@ -1682,7 +1733,6 @@ final class AnalysisScope
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
-            'narrowedReads' => $this->narrowedReads,
             'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
@@ -1708,7 +1758,6 @@ final class AnalysisScope
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];
-        $this->narrowedReads = $state['narrowedReads'];
         $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];

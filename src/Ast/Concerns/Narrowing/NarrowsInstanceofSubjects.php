@@ -16,7 +16,7 @@ use PhpParser\Node\Expr\Variable;
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
  * ReceiverClassResolver's receiver alike, and an analyzer's value inside an `if` block that proves `$this->resource`.
- * Hosts must also use InspectsAstNodes.
+ * Hosts must also use InspectsAstNodes and ReadsInstanceofChains.
  *
  * @phpstan-import-type VarGuardBinding from AnalysisScope
  *
@@ -35,7 +35,9 @@ trait NarrowsInstanceofSubjects
      */
     protected function resolveUnderProxyProof(Expr $value, AnalysisScope $scope, Closure $resolve): mixed
     {
-        $proof = $scope->provenProxy === null ? $scope->proofAt(AnalysisScope::PROXY_GUARDS, $value->getStartFilePos()) : null;
+        $proof = $scope->provenProxy === null && $scope->hasResourceProxy()
+            ? $scope->proofAt(AnalysisScope::PROXY_GUARDS, $value->getStartFilePos())
+            : null;
 
         if ($proof === null || $proof === $scope->appliedProxyProof) {
             return $resolve();
@@ -54,8 +56,8 @@ trait NarrowsInstanceofSubjects
 
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varGuardBindings,
-     * what the `$this->resource` proxy holds, or a `$this->prop` path's narrowedReads), then restore the scope. Null
-     * for any other subject, or for an arm that writes it.
+     * what the `$this->resource` proxy holds, or a `$this->prop` path's proof under its key), then restore the scope.
+     * Null for any other subject, or for an arm that writes it.
      *
      * @template TResult
      *
@@ -65,32 +67,28 @@ trait NarrowsInstanceofSubjects
      */
     protected function resolveNarrowed(Expr $subject, array $tested, Expr $arm, AnalysisScope $scope, Closure $resolve): mixed
     {
-        $variable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
-        $isProxy = $variable === null && $this->isProxyFetch($subject, $scope);
-        $path = $variable === null && ! $isProxy ? $this->thisReadPath($subject) : null;
+        $narrows = $this->instanceofSubject($subject, $scope);
 
-        // `$this->resource` and a `$this->prop` path are written through the `this` variable.
-        if (($variable === null && ! $isProxy && $path === null)
-            || in_array($variable ?? 'this', VariableWrites::writtenNames([$arm], $scope), true)
-        ) {
+        if ($narrows === null || in_array($narrows['variable'], VariableWrites::writtenNames([$arm], $scope), true)) {
             return null;
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $narrowed = $receivers->narrowedSubject($subject, $tested, $scope);
-        $classes = $narrowed->classes;
+        $classes = $receivers->narrowedSubject($subject, $tested, $scope)->classes;
+        $key = $narrows['key'];
 
-        if ($subject instanceof Variable && $variable !== null) {
+        if ($narrows['kind'] === 'variable') {
             // The proof holds only past the test, so a value assigned earlier and read in the arm reads the variable as
             // it was then.
-            return $scope->within(function () use ($scope, $variable, $classes, $subject): void {
-                $scope->varGuardBindings[$variable][] = ['classes' => $classes, 'after' => $subject->getEndFilePos(), 'before' => null];
+            return $scope->within(function () use ($scope, $key, $classes, $subject): void {
+                $scope->varGuardBindings[$key][] = ['classes' => $classes, 'after' => $subject->getEndFilePos(), 'before' => null];
             }, $resolve);
         }
 
-        if ($path !== null) {
-            return $scope->within(function () use ($scope, $path, $narrowed): void {
-                $scope->narrowedReads[] = [$path, $narrowed];
+        if ($narrows['kind'] === 'path') {
+            // Every read of the chain narrows by the tested classes, wherever it sits, while the arm resolves.
+            return $scope->within(function () use ($scope, $key, $tested): void {
+                $scope->varGuardBindings[$key][] = ['classes' => $tested, 'after' => PHP_INT_MIN, 'before' => null];
             }, $resolve);
         }
 

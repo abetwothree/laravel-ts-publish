@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
@@ -281,6 +280,25 @@ it('finds the guard a read falls in, the one that starts latest, or the one boun
     expect($scope->guardAt($at('post', 25)))->toBe($sameStart);
 });
 
+// One key per subject: a `$this` chain's key spells its property names whatever arrows it reads them through.
+it('keys an instanceof proof by the variable or the chain of property reads on $this it tests', function (string $subject, ?string $key) {
+    $stmts = new AstParser()->parseSource('<?php '.$subject.';');
+    $expr = $stmts[0] instanceof Stmt\Expression ? $stmts[0]->expr : null;
+
+    expect($expr)->not->toBeNull()
+        ->and(AnalysisScope::proofKey($expr))->toBe($key);
+})->with([
+    'a variable' => ['$post', 'post'],
+    '$this' => ['$this', 'this'],
+    '$this->resource' => ['$this->resource', AnalysisScope::PROXY_GUARDS],
+    'a chain of property reads on $this' => ['$this->owner?->team', '$this->owner->team'],
+    'a chain through $this->resource' => ['$this->resource->imageable', '$this->resource->imageable'],
+    'a member of a variable' => ['$post->author', null],
+    'a chain through a method call' => ['$this->owner()->team', null],
+    'a property named at runtime' => ['$this->{$name}', null],
+    'a variable named at runtime' => ['${$name}', null],
+]);
+
 // The parameter holds the value the call passed, so the guard in force at the call holds for each of its reads.
 it('passes a parameter the guard in force where its variable is passed, for every read of the parameter', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
@@ -318,6 +336,21 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
     expect($claimed)->toBe([AnalysisScope::PROXY_GUARDS, 'param'])
         ->and($inside)->toBe([])
         ->and($scope->varGuardBindings[AnalysisScope::PROXY_GUARDS])->toBe($proof);
+});
+
+// A closure binds `$this` as its caller does, so a proof on a `$this` chain reaches its body; a variable's needs a use.
+it('keeps the proofs on a $this chain for a closure\'s body, and sets the others aside', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $proof = [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]];
+    $scope->varGuardBindings = [AnalysisScope::PROXY_GUARDS => $proof, '$this->author' => $proof, 'item' => $proof];
+
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterClosureBody(new Expr\Closure),
+        fn (): array => $scope->varGuardBindings,
+    );
+
+    expect($inside)->toBe(['$this->author' => $proof])
+        ->and(array_keys($scope->varGuardBindings))->toBe([AnalysisScope::PROXY_GUARDS, '$this->author', 'item']);
 });
 
 it('lifts one gap for a read, and puts it back', function () {
@@ -430,7 +463,7 @@ it('ends a name\'s binding in exactly the tables a variable passed past its end 
     }
 });
 
-it('captures every public array table but the re-entrancy guards and the narrowed `$this` reads as a name binding', function () {
+it('captures every public array table but the re-entrancy guards as a name binding', function () {
     $tables = array_map(
         fn (ReflectionProperty $property): string => $property->getName(),
         array_filter(
@@ -438,7 +471,7 @@ it('captures every public array table but the re-entrancy guards and the narrowe
             fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
         ),
     );
-    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads'];
+    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods'];
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     expect(array_values(array_diff($tables, $notNameKeyed)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
@@ -502,7 +535,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
         'runtime', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
-        'narrowedReads', 'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(
@@ -691,22 +724,26 @@ it('assumes a callee\'s runtime class unless the call runs on this runtime insta
 it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $scope->provenProxy = [SubscribedTeam::class];
-    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)], [['author', 'team'], ReceiverType::of(Team::class)]];
-    $before = $scope->narrowedReads;
+    $scope->varGuardBindings = [
+        '$this->author' => [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]],
+        '$this->author->team' => [['classes' => [Team::class], 'after' => PHP_INT_MIN, 'before' => null]],
+        'item' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]],
+    ];
+    $before = $scope->varGuardBindings;
 
     $inside = $scope->within(
         fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
-        fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
+        fn (): array => [$scope->provenProxy, array_keys($scope->varGuardBindings)],
     );
 
     expect($inside)->toBe([$keepsProxy ? [SubscribedTeam::class] : null, $kept])
         ->and($scope->provenProxy)->toBe([SubscribedTeam::class])
-        ->and($scope->narrowedReads)->toBe($before);
+        ->and($scope->varGuardBindings)->toBe($before);
 })->with([
-    'a body that writes nothing' => [[], true, [['author'], ['author', 'team']]],
-    'an unrelated $this->marker' => [[['marker']], true, [['author'], ['author', 'team']]],
-    'a member of $this->resource' => [[['resource', 'title']], true, [['author'], ['author', 'team']]],
-    'the inner path' => [[['author', 'team']], true, [['author']]],
+    'a body that writes nothing' => [[], true, ['$this->author', '$this->author->team']],
+    'an unrelated $this->marker' => [[['marker']], true, ['$this->author', '$this->author->team']],
+    'a member of $this->resource' => [[['resource', 'title']], true, ['$this->author', '$this->author->team']],
+    'the inner path' => [[['author', 'team']], true, ['$this->author']],
     'the outer path, and every path through it' => [[['author']], true, []],
     '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
 ]);

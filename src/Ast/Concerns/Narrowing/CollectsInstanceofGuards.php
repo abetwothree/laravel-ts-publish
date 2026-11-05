@@ -40,10 +40,11 @@ use PhpParser\Node\Stmt\While_;
  * blocks it runs and past the branches that leave. CollectsLocalVarBindings composes it: the VariableWrites scan it
  * passes decides a binding or a proof is safe, and both passes read the same statement list.
  *
- * @phpstan-type VariableProofs = list<array{string, non-empty-list<class-string>, Expr}>
+ * @phpstan-type VariableProofs = list<array{InstanceofSubject, non-empty-list<class-string>, Expr}>
  *
  * @phpstan-import-type NamedWrite from VariableWrites
  * @phpstan-import-type NamedWrites from VariableWrites
+ * @phpstan-import-type InstanceofSubject from ReadsInstanceofChains
  *
  * @internal
  */
@@ -82,14 +83,14 @@ trait CollectsInstanceofGuards
      */
     protected function rewrittenThisPaths(array $stmts, AnalysisScope $scope): array
     {
-        if ($scope->provenProxy === null && $scope->narrowedReads === []) {
+        if ($scope->provenProxy === null && $scope->thisPathProofs() === []) {
             return [];
         }
 
         $paths = [];
 
         foreach (VariableWrites::of($stmts, $scope) as [$name, , $target]) {
-            $path = $name === 'this' ? $this->thisReadPath($target) : null;
+            $path = $name === 'this' ? AnalysisScope::thisReadPath($target) : null;
 
             if ($path !== null) {
                 $paths[] = $path;
@@ -165,24 +166,20 @@ trait CollectsInstanceofGuards
      *
      * @return VariableProofs
      */
-    private function instanceofProofs(Expr $cond, bool $holds): array
+    private function instanceofProofs(Expr $cond, bool $holds, AnalysisScope $scope): array
     {
         if ($cond instanceof BooleanNot) {
-            return $this->instanceofProofs($cond->expr, ! $holds);
+            return $this->instanceofProofs($cond->expr, ! $holds, $scope);
         }
 
         if (($holds && $cond instanceof BooleanAnd) || (! $holds && $cond instanceof BooleanOr)) {
-            return [...$this->instanceofProofs($cond->left, $holds), ...$this->instanceofProofs($cond->right, $holds)];
+            return [...$this->instanceofProofs($cond->left, $holds, $scope), ...$this->instanceofProofs($cond->right, $holds, $scope)];
         }
 
         $proof = $holds ? $this->instanceofProof($cond) : null;
+        $subject = $proof === null ? null : $this->instanceofSubject($proof[0], $scope);
 
-        return match (true) {
-            $proof === null => [],
-            $proof[0] instanceof Variable && is_string($proof[0]->name) => [[$proof[0]->name, $proof[1], $cond]],
-            $this->isResourceFetch($proof[0]) => [[AnalysisScope::PROXY_GUARDS, $proof[1], $cond]],
-            default => [],
-        };
+        return $proof === null || $subject === null || $subject['kind'] === 'path' ? [] : [[$subject, $proof[1], $cond]];
     }
 
     /**
@@ -222,8 +219,8 @@ trait CollectsInstanceofGuards
         $pastChain = [];
 
         foreach ([$if, ...$if->elseifs] as $branch) {
-            $this->bindBranch([...$failed, ...$this->instanceofProofs($branch->cond, true)], $branch->stmts, $scope, $writes);
-            $failed = [...$failed, ...$this->instanceofProofs($branch->cond, false)];
+            $this->bindBranch([...$failed, ...$this->instanceofProofs($branch->cond, true, $scope)], $branch->stmts, $scope, $writes);
+            $failed = [...$failed, ...$this->instanceofProofs($branch->cond, false, $scope)];
             $last = $branch->stmts === [] ? null : $branch->stmts[array_key_last($branch->stmts)];
             // A whole body's branch must leave the function; a nested block's may also jump out of its loop or switch.
             $leaving = $leaving && ($end === null
@@ -240,10 +237,10 @@ trait CollectsInstanceofGuards
             $this->bindBranch($failed, $if->else->stmts, $scope, $writes);
         }
 
-        foreach ($pastChain as [$name, $classes, $test]) {
+        foreach ($pastChain as [$subject, $classes, $test]) {
             // A body that always leaves never reaches the statements past the chain, so neither does a write inside it.
-            if (! $this->writtenWithin($name, $test->getStartFilePos(), $end, $exits, $writes, $classes, $scope)) {
-                $this->bindGuard($scope, $name, $classes, $if->getEndFilePos(), $end);
+            if (! $this->writtenWithin($subject['variable'], $test->getStartFilePos(), $end, $exits, $writes, $classes, $scope)) {
+                $this->bindGuard($scope, $subject['key'], $classes, $if->getEndFilePos(), $end);
             }
         }
     }
@@ -264,9 +261,9 @@ trait CollectsInstanceofGuards
 
         $before = $block[array_key_last($block)]->getEndFilePos();
 
-        foreach ($proofs as [$name, $classes, $test]) {
-            if (! $this->writtenWithin($name, $test->getStartFilePos(), $before, [], $writes, $classes, $scope)) {
-                $this->bindGuard($scope, $name, $classes, $block[0]->getStartFilePos() - 1, $before);
+        foreach ($proofs as [$subject, $classes, $test]) {
+            if (! $this->writtenWithin($subject['variable'], $test->getStartFilePos(), $before, [], $writes, $classes, $scope)) {
+                $this->bindGuard($scope, $subject['key'], $classes, $block[0]->getStartFilePos() - 1, $before);
             }
         }
     }
@@ -438,14 +435,14 @@ trait CollectsInstanceofGuards
     /**
      * Whether a write to the variable can land between two offsets: one that does not end before $from, nor start past
      * $to when it is set, and that sits in none of $exits, bodies that always exit before the reads it guards. A class
-     * proof's $classes pass over a write that keeps them.
+     * proof's $classes pass over a write that keeps them. `$this->resource` is written through the `this` variable.
      *
      * @param  list<array<Node\Stmt>>  $exits
      * @param  NamedWrites  $writes
      * @param  list<class-string>  $classes  the classes a class proof gives the variable; none for a non-null proof
      */
     private function writtenWithin(
-        string $name,
+        string $variable,
         int $from,
         ?int $to,
         array $exits,
@@ -453,9 +450,6 @@ trait CollectsInstanceofGuards
         array $classes = [],
         ?AnalysisScope $scope = null,
     ): bool {
-        // `$this->resource` is written through the `this` variable.
-        $variable = $name === AnalysisScope::PROXY_GUARDS ? 'this' : $name;
-
         foreach (VariableWrites::from($variable, $from, $writes) as $write) {
             [, $node, , $kind] = $write;
 

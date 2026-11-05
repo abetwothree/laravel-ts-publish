@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
@@ -23,6 +24,7 @@ use PhpParser\Node\Name;
  *
  * @phpstan-type InstanceofTest = array{Expr, class-string}
  * @phpstan-type InstanceofProof = array{Expr, non-empty-list<class-string>, 0|1}
+ * @phpstan-type InstanceofSubject = array{kind: 'variable'|'proxy'|'path', key: string, variable: string}
  *
  * @internal
  */
@@ -86,21 +88,22 @@ trait ReadsInstanceofChains
     }
 
     /**
-     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
-     * for `$this->owner?->team`; null for any other expression.
+     * What an `instanceof` test can narrow its subject as: a variable, the `$this->resource` proxy of an API resource,
+     * or a chain of property reads on `$this`, with the key its proofs sit under and the variable a write to it goes
+     * through; null for any other subject.
      *
-     * @return list<string>|null
+     * @return InstanceofSubject|null
      */
-    private function thisReadPath(Expr $expr): ?array
+    private function instanceofSubject(Expr $subject, AnalysisScope $scope): ?array
     {
-        $path = [];
+        $key = AnalysisScope::proofKey($subject);
 
-        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
-            array_unshift($path, $expr->name->toString());
-            $expr = $expr->var;
-        }
-
-        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+        return match (true) {
+            $key === null => null,
+            $subject instanceof Variable => ['kind' => 'variable', 'key' => $key, 'variable' => $key],
+            $key === AnalysisScope::PROXY_GUARDS && $scope->hasResourceProxy() => ['kind' => 'proxy', 'key' => $key, 'variable' => 'this'],
+            default => ['kind' => 'path', 'key' => $key, 'variable' => 'this'],
+        };
     }
 
     /**

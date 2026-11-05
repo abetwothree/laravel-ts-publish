@@ -25,7 +25,7 @@ These classes carry receiver inference:
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
 | [`MacroCallResolver`] | The macro a `Macroable` subject's `__call()` runs for a name it does not declare, and what that macro returns |
 | [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
-| [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`] | What an `instanceof` condition proves, and the binding its proven arm resolves under |
+| [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`], [`InstanceofNarrowing`] | What an `instanceof` condition proves, the binding its proven arm resolves under, and what its classes narrow a value's to |
 
 ## Receiver resolution
 
@@ -161,7 +161,7 @@ names and the same `->` or `?->` at each step. A method call never qualifies, be
 different value from the one the test saw.
 
 When the proven arm is the tested read itself, `narrowed()` narrows each class `R` it resolves to against the tested
-classes `T`. The first case that matches decides, whatever order the tests are written in:
+classes `T` (`InstanceofNarrowing::classes()`). The first case that matches decides, whatever order the tests are written in:
 
 1. `R` is a `T`, or a subtype of one: `R` stays.
 2. Some `T` is an interface unrelated to `R` by inheritance: `R` stays. A subtype of `R` may pass that test without
@@ -183,7 +183,7 @@ its unproven answer. A redeclaration that admits null is the exception: the test
 `instanceof Post` on `@var Post|null` records `Post`.
 
 On a `$this->prop` subject, a read in the arm of the same property names on `$this`, through `->` or `?->`, holds what
-the test leaves of the subject, its collection's element and keys included (`AnalysisScope::$narrowedReads`): under
+the test leaves of the subject, its collection's element and keys included (its proof in `varGuardBindings`): under
 `$this->imageable instanceof Post`, the arm's `$this->imageable->title` publishes `string`.
 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
@@ -594,6 +594,7 @@ These pages cover the neighbors of receiver resolution:
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
 [`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`InstanceofNarrowing`]: ../../src/Ast/Receivers/InstanceofNarrowing.php
 [`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
