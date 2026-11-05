@@ -68,6 +68,18 @@ final class ArrayMapSourcesResource extends JsonResource
         return unserialize('a:0:{}');
     }
 
+    /** Untyped, so its literal types it, beside a key read at runtime that the printed shape leaves out. */
+    public function keyedByTitle()
+    {
+        return [$this->title => 1, 'a' => 2];
+    }
+
+    /** Untyped, so its literal types it, keyed only at runtime. */
+    public function keyedById()
+    {
+        return [$this->id => 1];
+    }
+
     /** Upper-cases one name. */
     public function shout(string $name): string
     {

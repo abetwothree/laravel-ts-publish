@@ -928,6 +928,10 @@ final class ValueResult
             $result['keepsKeys'] = true;
         }
 
+        if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
+            $result['unnamedKeys'] = true;
+        }
+
         return $result;
     }
 

@@ -241,6 +241,11 @@ it('types keys() in a collect() pipeline over a list, a record and a nullable ro
     'a relation\'s keys mapped by the map arm' => ['$this->comments->keys()->map(fn ($k) => $k)->all()', 'number[]'],
     'a value nothing types' => ['collect($this->opaque())->keys()->all()', 'unknown'],
     'a record mapped first' => ['collect($this->scores)->map(fn ($v) => $v)->keys()->all()', 'unknown'],
+    'a literal keyed at runtime' => ['collect([$this->title => 1, "a" => 2])->keys()->all()', 'unknown'],
+    'a literal with a negative key' => ['collect([-3 => $this->title, "a" => 2])->keys()->all()', "(-3 | 'a')[]"],
+    'a helper\'s literal keyed at runtime' => ['collect($this->keyedByTitle())->keys()->all()', 'unknown'],
+    'a when() value, whose shape may be open' => ['collect($this->when($this->title, ["a" => 1]))->keys()->all()', 'unknown'],
+    'a when() record' => ['collect($this->when($this->title, $this->scores))->keys()->all()', 'string[]'],
 ]);
 
 // collect(null) is empty, which json_encode() writes as `[]`: a list admits that, a Record or a shape adds `never[]`.
@@ -262,6 +267,39 @@ it('types collect() of a record and of a nullable root', function (string $php, 
     'a record\'s values() mapped' => ['collect($this->scores)->values()->map(fn ($v) => $v * 2)->all()', 'number[]'],
     'a nullable list' => ['collect($this->tags ?? null)->map(fn ($t) => $t->id)->all()', 'number[]'],
     'a record filtered, whose keys a Record may lose' => ['collect($this->scores)->filter()->all()', 'unknown'],
+]);
+
+// collect() of a MissingValue a `when*()` call leaves is empty too, which json_encode() writes as `[]`.
+it('types collect() of a when*() value as possibly empty', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record, kept' => ['collect($this->when($this->title, $this->scores))', 'Record<string, number> | never[]'],
+    'a record\'s all()' => ['collect($this->when($this->title, $this->scores))->all()', 'Record<string, number> | never[]'],
+    'a shape\'s all()' => ['collect($this->when($this->title, ["a" => 1]))->all()', '{ a: number } | never[]'],
+    'a nullable record\'s all()' => ['collect($this->whenNotNull($this->options))->all()', 'Record<string, string> | never[]'],
+    'a record mapped' => ['collect($this->when($this->title, $this->scores))->map(fn ($v) => $v * 2)->all()', 'Record<string, number> | number[]'],
+    'a list, which admits []' => ['collect($this->when($this->title, $this->names()))->all()', 'string[]'],
+]);
+
+// makeHidden(), setVisible() and the other steps that drop serialized attributes leave models their interface lacks.
+it('leaves a relation chain that hides attributes unread, and keeps one that adds them', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'makeHidden()' => ['$this->comments->makeHidden("content")', 'unknown'],
+    'mergeHidden()' => ['$this->comments->mergeHidden(["content"])', 'unknown'],
+    'setHidden()' => ['$this->comments->setHidden(["content"])', 'unknown'],
+    'setVisible()' => ['$this->comments->setVisible(["id"])', 'unknown'],
+    'mergeVisible()' => ['$this->comments->mergeVisible(["id"])', 'unknown'],
+    'setAppends()' => ['$this->comments->setAppends([])', 'unknown'],
+    'withoutAppends()' => ['$this->comments->withoutAppends()', 'unknown'],
+    'makeVisible(), which only adds' => ['$this->comments->makeVisible("content")', 'Comment[]'],
+    'append(), which only adds' => ['$this->comments->append("x")', 'Comment[]'],
 ]);
 
 // The steps that keep the items are CollectionSteps' own, so the collect() and relation chains read each one alike.

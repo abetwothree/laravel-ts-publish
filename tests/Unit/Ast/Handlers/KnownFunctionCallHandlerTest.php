@@ -264,50 +264,76 @@ it('types array_keys() as the list of its array\'s keys, arm by arm', function (
     'a list, searched for a value' => ['array_keys($this->names(), "ann")', 'number[]'],
     'a shape' => ['array_keys(["a" => 1, "b" => 2])', "('a' | 'b')[]"],
     'a shape keyed by numbers and a decimal' => ['array_keys(["a" => 1, 200 => 2, "1.5" => 3, "-3" => 4])', "('a' | 200 | '1.5' | -3)[]"],
+    'a negative key' => ['array_keys([-3 => 1, "a" => 2])', "(-3 | 'a')[]"],
+    'a negative key beside a value nothing constant holds' => ['array_keys([-3 => $this->title, "a" => 2])', "(-3 | 'a')[]"],
+    'a key a constant names' => ['array_keys([PHP_INT_SIZE => 1, "a" => 2])', "(8 | 'a')[]"],
+    'a key an expression makes' => ['array_keys([1 + 1 => "x", "a" => 2])', "(2 | 'a')[]"],
+    'a class-name key' => ['array_keys([\\Workbench\\App\\Enums\\Status::class => 1, "a" => 2])', "('Workbench\\\\App\\\\Enums\\\\Status' | 'a')[]"],
+    'a key PHP numbers after a named one' => ['array_keys(["a" => $this->title, $this->id])', "('a' | 0)[]"],
     'an empty list' => ['array_keys([])', 'never[]'],
 ]);
 
 /**
- * Seeded constant arrays of 1 to 5 keys: names, quotes and spaces, decimal integers written as ints or strings, strings
- * PHP keeps as strings though they read as numbers, and an int past JavaScript's safe range. No key is negative: a
- * literal's `-3 =>` key is read as no key at all, before array_keys() is.
+ * Seeded array literals of 1 to 5 items, each beside the array PHP builds of it: a key a name, a quote, a decimal
+ * integer as an int or a string, negative or past JavaScript's safe range, a string PHP keeps though numeric, or none.
+ * A key read at runtime or a spread makes the literal's keys inexact; a value read at runtime does not.
  *
- * @return list<array<int|string, int>>
+ * @return list<array{source: string, array: array<int|string, mixed>, exact: bool}>
  */
 function arrayKeysCases(int $seed, int $cases): array
 {
     $random = new Randomizer(new Xoshiro256StarStar($seed));
-    $pool = ['a', 'b_c', "it's", 'a"b', 'x y', 'é', '0', '7', '200', '07', '1.5', '-0', ' 1', '1e3', 12, 0, 1, PHP_INT_MAX];
-    $arrays = [];
+    $pool = ['a', 'b_c', "it's", 'a"b', 'x y', 'é', '0', '7', '-3', '200', '07', '1.5', '-0', ' 1', '1e3', 12, -40, 0, 1, PHP_INT_MAX];
+    $literals = [];
 
-    for ($case = 0; $case < $cases; $case++) {
+    while (count($literals) < $cases) {
+        $items = [];
         $array = [];
+        $exact = true;
 
-        foreach (range(1, $random->getInt(1, 5)) as $value) {
-            $array[$pool[$random->getInt(0, count($pool) - 1)]] = $value;
+        try {
+            foreach (range(1, $random->getInt(1, 5)) as $value) {
+                $key = $pool[$random->getInt(0, count($pool) - 1)];
+
+                match ($random->getInt(0, 6)) {
+                    0 => [$items[] = (string) $value, $array[] = $value],
+                    1 => [$items[] = '$this->title => '.$value, $array['T'] = $value, $exact = false],
+                    2 => [$items[] = '...$this->names()', array_push($array, 'ann', 'bob'), $exact = false],
+                    3 => [$items[] = '...$this->scores', $array = [...$array, 'x' => 1, 'y' => 2], $exact = false],
+                    4 => [$items[] = var_export($key, true).' => $this->title', $array[$key] = 'T'],
+                    default => [$items[] = var_export($key, true).' => '.$value, $array[$key] = $value],
+                };
+            }
+        } catch (Error) {
+            continue;
         }
 
-        $arrays[] = $array;
+        $literals[] = ['source' => '['.implode(', ', $items).']', 'array' => $array, 'exact' => $exact];
     }
 
-    return $arrays;
+    return $literals;
 }
 
-// The engine reads each key back from the shape it prints, so the list must hold exactly the keys PHP's own
-// array_keys() returns, as JSON carries them: a list's keys as `number`, each other key as its literal.
-it('lists exactly the keys PHP holds of any constant array', function () {
-    foreach (arrayKeysCases(100, 150) as $array) {
-        $published = knownFunctionCallType('array_keys('.var_export($array, true).')');
-        $sent = array_map(
+// A literal whose keys are all known lists exactly the keys PHP's own array_keys() returns, as JSON carries them: a
+// list's keys as `number`, each other key as its literal. Any other is unknown, or admits each key it holds.
+it('lists exactly the keys PHP holds of an array literal that names each one, and no wrong key of any other', function () {
+    foreach (arrayKeysCases(100, 200) as $case) {
+        $published = knownFunctionCallType('array_keys('.$case['source'].')', ArrayMapSourcesResource::class);
+        $sent = array_values(array_unique(array_map(
             static fn (int|string $key): string => is_int($key) && abs($key) > 9_007_199_254_740_991 ? 'number' : JsEmitter::toJsLiteral($key),
-            array_keys($array),
-        );
+            array_keys($case['array']),
+        )));
         $members = explode(' | ', (string) preg_replace('/^\((.*)\)\[\]$|^(.*)\[\]$/', '$1$2', $published));
         sort($members);
-        $sent = array_values(array_unique($sent));
         sort($sent);
+        $admits = array_all(array_keys($case['array']), static fn (int|string $key): bool => in_array(is_int($key) ? 'number' : 'string', $members, true)
+            || in_array(JsEmitter::toJsLiteral($key), $members, true));
 
-        expect($members)->toBe(array_is_list($array) ? ['number'] : $sent, var_export($array, true).' published '.$published);
+        if ($case['exact']) {
+            expect($members)->toBe(array_is_list($case['array']) ? ['number'] : $sent, $case['source'].' published '.$published);
+        } else {
+            expect($published === 'unknown' || $admits)->toBeTrue($case['source'].' published '.$published);
+        }
     }
 });
 
@@ -320,6 +346,12 @@ it('leaves array_keys() of a value it cannot read as an array to unknown', funct
     'a value nothing types' => ['array_keys($this->opaque())'],
     'a relation\'s collection, which PHP throws on' => ['array_keys($this->comments)'],
     'a collect() value, which PHP throws on' => ['array_keys(collect($this->names()))'],
+    'a key read at runtime' => ['array_keys([$this->title => 1, "a" => 2])'],
+    'a key read at runtime, alone' => ['array_keys([$this->id => 1])'],
+    'a literal spreading a list' => ['array_keys([...$this->names(), "a" => 1])'],
+    'a spread of a record' => ['array_keys(["a" => 1, ...$this->scores])'],
+    'a helper\'s literal keyed at runtime' => ['array_keys($this->keyedByTitle())'],
+    'a helper\'s literal keyed only at runtime' => ['array_keys($this->keyedById())'],
 ]);
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.

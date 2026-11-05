@@ -26,6 +26,8 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 
 /**
  * An inline array literal: `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]` becomes
@@ -279,7 +281,12 @@ final class InlineArrayHandler implements ExpressionHandler
 
         // A spread whose value resolves to a bare named resource (not an array/collection of one), to a
         // bound model's toArray(), or to a bound collection's toArray(), intersects with the literal's keys.
-        return new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine));
+        $result = new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine));
+
+        // The object names only the keys written as a string or an int, so array_keys() may find others in it.
+        return array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ($item->key instanceof String_ || $item->key instanceof Int_))
+            ? $result
+            : [...$result, 'unnamedKeys' => true];
     }
 
     /**

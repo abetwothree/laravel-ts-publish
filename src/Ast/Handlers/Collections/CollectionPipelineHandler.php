@@ -62,7 +62,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         if ($listsValues) {
             array_shift($steps);
-            $rootResult = $this->listedItems($rootResult, true, false);
+            $rootResult = $this->valuesListed($rootResult);
         }
 
         // Only a list takes the steps that keep the items; any other root keeps its keys through `all()` and `map()`.
@@ -70,19 +70,26 @@ final class CollectionPipelineHandler implements ExpressionHandler
             || array_all($steps, static fn (array $step): bool => in_array($step['name'], ['all', 'map'], true)))
             ? CollectionSteps::walk($steps, false)
             : null;
-        $rootResult = $walk === null || ! $walk['keys'] ? $rootResult : $this->listedItems($rootResult, false, true);
+
+        // keys() lists the keys, which carry none of the items' channels: the root's own where it names each one.
+        if ($walk !== null && $walk['keys']) {
+            $rootResult = $this->collectedKeys($listsValues ? null : $items, $rootResult, $scope);
+        }
 
         if ($walk === null || $rootResult === null) {
             return null;
         }
 
         $listed = $this->isList($rootResult['type']);
+        $keys = $walk['keys'] ? $rootResult : null;
         $result = $walk['map'] === null ? $rootResult : $this->mappedItems(
             $walk['map'],
             $rootResult,
             // A closure: an arrow function would make PHPStan take the first read's non-null result for the re-read.
-            function () use ($items, $scope, $engine, $listsValues, $walk): ?array {
-                return $this->listedItems($this->collectedItems($items, $scope, $engine), $listsValues, $walk['keys']);
+            function () use ($items, $scope, $engine, $listsValues, $keys): ?array {
+                $reread = $keys ?? $this->collectedItems($items, $scope, $engine);
+
+                return $keys === null && $listsValues ? $this->valuesListed($reread) : $reread;
             },
             $arrayed,
             $walk['keys'] ? null : $this->elementModel($items, $scope),
@@ -106,25 +113,22 @@ final class CollectionPipelineHandler implements ExpressionHandler
     }
 
     /**
-     * The items a `collect()` root lists for its walk: its values where a leading `values()` lists them, then its keys
-     * where `keys()` does, which carry none of the items' channels; either list is keyed 0..n-1.
+     * The values a leading `values()` lists a Record's or a shape's items as, keyed 0..n-1.
      *
      * @param  ValueExpressionResult|null  $items
      * @return ValueExpressionResult|null
      */
-    private function listedItems(?array $items, bool $listsValues, bool $listsKeys): ?array
+    private function valuesListed(?array $items): ?array
     {
-        $type = $items === null ? null : $items['type'];
-        $type = $type !== null && $listsValues ? ArrayArms::valuesList($type) : $type;
-        $type = $type !== null && $listsKeys ? ArrayArms::keysList($type) : $type;
+        $type = $items === null ? null : ArrayArms::valuesList($items['type']);
 
         if ($items === null || $type === null) {
             return null;
         }
 
-        unset($items['keepsKeys']);
+        unset($items['keepsKeys'], $items['unnamedKeys']);
 
-        return $listsKeys ? ['type' => $type, 'optional' => false] : [...$items, 'type' => $type, 'optional' => false];
+        return [...$items, 'type' => $type, 'optional' => false];
     }
 
     /**

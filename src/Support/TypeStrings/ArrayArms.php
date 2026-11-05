@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 
@@ -114,9 +113,9 @@ final class ArrayArms
     }
 
     /**
-     * The keys of one arm as PHP holds them: a list's or a tuple's numbers, a Record's `string` or `number` keys, and
-     * an object literal's own, a decimal integer as the int PHP stores it; `never` for an arm holding none. Null for
-     * any other arm, or a key type that names more than `string` and `number`.
+     * The keys of one arm as PHP holds them: a list's or a tuple's numbers and a Record's `string` or `number` keys;
+     * `never` for an arm holding none. Null for any other arm: an object literal or a `Record<string, unknown>` may be
+     * a literal whose print leaves out the keys it cannot name, and a key type naming more may need an import.
      */
     public static function keysOf(string $arm): ?string
     {
@@ -127,15 +126,9 @@ final class ArrayArms
         $record = TsTypeShape::recordArguments($arm);
 
         if ($record !== null) {
-            return array_all(TsTypeShape::splitTopLevel($record[0], ['|']), static fn (string $key): bool => in_array($key, ['string', 'number'], true))
-                ? $record[0]
-                : null;
-        }
+            $named = array_all(TsTypeShape::splitTopLevel($record[0], ['|']), static fn (string $key): bool => in_array($key, ['string', 'number'], true));
 
-        $members = TsTypeShape::members($arm);
-
-        if ($members !== null) {
-            return self::memberKeys(array_column($members, 0));
+            return $named && $arm !== 'Record<string, unknown>' ? $record[0] : null;
         }
 
         return TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null ? 'number' : null;
@@ -150,6 +143,26 @@ final class ArrayArms
         $keys = self::arms($type, self::keysOf(...));
 
         return $keys === null || $keys === [] ? null : TsTypeShape::listType(array_values(array_diff($keys, ['never'])));
+    }
+
+    /**
+     * The list `array_keys()` makes of the keys an array holds: `number[]` for keys 0..n-1, `never[]` for none, else
+     * each key's literal, or `number` for an int past what a JSON number carries exactly.
+     *
+     * @param  list<int|string>  $keys
+     */
+    public static function keysListOf(array $keys): string
+    {
+        if ($keys !== [] && $keys === range(0, count($keys) - 1)) {
+            return 'number[]';
+        }
+
+        $literals = array_map(
+            static fn (int|string $key): string => is_int($key) && abs($key) > self::MAX_SAFE_INTEGER ? 'number' : JsEmitter::toJsLiteral($key),
+            $keys,
+        );
+
+        return TsTypeShape::listType($literals === [] ? [] : [implode(' | ', array_values(array_unique($literals)))]);
     }
 
     /**
@@ -239,34 +252,6 @@ final class ArrayArms
     public static function listElement(string $type): ?string
     {
         return count(TsTypeShape::splitTopLevel($type, ['|'])) === 1 ? TsTypeShape::elementType($type) : null;
-    }
-
-    /**
-     * The keys of an object literal's printed members, as the union of the literals PHP holds them as; `never` for no
-     * member, and null where one is an index signature or a key no printer writes.
-     *
-     * @param  list<string>  $printed
-     */
-    private static function memberKeys(array $printed): ?string
-    {
-        $keys = [];
-
-        foreach ($printed as $member) {
-            $key = PrintedKey::decode($member);
-
-            if ($key === null) {
-                return null;
-            }
-
-            $int = PhpArrayKey::storedInt($key);
-            $keys[] = match (true) {
-                $int === null => JsEmitter::toJsLiteral($key),
-                abs($int) > self::MAX_SAFE_INTEGER => 'number',
-                default => (string) $int,
-            };
-        }
-
-        return $keys === [] ? 'never' : implode(' | ', array_values(array_unique($keys)));
     }
 
     /**

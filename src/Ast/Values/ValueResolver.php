@@ -259,6 +259,43 @@ final class ValueResolver
     }
 
     /**
+     * The keys an array literal holds, as PHP stores them, where no item unpacks and each key a constant expression
+     * names: a keyless item numbered past the largest int key, a decimal-integer string as an int. Null otherwise.
+     *
+     * @return list<int|string>|null
+     */
+    public function literalKeys(Array_ $array, AnalysisScope $scope): ?array
+    {
+        $keys = [];
+
+        try {
+            foreach ($array->items as $item) {
+                if ($item->unpack || ($item->key === null && array_key_exists(PHP_INT_MAX, $keys))) {
+                    return null;
+                }
+
+                if ($item->key === null) {
+                    $keys[] = true;
+
+                    continue;
+                }
+
+                $key = $this->evaluateConstantExpression($item->key, $scope);
+
+                if (! is_int($key) && ! is_string($key)) {
+                    return null;
+                }
+
+                $keys[$key] = true;
+            }
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
      * X's override answers first, whoever serializes X, unless X is a model, whose JSON depends on its runtime

@@ -37,6 +37,11 @@ final class CollectionSteps
         'withRelationshipAutoloading', 'takeUntil', 'takeWhile',
     ];
 
+    /** The SAME_ITEMS steps that drop attributes or appends a model serializes, which its interface names. */
+    private const array HIDES_ATTRIBUTES = [
+        'makeHidden', 'mergeHidden', 'setHidden', 'setVisible', 'mergeVisible', 'setAppends', 'withoutAppends',
+    ];
+
     /** The collection methods that hand back some of the same items, under keys they may leave out of 0..n-1. */
     private const array SAME_ITEMS_KEYED = [
         'filter', 'reject', 'where', 'whereStrict', 'whereIn', 'whereInStrict', 'whereNotIn', 'whereNotInStrict',
@@ -102,9 +107,9 @@ final class CollectionSteps
      * Walk a chain's steps after its root as both collection handlers read them: `all()` and a step keeping the keys
      * leave them, another step keeping the items moves them as keyedAfter() says, and at most one `map()` maps them.
      *
-     * One `keys()` before it re-lists the items as their keys, where no step moved those yet. $other reads any other
-     * step before `keys()`, handing back whether the keys are out of 0..n-1 after it, or null to decline the chain, as
-     * a chain with no $other does. $eloquent says the collection is an Eloquent\Collection.
+     * One `keys()` before it re-lists the items as their keys, where no step moved those yet, and a step that hides a
+     * model's attributes declines. $other reads any other step before `keys()`, handing back whether the keys are out
+     * of 0..n-1 after it, or null to decline, as a chain with no $other does. $eloquent: an Eloquent\Collection.
      *
      * @param  list<ChainStep>  $steps
      * @param  (Closure(ChainStep, bool): ?bool)|null  $other
@@ -118,6 +123,10 @@ final class CollectionSteps
 
         foreach ($steps as $step) {
             $name = $step['name'];
+
+            if (in_array($name, self::HIDES_ATTRIBUTES, true)) {
+                return null;
+            }
 
             if ($name === 'all' || self::keepsKeys($name)) {
                 continue;

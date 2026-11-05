@@ -310,9 +310,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * `array_keys($array)` as the list of its keys, arm by arm as ArrayArms::keysOf() reads them; a search value keeps
-     * some of the same keys. A `null` arm is left out, as PHP throws a TypeError on null; null for an object, which PHP
-     * throws on too, or an arm it cannot read.
+     * `array_keys($array)` as the list of its keys: a constant array's or a literal's own, else its type's as
+     * ArrayArms::keysOf() reads them; a search value keeps some of the same keys. A `null` arm is left out, as PHP
+     * throws a TypeError on null; null for an object, which PHP throws on too, or an arm it cannot read.
      *
      * @return ValueExpressionResult|null
      */
@@ -324,9 +324,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        $keys = ArrayArms::keysList($engine->resolve($array)['type']);
-
-        return $keys === null ? null : ['type' => $keys, 'optional' => false];
+        return $this->collectedKeys($array, $engine->resolve($array), $scope);
     }
 
     /**

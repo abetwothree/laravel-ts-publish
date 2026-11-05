@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp;
 
@@ -19,7 +21,7 @@ use PhpParser\Node\Expr\BinaryOp;
  *
  * Doesn't delegate to ValueResult::analyzeClosureUnion(): the left operand's `null` never reaches the result, so its
  * arm is unioned with that `null` stripped, unless the call of a closure or Inertia prop `??` returns whole brings it.
- * Only operands contributing a result member get their channels merged.
+ * A left holding a collection is returned whole. Only operands contributing a result member get their channels merged.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -38,6 +40,12 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
     {
         if ($expr instanceof BinaryOp\Coalesce) {
             $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
+
+            // A collection is an object, never null, so `??` hands it back whole and never runs its right operand.
+            if ($this->holdsCollection($expr->left, $leftResult, $scope)) {
+                return $leftResult;
+            }
+
             // An object is never null, so `??` returns it whole and Inertia sends the null its call returns. Inertia
             // sends a callable a called closure returns as `{}`, which no type read here admits, so it reads as before.
             $held = $leftResult['type'] === 'unknown' || $engine->reading()->encodes()
@@ -84,5 +92,22 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         return null;
+    }
+
+    /**
+     * Whether an operand holds a collection on every path: a type with no `null` arm, which the receiver resolver
+     * reads as a collection that no `?->` can end as null.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function holdsCollection(Expr $operand, array $result, AnalysisScope $scope): bool
+    {
+        if ($result['type'] === 'unknown' || TsTypeString::hasNullArm($result['type'])) {
+            return false;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($operand, $scope);
+
+        return $receiver !== null && ! $receiver->shortCircuits && $receiver->within([Enumerable::class]);
     }
 }
