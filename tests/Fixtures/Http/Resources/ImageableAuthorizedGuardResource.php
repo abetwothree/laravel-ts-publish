@@ -20,7 +20,7 @@ final class ImageableAuthorizedGuardResource extends JsonResource
     public function toArray(Request $request): array
     {
         if ($this->imageable instanceof Post) {
-            abort_if($request->user()?->cannot('view', $this->resource) === true, 403);
+            $request->user()?->cannot('view', $this->resource);
 
             return ['k' => $this->imageable->getKey()];
         }

@@ -189,7 +189,7 @@ the test leaves of the subject, its collection's element and keys included (its 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
 holds `Post`, not every target. It narrows a `$this->prop` chain as the ternary does, inside each block it proves and
-past a guard that leaves. On an API resource it narrows `$this->resource` for each value inside a block it
+past a guard that leaves, while every call between the test and the read is one `ThisPathWrites` knows cannot reach it. On an API resource it narrows `$this->resource` for each value inside a block it
 proves, so a collection's items read as the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
 
 A subject method the proven arm or block calls as a value reads its body with `$this->resource` backed by the one model

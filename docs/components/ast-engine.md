@@ -494,14 +494,12 @@ in some form ([By-reference calls](#by-reference-calls)); neither sees one on a 
 through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a
 value the member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation
 of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
-ends at each. [`ThisPathWrites`] answers for a chain on `$this`: an assignment to it or to a chain it reads through,
-`unset()` or a by-reference argument of either, a call on `$this` or on a chain it reads through, the conditional
-helpers `JsonResource` declares aside, `$this` or a chain it reads through passed to any call but an ability check on an
-`Authorizable`, a `Gate` check or Laravel's `route()` or `url()`, and a callable value called, or passed from a local
-whose write makes one, end its proof; a local whose write holds `$this` or a chain stands for it. On an API resource a
-chain the subject does not declare reads through `$this->resource`. Only a write through the
-chain itself keeps it, by `keepsProvenClass()`'s rule. An `if` proof on a chain no class names reads as its classes,
-guarded, so no conditional guess publishes.
+ends at each. [`ThisPathWrites`] answers for a chain on `$this` by an allowlist: an assignment to it or to a chain it
+reads through, a by-reference argument or `unset()` of either, and a write or `unset()` through any local end its
+proof, and so does every call `safeCall()` does not know to be safe. Only a write through the chain itself keeps it,
+by `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through
+`$this->resource`. An `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess
+publishes.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an

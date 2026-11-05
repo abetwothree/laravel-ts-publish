@@ -18,14 +18,21 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CommentsGuardReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAbilityGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasCallGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasOfAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasPassGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableArrayAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorizedGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBlockGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBranchGuardsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableClosureRequestGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableCoalesceAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableForeachAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyPassGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableReassignedRequestGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableSafeCallsGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
@@ -358,7 +365,29 @@ it('narrows no read of a $this->prop path past a call that may replace what it r
     '$this->resource passed to a can() that is no Authorizable' => [ImageableAbilityGuardResource::class],
     'a local holding $this->resource, called on' => [ImageableProxyAliasGuardResource::class],
     'a local holding $this, passed to a helper' => [ImageableThisAliasGuardResource::class],
+    'a closure parameter $request that is no Request, its user()\'s can() given $this->resource' => [ImageableClosureRequestGuardResource::class],
+    'the $request parameter replaced before the test' => [ImageableReassignedRequestGuardResource::class],
+    'an element of an array holding $this->resource, called on' => [ImageableArrayAliasGuardResource::class],
+    'a local copied from one holding $this->resource, passed to a helper' => [ImageableAliasOfAliasGuardResource::class],
+    'a local set to $this->resource ?? null, called on' => [ImageableCoalesceAliasGuardResource::class],
+    'a foreach value over [$this->resource], called on' => [ImageableForeachAliasGuardResource::class],
 ]);
+
+// A static helper given the chain's own member, and when() given a closure reading it, cannot reach the chain (R49).
+it('narrows a $this->prop path past calls that cannot reach it', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $user = new User;
+    $user->forceFill(['id' => 1, 'name' => 'Ada']);
+    $sends = function (Model $imageable): string {
+        $image = new Image;
+        $image->setRelation('imageable', $imageable);
+
+        return (string) json_encode(new ImageableSafeCallsGuardResource($image)->resolve(Request::create('/')));
+    };
+
+    expect(publishedResourceKeyTypes(ImageableSafeCallsGuardResource::class, Image::class))->toBe(['t' => 'string | null', 'w?' => 'string | null'])
+        ->and([$sends(blockItemsPost()), $sends($user)])->toBe(['{"t":"Banana","w":"Banana"}', '{"t":null,"w":null}']);
+});
 
 // An authorization check only reads the model it is given, so the proof holds past it.
 it('narrows a $this->prop path past an authorization check given $this->resource', function () {

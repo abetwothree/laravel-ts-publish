@@ -498,14 +498,14 @@ Check which spelling you wrote before you assume a value is `unknown`:
   stores a constant its column holds, such as `$x->title = 'Draft'`, or names no column or relation, such as
   `$x->seen = true`. A chain of property reads on `$this`, such as `$this->imageable`, binds the same way, each
   spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Besides a write to the
-  chain or one it reads through, `unset()` of it, passing it by reference, or a call on `$this`, such as
-  `$this->reload()` or `$this->getKey()`, or on a chain it reads through, such as `$this->resource->refresh()`, means
-  no binding; `JsonResource`'s own helpers, such as `whenLoaded()`, do not. So does passing `$this` or a chain it reads
-  through to any call, such as `PostResource::make($this->resource)`, but `can()`, `cannot()` or `canAny()` on an
-  `Authorizable` such as `$request->user()`, a `Gate` check, or Laravel's `route()` or `url()`, and calling a closure
-  or callable variable, even one made before the test, or passing a local that holds one to any call, such as
-  `$this->when($cond, $swap)`. A local holding `$this`, `$this->resource` or a chain the test's reads through, such as
-  `$model = $this->resource;`, counts as that chain for each of these.
+  chain or a chain it reads through, a write or `unset()` through any local means no binding, as does any call but a
+  known-safe one: `JsonResource`'s own helpers such as `when()` or `whenLoaded()`, `can()`, `cannot()` or `canAny()` on
+  `auth()->user()` or on `->user()` of the method's own request parameter, a `Gate` check, Laravel's `route()` or
+  `url()`, or a call whose receiver and arguments hold no local, no `$this` or `$this->resource`, and no chain the
+  test's chain reads through, such as `Str::limit($this->imageable->title, 50)`. A closure given to one may return
+  only what such a call may take, its own parameters aside. One call outside that list between the test and a read,
+  such as `$this->reload()`, `PostResource::make($this->resource)` or a call on a local, publishes every read of the
+  chain unnarrowed. A gate or policy callback a `Gate` or ability check runs is trusted, even one that writes the model.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads

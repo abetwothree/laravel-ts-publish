@@ -1353,7 +1353,7 @@ describe('narrowing', function () {
         'unset() of a key no column or relation types' => ['unset($this->author[\'seen\']);', ['$this->author' => [[[User::class], 'unset($this->author[\'seen\']); $x = 1;']]]],
         'a method the subject declares' => ['$this->toArray($request);', []],
         'a method the subject declares, called through static' => ['static::toArray($request);', []],
-        'a method JsonResource declares, called through parent' => ['parent::toArray($request);', ['$this->author' => [[[User::class], 'parent::toArray($request); $x = 1;']]]],
+        'a method JsonResource declares, called through parent' => ['parent::toArray($request);', []],
         'a method JsonResource forwards to the model' => ['$this->refresh();', []],
         'a call on what the chain reads through' => ['$this->resource->refresh();', []],
         'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
@@ -1380,41 +1380,45 @@ describe('narrowing', function () {
         'Gate::denies() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource); $x = 1;']]]],
         'route() given $this->resource' => ['route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]],
         'url() given $this->resource' => ['url(\'posts\', [$this->resource]);', ['$this->author' => [[[User::class], 'url(\'posts\', [$this->resource]); $x = 1;']]]],
+        'a static helper given the chain\'s own member' => ['\\Illuminate\\Support\\Str::limit($this->author->name, 50);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Str::limit($this->author->name, 50); $x = 1;']]]],
+        'a class constant passed' => ['strlen(\\Workbench\\App\\Models\\Post::class);', ['$this->author' => [[[User::class], 'strlen(\\Workbench\\App\\Models\\Post::class); $x = 1;']]]],
+        'a conditional helper given a closure that reads the chain' => ['$this->when(true, fn () => $this->author->name);', ['$this->author' => [[[User::class], '$this->when(true, fn () => $this->author->name); $x = 1;']]]],
+        'a call given a closure that returns nothing' => ['collect([1])->each(function (): void {});', ['$this->author' => [[[User::class], 'collect([1])->each(function (): void {}); $x = 1;']]]],
+        'a call given a closure that returns its own parameter\'s member' => ['$this->comments->map(fn ($c) => $c->id);', ['$this->author' => [[[User::class], '$this->comments->map(fn ($c) => $c->id); $x = 1;']]]],
+        'a conditional helper given a closure that calls a method of $this' => ['$this->when(true, fn () => $this->toArray(request()));', []],
+        'a call given a closure that returns $this->resource' => ['value(fn () => $this->resource);', []],
+        'a call on what a conditional helper returns' => ['$this->whenLoaded(\'author\')->refresh();', []],
+        'a call inside a closure, on that closure\'s own parameter' => ['$this->comments->map(fn ($c) => $c->getKey());', []],
+        'a callable a property holds, invoked' => ['($this->marker)();', []],
+        'an anonymous class built' => ['new class {};', []],
+        'a static name of the subject' => ['strlen(static::class);', []],
     ]);
 
-    // A callable a local holds may run in the call it is passed to, and may replace the chain there (R46).
-    test('binds a test on a $this chain unless a local holding a callable is passed in its span', function (string $before, string $body, array $bindings) {
+    // A local may hold anything, the chain or a callable that swaps it included, so a call reading one, or a write
+    // through one, ends the proof (R49).
+    test('binds a test on a $this chain unless a call in its span reads a local or a write goes through one', function (string $before, string $body, array $bindings) {
         $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
 
         expect(blockNarrowingBindings($before.$test.$body.' $x = 1; }', seed: true))->toBe($bindings);
     })->with([
-        'a closure passed to a conditional helper' => ['$swap = function () {};', '$this->when(true, $swap);', []],
-        'an arrow function passed to array_map()' => ['$swap = fn ($i) => $i;', 'array_map($swap, [1]);', []],
-        'a first-class callable passed to each()' => ['$swap = $this->toArray(...);', 'collect([1])->each($swap);', []],
-        'a closure passed to tap()' => ['$swap = function () {};', 'tap($x, $swap);', []],
-        'a closure in an array argument' => ['$swap = function () {};', 'call_user_func_array(\'array_map\', [$swap, [1]]);', []],
-        'a closure assigned in the block' => ['', '$swap = function () {}; $this->when(true, $swap);', []],
-        'a local holding no callable' => ['$value = 1;', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
-        'a variable no write reaches' => ['', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
-    ]);
-
-    // A local holding `$this`, a chain the proof's reads through, or an array of them stands for that chain (R48).
-    test('binds a test on a $this chain unless a local standing for a chain it reads through may change it', function (string $before, string $body, array $bindings) {
-        $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
-
-        expect(blockNarrowingBindings($before.$test.$body.' $x = 1; }', seed: true))->toBe($bindings);
-    })->with([
+        'a closure local passed to a conditional helper' => ['$swap = function () {};', '$this->when(true, $swap);', []],
+        'an arrow function local passed to array_map()' => ['$swap = fn ($i) => $i;', 'array_map($swap, [1]);', []],
+        'a first-class callable local passed to each()' => ['$swap = $this->toArray(...);', 'collect([1])->each($swap);', []],
+        'a closure local inside an array argument' => ['$swap = function () {};', 'call_user_func_array(\'array_map\', [$swap, [1]]);', []],
+        'a closure assigned in the block, then passed' => ['', '$swap = function () {}; $this->when(true, $swap);', []],
+        'a local holding no callable, passed to a conditional helper' => ['$value = 1;', '$this->when(true, $value);', []],
+        'a variable no write reaches, passed' => ['', '$this->when(true, $value);', []],
         'a call on a local holding $this->resource' => ['$model = $this->resource;', '$model->refresh();', []],
-        'a local holding $this->resource, passed' => ['$model = $this->resource;', 'tap($model);', []],
         'a local holding $this, passed' => ['$self = $this;', 'tap($self);', []],
         'an array holding $this, passed' => ['$swap = [$this, \'toArray\'];', 'array_map($swap, [1]);', []],
-        'a write through a local holding $this->resource to the member it forwards' => ['$model = $this->resource;', '$model->author = null;', []],
+        'a conditional helper on a local holding $this' => ['$self = $this;', '$self->whenLoaded(\'author\');', []],
+        'a local holding the chain\'s own value, passed' => ['$author = $this->author;', 'tap($author);', []],
+        'a call on a local holding another chain' => ['$other = $this->marker;', '$other->refresh();', []],
+        'a write through a local holding $this->resource' => ['$model = $this->resource;', '$model->marker = 1;', []],
+        'a write through a local holding no chain' => ['$other = new \\stdClass;', '$other->author = null;', []],
         'unset() through a local holding $this' => ['$self = $this;', 'unset($self->author);', []],
-        'a write through a local holding $this->resource to another member' => ['$model = $this->resource;', '$model->marker = 1;', ['$this->author' => [[[User::class], '$model->marker = 1; $x = 1;']]]],
-        'a JsonResource helper on a local holding $this' => ['$self = $this;', '$self->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$self->whenLoaded(\'author\'); $x = 1;']]]],
-        'a local holding the chain\'s own value, passed' => ['$author = $this->author;', 'tap($author);', ['$this->author' => [[[User::class], 'tap($author); $x = 1;']]]],
-        'a local holding another chain, called on' => ['$other = $this->marker;', '$other->refresh();', ['$this->author' => [[[User::class], '$other->refresh(); $x = 1;']]]],
-        'a local holding no chain on $this, written through' => ['$other = new \\stdClass;', '$other->author = null;', ['$this->author' => [[[User::class], '$other->author = null; $x = 1;']]]],
+        'a local bound and read in no call' => ['', '$name = $this->author->name; $copy = $name;', ['$this->author' => [[[User::class], '$name = $this->author->name; $copy = $name; $x = 1;']]]],
+        'unset() of a local itself' => ['$value = 1;', 'unset($value);', ['$this->author' => [[[User::class], 'unset($value); $x = 1;']]]],
     ]);
 
     test('binds a test on a $this chain past route() only where it runs Laravel\'s helper', function () {
