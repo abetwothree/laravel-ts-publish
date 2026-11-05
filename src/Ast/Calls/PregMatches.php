@@ -18,22 +18,26 @@ final class PregMatches
     /** The closing delimiter of each bracket-style opening one; any other delimiter closes itself. */
     private const array CLOSING = ['(' => ')', '[' => ']', '{' => '}', '<' => '>'];
 
-    /** The verbs PCRE reads only at the very start of a pattern, such as `(*UTF8)`. */
-    private const string LEADING_VERBS = '/^(?:\(\*[A-Z_][A-Z0-9_]*(?:=\d+)?\))*/';
+    /** The options PCRE reads only at the very start of a pattern, such as `(*UTF8)`, and no backtracking verb. */
+    private const string LEADING_VERBS = '/^(?:\(\*(?!(?:F|FAIL|ACCEPT|COMMIT|PRUNE|SKIP|THEN)\))[A-Z_][A-Z0-9_]*(?:=\d+)?\))*/';
 
-    /** The delimiter the probe pattern takes, which no pattern this reads holds. */
-    private const string PROBE_DELIMITER = "\x01";
+    /** A verb whose name PHP sends under `MARK` when the match passes it; `(*SKIP:name)` only looks a mark up. */
+    private const string MARK_VERB = '/\(\*(?:MARK|PRUNE|THEN|COMMIT|ACCEPT)?:/';
+
+    /** The delimiters the probe pattern may take, the first the pattern does not hold. */
+    private const array PROBE_DELIMITERS = ["\x01", "\x02", "\x03", "\x04", '~', '#', '%', '@', '!', ';'];
 
     /** @var array<string, list<int|string>|null> */
     private static array $groups = [];
 
     /**
-     * The type of the matches a call writes for a pattern and its flags, or null for flags the function rejects or a
-     * pattern PCRE does not compile.
+     * The type of the matches a call writes for a pattern and its flags, or null for flags the function rejects, a
+     * pattern PCRE does not compile, or marks in pattern order, which PHP keys by the matches that passed one.
      */
     public static function type(string $pattern, int $flags, bool $all): ?string
     {
         $groups = self::groups($pattern);
+        $marks = preg_match(self::MARK_VERB, $pattern) === 1;
         $valid = $all
             ? ($flags & ~(PREG_PATTERN_ORDER | PREG_SET_ORDER | PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL)) === 0
                 && ($flags & (PREG_PATTERN_ORDER | PREG_SET_ORDER)) !== (PREG_PATTERN_ORDER | PREG_SET_ORDER)
@@ -50,10 +54,12 @@ final class PregMatches
             : ($nullable ? 'string | null' : 'string');
 
         return match (true) {
-            ! $all => self::matched($groups, $whole, $group, ! $nullable).(self::named($groups) ? ' | never[]' : ''),
-            ($flags & PREG_SET_ORDER) !== 0 => TsTypeShape::listType([self::matched($groups, $whole, $group, ! $nullable)]),
+            ! $all => self::matched($groups, $whole, $group, ! $nullable, $marks)
+                .(self::named($groups) || $marks ? ' | never[]' : ''),
+            ($flags & PREG_SET_ORDER) !== 0 => TsTypeShape::listType([self::matched($groups, $whole, $group, ! $nullable, $marks)]),
+            $marks => null,
             // Pattern order keys every group, a match or none, each the list of what it took in each match.
-            default => self::matched($groups, TsTypeShape::listType([$whole]), TsTypeShape::listType([$group]), false),
+            default => self::matched($groups, TsTypeShape::listType([$whole]), TsTypeShape::listType([$group]), false, false),
         };
     }
 
@@ -82,37 +88,37 @@ final class PregMatches
     }
 
     /**
-     * The pattern wrapped in a group repeated zero times, which matches the empty string without entering it; null when
-     * the pattern has no delimiters or holds the probe's own.
+     * The pattern wrapped in a DEFINE group, which matches the empty string without entering it, where PCRE fails some
+     * leading `(*F)|` in a group repeated zero times; null when the pattern has no delimiters or holds every probe one.
      *
-     * `\E` ends a `\Q` left open and a newline ends an `x`-flag comment, so neither swallows the closing parenthesis.
+     * `\E` ends a `\Q` left open, and `\r\n\0` ends an `x`-flag comment under each newline convention a verb can set.
      */
     private static function probe(string $pattern): ?string
     {
         $start = strspn($pattern, " \t\n\r\v\f");
         $open = $pattern[$start] ?? '';
         $end = $open === '' || ctype_alnum($open) || $open === '\\' ? false : strrpos($pattern, self::CLOSING[$open] ?? $open);
+        $delimiter = array_find(self::PROBE_DELIMITERS, static fn (string $candidate): bool => ! str_contains($pattern, $candidate));
 
-        if ($end === false || $end <= $start || str_contains($pattern, self::PROBE_DELIMITER)) {
+        if ($end === false || $end <= $start || $delimiter === null) {
             return null;
         }
 
         $body = substr($pattern, $start + 1, $end - $start - 1);
         $verbs = preg_match(self::LEADING_VERBS, $body, $leading) === 1 ? $leading[0] : '';
 
-        return self::PROBE_DELIMITER.$verbs.'(?:'.substr($body, strlen($verbs))."\\E\n){0}"
-            .self::PROBE_DELIMITER.substr($pattern, $end + 1);
+        return $delimiter.$verbs.'(?(DEFINE)(?:'.substr($body, strlen($verbs))."\\E\r\n\0))".$delimiter.substr($pattern, $end + 1);
     }
 
     /**
-     * One match's groups: a list while no group is named, else an object keyed as PHP keys it, each group optional
-     * when PHP drops the trailing groups that did not take part.
+     * One match's groups: a list while no group is named and no verb marks it, else an object keyed as PHP keys it,
+     * each group optional when PHP drops the trailing groups that did not take part, and the mark when one may.
      *
      * @param  list<int|string>  $groups
      */
-    private static function matched(array $groups, string $whole, string $group, bool $optional): string
+    private static function matched(array $groups, string $whole, string $group, bool $optional, bool $marks): string
     {
-        if (! self::named($groups)) {
+        if (! self::named($groups) && ! $marks) {
             return TsTypeShape::listType([$groups === [] ? $whole : $group]);
         }
 
@@ -122,7 +128,7 @@ final class PregMatches
             $members[] = JsEmitter::validJsObjectKey((string) $key).($optional ? '?: ' : ': ').$group;
         }
 
-        return '{ '.implode('; ', $members).' }';
+        return '{ '.implode('; ', [...$members, ...($marks ? ['MARK?: string'] : [])]).' }';
     }
 
     /**

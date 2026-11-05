@@ -186,6 +186,28 @@ it('types preg_match()\'s and preg_match_all()\'s matches from the pattern\'s gr
     'the n flag, which captures only named groups' => ['preg_match("/(a)(?<n>b)/n", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
     'a leading verb' => ['preg_match("/(*UTF8)(?<n>a)/", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
     'bracket delimiters' => ['preg_match("{(?<n>a)}i", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'a failing verb leading the pattern' => ['preg_match("/(*F)|(B)/", "b", $x);', 'string[]'],
+    'a failing verb leading a named pattern' => ['preg_match("/(*FAIL)|(?<n>B)/", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'a raw control byte' => ['preg_match("/[\x01]?(B)/", "b", $x);', 'string[]'],
+    'a raw control byte range' => ['preg_match("/[^\x01-\x7F](?<n>B)/", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'every probe delimiter' => ["preg_match(\"\x01[\x02\x03\x04~#%@!;](B)\x01\", \"b\", \$x);", null],
+    'a CRLF newline convention with a trailing comment' => ['preg_match("/(*CRLF)(?<n>B)#(?<c>c)/x", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'a CR newline convention with a trailing comment' => ['preg_match("/(*CR)(?<n>B)#(?<c>c)/x", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'a NUL newline convention with a trailing comment' => ['preg_match("/(*NUL)(?<n>B)#(?<c>c)/x", "b", $x);', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'a CRLF newline convention, unnamed' => ['preg_match("/(*CRLF)(B)#c/x", "b", $x);', 'string[]'],
+    'a mark' => ['preg_match("/(*:mk)(B)/", "b", $x);', '{ "0": string; "1"?: string; MARK?: string } | never[]'],
+    'a mark with offsets, which stays a string' => [
+        'preg_match("/(*:mk)(B)/", "b", $x, PREG_OFFSET_CAPTURE);',
+        '{ "0": [string, number]; "1"?: [string, number]; MARK?: string } | never[]',
+    ],
+    'a MARK verb beside a named group unmatched as null' => [
+        'preg_match("/(*MARK:mk)(?<n>B)/", "b", $x, PREG_UNMATCHED_AS_NULL);',
+        '{ "0": string; n: string | null; "1": string | null; MARK?: string } | never[]',
+    ],
+    'a named PRUNE' => ['preg_match("/(*PRUNE:p)B/", "b", $x);', '{ "0": string; MARK?: string } | never[]'],
+    'a named THEN' => ['preg_match("/(*THEN:t)B/", "b", $x);', '{ "0": string; MARK?: string } | never[]'],
+    'a named SKIP, which only looks a mark up' => ['preg_match("/B(*SKIP:s)/", "b", $x);', 'string[]'],
+    'a named FAIL, which never passes its mark' => ['preg_match("/(*F:f)|B/", "b", $x);', 'string[]'],
     'PREG_OFFSET_CAPTURE' => ['preg_match("/(a)/", "b", $x, PREG_OFFSET_CAPTURE);', '[string, number][]'],
     'PREG_UNMATCHED_AS_NULL' => ['preg_match("/(a)(b)?/", "b", $x, PREG_UNMATCHED_AS_NULL);', '(string | null)[]'],
     'PREG_UNMATCHED_AS_NULL with no group' => ['preg_match("/a/", "b", $x, PREG_UNMATCHED_AS_NULL);', 'string[]'],
@@ -216,6 +238,11 @@ it('types preg_match()\'s and preg_match_all()\'s matches from the pattern\'s gr
         'preg_match_all("/(?<f>B)(x)?/", "b", $x, PREG_SET_ORDER);',
         '{ "0": string; f?: string; "1"?: string; "2"?: string }[]',
     ],
+    'preg_match_all() of a mark in set order' => [
+        'preg_match_all("/(*:mk)(B)/", "b", $x, PREG_SET_ORDER);',
+        '{ "0": string; "1"?: string; MARK?: string }[]',
+    ],
+    'preg_match_all() of a mark in pattern order, which PHP keys by the matches that passed it' => ['preg_match_all("/(*:mk)(B)/", "b", $x);', null],
     'a computed pattern' => ['preg_match($p, "b", $x);', null],
     'a pattern PCRE rejects' => ['preg_match("/(a/", "b", $x);', null],
     'an unknown modifier' => ['preg_match("/a/b/", "b", $x);', null],
@@ -226,11 +253,11 @@ it('types preg_match()\'s and preg_match_all()\'s matches from the pattern\'s gr
 ]);
 
 /**
- * Seeded PCRE patterns with a subject each matches: escapes, classes holding parentheses, groups named three ways,
- * non-capturing groups, lookarounds, `\Q…\E`, branch resets and comments, one `\Q` or comment left open at the end,
- * under random delimiters and flags.
+ * Seeded PCRE patterns with a subject each matches: escapes, classes holding parentheses or raw control bytes, groups
+ * named three ways, non-capturing groups, lookarounds, `\Q…\E`, branch resets, comments and marks, one `\Q` or comment
+ * left open at the end, behind newline-convention verbs and a failing `(*F)|`, under random delimiters and flags.
  *
- * @return list<array{pattern: string, subject: string}>
+ * @return list<array{pattern: string, subject: string, marked: bool}>
  */
 function pregPatternCases(int $seed, int $cases): array
 {
@@ -239,61 +266,70 @@ function pregPatternCases(int $seed, int $cases): array
 
     while (count($patterns) < $cases) {
         $names = 0;
+        $marked = false;
         $flags = implode('', array_filter(['i', 'x', 'n', 'U', 's'], fn (): bool => $random->getInt(0, 3) === 0));
         $extended = str_contains($flags, 'x');
-        $atom = function (int $depth) use (&$atom, $random, &$names, $extended): array {
+        $atom = function (int $depth) use (&$atom, $random, &$names, &$marked, $extended): array {
             $inner = fn (): array => $depth > 2 ? ['a', 'a'] : $atom($depth + 1);
 
-            return match ($random->getInt($depth > 2 ? 0 : 0, $depth > 2 ? 5 : 16)) {
+            return match ($random->getInt(0, $depth > 2 ? 10 : 20)) {
                 0 => ['b', 'b'],
                 1 => ['\\(', '('],
                 2 => ['[()]', ')'],
                 3 => ['[^)]', 'q'],
                 4 => ['\\Q(?<z>\\E', '(?<z>'],
                 5 => [$extended ? " #(?<c>x)\n" : '(?#(x)', ''],
-                6 => (function () use ($inner): array {
+                6 => ["[\x01]?", ''],
+                7 => ["[^\x01-\x7F]", "\xC3"],
+                8 => (function () use ($random, &$marked): array {
+                    $marked = true;
+
+                    return [$random->getInt(0, 1) === 0 ? '(*:mk)' : '(*MARK:m)', ''];
+                })(),
+                9 => ['(?!z)', ''],
+                10 => ['(?<=b)', ''],
+                11 => (function () use ($inner): array {
                     [$p, $s] = $inner();
 
                     return ['('.$p.')', $s];
                 })(),
-                7 => (function () use ($inner, &$names): array {
+                12 => (function () use ($inner, &$names): array {
                     [$p, $s] = $inner();
 
                     return ['(?<n'.++$names.'>'.$p.')', $s];
                 })(),
-                8 => (function () use ($inner, &$names): array {
+                13 => (function () use ($inner, &$names): array {
                     [$p, $s] = $inner();
 
                     return ['(?P<n'.++$names.'>'.$p.')', $s];
                 })(),
-                9 => (function () use ($inner, &$names): array {
+                14 => (function () use ($inner, &$names): array {
                     [$p, $s] = $inner();
 
                     return ["(?'n".++$names."'".$p.')', $s];
                 })(),
-                10 => (function () use ($inner): array {
+                15 => (function () use ($inner): array {
                     [$p, $s] = $inner();
 
                     return ['(?:'.$p.')', $s];
                 })(),
-                11 => (function () use ($inner): array {
+                16 => (function () use ($inner): array {
                     [$p, $s] = $inner();
 
                     return ['(?='.$p.')'.$p, $s];
                 })(),
-                12 => ['(?!z)', ''],
-                13 => (function () use ($inner): array {
+                17 => (function () use ($inner): array {
                     [$p, $s] = $inner();
 
                     return ['('.$p.')?', $s];
                 })(),
-                14 => (function () use ($inner): array {
+                18 => (function () use ($inner): array {
                     [$p, $s] = $inner();
                     [$q] = $inner();
 
                     return ['(?|('.$p.')|('.$q.')(c))', $s];
                 })(),
-                15 => (function () use ($inner): array {
+                19 => (function () use ($inner): array {
                     [$p, $s] = $inner();
 
                     return ['(?:'.$p.'|(z))', $s];
@@ -321,12 +357,15 @@ function pregPatternCases(int $seed, int $cases): array
             default => [$pattern, $subject],
         };
 
+        // A newline convention other than LF ends a comment elsewhere; a verb only PCRE reads leads the pattern.
+        $verb = ['', '', '(*CR)', '(*CRLF)', '(*NUL)', '(*ANYCRLF)', '(*UTF8)'][$random->getInt(0, 6)];
+        $failing = $random->getInt(0, 3) === 0 ? '(*F)|' : '';
         [$open, $close] = [['/', '/'], ['~', '~'], ['%', '%'], ['{', '}'], ['@', '@']][$random->getInt(0, 4)];
-        $pattern = $open.$pattern.$close.$flags;
+        $pattern = $open.$verb.$failing.$pattern.$close.$flags;
 
         // A branch reset names a group twice only when each branch names it alike, so PCRE rejects the rest.
         if (@preg_match($pattern, $subject) === 1) {
-            $patterns[] = ['pattern' => $pattern, 'subject' => $subject];
+            $patterns[] = ['pattern' => $pattern, 'subject' => $subject, 'marked' => $marked];
         }
     }
 
@@ -350,18 +389,20 @@ function pregMatchesKeys(string $type): ?array
 }
 
 // PHP's own preg_match() keys every group of a pattern under PREG_UNMATCHED_AS_NULL, so the published keys are those.
-it('names exactly the groups PHP\'s own preg_match() keys, for any pattern', function () {
+it('names exactly the groups PHP\'s own preg_match() keys, and the mark it may add, for any pattern', function () {
     foreach (pregPatternCases(8, 300) as $case) {
         preg_match($case['pattern'], $case['subject'], $sent, PREG_UNMATCHED_AS_NULL);
         $source = var_export($case['pattern'], true);
         $nullable = pregMatchesType("preg_match({$source}, \$s, \$m, PREG_UNMATCHED_AS_NULL);");
         $bare = pregMatchesType("preg_match({$source}, \$s, \$m);");
-        $keys = array_map(strval(...), array_keys($sent));
-        $listed = array_is_list($sent);
+        $groups = array_values(array_filter(array_map(strval(...), array_keys($sent)), fn (string $key): bool => $key !== 'MARK'));
+        $keyed = $case['marked'] || array_any($groups, fn (string $key): bool => ! is_numeric($key));
+        $keys = [...$groups, ...($case['marked'] ? ['MARK'] : [])];
 
-        expect(pregMatchesKeys((string) $nullable))->toBe($listed ? null : $keys, $case['pattern'])
-            ->and(pregMatchesKeys((string) $bare))->toBe($listed ? null : $keys, $case['pattern'])
-            ->and($listed ? [$nullable, $bare] : [])->toBe($listed ? [count($sent) > 1 ? '(string | null)[]' : 'string[]', 'string[]'] : []);
+        expect(! isset($sent['MARK']) || $case['marked'])->toBeTrue($case['pattern'])
+            ->and(pregMatchesKeys((string) $nullable))->toBe($keyed ? $keys : null, $case['pattern'])
+            ->and(pregMatchesKeys((string) $bare))->toBe($keyed ? $keys : null, $case['pattern'])
+            ->and($keyed ? [] : [$nullable, $bare])->toBe($keyed ? [] : [count($groups) > 1 ? '(string | null)[]' : 'string[]', 'string[]'], $case['pattern']);
     }
 });
 

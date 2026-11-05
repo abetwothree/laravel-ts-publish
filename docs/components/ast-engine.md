@@ -583,7 +583,8 @@ parameters bound to the element and its key, and `.=` or an arithmetic operator 
 of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` and
 `preg_match_all()` with a literal pattern and constant flags write their `$matches` variable the type
 [`PregMatches`](../../src/Ast/Calls/PregMatches.php) reads, `WritesMatches`, carried as the form's `matches`: PCRE
-itself names the pattern's groups, from a probe that wraps the pattern in a group repeated zero times. A call may not
+itself names the pattern's groups, from a probe that wraps the pattern in a `(?(DEFINE)…)` group PCRE never enters. A
+verb that names a mark adds `MARK?: string`, and declines pattern order, which keys the marks by match. A call may not
 run, so the matches replace a held value only where that is an empty list or a value they stand for, and a parameter's
 binding ends only at a call that is a statement of the body. A name no other write reaches, the form's `sole`, holds the
 matches past the call wherever no binding still holds, a parameter's included: a skipped call leaves an unbound name
