@@ -190,9 +190,11 @@ A subclass's inherited analysis types its columns only when a model backs it.
 any resource without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
 
 A declaration naming a [held class](../../GLOSSARY.md) rather than a model, as `@extends JsonResource<PostStats>` does,
-stops the naming-convention and `#[UseResource]` guesses, so the resource has no model and its proxy reads the held
-class. A tag naming only a class nothing loads, `Model` or `\Eloquent`, which IDE helpers write, declares nothing and
-the guess stands. `HeldStats*Resource` and the IDE-helper `*PostResource` test fixtures pin both.
+stops the naming-convention and `#[UseResource]` guesses unless the guessed model already is a class it names, as with
+`@mixin Arrayable`; otherwise the resource has no model and its proxy reads the held class. A tag naming only a class
+nothing loads, `Model` or `\Eloquent`, which IDE helpers write, declares nothing and the guess stands. Beside
+`#[TsResource(model:)]` a tag keeps only the classes that model is. `HeldStats*Resource`, the IDE-helper and interface
+`*PostResource` and `ExplicitPostOverHeldStatsResource` test fixtures pin these.
 
 ## JSON:API resources
 

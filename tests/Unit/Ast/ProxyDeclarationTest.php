@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DraftPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverHeldStatsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsMixinResource;
@@ -20,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamesakeStatusCard;
+use Illuminate\Contracts\Support\Arrayable;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 
@@ -37,6 +40,8 @@ test('what $resource is declared to hold comes from @var, @extends, @mixin, @pro
     'a missing IDE-helper class' => [DraftPostResource::class, null],
     'the Eloquent alias' => [ListingPostResource::class, null],
     'Model itself' => [ScopedPostResource::class, null],
+    'an interface a model implements' => [ArchivingPostResource::class, ['classes' => [Arrayable::class], 'named' => true, 'nullable' => false, 'source' => 'mixin']],
+    'a tag naming a class #[TsResource(model:)] is not' => [ExplicitPostOverHeldStatsResource::class, null],
 ]);
 
 test('the model the declarations name is a tag\'s model arm, else the @var\'s, a null arm allowed', function (string $resource, ?string $expected) {
@@ -49,6 +54,8 @@ test('the model the declarations name is a tag\'s model arm, else the @var\'s, a
     'a subclass\'s mixin over its parent\'s @var Model' => [ModelWrappedPostResource::class, Post::class],
     'a class other than a model' => [HeldStatsExtendsResource::class, null],
     'a mixin naming nothing loadable' => [DraftPostResource::class, null],
+    'an interface mixin' => [ArchivingPostResource::class, null],
+    '#[TsResource(model:)] over a value-object mixin' => [ExplicitPostOverHeldStatsResource::class, Post::class],
 ]);
 
 test('a union a tag declares keeps every class it names', function () {

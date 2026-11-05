@@ -384,7 +384,7 @@ final class ReceiverClassResolver
         }
 
         $proxy = $scope->proxyReceiver();
-        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $declared = $this->redeclaredProxyArms($scope);
         $classes = $scope->provenProxy ?? ($declared !== null && $declared['named'] ? $declared['classes'] : null);
 
         // A collection's constructor always swaps in its items, so a proof or a redeclaration names only their holder.
@@ -417,7 +417,7 @@ final class ReceiverClassResolver
         }
 
         $backing = $scope->forwardsUndeclaredMembersTo;
-        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $declared = $this->redeclaredProxyArms($scope);
 
         return $backing !== null
             && is_a($backing, Model::class, true)
@@ -436,7 +436,7 @@ final class ReceiverClassResolver
             return false;
         }
 
-        return $this->redeclaredProxyArms($scope->subjectReflection)['nullable'] ?? false;
+        return $this->redeclaredProxyArms($scope)['nullable'] ?? false;
     }
 
     /**
@@ -512,7 +512,7 @@ final class ReceiverClassResolver
             return false;
         }
 
-        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $declared = $this->redeclaredProxyArms($scope);
 
         // A builtin arm such as `string` names no class, so any class test rules it out.
         return $declared !== null
@@ -2189,18 +2189,23 @@ final class ReceiverClassResolver
     /**
      * The class arms of what a subject declares `$resource` to hold, as `@var MediaType|string` or
      * `@extends JsonResource<PostStats>` does, whether each arm but `null` names a class, and whether it admits null;
-     * null for JsonResource's own `@var mixed`, for one that names no class, and for a tag naming one model.
+     * null for JsonResource's own `@var mixed`, for one that names no class, and for a tag naming only its model.
      *
-     * @param  ReflectionClass<object>  $subject
      * @return ProxyArms|null
      */
-    private function redeclaredProxyArms(ReflectionClass $subject): ?array
+    private function redeclaredProxyArms(AnalysisScope $scope): ?array
     {
-        $declared = ProxyDeclaration::of($subject);
+        $declared = ProxyDeclaration::of($scope->subjectReflection);
 
-        // `@mixin Post` names the backing model, so the proxy keeps holding that model and calling it last.
-        $namesModel = $declared !== null && $declared['source'] !== 'var' && ! $declared['nullable']
-            && count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true);
+        if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
+            return $declared;
+        }
+
+        $model = $scope->modelClass;
+
+        // `@mixin Post`, or `@mixin Arrayable` over a post, names only the backing model, which keeps its own path.
+        $namesModel = (count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true))
+            || ($model !== null && array_all($declared['classes'], fn (string $class): bool => is_a($model, $class, true)));
 
         return $namesModel ? null : $declared;
     }
@@ -2257,7 +2262,7 @@ final class ReceiverClassResolver
             return new ReceiverType($scope->provenProxy);
         }
 
-        $declared = $isProxy ? $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? null : null;
+        $declared = $isProxy ? $this->redeclaredProxyArms($scope)['classes'] ?? null : null;
 
         if ($declared === null) {
             return $this->resolve($subject, $scope);
@@ -2286,7 +2291,7 @@ final class ReceiverClassResolver
         }
 
         $backing = $scope->forwardsUndeclaredMembersTo;
-        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $declared = $this->redeclaredProxyArms($scope);
         $backed = $declared === null ? [] : $this->backedArms($declared['classes'], $backing);
         $fallback = array_any($backed, fn (string $class): bool => ! is_a($class, Model::class, true))
             ? []

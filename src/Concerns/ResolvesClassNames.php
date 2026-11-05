@@ -35,8 +35,8 @@ trait ResolvesClassNames
      *
      * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
-     * The first class or enum arm of its `@var` union, as DeclaredClasses::docblockArms() resolves it through the file
-     * that declares the property, which PropertyDocblockTypeReader::tag() finds, a parent's or a trait's.
+     * The first class or enum arm of its `@var` union not spelled with generics, as DeclaredClasses::docblockArms()
+     * resolves it through the file that declares the property, which PropertyDocblockTypeReader::tag() finds.
      *
      * @template T of object
      *
@@ -66,7 +66,9 @@ trait ResolvesClassNames
             return null; // @codeCoverageIgnore
         }
 
-        $arms = DeclaredClasses::docblockArms($tag['type'], $tag['context'], $declaringClass->getName(), $declaring);
+        // A generic arm, such as `Collection<int, string>`, holds items; a wrapped read wants a plain enum or model.
+        $plain = array_filter(LaravelTsPublish::splitPhpDocUnionType($tag['type']), fn (string $arm): bool => ! str_contains($arm, '<'));
+        $arms = DeclaredClasses::docblockArms(implode('|', $plain), $tag['context'], $declaringClass->getName(), $declaring);
 
         return array_find($arms['classes'], fn (string $class): bool => ! interface_exists($class));
     }

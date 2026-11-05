@@ -6,8 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
@@ -34,11 +36,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeTopLevelF
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DraftPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EagerColumnsPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverHeldStatsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
@@ -60,6 +65,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
@@ -77,6 +83,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
@@ -4159,17 +4167,20 @@ it('reads the class other than a model an ancestor\'s @extends names', function 
     ]);
 });
 
-it('reads @extends JsonResource<Post|null> as Post, and $this->resource read whole as Post | null', function () {
-    $data = new ResourceTransformer(NullablePostExtendsResource::class)->data();
+it('reads @extends JsonResource<Post|null> as Post, and $this->resource read whole as Post | null', function (string $resource, string $whole) {
+    $data = new ResourceTransformer($resource)->data();
 
     expect($data->modelClass)->toBe(Post::class)
         ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
             'title' => 'string',
             'proxy_title' => 'string',
             'id' => 'number',
-            'whole' => 'Post | null',
+            'whole' => $whole,
         ]);
-});
+})->with([
+    '<Post|null>' => [NullablePostExtendsResource::class, 'Post | null'],
+    'the bare <Post> control' => [PostExtendsResource::class, 'Post'],
+]);
 
 // An IDE-helper mixin documents the model's magic; it names no class the resource holds, so the guess stands.
 it('keeps the naming-convention model behind a mixin naming nothing loadable, the Eloquent alias or Model itself', function (string $resource, string $model) {
@@ -4182,6 +4193,44 @@ it('keeps the naming-convention model behind a mixin naming nothing loadable, th
     'the Eloquent alias' => [ListingPostResource::class, ListingPost::class],
     'Model itself' => [ScopedPostResource::class, ScopedPost::class],
 ]);
+
+// R25: the guessed model already is an interface it implements, so naming one stops no guess; an unrelated one does.
+it('keeps the naming-convention model behind a declared interface it implements, but not one it does not', function (string $resource, ?string $model, string $title) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect($data->modelClass)->toBe($model)
+        ->and($data->properties['title']['type'])->toBe($title);
+})->with([
+    '@mixin Arrayable' => [ArchivingPostResource::class, ArchivingPost::class, 'string'],
+    '@var Arrayable' => [BuiltPostResource::class, BuiltPost::class, 'string'],
+    '@mixin Htmlable, which no model implements' => [EagerColumnsPostResource::class, null, 'unknown'],
+]);
+
+// The interface adds nothing the model lacks, so an instanceof test on a class the model is not proves no arm.
+it('reads a resource behind an interface mixin its guessed model implements as the model alone', function () {
+    expect(resourceProps(ArchivingPostResource::class))->toBe([
+        'title' => 'string',
+        'whole' => 'ArchivingPost',
+        'guarded' => 'number',
+    ]);
+});
+
+// R26: an explicit model outranks a tag naming a class it is not.
+it('reads #[TsResource(model:)] over a mixin naming a value object the model is not', function () {
+    $data = new ResourceTransformer(ExplicitPostOverHeldStatsResource::class)->data();
+
+    expect($data->modelClass)->toBe(Post::class)
+        ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'title' => 'string',
+            'key' => 'number',
+            'res_key' => 'number',
+            'whole' => 'Post',
+        ]);
+});
+
+it('reads a wrapped enum\'s value past a generic arm of the $resource redeclaration', function () {
+    expect(resourceProps(GenericOrEnumVarResource::class))->toBe(['value' => "'pass' | 'fail'"]);
+});
 
 it('guesses no model by naming convention for a resource declared over a class other than a model', function () {
     $data = new ResourceTransformer(SearchedPostResource::class)->data();

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -25,8 +24,8 @@ final class ModelClassResolver
     /**
      * Resolve the backing model class.
      *
-     * Precedence: #[TsResource(model:)], the model ProxyDeclaration::model() reads off the class's and its ancestors'
-     * declarations, naming convention, #[UseResource]. A declared class other than a model stops the guess.
+     * Precedence: the model ProxyDeclaration::model() reads, `#[TsResource(model:)]` first, then the naming convention,
+     * then `#[UseResource]`. A declared class the guess is not, such as a value object, stops the guess.
      *
      * @template T of object
      *
@@ -40,24 +39,19 @@ final class ModelClassResolver
             return null;
         }
 
-        $tsResourceAttrs = $resource->getAttributes(TsResource::class);
-
-        if ($tsResourceAttrs) {
-            $model = $tsResourceAttrs[0]->newInstance()->model;
-
-            if ($model !== null && class_exists($model) && is_a($model, Model::class, true)) {
-                return $model;
-            }
-        }
-
         $declared = ProxyDeclaration::model($resource);
 
-        // A value object the resource is declared to hold, as `@extends JsonResource<PostStats>` declares, is no model.
-        if ($declared !== null || ProxyDeclaration::of($resource) !== null) {
+        if ($declared !== null) {
             return $declared;
         }
 
-        return $this->guessModelFromConvention($resource) ?? $this->guessModelFromUseResourceAttribute($resource);
+        $guessed = $this->guessModelFromConvention($resource) ?? $this->guessModelFromUseResourceAttribute($resource);
+        $held = ProxyDeclaration::of($resource)['classes'] ?? null;
+
+        // An interface the guessed model implements, as `@mixin Arrayable` names, keeps it; a value object does not.
+        return $held === null || ($guessed !== null && array_any($held, fn (string $class): bool => is_a($guessed, $class, true)))
+            ? $guessed
+            : null;
     }
 
     /**

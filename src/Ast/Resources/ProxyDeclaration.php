@@ -10,13 +10,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
 /**
- * What an API resource's `$this->resource` is declared to hold, and the model that declaration names: a `@var` that
- * redeclares `$resource`, then the class's own `@extends JsonResource<…>`, `@mixin` and class-level
+ * What an API resource's `$this->resource` is declared to hold, and the model the declarations name: `#[TsResource]`'s
+ * model, a `@var` redeclaring `$resource`, then the class's own `@extends JsonResource<…>`, `@mixin` and class-level
  * `@property … $resource`, then each ancestor's. ModelClassResolver takes its model; the receiver resolver its classes.
  *
  * @phpstan-type ProxySource = 'var'|'extends'|'mixin'|'property'
@@ -30,7 +31,8 @@ final class ProxyDeclaration
 {
     /**
      * What `$resource` is declared to hold: the first declaration naming a class. A tag naming only a class nothing
-     * loads, `Model` itself or the `\Eloquent` alias declares nothing, since an IDE helper writes it for the model.
+     * loads, `Model` itself or the `\Eloquent` alias declares nothing, since an IDE helper writes it for the model, and
+     * beside `#[TsResource(model:)]` a tag keeps only the classes that model is.
      *
      * @template T of object
      *
@@ -43,8 +45,8 @@ final class ProxyDeclaration
     }
 
     /**
-     * The model the declarations name: the first model arm of a tag, the class's own before an ancestor's, else of the
-     * `@var`, a null arm allowed, as `@extends JsonResource<Post|null>` names `Post`.
+     * The model the declarations name: `#[TsResource(model:)]`'s, else the first model arm of a tag, the class's own
+     * before an ancestor's, else of the `@var`, a null arm allowed, as `@extends JsonResource<Post|null>` names `Post`.
      *
      * @template T of object
      *
@@ -53,6 +55,12 @@ final class ProxyDeclaration
      */
     public static function model(ReflectionClass $resource): ?string
     {
+        $explicit = self::explicitModel($resource);
+
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
         $declarations = self::declarations($resource);
 
         // A tag outranks `@var` here, so an ancestor's `@var Model` never hides a subclass's `@mixin Post`.
@@ -106,8 +114,10 @@ final class ProxyDeclaration
             return $declarations;
         }
 
+        $explicit = self::explicitModel($resource);
+
         for ($class = $resource; $class !== false; $class = $class->getParentClass()) {
-            array_push($declarations, ...self::tags($class, $resource));
+            array_push($declarations, ...self::tags($class, $resource, $explicit));
         }
 
         return $declarations;
@@ -149,17 +159,33 @@ final class ProxyDeclaration
     }
 
     /**
+     * The model `#[TsResource(model:)]` names on the class itself, when it is a model; null otherwise.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     * @return class-string<Model>|null
+     */
+    private static function explicitModel(ReflectionClass $resource): ?string
+    {
+        $model = ($resource->getAttributes(TsResource::class)[0] ?? null)?->newInstance()->model;
+
+        return $model !== null && class_exists($model) && is_a($model, Model::class, true) ? $model : null;
+    }
+
+    /**
      * The declarations one class's own docblock spells, in the order of(): an `@extends` of one generic argument, a
-     * `@mixin` and a `@property` naming `$resource`.
+     * `@mixin` and a `@property` naming `$resource`, each keeping only the classes an explicit model is.
      *
      * @template C of object
      * @template T of object
      *
      * @param  ReflectionClass<C>  $class
      * @param  ReflectionClass<T>  $resource
+     * @param  class-string<Model>|null  $explicit  the model `#[TsResource(model:)]` names
      * @return list<ProxyArms>
      */
-    private static function tags(ReflectionClass $class, ReflectionClass $resource): array
+    private static function tags(ReflectionClass $class, ReflectionClass $resource, ?string $explicit): array
     {
         $docComment = $class->getDocComment();
 
@@ -177,7 +203,10 @@ final class ProxyDeclaration
 
         foreach ($types as $source => $type) {
             $arms = $type === null ? null : DeclaredClasses::docblockArms($type, $class, $resource->getName(), $class->getName());
-            $classes = array_values(array_filter($arms['classes'] ?? [], fn (string $named): bool => ! self::documentsModel($named)));
+            $classes = array_values(array_filter(
+                $arms['classes'] ?? [],
+                fn (string $named): bool => ! self::documentsModel($named) && ($explicit === null || is_a($explicit, $named, true)),
+            ));
 
             if ($arms !== null && $classes !== []) {
                 $declarations[] = [...$arms, 'classes' => $classes, 'source' => $source];
