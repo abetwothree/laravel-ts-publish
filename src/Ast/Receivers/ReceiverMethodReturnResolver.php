@@ -205,7 +205,8 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
+     * Whether a model rule types the method from the model's class, as for getKey(), toArray() or a loosely declared
+     * array: every rule modelRule() holds, so one added there reaches this too.
      *
      * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
      *
@@ -215,7 +216,7 @@ final class ReceiverMethodReturnResolver
     {
         DependencyRecorder::recordClass($class);
 
-        return ($methodName === 'toArray' || isset(self::MODEL_ARRAY_RETURNS[$methodName])) && $this->runsModelMethod($class, $methodName);
+        return $this->modelRule($class, $methodName) !== null;
     }
 
     /**

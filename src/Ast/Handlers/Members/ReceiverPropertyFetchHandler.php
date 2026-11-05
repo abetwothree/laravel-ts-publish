@@ -5,20 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -31,7 +25,6 @@ use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\MatchArm;
-use ReflectionClass;
 use UnitEnum;
 
 /**
@@ -79,28 +72,11 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             return null;
         }
 
-        $attributeless = $receiver->attributeless && ! in_array($name, $receiver->filled, true);
-        $results = [];
+        $merged = ReceiverMemberReader::value($receiver, $name, $scope);
 
-        foreach ($receiver->classes as $class) {
-            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
-            DependencyRecorder::recordClass($class);
-            $result = is_a($class, Model::class, true)
-                ? $this->modelMember($class, $name, $scope, $attributeless)
-                : EnumValueTypes::member($class, $name, $scope->carriesImports)
-                    ?? $this->reflectedProperty($class, $name, $receiver->declaredOnly);
-
-            // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
-            if ($result === null) {
-                return null;
-            }
-
-            $results[] = $result;
+        if ($merged === null) {
+            return null;
         }
-
-        $merged = count($results) === 1
-            ? $results[0]
-            : ValueResult::unionResults($results);
 
         if ($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits) {
             $merged['type'] = TsTypeString::withNullArm($merged['type']);
@@ -166,90 +142,5 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         return $case instanceof UnitEnum ? EnumValueTypes::caseMember($case, $name) : null;
-    }
-
-    /**
-     * One model's attribute (accessor → cast → column) or, failing that, its relation; a column a model with no
-     * attributes reads is null.
-     *
-     * @param  class-string<Model>  $modelFqcn
-     * @return ValueExpressionResult|null
-     */
-    private function modelMember(string $modelFqcn, string $name, AnalysisScope $scope, bool $attributeless): ?array
-    {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $attribute = resolve(ReflectedTypeAcceptor::class)
-            ->accept($resolver->resolveAttribute($modelFqcn, $name, $scope->carriesImports, $scope->casesAsLiterals));
-
-        if ($attribute !== null) {
-            return $attributeless && $this->readsNullWithoutAttributes($resolver, $modelFqcn, $name)
-                ? [...$attribute, 'type' => TsTypeString::withNullArm($attribute['type'])]
-                : $attribute;
-        }
-
-        $relation = $resolver->resolveRelation($modelFqcn, $name);
-
-        if ($relation['type'] === 'unknown') {
-            return null;
-        }
-
-        /** @var ValueExpressionResult $result */
-        $result = [...ValueResult::unknown(), 'type' => $relation['type']];
-
-        if ($relation['modelFqcn'] !== null) {
-            $result['modelFqcn'] = $relation['modelFqcn'];
-        }
-
-        if ($relation['morphFqcns'] !== []) {
-            $result['embeddedModelFqcns'] = $relation['morphFqcns'];
-        }
-
-        return $result;
-    }
-
-    /**
-     * Whether a model with no attributes reads a column as null: one its new instance holds no default for, which no
-     * accessor or cast class computes; a built-in or enum cast reads a missing value as null, a cast class may not.
-     *
-     * @param  class-string<Model>  $modelFqcn
-     */
-    private function readsNullWithoutAttributes(ModelAttributeResolver $resolver, string $modelFqcn, string $name): bool
-    {
-        $column = $resolver->getAttributes($modelFqcn)?->firstWhere('name', $name);
-        $instance = $resolver->getInstance($modelFqcn);
-        $cast = $column['cast'] ?? null;
-        $castClass = $cast === null ? null : explode(':', $cast, 2)[0];
-
-        return $column !== null
-            && $column['type'] !== null
-            && $instance !== null
-            && ! array_key_exists($name, $instance->getAttributes())
-            && ! in_array($cast, ['accessor', 'attribute'], true)
-            && ($castClass === null || ! class_exists($castClass) || enum_exists($castClass));
-    }
-
-    /**
-     * One non-model class's public instance property, by the rules that type a method's return on the same receiver,
-     * a receiver spelled `self`, `static` or `parent` reading one a subclass can redeclare by its declaration alone.
-     *
-     * @param  class-string  $class
-     * @return ValueExpressionResult|null
-     */
-    private function reflectedProperty(string $class, string $name, bool $declaredOnly): ?array
-    {
-        $reflection = new ReflectionClass($class);
-        $property = $reflection->hasProperty($name) ? $reflection->getProperty($name) : null;
-
-        // An outside read of a non-public or static property goes to __get(), never to the declaration.
-        if ($property === null || ! $property->isPublic() || $property->isStatic()) {
-            return null;
-        }
-
-        $properties = resolve(SubjectPropertyTypeResolver::class);
-        $result = $declaredOnly && ReceiverType::overridable($reflection, $property)
-            ? $properties->declaredType($reflection, $property)
-            : $properties->resolve($reflection, $name, RuntimeClass::assumed($reflection));
-
-        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 }

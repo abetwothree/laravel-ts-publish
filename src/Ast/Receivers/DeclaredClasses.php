@@ -12,13 +12,14 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
 
 /**
- * The classes a declaration names: a method's native return type or `@return` docblock, any native type, and a
- * docblock union's class arms. The receiver resolver reads declarations through it, and model inspection reads a
- * relation method's return here without the resolver.
+ * The classes a declaration names: a method's native return type or `@return` docblock, a property's native type or
+ * docblock, any native type, and a docblock union's class arms. The receiver resolver reads declarations through it,
+ * and model inspection reads a relation method's return here without the resolver.
  *
  * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
  *
@@ -71,6 +72,29 @@ final class DeclaredClasses
             'returns-static:'.$class.'::'.$method,
             static fn (): bool => self::declaresStaticReturn($class, $method),
         );
+    }
+
+    /**
+     * A property's classes: its native class type, else its full docblock type, as PropertyDocblockTypeReader::tag()
+     * finds it on the class the property was read on.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return non-empty-list<class-string>|null
+     */
+    public static function propertyClasses(ReflectionProperty $property, ReflectionClass $subject, string $receiverClass): ?array
+    {
+        $declaring = $property->getDeclaringClass();
+        $native = self::nativeClasses($property->getType(), $receiverClass, $declaring->getName());
+
+        if ($native !== null) {
+            return $native;
+        }
+
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
+
+        return $tag === null
+            ? null
+            : self::docblockClasses($tag['type'], $tag['context'], $receiverClass, $declaring->getName());
     }
 
     /**

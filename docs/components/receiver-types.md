@@ -20,6 +20,7 @@ These classes carry receiver inference:
 | [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
+| [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
 | [`MacroCallResolver`] | The macro a `Macroable` subject's `__call()` runs for a name it does not declare, and what that macro returns |
 | [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
@@ -240,8 +241,8 @@ Earlier claimants of these node classes decline a call they cannot type, as
 or on a model-less subject's own typed property. Through `$this->resource` it reads the class `proxyCallTarget()` finds,
 final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as `$this->resource::m()` does,
 and the bare `$this->m()`, `$this::m()`, `static::m()` and `self::m()` do when no macro has the name: only a public
-method, with the receiver rules' answer for a model method they type (`typesModelMethod()`), such as `toArray()` or
-`getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and
+method, with the receiver rules' answer for a model method a model rule types (`typesModelMethod()`, every rule
+`modelRule()` holds), such as `getKey()`, `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and
 leaves those methods, and a filter on a held model, to the receiver rules, as it leaves a resource collection's items.
 Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so
 `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
@@ -489,7 +490,7 @@ It shares the `method-body:` cycle guard with the shape, so a recursion through 
 declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode).
 A read on `$this->prop` types from the class `prop` holds, as a call does.
 
-Each class types the property one of two ways:
+[`ReceiverMemberReader::value()`][`ReceiverMemberReader`] types the property on each class one of two ways:
 
 - **A model**: `ModelAttributeResolver::resolveAttribute()`, then `resolveRelation()`, the order `Model::__get()` uses.
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
@@ -545,6 +546,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/Narrowing/ReadsInstanceofChains.php
 [`ReceiverClassResolver`]: ../../src/Ast/Receivers/ReceiverClassResolver.php
 [`ReceiverMethodCallHandler`]: ../../src/Ast/Handlers/Calls/ReceiverMethodCallHandler.php
+[`ReceiverMemberReader`]: ../../src/Ast/Receivers/ReceiverMemberReader.php
 [`ReceiverMethodReturnResolver`]: ../../src/Ast/Receivers/ReceiverMethodReturnResolver.php
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/Members/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php

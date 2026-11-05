@@ -709,8 +709,8 @@ A read that bypasses it leaves the generation cache serving stale output when th
 A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
 interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
 member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
-`ReceiverPropertyFetchHandler` per receiver class, `DeclaredClasses::returnClasses()`,
-`ReceiverClassResolver::memberProperty()`, `LaravelTsPublish::toTsType()` and its three member readers,
+`ReceiverMemberReader::value()` per receiver class, `DeclaredClasses::returnClasses()`,
+`ReceiverMemberReader::classes()`, `LaravelTsPublish::toTsType()` and its three member readers,
 `StringSerialization::jsonStringType()`,
 `ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
 published model, `ByReferenceArguments` for the class whose method it reads by-reference parameters from, and

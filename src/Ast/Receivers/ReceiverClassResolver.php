@@ -23,7 +23,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,7 +36,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Enumerable;
 use Illuminate\Support\LazyCollection;
-use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -70,7 +68,6 @@ use ReflectionClass;
 use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionNamedType;
-use ReflectionProperty;
 use Throwable;
 
 /**
@@ -470,7 +467,7 @@ final class ReceiverClassResolver
      */
     public function singleModelHeldBy(string $model, string $name): ?string
     {
-        $held = $this->modelMember($model, $name)->classes ?? [];
+        $held = ReceiverMemberReader::classes($model, $name)->classes ?? [];
 
         return count($held) === 1 && is_a($held[0], Model::class, true) && $this->isNameable($held[0]) ? $held[0] : null;
     }
@@ -881,7 +878,7 @@ final class ReceiverClassResolver
         }
 
         return $this->carried($receiver, $this->merge(
-            array_map(fn (string $class): ?ReceiverType => $this->memberProperty($class, $name), $receiver->classes),
+            array_map(fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($class, $name), $receiver->classes),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
         ));
     }
@@ -910,7 +907,7 @@ final class ReceiverClassResolver
 
         return FrameworkClasses::is(DeclaringFile::ofProperty($property, $owner)->getName())
             ? null
-            : $this->typeOf($this->propertyClasses($property, $owner, $scope->runtime->class->getName()));
+            : $this->typeOf(DeclaredClasses::propertyClasses($property, $owner, $scope->runtime->class->getName()));
     }
 
     /**
@@ -926,7 +923,7 @@ final class ReceiverClassResolver
         };
 
         return $held === null ? null : $this->merge(
-            array_map(fn (string $class): ?ReceiverType => $this->memberProperty($class, $name), $held->classes),
+            array_map(fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($class, $name), $held->classes),
             false,
         );
     }
@@ -1440,86 +1437,6 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
-     */
-    private function memberProperty(string $class, string $name): ?ReceiverType
-    {
-        if (is_a($class, Model::class, true)) {
-            return $this->modelMember($class, $name);
-        }
-
-        DependencyRecorder::recordClass($class);
-
-        if (! class_exists($class) || ! property_exists($class, $name)) {
-            return null;
-        }
-
-        $subject = new ReflectionClass($class);
-        $property = $subject->getProperty($name);
-
-        // A non-public property read from outside goes to __get(), not to the declaration.
-        return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $subject, $class))
-            : null;
-    }
-
-    /**
-     * What a model member read holds: an attribute the model lists, else its relation, the order Model::__get() reads.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function modelMember(string $model, string $name): ?ReceiverType
-    {
-        $attribute = $this->listedAttributeName($model, $name);
-
-        // A name only an `@property` tag types holds what a dynamic or a set relation puts there.
-        if ($attribute === null) {
-            return $this->relationMember($model, $name) ?? $this->typedModel($model, $name);
-        }
-
-        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $attribute);
-
-        // The attribute hides a relation of the same name, so one holding no class names none.
-        return $attributeClass === null ? $this->typedModel($model, $attribute) : ReceiverType::of($attributeClass);
-    }
-
-    /**
-     * The one model a member's type names where no declaration does, as an untyped getter or an `@property` tag can.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function typedModel(string $model, string $name): ?ReceiverType
-    {
-        $type = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $name);
-        $held = $type['classFqcns'];
-
-        // A list of the model, or a union of it with another type, holds no single model.
-        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+$/', TsTypeString::withoutNullArm($type['type'])) === 1
-            ? ReceiverType::of($held[0])
-            : null;
-    }
-
-    /**
-     * The name the model lists the attribute Model::__get() reads under, or null when it lists none.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function listedAttributeName(string $model, string $name): ?string
-    {
-        $attributes = resolve(ModelAttributeResolver::class)->getAttributes($model);
-
-        if ($attributes?->firstWhere('name', $name) !== null) {
-            return $name;
-        }
-
-        // Eloquent camel-cases a key only to find an accessor method, never to read a column.
-        $snake = Str::snake($name);
-        $accessor = $attributes?->firstWhere('name', $snake);
-
-        return in_array($accessor['cast'] ?? null, ['attribute', 'accessor'], true) ? $snake : null;
-    }
-
-    /**
      * What a model's `getRelation('name')` or `getRelationValue('name')` hands back: the relation under that name on
      * each model it may be called on, since the first throws for a name that is not loaded and the second loads it.
      */
@@ -1537,38 +1454,12 @@ final class ReceiverClassResolver
         return $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => is_a($class, Model::class, true)
-                    ? $this->relationMember($class, $name->value)
+                    ? ReceiverMemberReader::relationClasses($class, $name->value)
                     : null,
                 $receiver->classes,
             ),
             $shortCircuits,
         );
-    }
-
-    /**
-     * What a model relation holds once loaded: its related model, a collection of them, or any of a morphTo's targets.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function relationMember(string $model, string $name): ?ReceiverType
-    {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $relation = $resolver->resolveRelation($model, $name);
-
-        if ($relation['morphFqcns'] !== []) {
-            return new ReceiverType($relation['morphFqcns']);
-        }
-
-        if ($relation['modelFqcn'] !== null) {
-            return str_ends_with($relation['type'], '[]')
-                ? new ReceiverType([EloquentCollection::class], elementModel: $relation['modelFqcn'])
-                : ReceiverType::of($relation['modelFqcn']);
-        }
-
-        // Only a morphTo is a known relation that names no related model.
-        $isMorphTo = $resolver->getRelations($model)?->firstWhere('name', $name) !== null;
-
-        return $isMorphTo ? ReceiverType::of($resolver->resolveMorphToBound($model, $name)) : null;
     }
 
     /**
@@ -2292,29 +2183,6 @@ final class ReceiverClassResolver
     private function isNullLiteral(Expr $expr): bool
     {
         return $expr instanceof ConstFetch && $expr->name->toLowerString() === 'null';
-    }
-
-    /**
-     * A property's classes: its native class type, else its full docblock type, as PropertyDocblockTypeReader::tag()
-     * finds it on the class the property was read on.
-     *
-     * @param  ReflectionClass<object>  $subject
-     * @return non-empty-list<class-string>|null
-     */
-    private function propertyClasses(ReflectionProperty $property, ReflectionClass $subject, string $receiverClass): ?array
-    {
-        $declaring = $property->getDeclaringClass();
-        $native = DeclaredClasses::nativeClasses($property->getType(), $receiverClass, $declaring->getName());
-
-        if ($native !== null) {
-            return $native;
-        }
-
-        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
-
-        return $tag === null
-            ? null
-            : DeclaredClasses::docblockClasses($tag['type'], $tag['context'], $receiverClass, $declaring->getName());
     }
 
     /**
