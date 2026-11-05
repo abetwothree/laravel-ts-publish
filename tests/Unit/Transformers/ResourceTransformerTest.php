@@ -56,6 +56,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverH
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsExtendsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsMixinChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsVarChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardRulesPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
@@ -4339,6 +4340,7 @@ it('reads an inherited body\'s whole proxy as the class the subclass declares ov
 })->with([
     '@mixin' => [FlaggedStatsMixinChildResource::class],
     '@extends Parent<FlaggedStats>' => [FlaggedStatsExtendsChildResource::class],
+    '@var over the parent\'s @var' => [FlaggedStatsVarChildResource::class],
 ]);
 
 it('guesses no model by naming convention for a resource declared over a class other than a model', function () {
@@ -4763,8 +4765,8 @@ it('carries the guard into a parameter bound from a guarded collection or a decl
         ->and($sent(Request::create('/', 'GET', ['again' => 1]))['branched'])->toBeIn(['c3', 'c4']);
 });
 
-// A list declared under string keys is trusted for its all(), as any declared type is. Under keys '0' and '1' PHP makes
-// ints, so the declaration lies about its keys and all() sends a list: the one documented exception the record misses.
+// A list declared under string keys is trusted for its all(), as any declared type is, and an inline `@var` naming its
+// element keeps it. Under keys '0' and '1' PHP makes ints, so all() sends a list: the one exception the record misses.
 it('reads a list a method declares under string keys as keyed, so a step keeping them sends an object', function () {
     $sent = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack)->resolve()), true);
     $numbered = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack(['0', '1']))->resolve()), true);
@@ -4789,6 +4791,10 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         'random_pair' => 'Comment[]',
         'only' => 'Comment[]',
         'sorted' => 'Comment[] | Record<string, Comment>',
+        'declared_all' => 'Record<string, Comment>',
+        'declared_first_id' => 'number',
+        'declared_random' => 'Comment',
+        'declared_eloquent_all' => 'Record<string, Comment>',
     ])
         ->and($sent['ids'])->toBe(['a' => 3, 'b' => 4])
         ->and($sent['ids_all'])->toBe(['a' => 3, 'b' => 4])
@@ -4808,6 +4814,10 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($sent['random_pair'])->toEqualCanonicalizing([$comment(3), $comment(4)])
         ->and($sent['only'])->toBe([$comment(3)])
         ->and($sent['sorted'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['declared_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['declared_first_id'])->toBe(3)
+        ->and($sent['declared_random'])->toBeIn([$comment(3), $comment(4)])
+        ->and($sent['declared_eloquent_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($numbered['all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['ids'])->toBe([3, 4])
         ->and($numbered['model_keys'])->toBe([3, 4]);

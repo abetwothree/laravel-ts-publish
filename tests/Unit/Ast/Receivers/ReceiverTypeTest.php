@@ -128,6 +128,15 @@ test('a collection receiver holds the facts it is built with, and a step keeping
         ->toBe([[EloquentCollection::class], Comment::class, false, false, true, false]);
 });
 
+// An inline `@var` over a declared list reads it unguarded: its keys stay, and its element where the `@var` names it.
+test('lifting a declared element\'s guard keeps the list\'s keys, and its element where asked', function () {
+    $type = ReceiverType::collection([Collection::class], Comment::class, true, true, true);
+    $facts = fn (ReceiverType $t): array => [$t->classes, $t->elementModel, $t->keyed, $t->stringKeyed, $t->guardsElement];
+
+    expect($facts($type->withoutElementGuard(true)))->toBe([[Collection::class], Comment::class, true, true, false])
+        ->and($facts($type->withoutElementGuard(false)))->toBe([[Collection::class], null, true, true, false]);
+});
+
 // The guard starts at `$this->collection` and at what a resource forwards to, and every step and union carries it on.
 test('a receiver reached from $this->collection or a forward is guarded down its chain', function (string $subject, string $php, bool $guarded) {
     $scope = new AnalysisScope(new ReflectionClass($subject), null);

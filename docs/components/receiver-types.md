@@ -106,8 +106,8 @@ The guard withdraws only what no reading reached without it, so a declaration re
 - A helper's declared parameter of any class binds a guarded argument as it binds one never passed (`CallSite`).
   Only a value read off an `unread` callback parameter, one a guarded receiver's `map()` binds, keeps its guard
   across it, since no reading reaches that callback without it.
-- An inline `@var` over a guarded value types the local by the `@var` alone, and over a declared list's value without
-  the element only the list names (`unguarded()`).
+- An inline `@var` over a guarded value types the local by the `@var` alone. Over a declared list's value it lifts only
+  the element's guard: the keys stay, and the element where the `@var` names it too (`unguarded()`).
 
 Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys

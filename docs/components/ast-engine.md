@@ -277,8 +277,8 @@ docblocks say what each binding table holds. These eight facts span other classe
   `$this->resource`, `PROXY_GUARDS`; for a chain of property reads on `$this`, `'$this->'` and its names. No variable
   spells the last two, so no parameter claim or `copyBindings()` reaches them. `enterMethod()` sets the proxy's aside
   with every name table, `provenProxy` carrying what holds. A chain's proofs (`thisPathProofs()`) reach a closure's
-  body, and those a ternary's arm binds at no offsets a subject method's, except a path the body writes whole or one
-  through it; with `provenProxy`, none does once the body replaces `$this->resource`
+  body, and the arm proofs a ternary binds (`armProof()`, `isArmProof()`) a subject method's, except a path the body
+  writes whole or one through it; with `provenProxy`, none does once the body replaces `$this->resource`
   (`CollectsInstanceofGuards::rewrittenThisPaths()`).
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
@@ -475,9 +475,10 @@ and each restores its binding in a `finally`:
   applied.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varGuardBindings` past its test, or records `provenProxy` for `$this->resource`, setting
-  `modelClass` too when one model is left, or binds a chain of property reads on `$this` under its key at every offset
-  while the arm resolves. `ReceiverClassResolver::fromPropertyFetch()` reads a chain under the latest proof in force as
-  what it holds with that proof set aside, narrowed by the proof's classes, so every proof around it applies too. A
+  `modelClass` too when one model is left, or binds a chain of property reads on `$this` under its key with an
+  `AnalysisScope::armProof()`, which holds at every offset while the arm resolves.
+  `ReceiverClassResolver::fromPropertyFetch()` reads a chain under the latest proof in force as what it holds with that
+  proof set aside, narrowed by the proof's classes, so every proof around it applies too. A
   test that rules out no class `$resource` is redeclared as, and no `null` it admits, records nothing, and an arm that
   writes its subject is not narrowed.
 

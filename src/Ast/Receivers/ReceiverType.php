@@ -297,6 +297,15 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver with its element's guard lifted, its keys kept, and the element itself dropped unless
+     * $keepsElement, as an inline `@var` over a declared list reads it.
+     */
+    public function withoutElementGuard(bool $keepsElement): self
+    {
+        return $this->copy(guardsElement: false, dropsElement: ! $keepsElement);
+    }
+
+    /**
      * Whether an item the receiver's element yields, or a callback's parameter it binds, is guarded.
      */
     public function guardsItems(): bool
@@ -383,11 +392,12 @@ final readonly class ReceiverType
         ?array $intersections = null,
         ?bool $guarded = null,
         ?bool $guardsElement = null,
+        bool $dropsElement = false,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
             shortCircuits: $shortCircuits ?? $this->shortCircuits,
-            elementModel: $this->elementModel,
+            elementModel: $dropsElement ? null : $this->elementModel,
             relatedModel: $this->relatedModel,
             unsaved: $unsaved ?? $this->unsaved,
             collectedItems: $this->collectedItems,

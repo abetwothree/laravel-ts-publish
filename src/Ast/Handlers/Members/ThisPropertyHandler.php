@@ -128,7 +128,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 $items !== null => $items,
                 $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
                 default => $this->proxiedModel($receivers, $scope)
-                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName, $scope->runtime)
+                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->proxyDeclarer(), $propName, $scope->runtime)
                     ?? $this->declaredHeldValue($receivers, $scope),
             };
 
@@ -250,7 +250,7 @@ final class ThisPropertyHandler implements ExpressionHandler
     {
         $declared = implode('|', array_map(fn (string $class): string => '\\'.$class, $proven)).($nullable ? '|null' : '');
 
-        return resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->subjectReflection);
+        return resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->proxyDeclarer());
     }
 
     /**

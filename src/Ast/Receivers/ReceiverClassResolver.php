@@ -530,7 +530,7 @@ final class ReceiverClassResolver
      */
     public function resolveDeclared(string $name, array $span, AnalysisScope $scope): ?ReceiverType
     {
-        $assigned = $this->unguarded($this->fromBoundExpression($name, $span['expr'], $scope));
+        $assigned = $this->unguarded($this->fromBoundExpression($name, $span['expr'], $scope), $span);
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
             $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class] && ! isset($span['relative'])
@@ -541,7 +541,14 @@ final class ReceiverClassResolver
                 return $assigned;
             }
 
-            $filled = ReceiverType::collection($assigned->classes, $element, $assigned->keyed, false, false, $assigned->shortCircuits);
+            $filled = ReceiverType::collection(
+                $assigned->classes,
+                $element,
+                $assigned->keyed,
+                $assigned->stringKeyed,
+                false,
+                $assigned->shortCircuits,
+            );
 
             return $assigned->declaredOnly ? $filled->asDeclaredOnly() : $filled;
         }
@@ -694,17 +701,16 @@ final class ReceiverClassResolver
 
     /**
      * A value an inline `@var` sits over, as the declaration met it without the guard: none for a guarded one, which
-     * only the guard's reach reads, and a declared list's classes alone, without the element only it names.
+     * only the guard's reach reads, and a declared list with its keys, its element kept where the `@var` names it too.
+     *
+     * @param  VarDocBinding  $span
      */
-    private function unguarded(?ReceiverType $assigned): ?ReceiverType
+    private function unguarded(?ReceiverType $assigned, array $span): ?ReceiverType
     {
         return match (true) {
             $assigned === null || $assigned->guarded => null,
-            $assigned->guardsElement => new ReceiverType(
-                $assigned->classes,
-                $assigned->shortCircuits,
-                declaredOnly: $assigned->declaredOnly,
-                intersections: $assigned->intersections,
+            $assigned->guardsElement => $assigned->withoutElementGuard(
+                $this->declaredElementModel($span, $assigned) === $assigned->elementModel,
             ),
             default => $assigned,
         };
