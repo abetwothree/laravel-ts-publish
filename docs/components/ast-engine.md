@@ -437,16 +437,17 @@ goes in `requestVarNames`, except in an API resource, and a name already bound s
 A docblock holds only what its author wrote, so a known argument outranks it: a method with a `@param` collection takes
 what its call passes (`takesPassedValues()`), and an argument holding a collection binds in the declaration's place
 (`CallSite`, `ParameterBinder::passedCollection()`). Its class wins where it is the class the value is, from
-`collect()`, `new`, a relation read, a `static` return over one, or a body read; where it is only what a method declares
-it returns (`CallSite::boundsArgument()`), the narrower of that bound and the `@param`'s class binds. Either way the
-native type's class binds where the argument's is wider. Its element wins where it names one, narrower or another model,
-else the declaration's binds. Known keys win: a receiver's, a list an element's collection or a list-only value holds, a
-record-only value's, the declaration naming only the kind a moved key is. Where nothing names the keys, the value reads
-as the declaration spells them, `int` a list, a bare `string` a record, either kind both, and the receiver admits a
-moved key unless the declaration names only strings. A value that does not spell the bound keys, such as a list beside a
-known moved key, is spelled again from the element. The declaration binds whole for an argument nothing types, one a
-`?->` can end as null, and a guarded one not read off an `unread` callback parameter, and a native type keeps binding
-natively, since PHP enforces it.
+`collect()`, `new`, a relation read, a `static` return over one, or a body read; where only a declaration names it, a
+method's or a macro's return, a typed or documented property, or a local's inline `@var` (`CallSite::boundsArgument()`),
+the narrower of that class and the `@param`'s binds. Either way the native type's class binds where the argument's is
+wider. Its element wins where it names one, narrower or another model, else the declaration's binds. Known keys win: a
+receiver's, a list an element's collection or a list-only value holds, a record-only value's, the declaration naming
+only the kind a moved key is. Where nothing names the keys, the declaration spells them for the value and the receiver
+alike: `int` a list, a bare `string` a record, either kind both; a docblock whose key kind the data contradicts
+publishes what it says. A value that does not spell the bound keys, such as a list beside a known moved key, is spelled
+again from the element. The declaration binds whole for an argument nothing types, one a `?->` can end as null, and a
+guarded one not read off an `unread` callback parameter, and a native type keeps binding natively, since PHP enforces
+it.
 
 `bindClosure()` binds a closure's parameters from the declaration the AST holds through `bindClosureParameter()`, which
 `ClosureHandler` shares for a parameter no writer bound, and differs in two ways: its class goes through

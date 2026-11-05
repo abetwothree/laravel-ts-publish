@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -22,8 +23,11 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use ReflectionClass;
 use ReflectionMethod;
+use ReflectionNamedType;
 use ReflectionParameter;
+use ReflectionProperty;
 
 /**
  * A call read where it is written, so the method it runs can be read with what the call passes: how each argument
@@ -181,9 +185,9 @@ final readonly class CallSite
     }
 
     /**
-     * Whether an argument's classes are only what a method declares it returns, which a subclass's object may stand
-     * for: a call to a method declaring a class other than its own, or a `static` return over one, the one write a
-     * local sees followed. `collect()`, `new`, a relation read and a body read name the class the value is.
+     * Whether an argument's classes are only what a declaration names, which a subclass's object may stand for: a
+     * method's or macro's return other than its own class, a typed or documented property, or an inline `@var` its
+     * value names no class beside; the one write a local sees is followed. Anything else names the class it is.
      */
     private function boundsArgument(Expr $argument): bool
     {
@@ -191,16 +195,25 @@ final readonly class CallSite
 
         // The bound keeps a local that reads its own write from walking without end.
         for ($step = 0; $step < 16; $step++) {
-            if ($argument instanceof Variable && $this->scope->declaredAt($argument) === null) {
-                $written = $this->scope->soleWriteSeenBy($argument);
+            if ($argument instanceof Variable) {
+                $span = $this->scope->declaredAt($argument);
+                $next = $span === null ? $this->scope->soleWriteSeenBy($argument) : $span['expr'];
 
-                if ($written === null) {
+                if ($span !== null && $receivers->resolve($span['expr'], $this->scope) === null) {
+                    return true;
+                }
+
+                if ($next === null) {
                     return false;
                 }
 
-                $argument = $written;
+                $argument = $next;
 
                 continue;
+            }
+
+            if ($argument instanceof PropertyFetch || $argument instanceof NullsafePropertyFetch) {
+                return $this->declaresProperty($argument);
             }
 
             if ((! $argument instanceof MethodCall && ! $argument instanceof NullsafeMethodCall && ! $argument instanceof StaticCall)
@@ -209,33 +222,86 @@ final readonly class CallSite
                 return false;
             }
 
-            $method = $argument->name->toString();
-            $classes = match (true) {
-                $argument instanceof StaticCall => $this->staticCallClasses($argument),
-                $argument->var instanceof Variable && $argument->var->name === 'this' => [$this->scope->thisMemberClass($method, true)->getName()],
-                default => $receivers->resolve($argument->var, $this->scope)?->classes,
-            };
-            $declaring = array_values(array_filter(
-                $classes ?? [],
-                fn (string $class): bool => method_exists($class, $method) && DeclaredClasses::returnType($class, $method) !== null,
-            ));
+            $bounds = $this->callBounds($argument, $argument->name->toString());
 
-            if ($declaring === []) {
-                return false;
-            }
-
-            if (! array_all($declaring, fn (string $class): bool => DeclaredClasses::returnsOwnClass($class, $method))) {
-                return true;
-            }
-
-            if ($argument instanceof StaticCall) {
-                return false;
+            if ($bounds !== null || $argument instanceof StaticCall) {
+                return $bounds === true;
             }
 
             $argument = $argument->var;
         }
 
         return false;
+    }
+
+    /**
+     * Whether a call's classes are only its method's or macro's declared return: true for a class other than its own,
+     * null for `static` or `$this`, which is as exact as the receiver, false for a call nothing declares.
+     */
+    private function callBounds(MethodCall|NullsafeMethodCall|StaticCall $call, string $method): ?bool
+    {
+        $classes = match (true) {
+            $call instanceof StaticCall => $this->staticCallClasses($call),
+            $call->var instanceof Variable && $call->var->name === 'this' => [$this->scope->thisMemberClass($method, true)->getName()],
+            default => resolve(ReceiverClassResolver::class)->resolve($call->var, $this->scope)?->classes,
+        };
+        $declaring = array_values(array_filter(
+            $classes ?? [],
+            fn (string $class): bool => method_exists($class, $method) && DeclaredClasses::returnType($class, $method) !== null,
+        ));
+
+        if ($declaring === []) {
+            return $this->macroDeclaresClass($classes ?? [], $method);
+        }
+
+        return array_all($declaring, fn (string $class): bool => DeclaredClasses::returnsOwnClass($class, $method)) ? null : true;
+    }
+
+    /**
+     * Whether a macro a class answers the call with declares a return, natively or by `@return`, other than `static`,
+     * `self` or `$this`, which name the class it runs on.
+     *
+     * @param  list<string>  $classes
+     */
+    private function macroDeclaresClass(array $classes, string $method): bool
+    {
+        $macros = resolve(MacroCallResolver::class);
+
+        return array_any($classes, function (string $class) use ($macros, $method): bool {
+            $function = class_exists($class) ? $macros->reflect($macros->macroFor(new ReflectionClass($class), $method)) : null;
+            $native = $function === null ? null : DeclaredClasses::reflectedReturnType($function);
+            $declared = $native instanceof ReflectionNamedType
+                ? $native->getName()
+                : resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $function?->getDocComment());
+
+            return $declared !== null && preg_match('/^\??(?:static|self|\$this)\b/i', ltrim($declared, '\\')) !== 1;
+        });
+    }
+
+    /**
+     * Whether a property read's classes are only the property's declaration: a typed or documented property the class
+     * declares, not a model's attribute or relation, which a read names as it is.
+     */
+    private function declaresProperty(PropertyFetch|NullsafePropertyFetch $fetch): bool
+    {
+        if (! $fetch->name instanceof Identifier) {
+            return false;
+        }
+
+        $name = $fetch->name->toString();
+        $classes = $fetch->var instanceof Variable && $fetch->var->name === 'this'
+            ? [$this->scope->thisMemberClass($name, false)->getName()]
+            : resolve(ReceiverClassResolver::class)->resolve($fetch->var, $this->scope)?->classes;
+
+        return array_any($classes ?? [], function (string $class) use ($name): bool {
+            if (! property_exists($class, $name)) {
+                return false;
+            }
+
+            $property = new ReflectionProperty($class, $name);
+
+            return $property->hasType() || resolve(PropertyDocblockTypeReader::class)->tag($property, new ReflectionClass($class)) !== null;
+        });
     }
 
     /**

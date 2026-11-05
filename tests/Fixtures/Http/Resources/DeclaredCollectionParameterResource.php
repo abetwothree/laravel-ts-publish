@@ -23,9 +23,24 @@ use Workbench\App\Models\Team;
  */
 class DeclaredCollectionParameterResource extends JsonResource
 {
+    /** The post's comments, which only the property's declaration types. */
+    protected SupportCollection $items;
+
+    /**
+     * Wrap a post, keeping its comments where only the property's declaration types them.
+     */
+    public function __construct(mixed $resource)
+    {
+        parent::__construct($resource);
+        $this->items = $this->opaque($resource?->comments ?? new Collection);
+    }
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
+        /** @var SupportCollection<int, Comment> $declared */
+        $declared = $this->opaque($this->resource->comments);
+
         return [
             'typed_callable_first' => $this->whenLoaded('comments', $this->typedFirst(...)),
             'native_callable_first' => $this->whenLoaded('comments', $this->nativeFirst(...)),
@@ -53,6 +68,8 @@ class DeclaredCollectionParameterResource extends JsonResource
             'literal_list_value' => $this->commentsValue(collect([$this->resource->comments[0], $this->resource->comments[1]])),
             'string_known_value' => $this->stringKeyedValue($this->resource->comments->keyBy('content')),
             'keyed_filter_value' => $this->commentsValue($this->resource->comments->keyBy('content')->filter(fn ($c) => $c->id > 0)),
+            'typed_property_only' => $this->untypedOnlyFive($this->items),
+            'var_declared_only' => $this->untypedOnlyFive($declared),
         ];
     }
 

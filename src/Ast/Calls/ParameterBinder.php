@@ -548,10 +548,8 @@ final class ParameterBinder
         unset($value['absentReadsNull']);
         $declaredKey = $declared['key'] ?? null;
         $known = self::argumentKey($value['type'], $receiver);
-        // Where nothing names the keys, the value reads as the declaration spells them, as it did with nothing passed;
-        // the receiver admits a moved key unless the declaration names only strings.
-        $key = $known === false ? ($declaredKey === 'string' ? 'string' : 'array-key') : self::keyKind($known, $declaredKey);
-        $valueKey = $known === false ? ($declaredKey === 'int' ? null : $declaredKey) : $key;
+        // Where nothing names the keys, the declaration spells them, for the value and the receiver alike.
+        $key = $known === false ? ($declaredKey === 'int' ? null : $declaredKey) : self::keyKind($known, $declaredKey);
         $element = $receiver->elementModel ?? $declared['modelFqcn'];
         $classes = $bounded ? self::narrowest($receiver->classes, $declared['classes'] ?? [EloquentCollection::class]) : $receiver->classes;
         $native = $this->nativeClasses($parameter);
@@ -560,7 +558,7 @@ final class ParameterBinder
             'model' => null,
             'classes' => $native === null || new ReceiverType($classes)->within($native) ? $classes : $native,
             'elementModel' => $element,
-            'value' => self::keyedValue($value, $valueKey) ?? self::listedValue($declared, $element, $valueKey) ?? self::readValue($value),
+            'value' => self::keyedValue($value, $key) ?? self::listedValue($declared, $element, $key) ?? self::readValue($value),
             'unsaved' => false,
             'refines' => true,
             'declaredOnly' => $receiver->declaredOnly,

@@ -549,8 +549,8 @@ function parameterBinderCommentedPost(): Post
 }
 
 // A docblock holds only what its author wrote, so the collection an argument is known to hold outranks it, its class
-// and keys too, for the receiver and the value; the declaration names the element and the keys an argument leaves
-// unknown, and narrows a class a method only declares, and no argument's class widens a native one.
+// and keys too; the declaration names the element and keys it leaves unknown, so `support_keyed_arg_all`'s `int` key
+// lies about the string keys it sends, and narrows a class only a declaration names. No class widens a native one.
 test('binds a @param Collection<int, X> parameter by its element, untyped or natively a collection', function () {
     $comment = fn (int $id, string $content): array => ['id' => $id, 'content' => $content, 'post_id' => 1];
 
@@ -569,7 +569,7 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'lying_value' => 'Comment[]',
         'narrowed_subscriber?' => '{ sub: User | null }',
         'support_arg_only' => 'Record<string, unknown>',
-        'support_keyed_arg_all' => 'Comment[] | Record<string, Comment>',
+        'support_keyed_arg_all' => 'Comment[]',
         'untyped_support_arg_only' => 'Record<string, unknown>',
         'enumerable_arg_only' => 'Comment[]',
         'support_declared_only' => 'Comment[]',
@@ -579,6 +579,8 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'literal_list_value' => 'Comment[]',
         'string_known_value' => 'Record<string, Comment>',
         'keyed_filter_value' => 'Comment[] | Record<string, Comment>',
+        'typed_property_only' => 'Comment[]',
+        'var_declared_only' => 'Comment[]',
     ])->and(json_decode((string) json_encode(new DeclaredCollectionParameterResource(parameterBinderCommentedPost())->resolve(request())), true))->toBe([
         'typed_callable_first' => ['first' => 'hi'],
         'native_callable_first' => ['first' => 'hi'],
@@ -603,6 +605,8 @@ test('binds a @param Collection<int, X> parameter by its element, untyped or nat
         'literal_list_value' => [$comment(5, 'hi'), $comment(6, 'yo')],
         'string_known_value' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
         'keyed_filter_value' => ['hi' => $comment(5, 'hi'), 'yo' => $comment(6, 'yo')],
+        'typed_property_only' => [$comment(5, 'hi')],
+        'var_declared_only' => [$comment(5, 'hi')],
     ]);
 });
 
