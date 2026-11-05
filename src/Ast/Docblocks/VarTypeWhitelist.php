@@ -40,8 +40,9 @@ final readonly class VarTypeWhitelist
 
     /**
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve a name
+     * @param  array<string, true>  $expanding  "{FQCN}::{alias}" aliases whose definitions are being read
      */
-    private function __construct(private ReflectionClass $context) {}
+    private function __construct(private ReflectionClass $context, private array $expanding = []) {}
 
     /**
      * The whitelist for a type written in a class's file.
@@ -286,16 +287,33 @@ final readonly class VarTypeWhitelist
     }
 
     /**
-     * A bare class name, or an alias the file's class sees where it names no class, at a token; else null.
+     * A bare class name at a token, or an alias the file's class sees where it names no class; else null.
      *
      * @return Part|null
      */
     private function bareClass(string $name, int $at): ?array
     {
-        $named = $this->className($name) !== null
-            || (TypeAliases::isName($name) && TypeAliases::find($name, $this->context) !== null);
+        if ($this->className($name) !== null) {
+            return ['end' => $at + 1, 'unknowns' => 0];
+        }
 
-        return $named ? ['end' => $at + 1, 'unknowns' => 0] : null;
+        $unknowns = TypeAliases::isName($name) ? $this->aliasUnknownLeaves($name) : null;
+
+        return $unknowns === null ? null : ['end' => $at + 1, 'unknowns' => $unknowns];
+    }
+
+    /**
+     * The unknown leaves of an alias's definition as the file that wrote it would bind it spelled directly; null when
+     * the class sees no such alias, the definition holds a form outside the whitelist, or it names itself.
+     */
+    private function aliasUnknownLeaves(string $name): ?int
+    {
+        $key = $this->context->getName().'::'.$name;
+        $alias = isset($this->expanding[$key]) ? null : TypeAliases::find($name, $this->context);
+
+        return $alias === null
+            ? null
+            : new self(new ReflectionClass($alias['class']), [...$this->expanding, $key => true])->unknownLeaves($alias['definition']);
     }
 
     /**

@@ -4876,6 +4876,9 @@ it('reads a declaration under the guard as it reads one without it', function ()
         'declared_either_map' => 'number[] | Record<string, number>',
         'declared_alias_first' => 'number',
         'declared_alias_array' => 'number[]',
+        'any_listed_first' => 'number',
+        'any_listed_map' => 'number[] | Record<string, number>',
+        'arr_listed_map' => 'number[]',
     ])
         ->and($sent['array_typed'])->toBe([3000, 4000])
         ->and($sent['array_typed_held'])->toBe([3000, 4000])
@@ -4904,7 +4907,10 @@ it('reads a declaration under the guard as it reads one without it', function ()
         ->and($sent['declared_either_first'])->toBe(3000)
         ->and($sent['declared_either_map'])->toBe([3000, 4000])
         ->and($sent['declared_alias_first'])->toBe(3000)
-        ->and($sent['declared_alias_array'])->toBe([3000, 4000]);
+        ->and($sent['declared_alias_array'])->toBe([3000, 4000])
+        ->and($sent['any_listed_first'])->toBe(3000)
+        ->and($sent['any_listed_map'])->toBe([3000, 4000])
+        ->and($sent['arr_listed_map'])->toBe([3000, 4000]);
 });
 
 // A collection's own paginator keeps its property reading, though Laravel sends its toArray(): a known gap.

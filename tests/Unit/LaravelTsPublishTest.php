@@ -2245,6 +2245,15 @@ describe('phpstan type aliases', function () {
             ->and($alias['class']->getName())->toBe(PhpstanTypeAliasChainZ::class);
     });
 
+    test('answers null for a lookup already under way anywhere along the import chain', function () {
+        $chained = fn (string $seen): ?array => $this->service->resolvePhpstanTypeAlias(
+            'TransitiveAlias', new ReflectionClass(PhpstanTypeAliasChainX::class), [$seen => true],
+        );
+
+        expect($chained(PhpstanTypeAliasChainX::class.'::TransitiveAlias'))->toBeNull()
+            ->and($chained(PhpstanTypeAliasChainZ::class.'::TransitiveAlias'))->toBeNull();
+    });
+
     test('records each class an alias import reads, and replays them when the answer is reused', function () {
         $read = function (): array {
             DependencyRecorder::start();

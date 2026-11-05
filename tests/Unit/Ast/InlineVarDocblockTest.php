@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedFormsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredLocalFormsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LocalAliasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasCode;
@@ -477,6 +478,41 @@ describe('an inline @var on a local assignment', function () {
             ->and($sent['renamed'])->toBe(['c' => true, 'd' => [1]]);
     });
 
+    // An alias admits exactly what its definition would spelled directly, in the file that wrote it (R60).
+    test('holds an alias to what its definition, spelled directly, would bind', function (string $alias, ?string $read) {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $context = new ReflectionClass(AliasedFormsResource::class);
+        $tag = $reader->extractVarTag('/** @var '.$alias.' $d */', $context, []);
+
+        expect($tag === null ? null : $reader->readDeclared($alias, $context)['type'] ?? null)->toBe($read)
+            ->and($reader->extractParamTag("/**\n * @param  {$alias}  \$d\n */", 'd', $context))->toBe($read === null ? null : $alias);
+    })->with([
+        'an unimported global class' => ['When', null],
+        'a list of one' => ['Whens', null],
+        'a shape holding one' => ['WhenShape', null],
+        'an intersection' => ['Coded', null],
+        'a pseudo-type' => ['Loose', null],
+        'an integer range' => ['Range', null],
+        'an alias naming itself' => ['Tree', null],
+        'a shape' => ['Pair', '{ a: number; b: string }'],
+        'a list of another alias' => ['Pairs', '{ a: number; b: string }[]'],
+        'a nullable alias' => ['?Pair', '{ a: number; b: string } | null'],
+        'a shape holding a callable, read unknown by design' => ['Callback', '{ fn: unknown }'],
+        'a renamed import' => ['Duo', '{ c: boolean; d: number[] }'],
+    ]);
+
+    test('reads a local or a @param naming an alias of an unimported global class as nothing, as the class itself', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(AliasedFormsResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'when' => 'unknown',
+            'when_year' => 'unknown',
+            'pairs' => '{ a: number; b: string }[]',
+            'helper_when' => '{ w: unknown }',
+        ]);
+    });
+
     // Only a bare `string` key is the record all() sends (R37); keys of either kind may be a list, so both arms stay.
     test('reads a local\'s receiver from each form it binds: a one-parameter collection, keys and an alias', function () {
         $post = (new Post)->forceFill(['id' => 4, 'title' => 'T'])
@@ -606,7 +642,7 @@ describe('an inline @var on a local assignment', function () {
             ->and([$spelled?->elementModel, $spelled?->declaredOnly])->toBe([null, true]);
     });
 
-    // The whitelist declines `&` today, so only a span built by hand reaches the receiver half with one.
+    // The whitelist declines `&`, spelled directly or through an alias, so only a span built by hand reaches it.
     test('keeps an intersection\'s other members on the receiver a declared local names', function () {
         $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
         $span = [

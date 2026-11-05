@@ -23,6 +23,15 @@ test('finds an alias a class defines or imports, with the class whose docblock d
     'a class the docblock names, not an alias' => ['LocalAliasSource', LocalAliasResource::class, null],
 ]);
 
+test('answers null where a lookup along the import chain is already under way', function () {
+    $context = new ReflectionClass(LocalAliasResource::class);
+
+    expect(TypeAliases::lookup('Duo', $context, [LocalAliasSource::class.'::Flag' => true]))->toBeNull()
+        ->and(TypeAliases::lookup('Duo', $context, [LocalAliasResource::class.'::Duo' => true]))->toBeNull()
+        ->and(TypeAliases::lookup('Pair', $context, [LocalAliasResource::class.'::Duo' => true])['definition'] ?? null)
+        ->toBe('array{a: int, b: string}');
+});
+
 test('reads a name as an alias only when it is a PHPDoc identifier', function (string $name, bool $expected) {
     expect(TypeAliases::isName($name))->toBe($expected);
 })->with([

@@ -587,9 +587,10 @@ there in a block that falls through, a read takes that value or the old binding'
 a by-reference parameter of a callee the scan cannot name.
 
 `VarTypeWhitelist` lists the forms a tag may use, a `T[]` list, a one-parameter collection, an `int|string` or
-`array-key` key and an alias the file's class sees among them. A callable inside a shape reads `unknown` by design, so
-`extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
-no more. A collection local's bare read is what its `all()` sends, so a record keyed of either kind keeps its list arm.
+`array-key` key and an alias the file's class sees among them. An alias admits only what its definition would, spelled
+directly in the file that wrote it, so one naming an unimported global class declines. A callable inside a shape reads
+`unknown` by design, so `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the
+tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either kind keeps its list arm.
 
 ### By-reference calls
 

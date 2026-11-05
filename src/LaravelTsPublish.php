@@ -574,7 +574,7 @@ class LaravelTsPublish
      */
     public function resolvePhpstanTypeAlias(string $name, ReflectionClass $context, array $seen = []): ?array
     {
-        $alias = isset($seen[$context->getName().'::'.$name]) ? null : TypeAliases::find($name, $context);
+        $alias = TypeAliases::lookup($name, $context, $seen);
 
         return $alias === null ? null : [...$alias, 'class' => new ReflectionClass($alias['class'])];
     }

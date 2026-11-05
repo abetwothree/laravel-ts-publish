@@ -46,6 +46,45 @@ final class TypeAliases
     }
 
     /**
+     * The alias find() reads, null where its own or any import's "{FQCN}::{alias}" lookup is already under way.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @param  array<string, true>  $seen
+     * @return TypeAlias|null
+     */
+    public static function lookup(string $name, ReflectionClass $context, array $seen): ?array
+    {
+        $key = $context->getName();
+        $seenKey = $key.'::'.$name;
+
+        if (isset($seen[$seenKey])) {
+            return null;
+        }
+
+        $seen[$seenKey] = true;
+
+        // A reuse replays the class files the answer read, so a later class's cache entry still names them.
+        if (array_key_exists($name, self::$answers[$key] ?? [])
+            && ((self::$paths[$key][$name] ?? null) !== null || ! DependencyRecorder::isRecording())) {
+            foreach (self::$paths[$key][$name] ?? [] as $path) {
+                DependencyRecorder::record($path);
+            }
+
+            return self::$answers[$key][$name];
+        }
+
+        $mark = DependencyRecorder::mark();
+        // The class defines the alias or imports it, and each class an import names is read the same way below.
+        DependencyRecorder::record((string) $context->getFileName());
+        $doc = $context->getDocComment();
+        $resolved = $doc === false ? null : self::defined($name, $context, $doc) ?? self::imported($name, $context, $doc, $seen);
+
+        self::$paths[$key][$name] = DependencyRecorder::isRecording() ? DependencyRecorder::since($mark) : null;
+
+        return self::$answers[$key][$name] = $resolved;
+    }
+
+    /**
      * Whether a name is a PHPDoc identifier, as PHPStan's lexer reads one, so it may name an alias.
      */
     public static function isName(string $name): bool
@@ -110,45 +149,6 @@ final class TypeAliases
         }
 
         return trim($definition);
-    }
-
-    /**
-     * The alias a name spells in a class's docblock, an import followed recursively; $seen guards an import cycle.
-     *
-     * @param  ReflectionClass<object>  $context
-     * @param  array<string, true>  $seen
-     * @return TypeAlias|null
-     */
-    private static function lookup(string $name, ReflectionClass $context, array $seen): ?array
-    {
-        $key = $context->getName();
-        $seenKey = $key.'::'.$name;
-
-        if (isset($seen[$seenKey])) {
-            return null;
-        }
-
-        $seen[$seenKey] = true;
-
-        // A reuse replays the class files the answer read, so a later class's cache entry still names them.
-        if (array_key_exists($name, self::$answers[$key] ?? [])
-            && ((self::$paths[$key][$name] ?? null) !== null || ! DependencyRecorder::isRecording())) {
-            foreach (self::$paths[$key][$name] ?? [] as $path) {
-                DependencyRecorder::record($path);
-            }
-
-            return self::$answers[$key][$name];
-        }
-
-        $mark = DependencyRecorder::mark();
-        // The class defines the alias or imports it, and each class an import names is read the same way below.
-        DependencyRecorder::record((string) $context->getFileName());
-        $doc = $context->getDocComment();
-        $resolved = $doc === false ? null : self::defined($name, $context, $doc) ?? self::imported($name, $context, $doc, $seen);
-
-        self::$paths[$key][$name] = DependencyRecorder::isRecording() ? DependencyRecorder::since($mark) : null;
-
-        return self::$answers[$key][$name] = $resolved;
     }
 
     /**

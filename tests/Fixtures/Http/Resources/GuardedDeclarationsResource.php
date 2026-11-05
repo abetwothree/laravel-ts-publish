@@ -42,6 +42,10 @@ class GuardedDeclarationsResource extends JsonResource
         $eitherListed = $post->comments;
         /** @var CommentList $aliasListed */
         $aliasListed = $post->comments;
+        /** @var EloquentCollection<array-key, Comment> $anyListed */
+        $anyListed = $post->comments;
+        /** @var Comment[] $arrListed */
+        $arrListed = $post->comments->all();
 
         return [
             'array_typed' => array_map(fn (Comment $comment) => $comment->post->comments->pluck('id')->random(), $post->comments->all()),
@@ -76,6 +80,9 @@ class GuardedDeclarationsResource extends JsonResource
             'declared_either_map' => $eitherListed->map(fn ($comment) => $comment->post->comments->pluck('id')->random()),
             'declared_alias_first' => $aliasListed->first()->post->comments->pluck('id')->random(),
             'declared_alias_array' => array_map(fn ($comment) => $comment->post->comments->pluck('id')->random(), $aliasListed->all()),
+            'any_listed_first' => $anyListed->first()->post->comments->pluck('id')->random(),
+            'any_listed_map' => $anyListed->map(fn ($comment) => $comment->post->comments->pluck('id')->random()),
+            'arr_listed_map' => array_map(fn ($comment) => $comment->post->comments->pluck('id')->random(), $arrListed),
         ];
     }
 
