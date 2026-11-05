@@ -863,22 +863,10 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         // The relation binds by its classes, where bindCallbackArgument() binds a value alone.
         $name = AnalysisScope::firstParameterName($closure);
+        $binding = ParameterBinder::loadedBinding($relationInfo);
 
-        if ($name !== null && $relationInfo['modelFqcn'] !== null) {
-            if (str_ends_with($relationInfo['type'], '[]')) {
-                $scope->varCollectionBindings[$name] = [
-                    'type' => $relationInfo['type'],
-                    'modelFqcn' => $relationInfo['modelFqcn'],
-                ];
-            } else {
-                $scope->varModelBindings[$name] = $relationInfo['modelFqcn'];
-            }
-        }
-
-        // A morphTo names no single model, so its param holds any one of the targets: bind them all and let each
-        // reader union them.
-        if ($name !== null && $relationInfo['modelFqcn'] === null && $relationInfo['morphFqcns'] !== []) {
-            $scope->varClassBindings[$name] = $relationInfo['morphFqcns'];
+        if ($name !== null && $binding !== null) {
+            resolve(ParameterBinder::class)->bindPassed([$name => $binding], $scope);
         }
     }
 

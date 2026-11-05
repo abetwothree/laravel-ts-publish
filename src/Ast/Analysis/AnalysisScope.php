@@ -53,6 +53,7 @@ use ReflectionMethod;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type CollectedElement from ResourceCollections
  * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
+ * @phpstan-import-type KeyKind from ReceiverType
  *
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
@@ -72,7 +73,10 @@ use ReflectionMethod;
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
- * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
+ * @phpstan-type CollectionBinding array{
+ *     type: string, modelFqcn: class-string<Model>, classes?: non-empty-list<class-string>, key?: KeyKind,
+ * }
+ * @phpstan-type VarCollectionBindingsMap array<string, CollectionBinding>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type ByReferenceForm array{
@@ -338,9 +342,9 @@ final class AnalysisScope
     public array $guardedParameters = [];
 
     /**
-     * Closure params bound to a whole relation collection rather than one element — a to-many
-     * `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback
-     * for an untyped `->map()` closure param.
+     * Params bound to a whole collection of one model rather than one element: a to-many `whenLoaded` param, a passed
+     * Eloquent collection, or one a `@param` collection generic declares, which names its classes and kind of key too.
+     * Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param.
      *
      * @var VarCollectionBindingsMap
      */

@@ -4841,9 +4841,9 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($numbered['model_keys'])->toBe([3, 4]);
 });
 
-// A declaration reads as it would with no guard: a callback's declared model where the declaration alone reads the
-// callback, a helper's declared parameter, and an inline `@var`. A helper a guarded callback hands its parameter, or
-// what it reads off it, stays guarded, as the callback is.
+// A declaration reads as it would with no guard: a callback's declared model, native or `@param`, where the declaration
+// alone reads the callback, a helper's declared parameter, and an inline `@var`. A helper a guarded callback hands its
+// parameter, or what it reads off it, stays guarded, as the callback is.
 it('reads a declaration under the guard as it reads one without it', function () {
     $sent = json_decode((string) json_encode(GuardedDeclarationsResource::make(new CommentRack)->resolve()), true);
 
@@ -4879,6 +4879,9 @@ it('reads a declaration under the guard as it reads one without it', function ()
         'any_listed_first' => 'number',
         'any_listed_map' => 'number[] | Record<string, number>',
         'arr_listed_map' => 'number[]',
+        'array_doc_typed' => 'number[]',
+        'map_doc_typed_own' => 'number[]',
+        'map_doc_typed_unguarded' => 'number[]',
     ])
         ->and($sent['array_typed'])->toBe([3000, 4000])
         ->and($sent['array_typed_held'])->toBe([3000, 4000])
@@ -4910,7 +4913,10 @@ it('reads a declaration under the guard as it reads one without it', function ()
         ->and($sent['declared_alias_array'])->toBe([3000, 4000])
         ->and($sent['any_listed_first'])->toBe(3000)
         ->and($sent['any_listed_map'])->toBe([3000, 4000])
-        ->and($sent['arr_listed_map'])->toBe([3000, 4000]);
+        ->and($sent['arr_listed_map'])->toBe([3000, 4000])
+        ->and($sent['array_doc_typed'])->toBe([3000, 4000])
+        ->and($sent['map_doc_typed_own'])->toBe([3000, 4000])
+        ->and($sent['map_doc_typed_unguarded'])->toBe([3000, 4000]);
 });
 
 // A collection's own paginator keeps its property reading, though Laravel sends its toArray(): a known gap.

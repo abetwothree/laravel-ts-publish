@@ -22,12 +22,16 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\UnionType;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\PostStats;
 
 /**
  * A throwaway scope for tests that never inspect its own subject/model.
@@ -281,12 +285,16 @@ it('returns the unknown body result when there is no usable return-type annotati
  *
  * @return array<string, mixed>
  */
-function closureHandlerDocumentedResult(string $docComment, string $bodyType, ?Identifier $returnType = null): array
-{
+function closureHandlerDocumentedResult(
+    string $docComment,
+    string $bodyType,
+    Identifier|Name|NullableType|UnionType|null $returnType = null,
+    string $scopeClass = DocumentedClosureResource::class,
+): array {
     $bodyExpr = new Variable('x');
     $expr = new ArrowFunction(['expr' => $bodyExpr, 'returnType' => $returnType], ['comments' => [new Doc($docComment)]]);
     $engine = new ClosureHandlerArmStubEngine([[$bodyExpr, ['type' => $bodyType, 'optional' => false]]]);
-    $scope = new AnalysisScope(new ReflectionClass(DocumentedClosureResource::class), Post::class);
+    $scope = new AnalysisScope(new ReflectionClass($scopeClass), Post::class);
 
     return (new ClosureHandler)->resolve($expr, $scope, $engine) ?? [];
 }
@@ -309,6 +317,32 @@ it('reads the body, then a native return type, before the docblock @return', fun
     expect(closureHandlerDocumentedResult('/** @return int */', 'boolean')['type'])->toBe('boolean')
         ->and(closureHandlerDocumentedResult('/** @return int */', 'unknown', new Identifier('string'))['type'])
         ->toBe('string');
+});
+
+it('lets a precise @return replace a native array, union or mixed return, and keeps the native one over a vague @return', function (string $docComment, Identifier|UnionType $returnType, string $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown', $returnType)['type'])->toBe($expected);
+})->with([
+    'a shape over array' => ['/** @return array{a: int} */', new Identifier('array'), '{ a: number }'],
+    'a shape over a union' => ['/** @return array{a: int} */', new UnionType([new Identifier('array'), new Identifier('string')]), '{ a: number }'],
+    'a scalar over mixed' => ['/** @return int */', new Identifier('mixed'), 'number'],
+    'a vague @return over array' => ['/** @return array */', new Identifier('array'), 'unknown[]'],
+]);
+
+// A closure's `self` and `static` name the class the scope binds them to, whether its native type or its docblock
+// spells them.
+it('reads a closure\'s self or static return, native or documented, as the class the scope binds it to', function (string $docComment, Name|NullableType|null $returnType, string $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown', $returnType, PostStats::class)['type'])->toBe($expected);
+})->with([
+    'a native self' => ['/** */', new Name('self'), '{ views: number; shares: number }'],
+    'a native ?static' => ['/** */', new NullableType(new Name('static')), '{ views: number; shares: number } | null'],
+    'a @return static' => ['/** @return static */', null, '{ views: number; shares: number }'],
+    'a @return self or null' => ['/** @return self|null */', null, '{ views: number; shares: number } | null'],
+]);
+
+// A docblock that names a global class the file does not import still reads it, as it did before the relative spelling.
+it('reads a @return naming a global class the file does not import', function () {
+    expect(closureHandlerDocumentedResult('/** @return DateTimeImmutable */', 'unknown')['type'])
+        ->toBe('{ date: string; timezone_type: number; timezone: string }');
 });
 
 it('leaves the body\'s unknown for a vague @return, one that types nothing, or one naming an unpublished class', function (string $docComment) {

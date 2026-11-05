@@ -80,16 +80,18 @@ property the resource declares answers only the `$this->prop` spelling, because 
 `ReceiverClassResolver::fromVariable()` reads the scope's tables in this order, and the first that binds the name
 answers:
 
-1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets.
+1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets, which `ParameterBinder::loadedBinding()` binds
+   with the relation's model or collection.
 2. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file, with the one concrete model a collection generic such as
    `Collection<int, Comment>` or `Collection<Comment>` lists as `elementModel`, `keyed` for a `string`, `int|string` or
    `array-key` key, and `stringKeyed` for a bare `string` one. An alias the `@var` names reads as its definition, in
    the file that wrote it. See [AST engine § Declared locals](ast-engine.md#declared-locals).
 3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
-   `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
-   `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a
-   parameter's default, as that enum.
+   `varCollectionBindings` with `elementModel`: a `@param` collection generic's classes and keys, as `varDocBindings`
+   reads an inline `@var`'s, else an `Eloquent\Collection`, which a call passing such a collection not `keyed` and a
+   to-many `whenLoaded()` parameter bind too; then `requestVarNames`, then a `varValueBindings` value bound to one enum
+   case, such as a parameter's default, as that enum.
 4. `closureParamExprBindings`, where a readable `new X` default binds as unsaved, else `localVarBindings`, resolved
    recursively under the `resolvingLocalVars` guard.
 

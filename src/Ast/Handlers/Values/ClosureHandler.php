@@ -32,7 +32,7 @@ use PhpParser\Node\NullableType;
 
 /**
  * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
- * declared return-type annotation, or the docblock's `@return`, when the body itself resolves to `unknown`.
+ * declared return-type annotation, or the docblock's `@return` where it says more, when the body resolves to `unknown`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -124,19 +124,24 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Bind each parameter whose native type names one class to that class, as ParameterBinder::bindClosureClass() does,
-     * where no writer bound the name to a class. PHP throws for any other argument, so the type holds for every call.
+     * Bind each parameter by its declaration, native or `@param`: one no writer bound as ParameterBinder binds a
+     * closure read apart from any call, and one a writer bound to no class by the class it declares.
      */
     private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
     {
+        $docComment = (string) $closure->getDocComment();
+
         foreach ($closure->params as $param) {
             $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
 
-            if ($name !== null
-                && ! $scope->bindsClassName($name)
-                && ! $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
-            ) {
-                ParameterBinder::bindClosureClass($param, $name, $scope);
+            if ($name === null) {
+                continue;
+            }
+
+            if (! $scope->bindsName($name)) {
+                resolve(ParameterBinder::class)->bindClosureParameter($param, $name, $docComment, $scope);
+            } elseif (! $scope->bindsClassName($name) && ! $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)) {
+                ParameterBinder::bindClosureClass($param, $name, $scope, $docComment);
             }
         }
     }
@@ -157,9 +162,9 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Resolve an arrow function's or closure's return type annotation, else its docblock's `@return` where it declares
-     * none. Returns null when the annotation is a union/intersection, or maps to void/mixed/never or an unresolvable
-     * class, and when the docblock reads vague, types nothing or names a class with no published file.
+     * Resolve an arrow function's or closure's return type annotation, else its docblock's `@return` where the
+     * annotation is absent, vague or unread and TsTypeString::documentedWins() says the docblock says more. Null when
+     * neither types the closure: see convertAstTypeNodeToTs() and documentedReturnType().
      *
      * @return ClosureAnnotationResult|ValueExpressionResult|null
      */
@@ -169,19 +174,35 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        $returnType = $expr->returnType;
+        $native = $expr->returnType === null ? null : $this->convertAstTypeNodeToTs($expr->returnType, $scope);
 
-        if ($returnType !== null) {
-            return $this->convertAstTypeNodeToTs($returnType);
+        if ($native !== null && ! TsTypeString::isVagueTsType($native['type'])) {
+            return $native;
         }
 
-        $declared = DocblockTags::type((string) $expr->getDocComment(), 'return');
+        $documented = $this->documentedReturnType($expr, $scope);
+
+        return $documented !== null && TsTypeString::documentedWins($native['type'] ?? 'unknown', $documented['type'])
+            ? $documented
+            : $native;
+    }
+
+    /**
+     * A closure's docblock `@return`, each `self`, `static` or `parent` read as the class the scope binds it to; null
+     * when it reads vague, types nothing or names a class with no published file.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function documentedReturnType(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): ?array
+    {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $declared = $reader->extractReturnType((string) $closure->getDocComment(), $scope->relativeClassNames());
 
         if ($declared === null || DocblockTags::isVague($declared)) {
             return null;
         }
 
-        $result = resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->declaringFileClass);
+        $result = $reader->readDeclared($declared, $scope->declaringFileClass);
 
         return ValueResult::isPublishableReading($result) ? $result : null;
     }
@@ -190,14 +211,15 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult: the type, with its FQCN or the custom
      * imports a class's override brings.
      *
-     * Returns null for union/intersection types, void/never/mixed and unresolvable classes.
+     * Returns null for union/intersection types, void/never/mixed and unresolvable classes; `self`, `static` and
+     * `parent` name the class the scope binds them to.
      *
      * @return ClosureAnnotationResult|null
      */
-    private function convertAstTypeNodeToTs(Node $typeNode): ?array
+    private function convertAstTypeNodeToTs(Node $typeNode, AnalysisScope $scope): ?array
     {
         if ($typeNode instanceof NullableType) {
-            $inner = $this->convertAstTypeNodeToTs($typeNode->type);
+            $inner = $this->convertAstTypeNodeToTs($typeNode->type, $scope);
 
             if ($inner === null) {
                 return null;
@@ -219,10 +241,10 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         if ($typeNode instanceof Name) {
-            $phpType = $typeNode->toString();
-            $tsInfo = LaravelTsPublish::toTsType($phpType);
+            $phpType = $typeNode->isSpecialClassName() ? $scope->relativeClass($typeNode)?->getName() : $typeNode->toString();
+            $tsInfo = $phpType === null ? null : LaravelTsPublish::toTsType($phpType);
 
-            if ($tsInfo['type'] === 'unknown') {
+            if ($tsInfo === null || $tsInfo['type'] === 'unknown') {
                 return null;
             }
 

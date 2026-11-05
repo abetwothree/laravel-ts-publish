@@ -427,16 +427,21 @@ green with either mechanism alone, so it pins neither.
 A method body read apart from its call, such as a spread helper, the body fallback, a method read as a value,
 `SubjectHelperReturnResolver`'s helper or any analyzer that builds its own scope, binds its parameters with
 [`ParameterBinder`]'s `bindCall()`, by the type they declare: the native type, else a whitelisted `@phpstan-param`,
-`@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; any
-other parameter puts its classes, when it names only classes, in `varDeclaredBindings` and its value in
-`varValueBindings`. A `Request` goes in `requestVarNames`, except in an API resource, and a name already bound stays as
-it is. `bindClosure()` binds a closure's parameters from the declaration the AST holds, and differs in two ways: its
-class goes through `bindClosureClass()`, which `ClosureHandler` shares, so a union of classes binds no class and a
-`Request` binds as its class in `varDeclaredBindings`; and its `@param` is read only from a docblock attached to the
-closure itself, where `AstParser` also moves one written before the call argument holding it. An untyped one binds
-nothing, since no call is read. A closure's `self` and `parent` name the classes `relativeClass()` names, there and in
-a `map()` callback's model (`ParameterBinder::elementBinding()`), and mark the name in `relativeParameters`, so its
-receiver reads members as a spelled inline `@var`'s does.
+`@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; a
+`@param` collection generic over no native type or a collection one, naming a concrete model the run publishes, goes in
+`varCollectionBindings` with its classes and kind of key (`DeclaredClasses::collectionGeneric()`), and outranks the
+element a call passes, as the value does; any other parameter puts its classes, when it names only classes, in
+`varDeclaredBindings`; each puts its value in `varValueBindings`. A `Request` goes in `requestVarNames`, except in an
+API resource, and a name already bound stays as it is. `bindClosure()` binds a closure's parameters from the declaration
+the AST holds through `bindClosureParameter()`, which `ClosureHandler` shares for a parameter no writer bound, and
+differs in two ways: its class goes through `bindClosureClass()`, so a union of classes binds no class, `X|null` binds
+as `?X` does, a `@param` names the class where no native type does, and a `Request` binds as its class in
+`varDeclaredBindings`; and its `@param` is read only from a docblock attached to the closure itself, where `AstParser`
+also moves one written before the call argument holding it. An untyped one binds nothing, since no call is read. A
+`map()` callback's model (`ParameterBinder::elementBinding()`) reads the same declaration, so a `@param` model clears
+the guard as a native one does. A closure's native `self` and `parent` name the classes `relativeClass()` names, there
+and in that model, and mark the name in `relativeParameters`, so its receiver reads members as a spelled inline
+`@var`'s does.
 `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one `VariableWrites`
 scan, in every body reader, a closure's included.
 

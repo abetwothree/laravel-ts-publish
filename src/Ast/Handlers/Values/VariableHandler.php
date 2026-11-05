@@ -685,7 +685,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
         // The model the first parameter binds over an element nothing names: the one its declaration names.
-        $declared = ParameterBinder::declaredClosureModel($callback->params[0] ?? null, $scope);
+        $declared = ParameterBinder::declaredClosureModel($callback->params[0] ?? null, $scope, (string) $callback->getDocComment());
 
         // A resource collection's items are the API resources it built, or what it was given if it collects none.
         if ($receiver === null

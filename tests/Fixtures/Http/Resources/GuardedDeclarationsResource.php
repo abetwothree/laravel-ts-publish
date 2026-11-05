@@ -83,6 +83,9 @@ class GuardedDeclarationsResource extends JsonResource
             'any_listed_first' => $anyListed->first()->post->comments->pluck('id')->random(),
             'any_listed_map' => $anyListed->map(fn ($comment) => $comment->post->comments->pluck('id')->random()),
             'arr_listed_map' => array_map(fn ($comment) => $comment->post->comments->pluck('id')->random(), $arrListed),
+            'array_doc_typed' => array_map(/** @param Comment $comment */ fn ($comment) => $comment->post->comments->pluck('id')->random(), $post->comments->all()),
+            'map_doc_typed_own' => $this->resource->comments()->map(/** @param Comment $comment */ fn ($comment) => $comment->post->comments->pluck('id')->random()),
+            'map_doc_typed_unguarded' => $this->resource->post()->comments->map(/** @param Comment $comment */ fn ($comment) => $comment->post->comments->pluck('id')->random()),
         ];
     }
 

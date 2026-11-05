@@ -833,10 +833,15 @@ final class ReceiverClassResolver
         }
 
         if (isset($scope->varCollectionBindings[$name])) {
-            return new ReceiverType(
-                [EloquentCollection::class],
-                elementModel: $scope->varCollectionBindings[$name]['modelFqcn'],
-                keyed: $read !== null && $this->rekeyedBefore($name, $read, $scope),
+            $binding = $scope->varCollectionBindings[$name];
+            [$keyed, $stringKeyed] = ReceiverType::declaredKeys($binding['key'] ?? null);
+
+            return ReceiverType::collection(
+                $binding['classes'] ?? [EloquentCollection::class],
+                $binding['modelFqcn'],
+                $keyed || ($read !== null && $this->rekeyedBefore($name, $read, $scope)),
+                $stringKeyed,
+                false,
             );
         }
 

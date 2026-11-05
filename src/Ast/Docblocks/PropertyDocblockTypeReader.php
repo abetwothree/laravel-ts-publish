@@ -128,14 +128,19 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * The whole type a docblock's `@phpstan-return`, `@psalm-return` or `@return` tag spells, as DocblockTags reads it.
+     * The whole type a docblock's `@phpstan-return`, `@psalm-return` or `@return` tag spells, as DocblockTags reads it,
+     * each `self`, `static` or `parent` spelled as the class $relative maps it to.
      *
      * Text after a generic's closing `>`, such as `[]`, stays part of the type, so ReceiverClassResolver refuses an
      * array of a class instead of naming the class. LaravelTsPublish::extractReturnTypeFromDocblock() reads through it.
+     *
+     * @param  RelativeClasses  $relative  the class each of `self`, `static` and `parent` names, keyed by that name
      */
-    public function extractReturnType(string $docComment): ?string
+    public function extractReturnType(string $docComment, array $relative = []): ?string
     {
-        return DocblockTags::type($docComment, 'return');
+        $declared = DocblockTags::type($docComment, 'return');
+
+        return $declared === null ? null : $this->spellRelativeClasses($declared, $relative);
     }
 
     /**

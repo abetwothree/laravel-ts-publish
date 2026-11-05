@@ -43,6 +43,7 @@ it('lists the models only() and except() keep on a variable holding an Eloquent 
         'relation_only' => 'Comment[]',
         'keyed_only' => 'Comment[]',
         'keyed_only_null' => 'Comment[] | Record<string, Comment>',
+        'method_only' => 'Comment[]',
     ])
         ->and(collectionVariableFilterSends())->toBe([
             'only' => ['one', 'two'],
@@ -51,5 +52,6 @@ it('lists the models only() and except() keep on a variable holding an Eloquent 
             'relation_only' => ['one', 'two'],
             'keyed_only' => ['one'],
             'keyed_only_null' => 'keyed',
+            'method_only' => ['one', 'two'],
         ]);
 });
