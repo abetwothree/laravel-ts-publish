@@ -740,12 +740,12 @@ provider's `boot()` for the console too.
 holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
 prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
 
-### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
+### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource` publish `unknown`
 
 Inside a collection, `$this->resource` holds the items in a `Support\Collection` or the paginator the collection was
-given. The package types its value, `first()`, `last()`, `count()`, `only()`, `except()` and the paginator's own
-methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
-`$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
+given. The package types its value, `first()`, `last()`, `count()`, `only()`, `except()`, the paginator's own methods
+and a member of the item `first()` or `last()` returns, such as `$this->resource->first()?->title`, not a collection
+pipeline on it. Type such a key with `#[TsCasts]`.
 
 ### A query chain past a step that provably leaves the query publishes no root-model guess
 

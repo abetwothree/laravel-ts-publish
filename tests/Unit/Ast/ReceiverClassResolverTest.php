@@ -517,6 +517,19 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($relation->firstWhere('id', 0))->toBeNull();
     });
 
+    // CollectionSteps::passesDefault() decides for each: Laravel returns the default where no item matches.
+    test('a collection\'s first(), last() and firstWhere() hold its element model, unless they may return a default', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $held = fn (string $php): ?ReceiverType => $resolver->resolve(receiverExpr($php), postScope());
+
+        expect($held('$this->resource->comments->first()'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->last()'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->firstWhere("id", 1)'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->first(null, "none")'))->toBeNull()
+            ->and($held('$this->resource->comments->last(default: "none")'))->toBeNull()
+            ->and($held('$this->resource->comments->first(...$arguments)'))->toBeNull();
+    });
+
     // A `new` with no constructor argument holds no attributes; a copy, a filled model and any model a step reaches
     // may hold some. The binder's `new` for a passed copy is one of those.
     test('marks only a new model built with no constructor argument as holding no attributes', function () {

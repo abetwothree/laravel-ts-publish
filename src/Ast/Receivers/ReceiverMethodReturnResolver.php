@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTyp
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -121,13 +122,14 @@ final class ReceiverMethodReturnResolver
             }
 
             $owner = $receiver->memberOwner($class, $methodName, true);
-            $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? $this->resolveOn(
+            $held = ProxyDeclaration::forwarded($owner, $methodName, true);
+            $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? ($held === null ? $this->resolveOn(
                 $scope->calleeRuntime(new ReflectionClass($owner), $receiver->runtimeInstance && $owner === $class),
                 $methodName,
                 $fromInside,
                 $site,
                 $receiver->declaredOnly,
-            );
+            ) : $this->resolve($held, $methodName, $scope, false, $call, $site));
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {

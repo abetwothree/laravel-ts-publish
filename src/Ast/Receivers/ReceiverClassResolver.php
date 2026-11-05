@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Enumerable;
@@ -80,7 +81,6 @@ use Throwable;
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
- * @phpstan-import-type DeclaredType from DeclaredClasses
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
  *
@@ -374,9 +374,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What `$this->resource` holds as a receiver: the classes an `instanceof` proof holds it to, else those the subject
-     * declares it to hold, or the backing class AnalysisScope::proxyReceiver() names when every one of them admits it,
-     * as `@var Model` admits a post; null without a resource proxy, or when a declared arm names no class.
+     * What `$this->resource` holds as a receiver: the classes an `instanceof` proof holds it to, else what
+     * ProxyDeclaration::heldOver() reads off the subject's declarations and its backing class, or a collection's items;
+     * null without a resource proxy, or when a declared arm names no class.
      */
     public function proxyHeld(AnalysisScope $scope): ?ReceiverType
     {
@@ -385,28 +385,25 @@ final class ReceiverClassResolver
         }
 
         $proxy = $scope->proxyReceiver();
-        $declared = $this->redeclaredProxyArms($scope);
-        $classes = $scope->provenProxy ?? ($declared !== null && $declared['named'] ? $declared['classes'] : null);
 
         // A collection's constructor always swaps in its items, so a proof or a redeclaration names only their holder.
         if ($proxy !== null && $proxy->collectedItems) {
+            $declared = $this->redeclaredProxyArms($scope);
+            $classes = $scope->provenProxy ?? ($declared !== null && $declared['named'] ? $declared['classes'] : null);
+
             return $classes === null
                 ? $proxy
                 : new ReceiverType($classes, collectedItems: true, collectedElement: $proxy->collectedElement);
         }
 
-        $backingNarrowsAll = $declared === null
-            || $this->admittedByEvery($declared['classes'], $scope->forwardsUndeclaredMembersTo);
+        if ($scope->provenProxy === null) {
+            return ProxyDeclaration::heldOver($scope->proxyDeclarer(), $scope->forwardsUndeclaredMembersTo);
+        }
 
-        $held = match (true) {
-            $scope->provenProxy === null && $backingNarrowsAll => $proxy,
-            $classes === null => null,
-            default => new ReceiverType($classes),
-        };
+        $arms = ProxyDeclaration::intersectionArms($scope->proxyDeclarer());
+        $proven = new ReceiverType($scope->provenProxy);
 
-        $arms = $this->proxyArms($scope);
-
-        return $arms === null ? $held : $held?->withIntersections($arms);
+        return $arms === null ? $proven : $proven->withIntersections($arms);
     }
 
     /**
@@ -426,7 +423,7 @@ final class ReceiverClassResolver
 
         return $backing !== null
             && is_a($backing, Model::class, true)
-            && ($declared === null || $this->admitting($declared['classes'], $backing) !== [])
+            && ($declared === null || ProxyDeclaration::admitting($declared['classes'], $backing) !== [])
             ? $backing
             : null;
     }
@@ -900,6 +897,11 @@ final class ReceiverClassResolver
     {
         if ($name === 'resource' && $scope->hasResourceProxy()) {
             return $this->proxyHeld($scope);
+        }
+
+        // Laravel's constructor sets a collection's `$collection` to a Support\Collection of its items, paged or not.
+        if ($name === 'collection' && $scope->subjectReflection->isSubclassOf(ResourceCollection::class)) {
+            return new ReceiverType([Collection::class], collectedItems: true, collectedElement: $scope->collectedElement);
         }
 
         $owner = $scope->thisMemberClass($name, false);
@@ -1475,7 +1477,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a method call returns on one class; a relation method on a model also remembers its related model.
+     * What a method call returns on one class; a relation method on a model also remembers its related model, and an
+     * API resource's undeclared method runs on what ProxyDeclaration::forwarded() names.
      *
      * @param  bool  $fromInside  the call is on `$this`, so a non-public method is reachable
      * @param  class-string<Model>|null  $queried  the model the receiver, a query, relation or factory, builds
@@ -1489,7 +1492,15 @@ final class ReceiverClassResolver
         ?string $staticClass = null,
     ): ?ReceiverType {
         if (! $this->isCallable($class, $method, $fromInside)) {
-            return $this->forwardedQueryMethod($class, $method, $queried);
+            $held = ProxyDeclaration::forwarded($class, $method, true);
+
+            return $held === null ? $this->forwardedQueryMethod($class, $method, $queried) : $this->merge(
+                array_map(
+                    fn (string $heldClass): ?ReceiverType => $this->memberMethod($held->memberOwner($heldClass, $method, true), $method, false),
+                    $held->classes,
+                ),
+                false,
+            );
         }
 
         $built = $queried === null ? null : $this->queriedModel($class, $method, $queried);
@@ -2207,66 +2218,7 @@ final class ReceiverClassResolver
      */
     private function redeclaredProxyArms(AnalysisScope $scope): ?array
     {
-        $backing = $scope->forwardsUndeclaredMembersTo;
-        $declared = ProxyDeclaration::of($scope->proxyDeclarer());
-        $declared = $declared === null ? null : [...$declared, 'classes' => $this->ledByBacking($declared, $backing)];
-
-        if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
-            return $declared;
-        }
-
-        // `@mixin Post`, or `@mixin Arrayable` over a post, names only the backing class, which keeps its own path.
-        $namesModel = (count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true))
-            || ($backing !== null && array_all($declared['classes'], fn (string $class): bool => is_a($backing, $class, true)));
-
-        return $namesModel ? null : $declared;
-    }
-
-    /**
-     * The declared classes with each intersection of interfaces led by a member the backing class implements, so it
-     * stands in for that member as for a class it is: `@mixin HasLabel&Arrayable` over a post leads with Arrayable.
-     *
-     * @param  ProxyArms  $declared
-     * @return non-empty-list<class-string>
-     */
-    private function ledByBacking(array $declared, ?string $backing): array
-    {
-        if ($backing === null || $declared['intersections'] === []) {
-            return $declared['classes'];
-        }
-
-        return array_values(array_unique(array_map(
-            fn (string $class): string => interface_exists($class) && ! is_a($backing, $class, true)
-                ? array_find(
-                    $declared['intersections'][$class] ?? [],
-                    fn (string $member): bool => is_a($backing, $member, true),
-                ) ?? $class
-                : $class,
-            $declared['classes'],
-        )));
-    }
-
-    /**
-     * The declared classes a backing class is, or is a subtype of.
-     *
-     * @param  list<class-string>  $declared
-     * @return list<class-string>
-     */
-    private function admitting(array $declared, ?string $backing): array
-    {
-        return $backing === null
-            ? []
-            : array_values(array_filter($declared, fn (string $class): bool => is_a($backing, $class, true)));
-    }
-
-    /**
-     * Whether a backing class is, or is a subtype of, every declared class, so it narrows them all.
-     *
-     * @param  list<class-string>  $declared
-     */
-    private function admittedByEvery(array $declared, ?string $backing): bool
-    {
-        return $this->admitting($declared, $backing) === $declared;
+        return ProxyDeclaration::armsOver($scope->proxyDeclarer(), $scope->forwardsUndeclaredMembersTo);
     }
 
     /**
@@ -2333,7 +2285,7 @@ final class ReceiverClassResolver
             ? []
             : [$scope->instanceOfWrappedClass, $backing];
         $order = array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
-        $arms = $this->proxyArms($scope);
+        $arms = ProxyDeclaration::intersectionArms($scope->proxyDeclarer());
 
         if ($order === [] || $arms === null) {
             return $order;
@@ -2343,21 +2295,6 @@ final class ReceiverClassResolver
         $intersections = new ReceiverType($order)->withIntersections($arms)->intersections;
 
         return array_values(array_unique([...$order, ...array_merge(...array_values($intersections))]));
-    }
-
-    /**
-     * The classes the subject declares `$this->resource` to be, with an intersection's other members, as
-     * `@extends JsonResource<Post&HasLabel>` names them; null for a declaration naming no intersection.
-     *
-     * @return DeclaredType|null
-     */
-    private function proxyArms(AnalysisScope $scope): ?array
-    {
-        $declared = ProxyDeclaration::of($scope->proxyDeclarer());
-
-        return $declared === null || $declared['intersections'] === []
-            ? null
-            : ['classes' => $declared['classes'], 'intersections' => $declared['intersections']];
     }
 
     /**
@@ -2515,13 +2452,18 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The element model a collection's first(), last() or firstWhere() hands back, or an Eloquent collection's find()
-     * of one key; none where the call passes a default, which Laravel returns where no item matches.
+     * The item a call hands back: a collection's element model by first(), last(), firstWhere() or an Eloquent
+     * collection's find() of one key, or a resource collection's element by first() or last(), which a paginator's
+     * `__call()` runs on its collection; none where the call passes a default Laravel returns where no item matches.
      *
-     * @return class-string<Model>|null
+     * @return class-string|null
      */
     private function collectedElement(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): ?string
     {
+        if ($receiver->collectedItems) {
+            return CollectionSteps::elementCall($call, $method) ? $receiver->collectedElement['fqcn'] ?? null : null;
+        }
+
         if ($receiver->elementModel === null) {
             return null;
         }
@@ -2534,9 +2476,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
-
-        return $arguments->hasUnpack() || $arguments->named('default') !== null ? null : $receiver->elementModel;
+        return CollectionSteps::passesDefault($call, $method) ? null : $receiver->elementModel;
     }
 
     /**

@@ -52,6 +52,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverH
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsExtendsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlaggedStatsMixinChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardRulesPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedJsonSerializableResource;
@@ -66,6 +67,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsMixinRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemBuildingPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingSupplierCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
@@ -156,6 +160,8 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -244,6 +250,7 @@ use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
+use Workbench\App\Models\Supplier;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
@@ -4410,4 +4417,81 @@ it('reads a member only an intersection arm gives as no member of a subclass a b
     expect(resourceProps(PostCodeOrSpecialVarResource::class))->toBe(['code' => 'unknown', 'proxy_code' => 'unknown', 'title' => 'string'])
         ->and($sent(new SpecialPost))->toBe(['code' => null, 'proxy_code' => null, 'title' => 'T'])
         ->and($sent(new CodedPost))->toBe(['code' => 'C4', 'proxy_code' => 'C4', 'title' => 'T']);
+});
+
+// B5: first() and last() hand back one collected item, an API resource whose members Laravel's __get() and __call()
+// forward to its model, or a raw model.
+it('reads a member of the API resource or model a resource collection first() or last() returns', function () {
+    $post = fn (): Post => (new Post)->forceFill(['id' => 1, 'title' => 'T']);
+    $sent = fn (JsonResource $resource): mixed => json_decode((string) json_encode($resource->resolve()), true);
+
+    expect(resourceProps(ItemReadingPostCollection::class))->toBe([
+        'first_title' => 'string | null',
+        'first_coll_title' => 'string | null',
+        'last_coll_title' => 'string | null',
+        'first_model_title' => 'string | null',
+        'first_key' => 'number | null',
+    ])
+        ->and(resourceProps(ItemReadingSupplierCollection::class))->toBe([
+            'first_name' => 'string | null',
+            'first_coll_name' => 'string | null',
+        ])
+        ->and(resourceProps(ItemBuildingPostResource::class))->toBe([
+            'make_title' => 'string',
+            'make_id' => 'number',
+            'new_title' => 'string',
+            'local_title' => 'string',
+            'local_key' => 'number',
+            'local_model_title' => 'string',
+            'local_copy_title' => 'string',
+        ])
+        ->and($sent(new ItemReadingPostCollection(collect([$post()]))))->toBe([
+            'first_title' => 'T', 'first_coll_title' => 'T', 'last_coll_title' => 'T', 'first_model_title' => 'T', 'first_key' => 1,
+        ])
+        ->and($sent(new ItemReadingPostCollection(new LengthAwarePaginator([$post()], 1, 15))))->toBe([
+            'first_title' => 'T', 'first_coll_title' => 'T', 'last_coll_title' => 'T', 'first_model_title' => 'T', 'first_key' => 1,
+        ])
+        ->and($sent(new ItemReadingPostCollection(collect())))->toBe([
+            'first_title' => null, 'first_coll_title' => null, 'last_coll_title' => null, 'first_model_title' => null, 'first_key' => null,
+        ])
+        ->and($sent(new ItemReadingSupplierCollection(collect([(new Supplier)->forceFill(['id' => 1, 'name' => 'S'])]))))
+        ->toBe(['first_name' => 'S', 'first_coll_name' => 'S'])
+        ->and($sent(new ItemBuildingPostResource($post())))->toBe([
+            'make_title' => 'T', 'make_id' => 1, 'new_title' => 'T', 'local_title' => 'T', 'local_key' => 1, 'local_model_title' => 'T',
+            'local_copy_title' => 'T',
+        ]);
+});
+
+// PHP reads a declared property before __get(), an override of __get() or __call() answers in Laravel's place, and a
+// resource held would forward again.
+it('reads a member off an API resource built in place by its own declarations before what it holds', function () {
+    $sent = ForwardRulesPostResource::make((new Post)->forceFill(['id' => 1, 'title' => 'T']))->resolve();
+
+    expect(resourceProps(ForwardRulesPostResource::class))->toBe([
+        'get_title' => 'unknown',
+        'get_key' => 'number',
+        'call_title' => 'string',
+        'call_key' => 'unknown',
+        'own_title' => 'boolean',
+        'self_title' => 'unknown',
+        'whole' => 'Post',
+        'nullable_whole' => 'Post | null',
+        'redeclared_whole' => 'null | Post',
+    ])
+        ->and(array_diff_key($sent, array_flip(['whole', 'nullable_whole', 'redeclared_whole'])))
+        ->toBe(['get_title' => 'magic', 'get_key' => 1, 'call_title' => 'T', 'call_key' => 'magic', 'own_title' => true, 'self_title' => 'T'])
+        ->and(array_map(fn (Post $post): string => $post->title, array_intersect_key($sent, array_flip(['whole', 'nullable_whole', 'redeclared_whole']))))
+        ->toBe(['whole' => 'T', 'nullable_whole' => 'T', 'redeclared_whole' => 'T']);
+});
+
+// Laravel's __call() runs a macro registered under the name before it forwards anything to the model.
+it('leaves a call a JsonResource macro answers unread, never the model\'s method', function () {
+    JsonResource::macro('getKey', fn (): string => 'macro');
+
+    try {
+        expect(resourceProps(ItemBuildingPostResource::class)['local_key'])->toBe('unknown')
+            ->and(ItemBuildingPostResource::make((new Post)->forceFill(['id' => 1, 'title' => 'T']))->resolve()['local_key'])->toBe('macro');
+    } finally {
+        JsonResource::flushMacros();
+    }
 });

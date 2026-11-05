@@ -10,17 +10,24 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * What an API resource's `$this->resource` is declared to hold, and the model the declarations name: `#[TsResource]`'s
  * model, a `@var` redeclaring `$resource`, then the class's own `@extends JsonResource<…>`, `@mixin` and class-level
  * `@property … $resource`, then each ancestor's. ModelClassResolver takes its model; the receiver resolver its classes.
  *
+ * heldOver() joins them with the backing class, for the subject and, through held(), for another API resource.
+ *
  * @phpstan-import-type Intersections from DeclaredClasses
+ * @phpstan-import-type DeclaredType from DeclaredClasses
  *
  * @phpstan-type ProxySource = 'var'|'extends'|'mixin'|'property'
  * @phpstan-type ProxyArms = array{
@@ -82,6 +89,137 @@ final class ProxyDeclaration
         }
 
         return null;
+    }
+
+    /**
+     * What an API resource that is not a collection holds as a receiver: heldOver() over the model ModelClassResolver
+     * resolves for it; null for any other class. Read once a run per class.
+     *
+     * @param  class-string  $resourceClass
+     */
+    public static function held(string $resourceClass): ?ReceiverType
+    {
+        if (! is_subclass_of($resourceClass, JsonResource::class) || is_subclass_of($resourceClass, ResourceCollection::class)) {
+            return null;
+        }
+
+        return resolve(AnalysisMemo::class)->remember('proxy-held:'.$resourceClass, static function () use ($resourceClass): ?ReceiverType {
+            $resource = new ReflectionClass($resourceClass);
+
+            return self::heldOver($resource, resolve(ModelClassResolver::class)->resolve($resource));
+        });
+    }
+
+    /**
+     * What `$resource` holds where no `instanceof` proof is in force: the backing class where armsOver() declares
+     * nothing or every class it declares admits it, as `@var Model` admits a post, else the declared classes where each
+     * arm names one; with an intersection's other members. Null where it names nothing.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declarer  the class whose declarations say what `$resource` holds
+     * @param  class-string|null  $backing  the backing model, or the class an `instanceof` guard names
+     */
+    public static function heldOver(ReflectionClass $declarer, ?string $backing): ?ReceiverType
+    {
+        $declared = self::armsOver($declarer, $backing);
+        $backingNarrowsAll = $declared === null || self::admitting($declared['classes'], $backing) === $declared['classes'];
+
+        $held = match (true) {
+            $backingNarrowsAll => $backing === null ? null : ReceiverType::of($backing),
+            $declared['named'] => new ReceiverType($declared['classes']),
+            default => null,
+        };
+
+        $intersections = self::intersectionArms($declarer);
+
+        return $intersections === null ? $held : $held?->withIntersections($intersections);
+    }
+
+    /**
+     * What a member read off an API resource that is not a collection reads, held(): `resource`, a declared property,
+     * and a member the class lacks, which Laravel's own `__get()`, or `__call()` where no macro answers, forwards.
+     *
+     * Null otherwise, and where a resource is held, which would forward again.
+     */
+    public static function forwarded(string $class, string $member, bool $isMethod): ?ReceiverType
+    {
+        if (! is_subclass_of($class, JsonResource::class) || is_subclass_of($class, ResourceCollection::class)) {
+            return null;
+        }
+
+        // The answer follows the class's declarations, which reflection reads without parsing.
+        DependencyRecorder::recordClass($class);
+        $resource = new ReflectionClass($class);
+
+        $reads = match (true) {
+            $isMethod => ! $resource->hasMethod($member) && self::runsLaravels($resource, '__call') && ! $class::hasMacro($member),
+            $member === 'resource' => true,
+            default => ! $resource->hasProperty($member) && self::runsLaravels($resource, '__get'),
+        };
+
+        $held = $reads ? self::held($class) : null;
+
+        return $held === null || array_any($held->classes, fn (string $holds): bool => is_a($holds, JsonResource::class, true))
+            ? null
+            : $held;
+    }
+
+    /**
+     * The arms of what a class declares `$resource` to hold, an intersection of interfaces led by a member the backing
+     * class implements; null for none, and for a tag that is not nullable and names one model or only classes the
+     * backing class is, as `@mixin Post` or `@mixin Arrayable` over a post does: the backing class keeps its own path.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declarer  the class whose declarations say what `$resource` holds
+     * @param  class-string|null  $backing  the backing model, or the class an `instanceof` guard names
+     * @return ProxyArms|null
+     */
+    public static function armsOver(ReflectionClass $declarer, ?string $backing): ?array
+    {
+        $declared = self::of($declarer);
+        $declared = $declared === null ? null : [...$declared, 'classes' => self::ledByBacking($declared, $backing)];
+
+        if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
+            return $declared;
+        }
+
+        $namesModel = (count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true))
+            || ($backing !== null && array_all($declared['classes'], fn (string $class): bool => is_a($backing, $class, true)));
+
+        return $namesModel ? null : $declared;
+    }
+
+    /**
+     * The classes a class declares `$resource` to be, with an intersection's other members, as
+     * `@extends JsonResource<Post&HasLabel>` names them; null for a declaration naming no intersection.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declarer
+     * @return DeclaredType|null
+     */
+    public static function intersectionArms(ReflectionClass $declarer): ?array
+    {
+        $declared = self::of($declarer);
+
+        return $declared === null || $declared['intersections'] === []
+            ? null
+            : ['classes' => $declared['classes'], 'intersections' => $declared['intersections']];
+    }
+
+    /**
+     * The declared classes a backing class is, or is a subtype of.
+     *
+     * @param  list<class-string>  $declared
+     * @return list<class-string>
+     */
+    public static function admitting(array $declared, ?string $backing): array
+    {
+        return $backing === null
+            ? []
+            : array_values(array_filter($declared, fn (string $class): bool => is_a($backing, $class, true)));
     }
 
     /**
@@ -223,6 +361,42 @@ final class ProxyDeclaration
         }
 
         return $declarations;
+    }
+
+    /**
+     * The declared classes with each intersection of interfaces led by a member the backing class implements, so it
+     * stands in for that member as for a class it is: `@mixin HasLabel&Arrayable` over a post leads with Arrayable.
+     *
+     * @param  ProxyArms  $declared
+     * @return non-empty-list<class-string>
+     */
+    private static function ledByBacking(array $declared, ?string $backing): array
+    {
+        if ($backing === null || $declared['intersections'] === []) {
+            return $declared['classes'];
+        }
+
+        return array_values(array_unique(array_map(
+            fn (string $class): string => interface_exists($class) && ! is_a($backing, $class, true)
+                ? array_find(
+                    $declared['intersections'][$class] ?? [],
+                    fn (string $member): bool => is_a($backing, $member, true),
+                ) ?? $class
+                : $class,
+            $declared['classes'],
+        )));
+    }
+
+    /**
+     * Whether an API resource runs Laravel's own magic method by this name, which no subclass overrides.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    private static function runsLaravels(ReflectionClass $resource, string $magic): bool
+    {
+        return FrameworkClasses::is(new ReflectionMethod($resource->getName(), $magic)->getDeclaringClass()->getName());
     }
 
     /**

@@ -7,7 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -50,10 +52,15 @@ final class ReceiverMemberReader
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($heldClass);
             $class = $held->memberOwner($heldClass, $name, false);
-            $result = is_a($class, Model::class, true)
-                ? self::modelValue($class, $name, $scope, $held->attributeless ? $held->filled : null, $relations)
-                : EnumValueTypes::member($class, $name, $scope->carriesImports)
-                    ?? self::propertyValue($class, $name, $held->declaredOnly);
+            $forwarded = ProxyDeclaration::forwarded($class, $name, false);
+            $result = match (true) {
+                $forwarded !== null => $name === 'resource'
+                    ? self::wholeValue($forwarded, $class)
+                    : self::value($forwarded, $name, $scope, $relations),
+                is_a($class, Model::class, true) => self::modelValue($class, $name, $scope, $held->attributeless ? $held->filled : null, $relations),
+                default => EnumValueTypes::member($class, $name, $scope->carriesImports)
+                    ?? self::propertyValue($class, $name, $held->declaredOnly),
+            };
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -75,6 +82,17 @@ final class ReceiverMemberReader
     {
         if (is_a($class, Model::class, true)) {
             return self::modelClasses($class, $name);
+        }
+
+        $forwarded = ProxyDeclaration::forwarded($class, $name, false);
+
+        // A member of what several classes hold would need their union, which one class's read cannot give.
+        if ($forwarded !== null) {
+            return match (true) {
+                $name === 'resource' => $forwarded,
+                count($forwarded->classes) === 1 => self::classes($forwarded->memberOwner($forwarded->classes[0], $name, false), $name),
+                default => null,
+            };
         }
 
         DependencyRecorder::recordClass($class);
@@ -119,6 +137,29 @@ final class ReceiverMemberReader
         $isMorphTo = $resolver->getRelations($model)?->firstWhere('name', $name) !== null;
 
         return $isMorphTo ? ReceiverType::of($resolver->resolveMorphToBound($model, $name)) : null;
+    }
+
+    /**
+     * `->resource` read whole off an API resource: as any public property where the class redeclares it, else the
+     * classes it holds as their published types, with the null its declaration admits; null where one has none.
+     *
+     * @param  class-string  $resourceClass
+     * @return ValueExpressionResult|null
+     */
+    private static function wholeValue(ReceiverType $held, string $resourceClass): ?array
+    {
+        $resource = new ReflectionClass($resourceClass);
+        $declared = ProxyDeclaration::of($resource);
+
+        if ($declared !== null && $declared['source'] === 'var') {
+            return self::propertyValue($resourceClass, 'resource', false);
+        }
+
+        $spelled = implode('|', array_map(fn (string $class): string => '\\'.$class, $held->classes));
+        $nullable = $declared !== null && $declared['nullable'];
+        $result = resolve(PropertyDocblockTypeReader::class)->readDeclared($spelled.($nullable ? '|null' : ''), $resource);
+
+        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**

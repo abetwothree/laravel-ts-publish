@@ -175,18 +175,22 @@ final class CollectionSteps
     }
 
     /**
-     * Whether a `first()` or `last()` call hands back an item or null: not where it passes the `$default` Laravel sends
-     * when no item matches, or its arguments cannot be read.
+     * Whether a `first()` or `last()` call hands back an item or null: not where passesDefault().
      */
     public static function elementCall(MethodCall|NullsafeMethodCall|StaticCall $call, string $method): bool
     {
-        if (! in_array($method, self::DEFAULTED_ELEMENT_STEPS, true)) {
-            return false;
-        }
+        return in_array($method, self::DEFAULTED_ELEMENT_STEPS, true) && ! self::passesDefault($call, $method);
+    }
 
+    /**
+     * Whether a call to a Support\Collection method may pass the `$default` Laravel sends when no item matches: it
+     * names one, or its arguments cannot be read.
+     */
+    public static function passesDefault(MethodCall|NullsafeMethodCall|StaticCall $call, string $method): bool
+    {
         $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
 
-        return ! $arguments->hasUnpack() && $arguments->named('default') === null;
+        return $arguments->hasUnpack() || $arguments->named('default') !== null;
     }
 
     /**
