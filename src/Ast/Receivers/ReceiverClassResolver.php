@@ -879,7 +879,7 @@ final class ReceiverClassResolver
     /**
      * Resolve a variable inside a gap through the values its writes assigned, a `null` aside, joined with the binding
      * the name came in with where that may still hold, or where the gap keeps it for a write naming no class; null when
-     * one names none. The join is guarded where any value is.
+     * one names none. The values join as merge() joins a union's parts.
      *
      * @param  BindingGap  $gap
      */
@@ -906,17 +906,14 @@ final class ReceiverClassResolver
             return null;
         }
 
-        /** @var non-empty-list<ReceiverType> $receivers */
-        return count($receivers) === 1
-            ? $receivers[0]
-            : new ReceiverType(
-                array_values(array_unique(array_merge(...array_map(
-                    fn (ReceiverType $receiver): array => $receiver->classes,
-                    $receivers,
-                )))),
-                declaredOnly: array_any($receivers, fn (ReceiverType $receiver): bool => $receiver->declaredOnly),
-                guarded: array_any($receivers, fn (ReceiverType $receiver): bool => $receiver->guarded),
-            );
+        if (count($receivers) === 1) {
+            return $receivers[0];
+        }
+
+        $joined = $this->merge($receivers, false);
+
+        // The join keeps only its classes and these two marks of what merge() agrees.
+        return $joined === null ? null : new ReceiverType($joined->classes, declaredOnly: $joined->declaredOnly, guarded: $joined->guarded);
     }
 
     /**
