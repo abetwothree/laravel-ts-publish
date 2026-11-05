@@ -21,9 +21,9 @@ use ReflectionType;
 use ReflectionUnionType;
 
 /**
- * The classes a declaration names: a method's native return type or `@return` docblock, a property's native type or
- * docblock, any native type, and a docblock union's class arms. The receiver resolver reads declarations through it,
- * and model inspection reads a relation method's return here without the resolver.
+ * The classes a declaration names: a method's native return type, else PHP's tentative one, else its `@return`; a
+ * property's native type or docblock, any native type, and a docblock union's class arms. The receiver resolver reads
+ * declarations through it, and model inspection reads a relation method's return here without the resolver.
  *
  * An intersection such as `A&B` names its primary member, the first that is no interface, among the classes, and its
  * other members under `intersections`: a reader that skips them reads less of the value, never a class it is not.
@@ -46,7 +46,7 @@ final class DeclaredClasses
     ];
 
     /**
-     * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
+     * The classes a method returns: its native or tentative class type, else its `@return`; null for a non-class arm.
      *
      * `static` and `$this` name the receiver class, or the caller's runtime class where it passes one; `self` names the
      * class that declares the method. Visibility is the caller's concern.
@@ -430,7 +430,7 @@ final class DeclaredClasses
     }
 
     /**
-     * Whether a method's declaration, native or `@return`, names `static` or `$this` and nothing else but null.
+     * Whether a method's native, tentative or `@return` declaration names `static` or `$this`, and else only null.
      */
     private static function declaresStaticReturn(string $class, string $method): bool
     {

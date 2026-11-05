@@ -398,10 +398,9 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a method's declared return type says it hands the same instance back — a native
-     * `static`, `self`, or the resource class itself; falling back to a `@return $this` docblock
-     * only when no native return type is declared at all. A union or intersection return type is
-     * rejected outright and never falls through to the docblock.
+     * Whether a method's declared return type says it hands the same instance back — a native or tentative `static`,
+     * `self`, or the resource class itself; falling back to a `@return $this` docblock only when it declares neither. A
+     * union or intersection return type is rejected outright and never falls through to the docblock.
      */
     private function methodPreservesReceiverType(ReflectionMethod $method, string $resourceFqcn): bool
     {

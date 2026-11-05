@@ -1993,7 +1993,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether a method declares a return of builtin scalar types alone, natively or in its docblock.
+     * Whether a method declares a return of builtin scalar types alone, natively, tentatively or in its docblock.
      */
     private function declaresNoObject(string $class, string $method): bool
     {

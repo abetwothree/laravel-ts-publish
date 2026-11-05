@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DateHolderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalMethodResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalServiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
@@ -2745,6 +2746,44 @@ describe('a method PHP declares only a tentative return type for', function () {
             'iterator_count' => 'number',
             'documented_year' => 'number',
         ])->and($sent)->toBe(['native_year' => '2020', 'declared_year' => '2020', 'iterator_count' => 2, 'documented_year' => 2020]);
+    });
+
+    test('reads a tentative bare array as a list or a record, since PHP may send either', function (string $php, string $type, Closure $sent) {
+        DateTimeImmutable::createFromFormat('Y-m-d', '2020-13-45');
+        $value = json_decode((string) json_encode(eval('return '.$php.';')), true);
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and($sent($value))->toBeTrue();
+    })->with([
+        'DateTimeZone::listAbbreviations(), an object' => [
+            '\\DateTimeZone::listAbbreviations()',
+            'unknown[] | Record<string, unknown>',
+            fn (array $sent): bool => ! array_is_list($sent) && isset($sent['utc']),
+        ],
+        'DateTimeZone::listIdentifiers(), a list' => [
+            '\\DateTimeZone::listIdentifiers(\\DateTimeZone::UTC)',
+            'unknown[] | Record<string, unknown>',
+            fn (array $sent): bool => $sent === ['UTC'],
+        ],
+        'DateTimeImmutable::getLastErrors() after a bad parse, an object or false' => [
+            '\\DateTimeImmutable::getLastErrors()',
+            'unknown[] | Record<string, unknown> | false',
+            fn (array $sent): bool => $sent['warning_count'] === 1 && ! array_is_list($sent),
+        ],
+    ]);
+
+    test('reads a tentative bare array off a model-less resource\'s typed property as a list or a record', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(InternalServiceResource::class))->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new InternalServiceResource(null)->toArray(request())), true);
+
+        expect($props->all())->toBe([
+            'object_copy' => 'unknown[] | Record<string, unknown>',
+            'zone_location' => 'unknown[] | Record<string, unknown> | false',
+        ])->and($sent['object_copy'])->toBe(['a' => 1])
+            ->and(array_is_list($sent['zone_location']))->toBeFalse()
+            ->and($sent['zone_location']['country_code'])->toBe('GB');
     });
 
     test('keeps the tentative type on a held class, which a guarded forwarded call reads too', function () {

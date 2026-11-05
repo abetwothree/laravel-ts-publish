@@ -1213,6 +1213,14 @@ describe('methodReturnedTypes', function () {
         'format()' => ['format', 'string'],
         'getTimestamp()' => ['getTimestamp', 'number'],
     ]);
+
+    test('an internal method\'s tentative bare array reads as a list or a record, a user method\'s native one as a list', function () {
+        expect($this->service->methodReturnedTypes(new ReflectionClass(DateTimeZone::class), 'getLocation')['type'])
+            ->toBe('unknown[] | Record<string, unknown> | false')
+            ->and($this->service->methodOrDocblockReturnTypes(new ReflectionClass(ArrayObject::class), 'getArrayCopy')['type'])
+            ->toBe('unknown[] | Record<string, unknown>')
+            ->and($this->service->methodReturnedTypes(new ReflectionClass(Money::class), 'toArray')['type'])->toBe('unknown[]');
+    });
 });
 
 describe('methodOrDocblockReturnTypes', function () {

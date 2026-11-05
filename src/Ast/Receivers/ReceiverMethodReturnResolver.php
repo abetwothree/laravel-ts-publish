@@ -918,7 +918,7 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a method's native return type, else its `@return` docblock, admits null.
+     * Whether a method's native or tentative return type, else its `@return` docblock, admits null.
      */
     private function returnAllowsNull(ReflectionMethod $method): bool
     {

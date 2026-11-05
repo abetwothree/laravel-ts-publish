@@ -612,9 +612,7 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        $reflection = $class->getMethod($method);
-
-        return $this->resolveReflectionType(DeclaredClasses::reflectedReturnType($reflection), $reflection->getDeclaringClass());
+        return $this->reflectedReturnTypes($class->getMethod($method));
     }
 
     /**
@@ -637,7 +635,7 @@ class LaravelTsPublish
         $reflectionMethod = $class->getMethod($method);
 
         return $this->declaredOrDocblockTypes(
-            $this->resolveReflectionType(DeclaredClasses::reflectedReturnType($reflectionMethod), $reflectionMethod->getDeclaringClass()),
+            $this->reflectedReturnTypes($reflectionMethod),
             fn (): array => $this->docblockReturnTypes($reflectionMethod),
         );
     }
@@ -3439,5 +3437,30 @@ class LaravelTsPublish
         sort($arms);
 
         return $arms === ['int', 'string'] ? 'array-key' : $key;
+    }
+
+    /**
+     * A method's reflected return type, native or PHP's tentative one, whose tentative `array` is a list or a record.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    private function reflectedReturnTypes(ReflectionMethod $method): array
+    {
+        $type = DeclaredClasses::reflectedReturnType($method);
+        $types = $this->resolveReflectionType($type, $method->getDeclaringClass());
+        $arms = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
+
+        if ($method->hasReturnType()
+            || ! array_any($arms, fn (?ReflectionType $arm): bool => $arm instanceof ReflectionNamedType && $arm->getName() === 'array')) {
+            return $types;
+        }
+
+        // Nothing says which keys an internal method's array holds, and json_encode() writes string keys as an object.
+        $types['type'] = implode(' | ', array_map(
+            fn (string $arm): string => $arm === 'unknown[]' ? 'unknown[] | Record<string, unknown>' : $arm,
+            TsTypeString::splitTopLevelUnion($types['type']),
+        ));
+
+        return $types;
     }
 }
