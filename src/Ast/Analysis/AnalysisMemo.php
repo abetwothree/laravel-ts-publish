@@ -43,6 +43,7 @@ use LogicException;
  *     models: int,
  *     enums: int,
  * }
+ * @phpstan-type ValueSite = array{Reading, AnalysisScope}
  *
  * @internal
  */
@@ -69,7 +70,7 @@ final class AnalysisMemo
     /** How many reads under way need each enum case as its enum: readingCasesAsEnums(). */
     private int $enumReadings = 0;
 
-    /** @var array{Reading, AnalysisScope}|null the reading and scope of the value the innermost read under way types */
+    /** @var ValueSite|null the reading and scope of the value the innermost read under way types */
     private ?array $valueSite = null;
 
     /** @var list<MemoFrame> the answers being computed, innermost last */
@@ -243,8 +244,8 @@ final class AnalysisMemo
      * Mark the value a read under way types by its reading and scope, handing back the mark it replaces for the reader
      * to restore: a body memoized apart from its reader's reading, an accessor's, asks filterReachesValue() of it.
      *
-     * @param  array{Reading, AnalysisScope}|null  $site
-     * @return array{Reading, AnalysisScope}|null
+     * @param  ValueSite|null  $site
+     * @return ValueSite|null
      */
     public function markValueSite(?array $site): ?array
     {

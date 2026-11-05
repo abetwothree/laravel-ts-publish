@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppendedPriorityWrapPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
@@ -328,3 +333,18 @@ test('an accessor\'s EnumResource wrap publishes what its reader sends for a nul
         ->toBe('PriorityType | never[]')
         ->and(json_encode($post->append('priority_wrap')->only('priority_wrap')))->toBe('{"priority_wrap":[]}');
 });
+
+// A resource sending its model's own array, whole, spread or merged, hands each appended wrap to filter(), which sends
+// it as null, though the model's own JSON sends `[]`.
+test('an appended accessor\'s EnumResource wrap publishes the null filter() sends through the model\'s own array', function (string $resource) {
+    $post = (new AppendedPriorityWrapPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes($resource, AppendedPriorityWrapPost::class)['priority_wrap'])->toBe('PriorityType | null')
+        ->and((string) new $resource($post)->response(request())->getContent())->toContain('"priority_wrap":null')
+        ->and(json_encode($post))->toBe('{"id":2,"priority":null,"priority_wrap":[]}');
+})->with([
+    'parent::toArray() returned whole' => [AppendedWrapParentResource::class],
+    'parent::toArray() spread' => [AppendedWrapSpreadResource::class],
+    'the model merged' => [AppendedWrapMergeResource::class],
+    'no toArray() of its own' => [AppendedWrapDelegatedResource::class],
+]);
