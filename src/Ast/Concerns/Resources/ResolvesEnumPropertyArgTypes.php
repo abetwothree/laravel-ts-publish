@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -20,6 +19,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use ReflectionMethod;
 
 /**
  * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, a local, or the one
@@ -92,7 +92,17 @@ trait ResolvesEnumPropertyArgTypes
                 ? $this->heldEnum($argExpr, $scope)
                 : null;
 
-            return $enum === null ? null : [...$result, 'type' => ValueResult::enumTypeName($enum), 'enumFqcn' => $enum];
+            if ($enum === null) {
+                return null;
+            }
+
+            $type = ValueResult::enumTypeName($enum);
+
+            return [
+                ...$result,
+                'type' => $argExpr instanceof StaticCall && $this->returnsNull($argExpr, $scope) ? TsTypeString::withNullArm($type) : $type,
+                'enumFqcn' => $enum,
+            ];
         }
 
         /** @var PropertyFetch $argExpr */
@@ -108,8 +118,8 @@ trait ResolvesEnumPropertyArgTypes
     /**
      * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps.
      *
-     * A null payload no filter() reaches is sent as the `[]` resolve() returns, spelled `never[]`, except under the
-     * plain encoded reading, which keeps its null outside a map() kept as a Collection and drops it inside.
+     * A null payload no filter() reaches, in a page, an event or a map() kept as a Collection, is sent as the `[]`
+     * resolve() returns, spelled `never[]`.
      *
      * @return ValueExpressionResult|null
      */
@@ -117,17 +127,12 @@ trait ResolvesEnumPropertyArgTypes
     {
         $result = $this->resolveEnumFromPropertyArg($payload, $scope)
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
-        $reading = $engine->reading();
 
-        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $reading->filterReaches($scope)) {
+        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $engine->reading()->filterReaches($scope)) {
             return $result;
         }
 
-        return match (true) {
-            $reading !== Reading::Encoded => [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'],
-            $scope->filtersNestedResources => $result,
-            default => [...$result, 'type' => TsTypeString::withoutNullArm($result['type'])],
-        };
+        return [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'];
     }
 
     /**
@@ -291,5 +296,21 @@ trait ResolvesEnumPropertyArgTypes
         $classes = resolve(ReceiverClassResolver::class)->resolve($expr, $scope)->classes ?? [];
 
         return count($classes) === 1 && enum_exists($classes[0]) ? $classes[0] : null;
+    }
+
+    /**
+     * Whether a static call's declared return type admits null, as `tryFrom()`'s does for a value no case backs.
+     */
+    private function returnsNull(StaticCall $call, AnalysisScope $scope): bool
+    {
+        if (! $call->name instanceof Identifier) {
+            return false;
+        }
+
+        $method = $call->name->toString();
+        $classes = resolve(ReceiverClassResolver::class)->resolveStaticReceiver($call, $scope)->classes ?? [];
+
+        return array_any($classes, static fn (string $class): bool => method_exists($class, $method)
+            && (new ReflectionMethod($class, $method)->getReturnType()?->allowsNull() ?? false));
     }
 }

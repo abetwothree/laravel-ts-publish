@@ -3571,7 +3571,7 @@ declare global {
             week_days_when_has?: app.enums.WeekDaysType[] | null;
             week_days_when_has_default: app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: app.enums.StatusType[];
-            members_via_var?: app.enums.RoleType[];
+            members_via_var?: (app.enums.RoleType | never[])[];
             member_role_snapshot?: { role: app.enums.RoleType | null }[];
             wrapped_status_fallback: { status: app.enums.StatusType[] | app.enums.StatusType };
             latest_status_or_history: app.enums.StatusType | app.enums.StatusType[];
@@ -5094,13 +5094,13 @@ declare global {
             member_map_only: { id: number; role: app.enums.RoleType | null }[];
             member_emails: string[];
             member_roles: (app.enums.RoleType | null)[];
-            member_role_resources: app.enums.RoleType[];
-            member_role_resources_filtered: app.enums.RoleType[] | Record<string, app.enums.RoleType>;
-            wrapped_filtered: { roles: app.enums.RoleType[] | Record<string, app.enums.RoleType> };
+            member_role_resources: (app.enums.RoleType | never[])[];
+            member_role_resources_filtered: (app.enums.RoleType | never[])[] | Record<string, (app.enums.RoleType | never[])>;
+            wrapped_filtered: { roles: (app.enums.RoleType | never[])[] | Record<string, (app.enums.RoleType | never[])> };
             member_names_upper: string[];
             member_formatted: string[];
-            member_mapped_fcc: unknown;
-            member_plucked_fcc: unknown;
+            member_mapped_fcc: Record<string, never>;
+            member_plucked_fcc: Record<string, never>;
             first_member: app.models.User | null;
             members_after_load: app.models.User[];
             first_member_after_load: app.models.User | null;

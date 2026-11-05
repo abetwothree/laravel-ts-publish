@@ -85,7 +85,7 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($runs);
         }
 
-        $reading = $reading->entering($runs, $method, $readsCall);
+        $reading = $reading->entering($runs, $method, $readsCall)->over($class);
 
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($casesAsLiterals ? '@casesAsLiterals' : '')
             .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')

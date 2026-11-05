@@ -84,7 +84,7 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
-        $reading = $site?->reading() ?? Reading::Encoded;
+        $reading = ($site?->reading() ?? Reading::Encoded)->over($class);
         $memo = resolve(AnalysisMemo::class);
         $literals = ! $memo->readsCasesAsEnums();
 

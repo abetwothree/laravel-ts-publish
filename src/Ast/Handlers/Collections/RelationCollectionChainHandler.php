@@ -147,6 +147,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         $elementModel = $relationInfo['modelFqcn'];
+        $convertsItems = CollectionSteps::endsInMappedToArray($steps);
+
+        if ($convertsItems) {
+            array_pop($steps);
+        }
 
         // An argless first()/last() as the outermost step ends the chain with a single element or null. The chain holds
         // a step here: one by a dynamic name roots it at that call, which the member check above declines.
@@ -238,12 +243,13 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $this->collectionArguments($mapNode, 'map')->named('callback')?->value,
             $elementModel,
             null,
-            $terminalOp === 'all',
+            $convertsItems || $terminalOp === 'all',
             $scope,
             $engine,
         );
+        $mapped = $this->mappedList($bodyResult, ! $sequentialKeys, false);
 
-        return $this->mappedList($bodyResult, ! $sequentialKeys, false);
+        return $mapped !== null && $convertsItems && $this->convertsMappedItems($mapped) ? null : $mapped;
     }
 
     /**

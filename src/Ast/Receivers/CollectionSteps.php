@@ -190,6 +190,23 @@ final class CollectionSteps
     }
 
     /**
+     * Whether a chain's last step is an argless `toArray()` after a `map()`: it hands back the mapped items as `all()`
+     * does, keys and all, converting only an Arrayable item, so filter() reaches each resource a callback returns.
+     *
+     * @param  list<ChainStep>  $steps
+     */
+    public static function endsInMappedToArray(array $steps): bool
+    {
+        $last = $steps === [] ? null : $steps[count($steps) - 1];
+
+        return $last !== null
+            && $last['name'] === 'toArray'
+            && ! $last['node']->isFirstClassCallable()
+            && $last['node']->getArgs() === []
+            && array_any(array_slice($steps, 0, -1), static fn (array $step): bool => $step['name'] === 'map');
+    }
+
+    /**
      * Whether a collection step hands back the same items, or a leading run of them, under the keys they had.
      */
     public static function keepsKeys(string $method): bool

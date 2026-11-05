@@ -2474,12 +2474,12 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
 describe('ResourceTransformer with RelationChainResource — EnumResource::make() array-wrapped by a map() chain', function () {
     // Regression pin for change #2: EnumResource::make() wraps each element, so the JSON is an
     // array of flattened enum objects, not raw enum values — AsEnum<typeof Role>[] is correct;
-    // the old RoleType[] (a plain, un-rewritten type import) was wrong.
-    test('member_role_resources rewrites to AsEnum<typeof Role>[] with tolki enabled', function () {
+    // the old RoleType[] (a plain, un-rewritten type import) was wrong. A null role sends `[]`.
+    test('member_role_resources rewrites to (AsEnum<typeof Role> | never[])[] with tolki enabled', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
-        expect($data->properties['member_role_resources']['type'])->toBe('AsEnum<typeof Role>[]')
+        expect($data->properties['member_role_resources']['type'])->toBe('(AsEnum<typeof Role> | never[])[]')
             ->and($data->properties['member_role_resources']['optional'])->toBeFalse();
     });
 
@@ -2487,7 +2487,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
         config()->set('ts-publish.enums.use_tolki_package', false);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
-        expect($data->properties['member_role_resources']['type'])->toBe('RoleType[]')
+        expect($data->properties['member_role_resources']['type'])->toBe('(RoleType | never[])[]')
             ->and($data->properties['member_role_resources']['optional'])->toBeFalse();
     });
 
@@ -2499,7 +2499,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
         expect($data->properties['member_role_resources_filtered']['type'])
-            ->toBe('AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>');
+            ->toBe('(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>');
     });
 
     // Same keyed-Record shape nested inside an inline array: analyzeInlineArray() substitutes the
@@ -2510,7 +2510,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
         expect($data->properties['wrapped_filtered']['type'])
-            ->toBe('{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }');
+            ->toBe('{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }');
     });
 });
 
@@ -2571,11 +2571,11 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['week_days_when_has_default']['optional'])->toBeFalse();
     });
 
-    test('local variable ->map() with an EnumResource::make() body rewrites to AsEnum<typeof Role>[]', function () {
+    test('local variable ->map() with an EnumResource::make() body rewrites to (AsEnum<typeof Role> | never[])[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
-        expect($data->properties['members_via_var']['type'])->toBe('AsEnum<typeof Role>[]')
+        expect($data->properties['members_via_var']['type'])->toBe('(AsEnum<typeof Role> | never[])[]')
             ->and($data->properties['members_via_var']['optional'])->toBeTrue();
     });
 

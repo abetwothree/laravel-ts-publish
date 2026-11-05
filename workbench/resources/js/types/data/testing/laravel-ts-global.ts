@@ -3571,7 +3571,7 @@ declare global {
             week_days_when_has?: workbench.app.enums.WeekDaysType[] | null;
             week_days_when_has_default: workbench.app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: workbench.app.enums.StatusType[];
-            members_via_var?: workbench.app.enums.RoleType[];
+            members_via_var?: (workbench.app.enums.RoleType | never[])[];
             member_role_snapshot?: { role: workbench.app.enums.RoleType | null }[];
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
@@ -5094,13 +5094,13 @@ declare global {
             member_map_only: { id: number; role: workbench.app.enums.RoleType | null }[];
             member_emails: string[];
             member_roles: (workbench.app.enums.RoleType | null)[];
-            member_role_resources: workbench.app.enums.RoleType[];
-            member_role_resources_filtered: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType>;
-            wrapped_filtered: { roles: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType> };
+            member_role_resources: (workbench.app.enums.RoleType | never[])[];
+            member_role_resources_filtered: (workbench.app.enums.RoleType | never[])[] | Record<string, (workbench.app.enums.RoleType | never[])>;
+            wrapped_filtered: { roles: (workbench.app.enums.RoleType | never[])[] | Record<string, (workbench.app.enums.RoleType | never[])> };
             member_names_upper: string[];
             member_formatted: string[];
-            member_mapped_fcc: unknown;
-            member_plucked_fcc: unknown;
+            member_mapped_fcc: Record<string, never>;
+            member_plucked_fcc: Record<string, never>;
             first_member: workbench.app.models.User | null;
             members_after_load: workbench.app.models.User[];
             first_member_after_load: workbench.app.models.User | null;

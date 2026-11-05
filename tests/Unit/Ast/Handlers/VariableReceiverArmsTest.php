@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClos
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDraftCommentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedLoopPostsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterfaceGuardedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptEnumMapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptOwnRoleMapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LoadedOrderEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedOrderEnumColumnResource;
@@ -22,6 +24,9 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\OrderStatus;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Enums\WeekDays;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
@@ -83,6 +88,7 @@ it('types a variable read inside whenLoaded() only from the variable\'s own bind
 });
 
 // JsonResource::filter() recurses into arrays only: inside a Collection the null-payload wrap serializes itself.
+// `->toArray()` keeps each wrap for filter(), as a helper on another class does; `->jsonSerialize()` stays unknown.
 it('adds a wrap\'s null arm only where filter() reaches the mapped items', function () {
     expect(publishedResourceKeyTypes(MappedProfileWrapResource::class, Team::class))->toBe([
         'profiles?' => '(Profile | null)[]',
@@ -96,7 +102,23 @@ it('adds a wrap\'s null arm only where filter() reaches the mapped items', funct
         'pipe_member_wrapped' => '{ profile: ProfileResource }[]',
         'pipe_member_wrapped_all' => '{ profile: ProfileResource | null }[]',
         'owner_wrapped?' => '{ profile: ProfileResource | null }',
+        'wrapped_to_array?' => '{ profile: ProfileResource | null }[]',
+        'wrapped_serialized?' => 'unknown',
+        'direct?' => 'ProfileResource[]',
+        'direct_all?' => '(ProfileResource | null)[]',
+        'direct_to_array?' => '(ProfileResource | null)[]',
+        'chain_direct_to_array' => '(ProfileResource | null)[]',
+        'pipe_direct_to_array' => '(ProfileResource | null)[]',
+        'helper_owner_profile' => 'ProfileResource | null',
     ])
+        ->and(mappedProfileWrapSends('wrapped_to_array'))->toContain('{"profile":null}')
+        ->and(mappedProfileWrapSends('wrapped_serialized'))->toContain('{"profile":null}')
+        ->and(mappedProfileWrapSends('direct'))->toBe('throws')
+        ->and(mappedProfileWrapSends('direct_all'))->toContain(',null]')
+        ->and(mappedProfileWrapSends('direct_to_array'))->toContain(',null]')
+        ->and(mappedProfileWrapSends('chain_direct_to_array'))->toContain(',null]')
+        ->and(mappedProfileWrapSends('pipe_direct_to_array'))->toContain(',null]')
+        ->and(mappedProfileWrapSends('helper_owner_profile'))->toBe('{"data":{"k":null}}')
         ->and(mappedProfileWrapSends('wrapped'))->toBe('throws')
         ->and(mappedProfileWrapSends('wrapped_values'))->toBe('throws')
         ->and(mappedProfileWrapSends('chain_wrapped'))->toBe('throws')
@@ -131,8 +153,7 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
 });
 
 // The null arm follows JsonResource::filter()'s reach, inside a relation closure or not: a map `->all()` hands to it
-// sends null, and one kept as a Collection serializes each wrap itself, sending `[]`, which no published form admits
-// (docs/known-gaps.md, "An `EnumResource` map kept as a `Collection`…").
+// sends null, and one kept as a Collection serializes each wrap itself, sending the `[]` resolve() returns.
 it('keeps a nullable enum column\'s null arm in a map filter() reaches, inside a relation closure or not', function () {
     $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $team = (new Team)->forceFill(['id' => 9]);
@@ -142,10 +163,10 @@ it('keeps a nullable enum column\'s null arm in a map filter() reaches, inside a
     expect(publishedResourceKeyTypes(MappedEnumColumnResource::class, Team::class))->toBe([
         'query_roles' => '(AsEnum<typeof Role> | null)[]',
         'local_roles' => '(AsEnum<typeof Role> | null)[]',
-        'kept_query_roles' => 'AsEnum<typeof Role>[]',
-        'kept_local_roles' => 'AsEnum<typeof Role>[]',
+        'kept_query_roles' => '(AsEnum<typeof Role> | never[])[]',
+        'kept_local_roles' => '(AsEnum<typeof Role> | never[])[]',
         'new_local_roles' => '(AsEnum<typeof Role> | null)[]',
-        'kept_new_local_roles' => 'AsEnum<typeof Role>[]',
+        'kept_new_local_roles' => '(AsEnum<typeof Role> | never[])[]',
         'hinted_local_roles' => '(AsEnum<typeof Role> | null)[]',
         'collected_roles' => '(AsEnum<typeof Role> | null)[]',
         'chain_roles' => '(AsEnum<typeof Role> | null)[]',
@@ -206,52 +227,139 @@ it('keeps a nullable enum column\'s null arm in a relation\'s arrayed map, and a
         ]);
 });
 
-// RelationChainResource's own toArray() never runs (its `map(...)->values()` calls values() on a Closure), so its three
-// keys are sent through a subclass with the same PHP. Kept Collections send `[]` for a null role (docs/known-gaps.md).
+// A kept Collection sends the `[]` resolve() returns for a null role, and filter() never enters it.
 it('publishes the workbench\'s relation-closure enum wraps with the null each sends', function () {
-    $first = (new User)->forceFill(['id' => 1, 'role' => null]);
-    $second = (new User)->forceFill(['id' => 2, 'role' => null]);
+    $first = (new User)->forceFill(['id' => 1, 'name' => 'a', 'email' => 'a@example.com', 'role' => null]);
+    $second = (new User)->forceFill(['id' => 2, 'name' => 'b', 'email' => 'b@example.com', 'role' => null]);
     $order = (new Order)->forceFill(['id' => 7]);
     $order->setRelation('user', $first);
     $team = (new Team)->forceFill(['id' => 9, 'week_days' => [WeekDays::Monday]]);
     $team->setRelation('members', new EloquentCollection([$first, $second]));
-    $chain = new class($team) extends RelationChainResource
-    {
-        /** @return array<string, mixed> */
-        public function toArray(Request $request): array
-        {
-            return [
-                'member_role_resources' => $this->members->take(5)->map(fn ($member) => EnumResource::make($member->role))->values(),
-                'member_role_resources_filtered' => $this->members->filter(fn ($member) => $member->id > 1)
-                    ->map(fn ($member) => EnumResource::make($member->role)),
-                'wrapped_filtered' => [
-                    'roles' => $this->members->filter(fn ($member) => $member->id > 1)
-                        ->map(fn ($member) => EnumResource::make($member->role)),
-                ],
-            ];
-        }
-    };
+    $team->setRelation('owner', $first);
     $sends = fn (JsonResource $resource): array => json_decode((string) $resource->response(request())->getContent(), true)['data'];
 
     expect(publishedResourceKeyTypes(ConditionalParamEnumResource::class, Order::class)['user_role?'])
         ->toBe('AsEnum<typeof Role> | null')
         ->and($sends(new ConditionalParamEnumResource($order))['user_role'])->toBeNull()
         ->and(publishedResourceKeyTypes(EnumCollectionResource::class, Team::class)['members_via_var?'])
-        ->toBe('AsEnum<typeof Role>[]')
+        ->toBe('(AsEnum<typeof Role> | never[])[]')
         ->and($sends(new EnumCollectionResource($team))['members_via_var'])->toBe([[], []])
         ->and(array_intersect_key(
             publishedResourceKeyTypes(RelationChainResource::class, Team::class),
             array_flip(['member_role_resources', 'member_role_resources_filtered', 'wrapped_filtered']),
         ))->toBe([
-            'member_role_resources' => 'AsEnum<typeof Role>[]',
-            'member_role_resources_filtered' => 'AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>',
-            'wrapped_filtered' => '{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }',
+            'member_role_resources' => '(AsEnum<typeof Role> | never[])[]',
+            'member_role_resources_filtered' => '(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>',
+            'wrapped_filtered' => '{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }',
         ])
-        ->and($sends($chain))->toBe([
+        ->and(array_intersect_key(
+            $sends(new RelationChainResource($team)),
+            array_flip(['member_role_resources', 'member_role_resources_filtered', 'wrapped_filtered']),
+        ))->toBe([
             'member_role_resources' => [[], []],
             'member_role_resources_filtered' => ['1' => []],
             'wrapped_filtered' => ['roles' => ['1' => []]],
-        ]);
+        ])
+        ->and((string) new RelationChainResource($team)->response(request())->getContent())
+        ->toContain('"member_mapped_fcc":{},"member_plucked_fcc":{}');
+});
+
+/**
+ * What Laravel sends for KeptEnumMapResource over a team whose second member has no role, nor its owner's second post a
+ * priority.
+ *
+ * @return array<string, mixed>
+ */
+function keptEnumMapSends(): array
+{
+    $posts = new EloquentCollection([
+        (new Post)->forceFill(['id' => 1, 'priority' => Priority::High]),
+        (new Post)->forceFill(['id' => 2, 'priority' => null]),
+    ]);
+    $team = (new Team)->forceFill(['id' => 9]);
+    $team->setRelation('members', new EloquentCollection([
+        (new User)->forceFill(['id' => 1, 'role' => Role::Admin])->setRelation('posts', $posts),
+        (new User)->forceFill(['id' => 7, 'role' => null])->setRelation('posts', new EloquentCollection),
+    ]));
+    $team->setRelation('owner', (new User)->forceFill(['id' => 1])->setRelation('posts', $posts));
+
+    return json_decode((string) new KeptEnumMapResource($team)->response(request())->getContent(), true)['data'];
+}
+
+// A wrap a kept Collection serializes sends the `[]` resolve() returns for a null enum, as on a page. jsonSerialize()
+// sends it too but null for a wrap in an array, and toArray() turns an inner map into an array filter() enters, so
+// both stay unknown there (docs/known-gaps.md).
+it('publishes the [] a null enum sends from an EnumResource map kept as a Collection', function () {
+    $admin = json_decode((string) json_encode(EnumResource::make(Role::Admin)), true);
+    $high = json_decode((string) json_encode(EnumResource::make(Priority::High)), true);
+    $published = json_decode((string) json_encode(EnumResource::make(Status::Published)), true);
+
+    expect(publishedResourceKeyTypes(KeptEnumMapResource::class, Team::class))->toBe([
+        'values_kept' => '(AsEnum<typeof Role> | never[])[]',
+        'filter_map_kept' => '(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>',
+        'filter_map_all' => '(AsEnum<typeof Role> | null)[] | Record<string, (AsEnum<typeof Role> | null)>',
+        'untyped_kept' => '(AsEnum<typeof Role> | never[])[]',
+        'whenloaded_kept?' => '(AsEnum<typeof Role> | never[])[]',
+        'collect_kept' => '(AsEnum<typeof Role> | never[])[]',
+        'backed_kept' => '(AsEnum<typeof Priority> | never[])[]',
+        'backed_all' => '(AsEnum<typeof Priority> | null)[]',
+        'to_array' => '(AsEnum<typeof Role> | null)[]',
+        'json_serialized' => 'unknown',
+        'nested_all' => '(AsEnum<typeof Priority> | never[])[][]',
+        'nested_to_array' => 'unknown',
+        'nested_collect_to_array' => 'unknown',
+        'nested_loaded_to_array?' => 'unknown',
+        'tried_kept' => '(AsEnum<typeof Status> | never[])[]',
+        'tried_all' => '(AsEnum<typeof Status> | null)[]',
+    ])->and(keptEnumMapSends())->toBe([
+        'values_kept' => [$admin, []],
+        'filter_map_kept' => [$admin, []],
+        'filter_map_all' => [$admin, null],
+        'untyped_kept' => [$admin, []],
+        'whenloaded_kept' => [$admin, []],
+        'collect_kept' => [$admin, []],
+        'backed_kept' => [$high, []],
+        'backed_all' => [$high, null],
+        'to_array' => [$admin, null],
+        'json_serialized' => [$admin, []],
+        'nested_all' => [[$high, []], []],
+        'nested_to_array' => [[$high, null], []],
+        'nested_collect_to_array' => [[$high, null], []],
+        'nested_loaded_to_array' => [[$high, null], []],
+        'tried_kept' => [$published, []],
+        'tried_all' => [$published, null],
+    ]);
+});
+
+// A `$this` read and an array element take the same rule as a mapped element's own wrap; filter() reaches a helper's
+// wrap on another class just as the resource's own.
+it('publishes the [] a kept map sends for a wrap of the subject\'s own null enum or one inside an array', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $sent = fn (string $query): array => json_decode(
+        (string) new KeptOwnRoleMapResource($user)->response(Request::create('/'.$query))->getContent(),
+        true,
+    )['data'];
+    $published = json_decode((string) json_encode(EnumResource::make(Status::Published)), true);
+
+    expect(publishedResourceKeyTypes(KeptOwnRoleMapResource::class, User::class))->toBe([
+        'own_role_kept' => '(AsEnum<typeof Role> | never[])[]',
+        'own_role_all' => '(AsEnum<typeof Role> | null)[]',
+        'element_kept' => '{ role: AsEnum<typeof Role> | never[] }[]',
+        'element_all' => '{ role: AsEnum<typeof Role> | null }[]',
+        'tried' => 'AsEnum<typeof Status> | null',
+        'from' => 'AsEnum<typeof Status>',
+        'helper_tried' => 'AsEnum<typeof Status> | null',
+    ])
+        ->and($sent('?status=7'))->toBe([
+            'own_role_kept' => [[]],
+            'own_role_all' => [null],
+            'element_kept' => [['role' => []]],
+            'element_all' => [['role' => null]],
+            'tried' => null,
+            'from' => $published,
+            'helper_tried' => null,
+        ])
+        ->and($sent('?status=1')['tried'])->toBe($published);
 });
 
 // The narrowing outranks the parameter's own model, so the subclass types the read.

@@ -828,8 +828,9 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
 
     // Must stay 'enumFqcn'-tagged (not demoted): the transformer's AsEnum rewrite needs that
     // channel to render the wrapped-object array as AsEnum<typeof Role>[], not plain RoleType[].
+    // The kept Collection serializes each wrap, so a null role sends the `[]` resolve() returns.
     test('map() body that is entirely EnumResource::make() stays an array and is enumFqcn-tagged', function () {
-        expect($this->props['member_role_resources']['type'])->toBe('RoleType[]')
+        expect($this->props['member_role_resources']['type'])->toBe('(RoleType | never[])[]')
             ->and($this->props['member_role_resources']['optional'])->toBeFalse()
             ->and($this->analysis->enumResources)->toHaveKey('member_role_resources')
             ->and($this->analysis->enumResources['member_role_resources'])->toBe(Role::class)
@@ -841,7 +842,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     // it losslessly, AsEnum-wrapping both the array arm and the keyed Record arm.
     test('filter() before an EnumResource::make() map body stays enumFqcn-tagged', function () {
         expect($this->props['member_role_resources_filtered']['type'])
-            ->toBe('RoleType[] | Record<string, RoleType>')
+            ->toBe('(RoleType | never[])[] | Record<string, (RoleType | never[])>')
             ->and($this->analysis->enumResources)->toHaveKey('member_role_resources_filtered')
             ->and($this->analysis->enumResources['member_role_resources_filtered'])->toBe(Role::class)
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources_filtered');
@@ -852,7 +853,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     // matching member_role_resources_filtered above, whose PHP shape is identical.
     test('an EnumResource-wrapped enum inside an inline array literal is substituted, not rebuilt', function () {
         expect($this->props['wrapped_filtered']['type'])
-            ->toBe('{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }');
+            ->toBe('{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }');
     });
 
     // A string ('strtoupper') or array ([$this, 'method']) callable is called with each member, as a closure is.
@@ -863,9 +864,10 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
 
     // PHP-Parser's CallLike::getArgs() asserts !isFirstClassCallable(), so under zend.assertions=1
     // it throws AssertionError instead of returning []; `->map(...)` must be detected before that.
-    test('map()/pluck() as a first-class callable degrades to unknown instead of throwing', function () {
-        expect($this->props['member_mapped_fcc']['type'])->toBe('unknown')
-            ->and($this->props['member_plucked_fcc']['type'])->toBe('unknown');
+    // The Closure it builds is sent as the `{}` json_encode() writes for an object with no public property.
+    test('map()/pluck() as a first-class callable publishes the Closure it builds instead of throwing', function () {
+        expect($this->props['member_mapped_fcc']['type'])->toBe('Record<string, never>')
+            ->and($this->props['member_plucked_fcc']['type'])->toBe('Record<string, never>');
     });
 
     test('first() as the outermost op yields the element type or null', function () {
@@ -958,7 +960,7 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
     // $variable->map() (not $this->relation->map()) with a body entirely EnumResource::make(...)
     // must stay array-shaped and enumFqcn-tagged, the same contract as the relation-chain case.
     test('local variable ->map() with an EnumResource::make() body stays array-shaped and enumFqcn-tagged', function () {
-        expect($this->props['members_via_var']['type'])->toBe('RoleType[]')
+        expect($this->props['members_via_var']['type'])->toBe('(RoleType | never[])[]')
             ->and($this->analysis->enumResources)->toHaveKey('members_via_var')
             ->and($this->analysis->enumResources['members_via_var'])->toBe(Role::class);
     });

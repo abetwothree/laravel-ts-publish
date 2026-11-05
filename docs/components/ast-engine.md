@@ -130,10 +130,11 @@ a share middleware build this profile, and each ordering above, the method-call 
 `toResourceCollection()` `unknown` included.
 
 The [`Reading`] a body is read under, not the class that declares it, picks this profile: `Encoded` (as
-`json_encode()` sends it, the default), `EncodedUnfiltered` (the same with no `filter()` over it), `Inertia`, or
-`InertiaFiltered` (Inertia's, once a `JsonResource::filter()` ran). `analyzeMethod()`, `analyzeMethodValue()` and
-`ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()` reports it; `Reading::encodes()` groups the two encoded
-ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses an injected profile beside one.
+`json_encode()` sends it, the default), `EncodedUnfiltered` (the same with no `filter()` over it), `EncodedFiltered`
+(the same once a `JsonResource::filter()` ran), `Inertia`, or `InertiaFiltered` (Inertia's, once that filter ran).
+`analyzeMethod()`, `analyzeMethodValue()` and `ResourceAstAnalyzer` take it, and `ExpressionEngine::reading()` reports
+it; `Reading::encodes()` groups the three encoded ones. Either Inertia reading runs this profile, so
+`ResourceAstAnalyzer` refuses an injected profile beside one.
 
 - **Who sets it**: `InertiaPageAnalyzer`, on a page's analyzer and on the collaborator method a page's props come
   from, and `InertiaSharedDataAnalyzer`, on the middleware's `share()`, each `Reading::Inertia`.
@@ -144,15 +145,17 @@ ones. Either Inertia reading runs this profile, so `ResourceAstAnalyzer` refuses
   a property's written value, an accessor body and a macro's body, each memoized under a key with no reading suffix.
   The keys a resource's response adds beside its body (below) reach Inertia already JSON and unfiltered, so they read
   `EncodedUnfiltered`, which `entering()` turns into `Encoded` where it enters a `JsonResource`'s `toArray()` whole.
-- **The filtered reading**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
-  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `Reading::filterReaches()` says
-  whether `filter()` reaches a value, which `ReadsNullablePayloads` asks before a resource around a nullable payload
-  takes that null: under `InertiaFiltered` in any body, a helper's or a service's included, outside Inertia only in a
-  `JsonResource` subject's own, and never inside a `map()` kept as a `Collection`, where a call's body reads
-  `Inertia` (`Reading::calledFrom()`). An `EnumResource` wrap it does not reach sends a null payload as `[]`, its
-  `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`), under every reading but `Encoded`, which keeps
-  base's rule for events and a resource's own kept maps; `ValueResult::filledArms()` and `isListShaped()` read past
-  that arm where a union's enum arms are counted or shaped. `TernaryHandler`'s `?:` rule applies only under `Inertia`.
+- **The filtered readings**: `Reading::entering()` turns `Inertia` into `InertiaFiltered` where a read enters a
+  `JsonResource`'s `toArray()` whole, which `resolve()` filters, and it holds below. `Reading::calledFrom()` hands a
+  call's body `EncodedFiltered` where an encoded caller's filter reaches the call, since a helper on another class
+  cannot tell that from its own subject; over a `JsonResource` that reading is `Encoded` (`Reading::over()`), so the
+  two share memo entries. `Reading::filterReaches()` says whether `filter()` reaches a value, which
+  `ReadsNullablePayloads` asks before a resource around a nullable payload takes that null: under either filtered
+  reading in any body, under `Encoded` only in a `JsonResource` subject's own, and never inside a `map()` kept as a
+  `Collection`, where a call's body reads unfiltered. An `EnumResource` wrap it does not reach, a page's, an event's
+  or a kept map's, sends a null payload as `[]`, its `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`);
+  `ValueResult::filledArms()` and `isListShaped()` read past that arm where a union's enum arms are counted or shaped.
+  `TernaryHandler`'s `?:` rule applies only under `Inertia`.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
   retypes keeps R's type, and a JSON:API resource keeps its own: its attributes reach Inertia as a `stdClass` its

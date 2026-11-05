@@ -1284,11 +1284,23 @@ it('admits the empty list a resolved body sends for an EnumResource over a null 
     $card = fn (Post $post): array => json_decode((string) json_encode(inertiaProps(new NullableEnumResourceController()->resolved($post))->card), true);
 
     expect(pageData(NullableEnumResourceController::class.'@resolved')['pageType'])
-        ->toBe('Inertia.SharedData & { card: Omit<PostVisibilitiesResource, \'visibilities\'> & '
-            .'{ visibilities: (AsEnum<typeof Visibility> | never[])[] } }')
+        ->toBe('Inertia.SharedData & { card: PostVisibilitiesResource }')
         ->and($card($hidden))->toBe(['visibility' => null, 'visibilities' => [[]]])
         ->and([$card($shown)['visibility']['name'], $card($shown)['visibilities'][0]['name']])
         ->toBe([Visibility::Public->name, Visibility::Public->name]);
+});
+
+// tryFrom() finds no case for an unknown value, and no filter() runs over a page prop, so the page sends `[]`.
+it('admits the empty list a page sends for an EnumResource over a tryFrom() that finds no case', function () {
+    $sent = fn (string $query): mixed => inertiaProps(
+        new NullableEnumResourceController()->tried(Request::create('/'.$query)),
+        Request::create('/'.$query),
+    )->status;
+
+    expect(pageData(NullableEnumResourceController::class.'@tried')['pageType'])
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | never[] }')
+        ->and($sent('?status=7'))->toBe([])
+        ->and($sent('?status=1')->name)->toBe(Status::Published->name);
 });
 
 // The workbench's own wrap of a nullable enum, so the golden tree and the token gate compile its `never[]` arm.
@@ -1580,8 +1592,8 @@ it('keeps a short ternary\'s other arm where the enum resource it checks cannot 
         ->toBe([Status::Published->name, Status::Published->name, [], []]);
 });
 
-// A helper's body is read as Inertia sends it, unfiltered, so the other arm never runs. Its wrap around null sends
-// `[]`, which this type does not admit, as the `| null` the helper's own reading keeps does not.
+// A helper's body is read as Inertia sends it, unfiltered, so the other arm never runs, and its wrap around the null
+// tryFrom() may return sends `[]`.
 it('types a short ternary a props helper returns over an enum resource as that resource alone', function () {
     [$picked, $absent] = array_map(function (array $query): stdClass {
         $request = Request::create('/', 'GET', $query);
@@ -1590,7 +1602,7 @@ it('types a short ternary a props helper returns over an enum resource as that r
     }, [['s' => 1], []]);
 
     expect(pageData(EnumUnionPropsController::class.'@helperElvis')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> }')
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | never[] }')
         ->and([$picked->status->name, $absent->status])->toBe([Status::Published->name, []]);
 });
 
@@ -1606,7 +1618,7 @@ it('reads a helper beside a resolved resource whose body reads it, each as Inert
     $page = pageData(EnumUnionPropsController::class.'@'.$action)['pageType'] ?? '';
     $types = array_column(TsTypeShape::members(substr($page, strlen('Inertia.SharedData & '))) ?? [], 1, 0);
 
-    expect([$types['a'] ?? null, $types['helperTryFrom'] ?? null])->toBe(['AsEnum<typeof Status>', 'AsEnum<typeof Status> | null'])
+    expect([$types['a'] ?? null, $types['helperTryFrom'] ?? null])->toBe(['AsEnum<typeof Status> | never[]', 'AsEnum<typeof Status> | null'])
         ->and([$picked->a->name, $picked->helperTryFrom->name])->toBe([Status::Published->name, Status::Published->name])
         ->and([$absent->a, $absent->helperTryFrom])->toBe([[], null]);
 })->with(['helperBesideSpread', 'spreadBesideHelper']);
@@ -2732,7 +2744,7 @@ it('publishes a with() key the when() family may leave out as always sent, with 
         ->toBe([Visibility::Public->name, [], 1]);
 });
 
-// A resource a `with()` key holds publishes its own type, and with it its kept map's known gap: a null enum sends `[]`.
+// A resource a `with()` key holds publishes its own type, whose kept map admits the `[]` a null enum sends.
 it('publishes a resource a with() key holds as its own type', function () {
     $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
@@ -2742,7 +2754,7 @@ it('publishes a resource a with() key holds as its own type', function () {
         .'data: HeldResourceWithResource; item: PostVisibilitiesResource; resolved: PostVisibilitiesResource; '
         .'kept: (AsEnum<typeof Visibility> | never[])[] } }')
         ->and(resourceProps(PostVisibilitiesResource::class))
-        ->toBe(['visibility' => 'AsEnum<typeof Visibility> | null', 'visibilities' => 'AsEnum<typeof Visibility>[]'])
+        ->toBe(['visibility' => 'AsEnum<typeof Visibility> | null', 'visibilities' => '(AsEnum<typeof Visibility> | never[])[]'])
         ->and($sent['card'])->toBe([
             'data' => ['id' => $post->id],
             'item' => ['visibility' => null, 'visibilities' => [[]]],

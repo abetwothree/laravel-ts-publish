@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -191,9 +192,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A trailing argument-less values()/all() on a collection, typed from the receiver chain, which is the only thing
-     * that knows its element: all() hands the array back, keys and all, and values() re-indexes it into a list. On any
-     * other class the method is its own, so the receiver's type says nothing about what it returns.
+     * A trailing argument-less values()/all() on a collection, or a toArray() after a map(), typed from the receiver
+     * chain, which alone knows its element: all() and toArray() hand the array back, keys and all, and values() lists
+     * it. On any other class the method is its own, so the receiver's type says nothing about what it returns.
      *
      * @return ValueExpressionResult|null
      */
@@ -201,7 +202,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     {
         if ((! $call->var instanceof MethodCall && ! $this->isPlainVariable($call->var))
             || ! $call->name instanceof Identifier
-            || ! in_array($call->name->toString(), ['values', 'all'], true)
+            || ! (in_array($call->name->toString(), ['values', 'all'], true)
+                || CollectionSteps::endsInMappedToArray(CollectionSteps::chain($call)[0]))
             || $call->isFirstClassCallable()
             || ! CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $call->name->toString()))->isEmpty()
         ) {
@@ -216,8 +218,12 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $method = $call->name->toString();
         $receiverResult = $scope->within(function () use ($scope, $method): void {
-            $scope->mapResultArrayed = $scope->mapResultArrayed || $method === 'all';
+            $scope->mapResultArrayed = $scope->mapResultArrayed || $method !== 'values';
         }, fn (): array => $engine->resolve($call->var));
+
+        if ($method === 'toArray' && $this->convertsMappedItems($receiverResult)) {
+            return null;
+        }
 
         $type = match (true) {
             $method === 'values' => ArrayArms::valuesList($receiverResult['type']),

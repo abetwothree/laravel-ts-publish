@@ -89,13 +89,11 @@ class RelationChainResource extends JsonResource
             // map() argument is an array callable ([$this, 'method']): the method is called with each member.
             'member_formatted' => $this->members->take(5)->map([$this, 'formatMember']),
 
-            // map()/pluck() as a first-class callable (no args at all — this is a Closure
-            // referencing the method itself, not a call). MethodCall::getArgs() asserts
-            // !isFirstClassCallable() and throws AssertionError under zend.assertions=1
-            // (PHP's development default) rather than returning []; must be rejected before
-            // either analyzeVariablePluckCall() or the map body analysis ever calls getArgs().
-            'member_mapped_fcc' => $this->members->map(...)->values(),
-            'member_plucked_fcc' => $this->members->pluck(...)->values(),
+            // map()/pluck() as a first-class callable: a Closure, which json_encode() sends as {}. PHP-Parser's
+            // getArgs() asserts !isFirstClassCallable() and throws under zend.assertions=1, so it must be rejected
+            // before analyzeVariablePluckCall() or the map body analysis ever calls getArgs().
+            'member_mapped_fcc' => $this->members->map(...),
+            'member_plucked_fcc' => $this->members->pluck(...),
 
             // first() as the outermost, argless op terminates the chain with a single element or null.
             'first_member' => $this->members->take(5)->first(),

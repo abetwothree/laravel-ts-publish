@@ -465,8 +465,8 @@ conditional call, such as `Resource::make($this->whenLoaded(...))`, which publis
 such as `Resource::make($this->parent)`, and publishes `null` alone for a payload that is only ever `null`, such as
 `new Resource(null)` or a parameter holding a `null` default, inside a resource only; a collection never takes either,
 and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)). Nor does a wrap
-in a `map()` body, unless a trailing `->all()` turns the mapped `Collection` into an array: `JsonResource::filter()`
-recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
+in a `map()` body, unless a trailing `->all()` or `->toArray()` turns the mapped `Collection` into an array:
+`JsonResource::filter()` recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -1040,10 +1040,11 @@ stands for two different things, so it stays two references.
 `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
 parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
 to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
-list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
-in every subject, since an enum branch returns before `resourceWrapType()`, but `enumWrapValue()` keeps that method's
-`filter()` reach: a `make()` or `new` wrap in a `map()` body kept as a `Collection` drops it, inside a relation closure
-or not.
+list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as
+`Status::tryFrom()` whose declared return admits null keeps that null. The payload's own `| null` stays where
+`filter()` reaches the wrap, since an enum branch returns before `resourceWrapType()`; anywhere else, `enumWrapValue()`
+spells the `[]` the wrap sends as `never[]`. A `map()` reaches `filter()` through `->all()` or `->toArray()`
+(`CollectionSteps::endsInMappedToArray()`), inside a relation closure or not.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a

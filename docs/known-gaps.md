@@ -640,16 +640,6 @@ as `unknown` in `{Model}All`, and in `{Model}AllResource`, whose `Omit<{Model}Re
 Read the attributes from `{Model}` and the relations from `{Model}Relations`, which keep their types, or give the
 relation a name no attribute takes.
 
-### An `EnumResource` map kept as a `Collection` publishes no arm for the `[]` a null enum sends
-
-In an API resource, `$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`,
-but a member whose nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null`
-only inside arrays, and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap
-itself. End the chain with `->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends. On
-an Inertia page and in shared data, a resolved resource's body included, the same map publishes
-`(AsEnum<typeof Role> | never[])[]`. A resource a response's `with()` or `additional()` key holds sends its body, which
-publishes as the resource's own interface, with that interface's gaps, such as the kept map.
-
 ### An API resource wrapping a relation the engine cannot type publishes it without `| null`
 
 With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes `CategoryResource` where `parent` types
@@ -661,12 +651,14 @@ to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
 
-### A mapped API resource read through `toArray()` or `jsonSerialize()` publishes `unknown`
+### A mapped API resource read through `jsonSerialize()` publishes `unknown`
 
 `$this->members->map(fn ($m) => new ProfileResource($m->profile))->all()` publishes `(ProfileResource | null)[]`, since
-Laravel sends `null` for a profile loaded as `null`. The same map ending in `->toArray()` publishes `unknown`, and a
-helper returning that list `unknown[]`, though Laravel sends the same list; `->jsonSerialize()`, which resolves each
-resource at once, publishes `unknown` too. End the chain with `->all()`.
+Laravel sends `null` for a profile loaded as `null`, and so does the same map ending in `->toArray()`. Ending in
+`->jsonSerialize()`, it publishes `unknown`: that call resolves each resource at once, so a null payload sends what the
+resource's own body makes of it, `[]` for an `EnumResource`, while `filter()` still sends a wrap inside an array the
+callback returns as `null`. A wrap in a map nested inside one ending in `->toArray()` publishes the `[]` a kept map
+sends, though `toArray()` turns that inner map into an array `filter()` enters. End the chain with `->all()`.
 
 ### A relation method that declares no relation class and builds it through a helper is left out
 

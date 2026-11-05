@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -80,6 +81,22 @@ trait BindsMapCallbacks
 
         // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
         return [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false];
+    }
+
+    /**
+     * Whether `toArray()` may turn an item a map hands back into an array before filter() reaches it: a list or a
+     * Record may be a Collection, whose kept wraps filter() would then enter, which the callback's read cannot tell.
+     *
+     * @param  ValueExpressionResult  $mapped
+     */
+    protected function convertsMappedItems(array $mapped): bool
+    {
+        $elements = ArrayArms::arms($mapped['type'], ArrayArms::elementOf(...));
+
+        return $elements === null || array_any(
+            TsTypeShape::splitTopLevel(implode(' | ', $elements), ['|']),
+            static fn (string $arm): bool => $arm !== 'never[]' && ArrayArms::isArray($arm) && TsTypeShape::members($arm) === null,
+        );
     }
 
     /**

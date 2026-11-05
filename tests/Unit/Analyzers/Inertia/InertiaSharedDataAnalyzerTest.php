@@ -880,7 +880,8 @@ test('the engine leaves a parent share()\'s casts to the shared-data analyzer to
         ->and($types(Reading::Encoded)['stamp'])->toBe('Record<string, never>');
 });
 
-// Read here as Inertia sends shared data; an API resource reading the same helper keeps both arms.
+// Read here as Inertia sends shared data, whose wrap around the null tryFrom() may return sends `[]`; an API resource
+// reading the same helper keeps both arms.
 test('a share middleware types the short ternary its own helper returns over an enum resource as that resource alone', function () {
     [$picked, $absent] = array_map(function (array $query): array {
         $request = Request::create('/', 'GET', $query);
@@ -889,7 +890,7 @@ test('a share middleware types the short ternary its own helper returns over an 
         return json_decode((string) json_encode(inertiaProps(Inertia::render('Shared', []), $request)), true);
     }, [['s' => 1], []]);
 
-    expect(sharedProps(MiddlewareWithWrapHelpers::class))->toBe(['status' => 'AsEnum<typeof Status>'])
+    expect(sharedProps(MiddlewareWithWrapHelpers::class))->toBe(['status' => 'AsEnum<typeof Status> | never[]'])
         ->and([$picked['status']['name'], $absent['status']])->toBe([Status::Published->name, []]);
 });
 

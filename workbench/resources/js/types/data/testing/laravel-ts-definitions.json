@@ -14000,7 +14000,7 @@
                 },
                 {
                     "name": "members_via_var",
-                    "type": "AsEnum<typeof Role>[]",
+                    "type": "(AsEnum<typeof Role> | never[])[]",
                     "optional": true
                 },
                 {
@@ -19061,17 +19061,17 @@
                 },
                 {
                     "name": "member_role_resources",
-                    "type": "AsEnum<typeof Role>[]",
+                    "type": "(AsEnum<typeof Role> | never[])[]",
                     "optional": false
                 },
                 {
                     "name": "member_role_resources_filtered",
-                    "type": "AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>",
+                    "type": "(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>",
                     "optional": false
                 },
                 {
                     "name": "wrapped_filtered",
-                    "type": "{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }",
+                    "type": "{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }",
                     "optional": false
                 },
                 {
@@ -19086,12 +19086,12 @@
                 },
                 {
                     "name": "member_mapped_fcc",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {
                     "name": "member_plucked_fcc",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {

@@ -56,7 +56,12 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return null;
         }
 
-        $arrayed = $steps[count($steps) - 1]['name'] === 'all';
+        $convertsItems = CollectionSteps::endsInMappedToArray($steps);
+        $arrayed = $convertsItems || $steps[count($steps) - 1]['name'] === 'all';
+
+        if ($convertsItems) {
+            array_pop($steps);
+        }
         // A leading values() lists a Record's or a shape's values.
         $listsValues = ! $this->isList($rootResult['type']) && $steps[0]['name'] === 'values';
 
@@ -96,6 +101,10 @@ final class CollectionPipelineHandler implements ExpressionHandler
             $scope,
             $engine,
         );
+
+        if ($result !== null && $convertsItems && $this->convertsMappedItems($result)) {
+            return null;
+        }
 
         if ($result === null || $listed) {
             return $result !== null && $walk['keyed'] ? [...$result, 'type' => ArrayArms::keyedList($result['type'])] : $result;

@@ -232,13 +232,14 @@ it('reads a helper\'s body with its guards, and with its request parameter outsi
     'a broadcast event\'s Request parameter' => [
         new MethodCall(new Variable('this'), 'roleOf', [new Arg(new FuncCall(new Name('request')))]),
         RequestRoleHelperEvent::class,
-        ['type' => 'RoleType | null', 'optional' => false, 'enumFqcn' => Role::class],
+        ['type' => 'RoleType | never[]', 'optional' => false, 'enumFqcn' => Role::class],
     ],
 ]);
 
+// No filter() runs over an event's payload, so a wrap around a null role sends the `[]` resolve() returns.
 it('publishes a broadcast event\'s helper that wraps what its request reads', function () {
     expect(resolve(AstEngine::class)->analyze(RequestRoleHelperEvent::class, 'broadcastWith')->properties)
-        ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | null', 'optional' => false, 'description' => '']]);
+        ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | never[]', 'optional' => false, 'description' => '']]);
 });
 
 it('never reads a call or a body the rule leaves alone', function (MethodCall|string $call) {

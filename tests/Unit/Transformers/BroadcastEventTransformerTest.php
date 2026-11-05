@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
@@ -789,4 +790,16 @@ test('an event keeps a resource built around null as the resource', function () 
     $transformer = app(BroadcastEventTransformer::class, ['findable' => NullWrapBroadcastEvent::class]);
 
     expect($transformer->properties['tag']['type'])->toBe('TagResource');
+});
+
+// No JsonResource::filter() runs over an event's payload, so a wrap around null sends the `[]` resolve() returns.
+it('publishes the [] an event sends for an EnumResource over a null enum, alone or in a map', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NullEnumWrapEvent::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'wrap' => 'GradeType | never[]',
+        'kept' => '(GradeType | never[])[]',
+        'all' => '(GradeType | never[])[]',
+        'helper' => 'StatusType | never[]',
+    ])->and(json_encode(new NullEnumWrapEvent()->broadcastWith()))->toBe('{"wrap":[],"kept":[[]],"all":[[]],"helper":[]}');
 });
