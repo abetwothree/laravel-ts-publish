@@ -22,20 +22,31 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasOfA
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableArrayAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorizedGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorWhenLoadedCallableGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorWhenLoadedGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorWhenLoadedPassGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorWhenLoadedReadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBlockGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBranchGuardsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableClosureRequestGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableCoalesceAliasGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyExtractGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEvalGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableExtractRequestGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableForeachAliasGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableIncludeGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableReassignedRequestGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableReferenceAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableSafeCallsGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableUseRequestGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableVariableVariableGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableWhenLoadedKeyGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
@@ -372,7 +383,55 @@ it('narrows no read of a $this->prop path past a call that may replace what it r
     'a local copied from one holding $this->resource, passed to a helper' => [ImageableAliasOfAliasGuardResource::class],
     'a local set to $this->resource ?? null, called on' => [ImageableCoalesceAliasGuardResource::class],
     'a foreach value over [$this->resource], called on' => [ImageableForeachAliasGuardResource::class],
+    'eval() code swapping it' => [ImageableEvalGuardResource::class],
+    'an included file swapping it' => [ImageableIncludeGuardResource::class],
+    'an extract()ed $request, its user()\'s can() given $this->resource' => [ImageableExtractRequestGuardResource::class],
+    'a $request extract()ed before the test, its user()\'s can() given $this->resource' => [ImageableEarlyExtractGuardResource::class],
+    'a $request a variable variable names, its user()\'s can() given $this->resource' => [ImageableVariableVariableGuardResource::class],
 ]);
+
+// A local bound to the chain by reference writes the chain whenever it is written (R52).
+it('narrows no read of a declared $this->prop past a write to a local bound to it by reference', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $product = new Product;
+    $product->forceFill(['id' => 'p-1']);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+    $image->setRelation('reviewable', $product);
+
+    expect(publishedResourceKeyTypes(ImageableReferenceAliasGuardResource::class, Image::class))->toBe(['k' => 'unknown'])
+        ->and(json_encode(new ImageableReferenceAliasGuardResource($image)->resolve(Request::create('/'))))->toBe('{"k":"p-1"}');
+});
+
+// A whenLoaded() callback is handed the loaded member, so what it does to that member follows the rules for the member
+// itself, and a callable that is no closure written there may do anything with it (R52).
+it('narrows a nested $this->prop path past a whenLoaded() callback only where it cannot reach what the path reads through', function (string $resource, array $types, string $sent) {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $author = new User;
+    $author->forceFill(['id' => 2, 'name' => 'Bea']);
+    $post = blockItemsPost();
+    $post->setRelation('author', $author);
+    $image = new Image;
+    $image->setRelation('imageable', $post);
+
+    expect(publishedResourceKeyTypes($resource, Image::class))->toBe($types)
+        ->and(json_encode(new $resource($image)->resolve(Request::create('/'))))->toBe($sent);
+})->with([
+    'a callback setting the relation on the member' => [ImageableAuthorWhenLoadedGuardResource::class, ['k' => 'unknown', 'n' => 'unknown'], '{"k":"p-1","n":null}'],
+    'a callback passing the member to a helper' => [ImageableAuthorWhenLoadedPassGuardResource::class, ['k' => 'unknown', 'n' => 'unknown'], '{"k":"p-1","n":null}'],
+    'a first-class callable' => [ImageableAuthorWhenLoadedCallableGuardResource::class, ['k' => 'unknown', 'n' => 'unknown'], '{"k":"p-1","n":null}'],
+    'a callback reading the path off the member' => [ImageableAuthorWhenLoadedReadGuardResource::class, ['k' => 'number | null', 'n' => 'string | null'], '{"k":2,"n":"Bea"}'],
+]);
+
+// A whenLoaded() callback handed the tested chain itself may call on it, as the block may (R52).
+it('narrows a $this->prop path past a whenLoaded() callback calling on the member it tests', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+
+    expect(publishedResourceKeyTypes(ImageableWhenLoadedKeyGuardResource::class, Image::class))->toBe(['loaded?' => 'number | string | null', 'k' => 'number | null'])
+        ->and(json_encode(new ImageableWhenLoadedKeyGuardResource($image)->resolve(Request::create('/'))))->toBe('{"loaded":7,"k":7}');
+});
 
 // A static helper given the chain's own member, and when() given a closure reading it, cannot reach the chain (R49).
 it('narrows a $this->prop path past calls that cannot reach it', function () {

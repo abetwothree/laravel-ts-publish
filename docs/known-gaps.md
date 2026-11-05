@@ -498,16 +498,25 @@ Check which spelling you wrote before you assume a value is `unknown`:
   stores a constant its column holds, such as `$x->title = 'Draft'`, or names no column or relation, such as
   `$x->seen = true`. A chain of property reads on `$this`, such as `$this->imageable`, binds the same way, each
   spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Besides a write to the
-  chain or a chain it reads through, a write or `unset()` through any local means no binding, as does any call but a
-  known-safe one: `JsonResource`'s own helpers such as `when()` or `whenLoaded()`, `can()`, `cannot()` or `canAny()` on
-  `auth()->user()` or on `->user()` of the method's own request parameter, a `Gate` check, Laravel's `route()` or
-  `url()`, or a call whose receiver and arguments hold no local, no `$this` or `$this->resource`, and no chain the
-  test's chain reads through, such as `Str::limit($this->imageable->title, 50)`. A closure given to one may return
-  only what such a call may take, its own parameters aside. One call outside that list between the test and a read,
-  such as `$this->reload()`, `PostResource::make($this->resource)` or a call on a local, publishes every read of the
-  chain unnarrowed. A gate or policy callback a `Gate` or ability check runs is trusted, even one that writes the model,
-  and so is a callable another `$this` property holds, handed to a call that takes a callback, such as
-  `array_map($this->mapper, …)`.
+  chain or a chain it reads through, a write or `unset()` through any local means no binding, as do a write to a local
+  bound by reference, such as `$ref = &$this->imageable`, an `eval`, `include` or `require`, `extract()`, `parse_str()`
+  with one argument, a variable variable, and any call but a known-safe one: `JsonResource`'s own helpers such as
+  `when()` or `whenLoaded()`, `can()`, `cannot()` or `canAny()` on `auth()->user()` or on `->user()` of the method's
+  own request parameter, a `Gate` check, Laravel's `route()` or `url()`, or a call whose receiver and arguments hold no
+  local, no `$this` or `$this->resource`, and no chain the test's chain reads through, such as
+  `Str::limit($this->imageable->title, 50)`. A closure given to one counts only when its whole body would: it imports
+  by value, writes no import and nothing through a variable, and makes only known-safe calls. Its own parameters hold
+  nothing of the model, except the member `whenLoaded()`, `whenHas()`, `whenCounted()`, `whenAggregated()` or
+  `whenExistsLoaded()` hands its callback, so a callback that calls on or passes on `$this->imageable` ends a proof on
+  `$this->imageable->author`. A helper given any other callable, such as `Swapper::swap(...)` or a function's name,
+  ends it too. One call outside that list between the test and a read, such as `$this->reload()`,
+  `PostResource::make($this->resource)` or a call on a local, publishes every read of the chain unnarrowed. Trusted,
+  though each may change the chain: a gate or policy callback a `Gate` or ability check runs, even one that writes the
+  model; a callable another `$this` property or another class's static property holds, handed to a call that takes a
+  callback, such as `array_map($this->mapper, …)`; a call on global state, such as `auth()->user()->…`,
+  `Auth::user()->…` or `request()->route('post')->…`; a generator made before the test and resumed after it; a
+  `__destruct()` that rebinding or unsetting a local fires; and an implicit magic call, such as `__toString()`,
+  `__get()` or `getIterator()`.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads

@@ -495,9 +495,11 @@ through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps 
 value the member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation
 of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
 ends at each. [`ThisPathWrites`] answers for a chain on `$this` by an allowlist: an assignment to it or to a chain it
-reads through, a by-reference argument or `unset()` of either, and a write or `unset()` through any local end its
-proof, and so does every call `safeCall()` does not know to be safe. Only a write through the chain itself keeps it,
-by `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through
+reads through, a by-reference argument or `unset()` of either, a write or `unset()` through any local, a write to a
+local bound by reference, and code no scan reads (`eval`, `include`, `extract()`, a variable variable) end its proof,
+and so does every call `safeCall()` does not know to be safe. A closure argument counts by its whole body; the first
+parameter of a helper callback handed a member of the resource reads as that member's chain (`handedMember()`). Only a
+write through the chain itself keeps it, by `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through
 `$this->resource`. An `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess
 publishes.
 

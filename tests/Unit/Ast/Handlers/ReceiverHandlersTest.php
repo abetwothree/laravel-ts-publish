@@ -1399,6 +1399,47 @@ describe('narrowing', function () {
         'a callable a property holds, invoked' => ['($this->marker)();', []],
         'an anonymous class built' => ['new class {};', []],
         'a static name of the subject' => ['strlen(static::class);', []],
+        'eval()' => ['eval(\'$y = 2;\');', []],
+        'include' => ['include \'swap.php\';', []],
+        'require_once inside a closure given to a conditional helper' => ['$this->when(true, function () { require_once \'swap.php\'; return 1; });', []],
+        'extract()' => ['extract([\'request\' => null]);', []],
+        'parse_str() with one argument' => ['parse_str(\'a=1\');', []],
+        'a variable variable written' => ['${\'request\'} = null;', []],
+        'a write through a variable variable' => ['${\'self\'}->author = null;', []],
+        'a first-class callable given to a conditional helper' => ['$this->when(true, \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::swap(...));', []],
+        'a function\'s name given to a conditional helper' => ['$this->when(true, \'is_object\');', []],
+        'a static method\'s name given to a conditional helper' => ['$this->unless(false, \'\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::swap\');', []],
+        'Closure::fromCallable() given to a conditional helper' => ['$this->when(true, \\Closure::fromCallable(\'is_object\'));', []],
+        'a class-and-method array given as a conditional helper\'s default' => ['$this->when(false, 1, [\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::class, \'swap\']);', []],
+        'a callable string relative to the subject' => ['array_map(\'static::toArray\', [1]);', []],
+        'a callable array relative to the subject' => ['array_map([\'parent\', \'toArray\'], [1]);', []],
+        'a plain string given to a conditional helper' => ['$this->when(true, \'active\');', ['$this->author' => [[[User::class], '$this->when(true, \'active\'); $x = 1;']]]],
+        'whenHas() naming an attribute spelled like a function' => ['$this->whenHas(\'date\');', ['$this->author' => [[[User::class], '$this->whenHas(\'date\'); $x = 1;']]]],
+        'whenLoaded() handing the chain to a callback that calls on it' => ['$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null));', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null)); $x = 1;']]]],
+    ]);
+
+    // A value-passing helper hands its callback the resource's member, so the callback's parameter is that member.
+    test('binds a test on a nested $this chain unless a value-passing helper hands a callback what it reads through', function (string $body, bool $binds) {
+        $guarded = 'if ($this->author->team instanceof \\Workbench\\App\\Models\\Team) { '.$body.' $x = 1; }';
+
+        expect(blockNarrowingBindings($guarded))->toBe($binds ? ['$this->author->team' => [[[Team::class], $body.' $x = 1;']]] : []);
+    })->with([
+        'whenLoaded() given a callback calling on the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null));', false],
+        'whenLoaded() given a long callback calling on the member' => ['$this->whenLoaded(\'author\', function ($a) { $a->setRelation(\'team\', null); return 1; });', false],
+        'whenLoaded() given a callback passing the member on' => ['$this->whenLoaded(\'author\', fn ($a) => \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\AuthorSwapper::swap($a));', false],
+        'whenLoaded() given a callback returning the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a);', false],
+        'whenLoaded() given a first-class callable' => ['$this->whenLoaded(\'author\', \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\AuthorSwapper::swap(...));', false],
+        'whenLoaded() given a closure a call returns' => ['$this->whenLoaded(\'author\', \\Closure::bind(fn ($a) => $a->setRelation(\'team\', null), null));', false],
+        'whenLoaded() given its callback by name' => ['$this->whenLoaded(value: fn ($a) => tap($a), relationship: \'author\');', false],
+        'whenHas() given a callback passing the member on' => ['$this->whenHas(\'author\', fn ($a) => tap($a));', false],
+        'a callback reading the member in a nested closure' => ['$this->whenLoaded(\'author\', fn ($a) => collect([1])->map(fn ($i) => tap($a)));', false],
+        'a variadic callback parameter' => ['$this->whenLoaded(\'comments\', fn (...$c) => tap($c));', false],
+        'whenLoaded() handing a member apart from the chain' => ['$this->whenLoaded(\'comments\', fn ($c) => tap($c));', true],
+        'whenLoaded() given a callback calling on the chain through the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a->team->refresh());', true],
+        'whenCounted() handing the count, a member apart' => ['$this->whenCounted(\'author\', fn ($n) => tap($n));', true],
+        'whenLoaded()\'s default, which is handed nothing' => ['$this->whenLoaded(\'comments\', fn ($c) => 1, fn ($d = null) => tap($d));', true],
+        'whenPivotLoaded(), whose callback is handed nothing' => ['$this->whenPivotLoaded(\'author_team\', fn ($p = null) => tap($p));', true],
+        'a nested callback whose own parameter shadows the member' => ['$this->whenLoaded(\'author\', fn ($a) => collect([1])->map(fn ($a) => tap($a)));', true],
     ]);
 
     // A local may hold anything, the chain or a callable that swaps it included, so a call reading one, or a write
@@ -1426,6 +1467,9 @@ describe('narrowing', function () {
         'unset() through a local holding $this' => ['$self = $this;', 'unset($self->author);', []],
         'a local bound and read in no call' => ['', '$name = $this->author->name; $copy = $name;', ['$this->author' => [[[User::class], '$name = $this->author->name; $copy = $name; $x = 1;']]]],
         'unset() of a local itself' => ['$value = 1;', 'unset($value);', ['$this->author' => [[[User::class], 'unset($value); $x = 1;']]]],
+        'a local bound to the chain by reference, written' => ['$ref = &$this->author;', '$ref = null;', []],
+        'a local bound to the chain by reference, assigned by a foreach' => ['$ref = &$this->author;', 'foreach ([null] as $ref) {}', []],
+        'a local bound to the chain by reference, unset' => ['$ref = &$this->author;', 'unset($ref);', ['$this->author' => [[[User::class], 'unset($ref); $x = 1;']]]],
     ]);
 
     test('binds a test on a $this chain past route() only where it runs Laravel\'s helper', function () {

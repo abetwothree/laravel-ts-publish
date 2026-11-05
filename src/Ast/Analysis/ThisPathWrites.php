@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -21,7 +23,10 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Eval_;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Include_;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -34,6 +39,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
+use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Function_;
@@ -45,10 +51,12 @@ use ReflectionNamedType;
 
 /**
  * Whether a chain of property reads on `$this` may stop holding what an `instanceof` test proved, between the test
- * and the reads its proof covers: a write to the chain or to one it reads through, a write through a local, which may
- * hold the chain, or any call but those known not to reach it (safeCall()). Anything else falls back to the base read.
+ * and its reads: a write to the chain or one it reads through, a write through a local or to one bound by reference,
+ * code no scan sees, or any call but those known not to reach it (safeCall()). Anything else reads as at base.
  *
  * On an API resource a chain the subject does not declare reads through `$this->resource`.
+ *
+ * @phpstan-type Parameters = array<string, list<string>|null>
  *
  * @phpstan-import-type NamedWrite from VariableWrites
  * @phpstan-import-type NamedWrites from VariableWrites
@@ -68,6 +76,12 @@ final class ThisPathWrites
         'whenpivotloaded', 'whenpivotloadedas', 'whenexistsloaded', 'mergewhen', 'mergeunless', 'merge',
     ];
 
+    /** The helpers that call their callback with a member of the resource, lowercased. */
+    private const array HANDING_HELPERS = ['whenloaded', 'whenhas', 'whencounted', 'whenaggregated', 'whenexistsloaded'];
+
+    /** The parameters of a JsonResource helper whose closure the helper calls. */
+    private const array CALLBACK_PARAMETERS = ['value', 'default'];
+
     /** The ability checks the signed-in user runs through the app's gates, lowercased. */
     private const array ABILITY_CHECKS = ['can', 'cannot', 'canany'];
 
@@ -80,8 +94,11 @@ final class ThisPathWrites
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
 
-    /** @var array{list<array{CallLike, list<string>}>, list<Unset_>}|null */
+    /** @var array{list<array{CallLike, Parameters}>, list<Unset_>, list<Node>}|null */
     private ?array $nodes = null;
+
+    /** @var array<string, true>|null */
+    private ?array $references = null;
 
     /**
      * @param  array<Node\Stmt>  $stmts
@@ -109,15 +126,20 @@ final class ThisPathWrites
                 continue;
             }
 
-            // A local may hold the chain, so a write through one may write the chain.
-            if ($name === 'this' ? ! $this->keepsWrite($write, $path, $classes) : self::writesThrough($target)) {
+            // A local may hold the chain, so a write through one may write the chain, as may any write to one bound by
+            // reference; unset() only breaks the reference.
+            if ($name === 'this'
+                ? ! $this->keepsWrite($write, $path, $classes)
+                : self::writesThrough($target) || ($kind !== VariableWrite::Unsets && $this->bindsByReference($name))
+            ) {
                 return true;
             }
         }
 
-        [$calls, $unsets] = $this->nodes();
+        [$calls, $unsets, $unseen] = $this->nodes();
 
-        return array_any($unsets, fn (Unset_ $unset): bool => $this->lands($unset, $from, $to, $exits) && $this->unsetChanges($unset, $path, $classes))
+        return array_any($unseen, fn (Node $node): bool => $this->lands($node, $from, $to, $exits))
+            || array_any($unsets, fn (Unset_ $unset): bool => $this->lands($unset, $from, $to, $exits) && $this->unsetChanges($unset, $path, $classes))
             || array_any($calls, fn (array $call): bool => $this->lands($call[0], $from, $to, $exits) && ! $this->safeCall($call[0], $path, $call[1]));
     }
 
@@ -186,16 +208,167 @@ final class ThisPathWrites
     }
 
     /**
-     * The names of a closure's parameters.
+     * Whether a chain is one the proven chain reads through, short of the proven chain itself.
      *
-     * @return list<string>
+     * @param  list<string>  $chain
+     * @param  list<string>  $path
      */
-    private static function parameterNames(ClosureExpr|ArrowFunction $closure): array
+    private static function strictPrefix(array $chain, array $path): bool
     {
-        return array_values(array_filter(array_map(
-            fn (Param $param): ?string => $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null,
-            $closure->params,
-        )));
+        return $chain !== $path && self::through($chain, $path) === [];
+    }
+
+    /**
+     * The parameters in scope inside a closure: those of the closures around it, then its own, each holding nothing of
+     * the subject but the first one $handed names, which stands for that chain, or for anything where $handed is false
+     * or the parameter is variadic.
+     *
+     * @param  Parameters  $outer
+     * @param  list<string>|false|null  $handed  the member a helper hands the closure, as the chain it reads
+     * @return Parameters
+     */
+    private static function closureParameters(ClosureExpr|ArrowFunction $closure, array $outer, array|false|null $handed): array
+    {
+        foreach ($closure->params as $position => $param) {
+            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+
+            $name = $param->var->name;
+            unset($outer[$name]);
+
+            if ($position > 0 || $handed === null) {
+                $outer[$name] = null;
+            } elseif ($handed !== false && ! $param->variadic) {
+                $outer[$name] = $handed;
+            }
+        }
+
+        return $outer;
+    }
+
+    /**
+     * Whether a node runs code or names a variable no scan can read: `eval`, `include` or `require`, or a variable
+     * variable.
+     */
+    private static function runsUnseen(Node $node): bool
+    {
+        return $node instanceof Eval_ || $node instanceof Include_ || ($node instanceof Variable && ! is_string($node->name));
+    }
+
+    /**
+     * Whether a call writes the variables of the scope it runs in: extract(), or parse_str() given no array to fill.
+     */
+    private static function writesScope(Node $node): bool
+    {
+        if (! $node instanceof FuncCall || ! $node->name instanceof Name || $node->isFirstClassCallable()) {
+            return false;
+        }
+
+        $name = $node->name->toLowerString();
+
+        return $name === 'extract' || ($name === 'parse_str' && count($node->getArgs()) < 2);
+    }
+
+    /**
+     * Whether a body may write one of its variables by a name no scan reads, outside the closures it holds, which have
+     * variables of their own.
+     *
+     * @param  array<Node>  $stmts
+     */
+    private static function writesUnseen(array $stmts): bool
+    {
+        $stack = $stmts;
+
+        while ($stack !== []) {
+            $node = array_pop($stack);
+
+            if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_
+                || $node instanceof ClosureExpr || $node instanceof ArrowFunction
+            ) {
+                continue;
+            }
+
+            if (self::runsUnseen($node) || self::writesScope($node)) {
+                return true;
+            }
+
+            foreach ($node->getSubNodeNames() as $name) {
+                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a value names a callable other than a closure written there: a first-class callable,
+     * Closure::fromCallable(), a function's or a static method's name, or a class-and-method array.
+     */
+    private static function namesCallable(Expr $value): bool
+    {
+        $items = $value instanceof Array_ ? $value->items : [];
+        $class = isset($items[0]) ? $items[0]->value : null;
+
+        return match (true) {
+            $value instanceof CallLike && $value->isFirstClassCallable() => true,
+            $value instanceof StaticCall => $value->class instanceof Name && $value->class->toLowerString() === 'closure'
+                && $value->name instanceof Identifier && $value->name->toLowerString() === 'fromcallable',
+            $value instanceof String_ => str_contains($value->value, '::') || function_exists($value->value),
+            default => count($items) === 2 && isset($items[1]) && $items[1]->value instanceof String_ && (self::isClassName($class)
+                || ($class instanceof String_ && class_exists($class->value))),
+        };
+    }
+
+    /**
+     * Whether a value spells a callable relative to the subject, which runs on `$this`: `'static::m'` or
+     * `['parent', 'm']`.
+     */
+    private static function namesRelativeCallable(Node $node): bool
+    {
+        $class = $node instanceof Array_ && count($node->items) === 2 ? $node->items[0]->value : null;
+
+        return ($node instanceof String_ && preg_match('/^(self|static|parent)::/i', $node->value) === 1)
+            || ($class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true));
+    }
+
+    /**
+     * Whether a value may be a closure, which a helper calls: anything but a literal, an array or a named class's
+     * new instance.
+     */
+    private static function mayBeClosure(Expr $value): bool
+    {
+        return ! ($value instanceof Scalar || $value instanceof ConstFetch || $value instanceof Array_ || self::isClassName($value)
+            || ($value instanceof New_ && $value->class instanceof Name));
+    }
+
+    /**
+     * Whether an expression is a `::class` name.
+     */
+    private static function isClassName(?Expr $expr): bool
+    {
+        return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
+    }
+
+    /**
+     * The string a literal or a class constant spells, or null where the source spells none.
+     */
+    private static function literalString(?Expr $expr): ?string
+    {
+        if ($expr instanceof String_) {
+            return $expr->value;
+        }
+
+        if (! $expr instanceof ClassConstFetch || ! $expr->class instanceof Name || $expr->class->isSpecialClassName()
+            || ! $expr->name instanceof Identifier || self::isClassName($expr)
+        ) {
+            return null;
+        }
+
+        $constant = $expr->class->toString().'::'.$expr->name->toString();
+        $value = defined($constant) ? constant($constant) : null;
+
+        return is_string($value) ? $value : null;
     }
 
     /**
@@ -266,12 +439,12 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a call is known not to reach the chain: a JsonResource helper on `$this`, an ability check on the
-     * signed-in user, a Gate facade check, Laravel's `route()` or `url()`, or a call whose receiver and arguments
-     * hold no local, no `$this` but through the chain or a chain apart from it, and no closure returning one.
+     * Whether a call is known not to reach the chain: a JsonResource helper on `$this` given safe arguments, an ability
+     * check on the signed-in user, a Gate facade check, Laravel's `route()` or `url()`, or a call whose receiver and
+     * arguments safeValue() accepts.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters  the parameters of the closures around the call
+     * @param  Parameters  $parameters  the parameters of the closures around the call
      */
     private function safeCall(CallLike $call, array $path, array $parameters = []): bool
     {
@@ -302,7 +475,7 @@ final class ThisPathWrites
      * Whether a method call is known not to reach the chain.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters  the parameters of the closures around the call
+     * @param  Parameters  $parameters  the parameters of the closures around the call
      */
     private function safeMethodCall(MethodCall|NullsafeMethodCall $call, array $path, array $parameters): bool
     {
@@ -310,8 +483,7 @@ final class ThisPathWrites
 
         return match (true) {
             $name === null => false,
-            $call->var instanceof Variable && $call->var->name === 'this' => in_array($name, self::RESOURCE_HELPERS, true)
-                && $this->onlyReads($call) && $this->safeArguments($call, $path, $parameters),
+            $call->var instanceof Variable && $call->var->name === 'this' => $this->safeHelperCall($call, $path, $parameters),
             in_array($name, self::ABILITY_CHECKS, true) && $this->signedInUser($call->var, $call) => true,
             // Reading the signed-in user an ability check runs on reaches nothing else.
             $name === 'user' && $this->signedInUser($call, $call) => true,
@@ -320,11 +492,78 @@ final class ThisPathWrites
     }
 
     /**
+     * Whether a call on `$this` runs a JsonResource helper that only reads, given safe arguments. A callback it may
+     * call is a closure written there, never another callable; the first parameter of the one it hands a member of the
+     * resource stands for that member, and anything else there that may hold a closure may do anything with the member.
+     *
+     * @param  list<string>  $path
+     * @param  Parameters  $parameters  the parameters of the closures around the call
+     */
+    private function safeHelperCall(MethodCall|NullsafeMethodCall $call, array $path, array $parameters): bool
+    {
+        $helper = $call->name instanceof Identifier && in_array($call->name->toLowerString(), self::RESOURCE_HELPERS, true)
+            ? $this->readingHelper($call)
+            : null;
+
+        if ($helper === null) {
+            return false;
+        }
+
+        $arguments = CallArguments::for($call, $helper);
+        $callbacks = array_map(fn (string $name): ?Expr => $arguments->named($name)?->value, self::CALLBACK_PARAMETERS);
+        [$handedTo, $member] = $this->handedMember($call, $helper) ?? [null, null];
+
+        return ! $arguments->hasUnpack() && array_all($call->getArgs(), fn (Node\Arg $arg): bool => match (true) {
+            in_array($arg->value, $callbacks, true) && self::namesCallable($arg->value) => false,
+            $arg->value !== $handedTo || $member === null => $this->safeValue($arg->value, $path, $parameters),
+            $arg->value instanceof ClosureExpr || $arg->value instanceof ArrowFunction => $this->safeClosure($arg->value, $path, $parameters, $member),
+            default => (($member !== false && ! self::strictPrefix($member, $path)) || ! self::mayBeClosure($arg->value))
+                && $this->safeValue($arg->value, $path, $parameters),
+        });
+    }
+
+    /**
+     * The callback a helper on `$this` calls with a member of the resource, and that member as the chain it reads,
+     * false where the source spells no name for it; null for a helper that hands its callbacks nothing.
+     *
+     * @return array{Expr, list<string>|false}|null
+     */
+    private function handedMember(MethodCall|NullsafeMethodCall $call, ReflectionMethod $helper): ?array
+    {
+        $name = strtolower($helper->getName());
+        $arguments = CallArguments::for($call, $helper);
+        $callback = $arguments->named('value')?->value;
+
+        if ($callback === null || ! in_array($name, self::HANDING_HELPERS, true)) {
+            return null;
+        }
+
+        $relation = self::literalString($arguments->at(0)?->value);
+        [$column, $aggregate] = $name === 'whenaggregated'
+            ? [self::literalString($arguments->named('column')?->value), self::literalString($arguments->named('aggregate')?->value)]
+            : ['', ''];
+
+        if ($relation === null || $column === null || $aggregate === null || $arguments->hasUnpack()) {
+            return [$callback, false];
+        }
+
+        // The attribute each helper reads, as ConditionallyLoadsAttributes builds it.
+        $member = match ($name) {
+            'whencounted' => Str::of($relation)->snake()->finish('_count'),
+            'whenaggregated' => Str::of($relation)->snake()->append('_')->append($aggregate)->append('_')->finish($column),
+            'whenexistsloaded' => Str::of($relation)->snake()->finish('_exists'),
+            default => Str::of($relation),
+        };
+
+        return [$callback, ['resource', $member->value()]];
+    }
+
+    /**
      * Whether a static call is known not to reach the chain; one through `self`, `static`, `parent` or an expression
      * may run on `$this`.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters  the parameters of the closures around the call
+     * @param  Parameters  $parameters  the parameters of the closures around the call
      */
     private function safeStaticCall(StaticCall $call, array $path, array $parameters): bool
     {
@@ -343,7 +582,7 @@ final class ThisPathWrites
      * there, or handing one to call_user_func(), may run anything.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters  the parameters of the closures around the call
+     * @param  Parameters  $parameters  the parameters of the closures around the call
      */
     private function safeFunctionCall(FuncCall $call, array $path, array $parameters): bool
     {
@@ -352,6 +591,10 @@ final class ThisPathWrites
         if (! $name instanceof Name) {
             return ($name instanceof ClosureExpr || $name instanceof ArrowFunction) && $this->safeValue($name, $path, $parameters)
                 && $this->safeArguments($call, $path, $parameters);
+        }
+
+        if (self::writesScope($call)) {
+            return false;
         }
 
         if (self::runsLaravelHelper($name, self::URL_HELPERS)) {
@@ -368,7 +611,7 @@ final class ThisPathWrites
      * Whether every argument of a call is safe to hand on, and none passes the chain, or one through it, by reference.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters  the parameters of the closures around the call
+     * @param  Parameters  $parameters  the parameters of the closures around the call
      */
     private function safeArguments(CallLike $call, array $path, array $parameters): bool
     {
@@ -378,11 +621,11 @@ final class ThisPathWrites
 
     /**
      * Whether an expression is safe to hand to a call: it holds no local, no `$this` but as the root of the chain, a
-     * chain through it or one apart from it, no static name of the subject, and no closure that returns any of those;
-     * a closure's own parameters may stand in what it returns.
+     * chain through it or one apart from it, no static name of the subject, and no closure safeClosure() refuses. A
+     * closure's parameter holds nothing of the subject, unless it stands for a member a helper hands it.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters
+     * @param  Parameters  $parameters
      */
     private function safeValue(Node $node, array $path, array $parameters = [], bool $acrossCalls = true): bool
     {
@@ -390,22 +633,25 @@ final class ThisPathWrites
             return true;
         }
 
-        if ($node instanceof Variable) {
-            return is_string($node->name) && $node->name !== 'this' && in_array($node->name, $parameters, true);
+        if ($node instanceof Variable && is_string($node->name) && $node->name !== 'this' && array_key_exists($node->name, $parameters)) {
+            return $parameters[$node->name] === null || ! self::strictPrefix($parameters[$node->name], $path);
         }
 
         $root = $node instanceof Expr ? self::rootOf($node) : null;
 
-        if ($root instanceof Variable && $root->name === 'this') {
-            $chain = $this->chainOf($node);
-            $through = $chain === null ? [] : self::through($chain, $path);
+        if ($root instanceof Variable && ($root->name === 'this' || (is_string($root->name) && isset($parameters[$root->name])))) {
+            $chain = $this->chainOf($node, $parameters);
 
-            return $chain !== null && ($through !== [] || $chain === $path) && $this->safeChildren($node, $path, $parameters, $acrossCalls, $root);
+            return $chain !== null && ! self::strictPrefix($chain, $path) && $this->safeChildren($node, $path, $parameters, $acrossCalls, $root);
+        }
+
+        if ($node instanceof Variable) {
+            return false;
         }
 
         return match (true) {
             $node instanceof ClosureExpr, $node instanceof ArrowFunction => $this->safeClosure($node, $path, $parameters),
-            $node instanceof ClassLike => false,
+            $node instanceof ClassLike, self::namesRelativeCallable($node) => false,
             ($node instanceof ClassConstFetch || $node instanceof StaticPropertyFetch || $node instanceof StaticCall
                 || $node instanceof New_) && ! ($node->class instanceof Name && ! $node->class->isSpecialClassName()) => false,
             default => $this->safeChildren($node, $path, $parameters, $acrossCalls),
@@ -416,7 +662,7 @@ final class ThisPathWrites
      * Whether every expression a node holds is safe to hand on, leaving out $skip, the `$this` a chain is read off.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $parameters
+     * @param  Parameters  $parameters
      */
     private function safeChildren(Node $node, array $path, array $parameters, bool $acrossCalls, ?Node $skip = null): bool
     {
@@ -446,15 +692,16 @@ final class ThisPathWrites
 
     /**
      * Whether a closure is safe to hand to a call: it imports by value and never writes an import, writes through
-     * nothing, and holds no value safeValue() refuses outside its calls, its parameters and outer closures' aside. Its
-     * calls are read with the rest of the span, which reaches into closures.
+     * nothing, and holds no value safeValue() refuses outside its calls, read with the parameters closureParameters()
+     * gives it. Its calls are read with the rest of the span, which reaches into closures.
      *
      * @param  list<string>  $path
-     * @param  list<string>  $outer
+     * @param  Parameters  $outer
+     * @param  list<string>|false|null  $handed  the member a helper hands the closure, as the chain it reads
      */
-    private function safeClosure(ClosureExpr|ArrowFunction $closure, array $path, array $outer): bool
+    private function safeClosure(ClosureExpr|ArrowFunction $closure, array $path, array $outer, array|false|null $handed = null): bool
     {
-        $parameters = [...$outer, ...self::parameterNames($closure)];
+        $parameters = self::closureParameters($closure, $outer, $handed);
         $body = $closure instanceof ArrowFunction ? [$closure->expr] : $closure->stmts;
         $imports = $closure instanceof ClosureExpr ? array_map(fn (Node\ClosureUse $use): string|Expr => $use->var->name, $closure->uses) : [];
 
@@ -486,8 +733,8 @@ final class ThisPathWrites
 
     /**
      * Whether a variable read by a call is the request parameter of the method holding the call: the signature types it
-     * a request, the body never writes it, and no closure around the call takes a parameter of that name or imports it
-     * by reference, writes it, or fails to import it.
+     * a request, the body never writes it or a variable no scan names, and no closure around the call takes a parameter
+     * of that name or imports it by reference, writes it, or fails to import it.
      */
     private function holdsRequestParameter(string $name, Node $call): bool
     {
@@ -499,6 +746,7 @@ final class ThisPathWrites
         if (! $type instanceof ReflectionNamedType || ! is_a($type->getName(), Request::class, true) || $body === null
             || $body->getStartFilePos() > $call->getStartFilePos() || $body->getEndFilePos() < $call->getEndFilePos()
             || array_any(VariableWrites::of($body->stmts ?? []), fn (array $write): bool => $write[0] === $name)
+            || self::writesUnseen($body->stmts ?? [])
         ) {
             return false;
         }
@@ -529,11 +777,11 @@ final class ThisPathWrites
     }
 
     /**
-     * The calls and `unset()` statements of the body, closures and arrow functions included, since they may run before
-     * a read, each call with the parameters of the closures around it; never a nested class's or named function's.
-     * Scanned once, on the first proof that asks.
+     * The calls, `unset()` statements and code runsUnseen() flags in the body, closures and arrow functions included,
+     * since they may run before a read, each call with the parameters of the closures around it; never a nested class's
+     * or named function's. Scanned once, on the first proof that asks.
      *
-     * @return array{list<array{CallLike, list<string>}>, list<Unset_>}
+     * @return array{list<array{CallLike, Parameters}>, list<Unset_>, list<Node>}
      */
     private function nodes(): array
     {
@@ -543,6 +791,9 @@ final class ThisPathWrites
 
         $calls = [];
         $unsets = [];
+        $unseen = [];
+        $handed = [];
+        /** @var list<array{mixed, Parameters}> $stack */
         $stack = array_map(fn (Node $stmt): array => [$stmt, []], $this->stmts);
 
         while ($stack !== []) {
@@ -554,11 +805,16 @@ final class ThisPathWrites
 
             if ($node instanceof CallLike) {
                 $calls[] = [$node, $parameters];
+                $handed += $this->handedClosure($node);
             } elseif ($node instanceof Unset_) {
                 $unsets[] = $node;
+            } elseif (self::runsUnseen($node)) {
+                $unseen[] = $node;
             }
 
-            $inner = $node instanceof ClosureExpr || $node instanceof ArrowFunction ? [...$parameters, ...self::parameterNames($node)] : $parameters;
+            $inner = $node instanceof ClosureExpr || $node instanceof ArrowFunction
+                ? self::closureParameters($node, $parameters, $handed[spl_object_id($node)] ?? null)
+                : $parameters;
 
             foreach ($node->getSubNodeNames() as $name) {
                 foreach (is_array($node->{$name}) ? $node->{$name} : [$node->{$name}] as $child) {
@@ -567,7 +823,35 @@ final class ThisPathWrites
             }
         }
 
-        return $this->nodes = [$calls, $unsets];
+        return $this->nodes = [$calls, $unsets, $unseen];
+    }
+
+    /**
+     * The member a helper call on `$this` hands the closure written as its callback, keyed by that closure's object id.
+     *
+     * @return array<int, list<string>|false>
+     */
+    private function handedClosure(CallLike $call): array
+    {
+        $helper = ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && $call->var instanceof Variable
+            && $call->var->name === 'this' && $call->name instanceof Identifier
+            && in_array($call->name->toLowerString(), self::HANDING_HELPERS, true) ? $this->readingHelper($call) : null;
+        [$callback, $member] = ($helper === null ? null : $this->handedMember($call, $helper)) ?? [null, false];
+
+        return $callback instanceof ClosureExpr || $callback instanceof ArrowFunction ? [spl_object_id($callback) => $member] : [];
+    }
+
+    /**
+     * Whether the body binds a local by reference anywhere, so that a write to it may write what it is bound to.
+     */
+    private function bindsByReference(string $name): bool
+    {
+        $this->references ??= array_fill_keys(
+            array_column(array_filter($this->writes, fn (array $write): bool => $write[3]->makesReference()), 0),
+            true,
+        );
+
+        return isset($this->references[$name]);
     }
 
     /**
@@ -581,15 +865,15 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a call on `$this` runs a helper the framework's resource classes declare, which only reads the resource.
+     * The helper a call on `$this` runs, where the framework's resource classes declare it and it only reads.
      */
-    private function onlyReads(MethodCall|NullsafeMethodCall $call): bool
+    private function readingHelper(MethodCall|NullsafeMethodCall $call): ?ReflectionMethod
     {
         $name = $call->name instanceof Identifier ? $call->name->toString() : null;
         $class = $name === null ? null : $this->scope->thisMemberClass($name, true);
+        $method = $name !== null && $class !== null && $class->hasMethod($name) ? $class->getMethod($name) : null;
 
-        return $name !== null && $class !== null && $class->hasMethod($name)
-            && in_array(DeclaringFile::ofMethod($class->getMethod($name))->getName(), self::READING_DECLARERS, true);
+        return $method !== null && in_array(DeclaringFile::ofMethod($method)->getName(), self::READING_DECLARERS, true) ? $method : null;
     }
 
     /**
@@ -608,19 +892,32 @@ final class ThisPathWrites
 
     /**
      * The chain on `$this` an expression writes or reads, keys stripped and in the spelling every alias shares, none
-     * for `$this` itself; null where a name, a call or the root is not one the source spells.
+     * for `$this` itself, read on from the chain a closure parameter in $parameters stands for; null where a name, a
+     * call or the root is not one the source spells.
      *
+     * @param  Parameters  $parameters
      * @return list<string>|null
      */
-    private function chainOf(Expr $expr): ?array
+    private function chainOf(Expr $expr, array $parameters = []): ?array
     {
         while ($expr instanceof ArrayDimFetch) {
             $expr = $expr->var;
         }
 
-        $path = $expr instanceof Variable && $expr->name === 'this' ? [] : AnalysisScope::thisReadPath($expr);
+        $names = [];
 
-        return $path === null ? null : $this->canonical($path);
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($names, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        $root = match (true) {
+            ! $expr instanceof Variable || ! is_string($expr->name) => null,
+            $expr->name === 'this' => [],
+            default => $parameters[$expr->name] ?? null,
+        };
+
+        return $root === null ? null : $this->canonical([...$root, ...$names]);
     }
 
     /**
