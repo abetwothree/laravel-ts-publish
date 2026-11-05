@@ -18,6 +18,8 @@ use ReflectionProperty;
  * @phpstan-import-type Intersections from DeclaredClasses
  * @phpstan-import-type DeclaredType from DeclaredClasses
  *
+ * @phpstan-type KeyKind 'string'|'array-key'|'int'|null
+ *
  * @internal
  */
 final readonly class ReceiverType
@@ -111,10 +113,26 @@ final readonly class ReceiverType
     }
 
     /**
+     * The kind of key a collection generic spells: `array-key` for keys of either kind however written, as `int|string`
+     * spells them too; null where it spells none.
+     *
+     * @return KeyKind
+     */
+    public static function keyKind(string $spelled): ?string
+    {
+        return match (preg_replace('/\s+/', '', $spelled)) {
+            '' => null,
+            'string' => 'string',
+            'int' => 'int',
+            default => 'array-key',
+        };
+    }
+
+    /**
      * The keys a collection declaration spells, as `[keyed, stringKeyed]`: off 0..n-1 for a `string` key or one of
      * either kind, and the record its `all()` sends only for a bare `string` one, since either kind may be a list.
      *
-     * @param  'string'|'array-key'|'int'|null  $key  the kind of key, `array-key` however either kind is spelled
+     * @param  KeyKind  $key  the kind of key, `array-key` however either kind is spelled
      * @return array{bool, bool}
      */
     public static function declaredKeys(?string $key): array

@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`DeclaredClasses`] | The classes a declaration names: a method's native return, else the tentative one PHP declares on its own classes' methods (`reflectedReturnType()`, which reads the return of any method a receiver may name), else its `@return`; a native type, a docblock union's class arms, an intersection's members, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
+| [`DeclaredClasses`] | The classes a declaration names: a method's native return, else the tentative one PHP declares on its own classes' methods (`reflectedReturnType()`, which reads the return of any method a receiver may name), else its `@return`; a native type, a docblock union's class arms, an intersection's members, a generic's arguments, a collection generic's key and model (`collectionGeneric()`); and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
 | [`ProxyDeclaration`] | What an API resource's `$this->resource` is declared to hold, from its `@var`, `@extends`, `@mixin` or `@property`, and the model that names; what it holds over its backing class (`heldOver()`), for the subject and, through `held()` and `forwarded()`, for a member read off another API resource |
 | [`CollectionSteps`] | A chain's steps, root first, what each does to the items and their keys, and which hands back one item, for the receiver resolvers and the model-finder, relation-chain and `collect()` handlers, the last two walking a chain through `walk()` |
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
@@ -445,7 +445,7 @@ variable the walk reads, replaces the declaration's array arms, so `PriceQuoteSe
 too, so it publishes what the bare `$this->m()` does. A vague `@return array<string, …>` wins over the native `array` in
 `methodOrDocblockReturnTypes()`, and by the same rule over a body value whose arms it spells with a `Record` for the
 `unknown[]`, as a parameter returned untouched can be: a string-keyed array encodes as a `Record`, never as a list
-(`TsTypeString::spellsListAsRecord()`).
+(`TsTypeString::documentedWins()`, through `spellsListAsRecord()`).
 
 A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
 from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the

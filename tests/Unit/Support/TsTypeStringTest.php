@@ -1366,6 +1366,18 @@ describe('isVagueTsType', function () {
     });
 });
 
+describe('documentedWins', function () {
+    test('lets a docblock replace a declaration only where that is unknown or vague and the docblock says more', function (string $declared, string $documented, bool $wins) {
+        expect($this->service->documentedWins($declared, $documented))->toBe($wins);
+    })->with([
+        'a precise declaration' => ['string', '{ a: number }', false],
+        'a vague declaration, a precise docblock' => ['unknown[]', '{ a: number }', true],
+        'no declaration, a precise docblock' => ['unknown', 'string', true],
+        'both vague' => ['unknown[]', 'unknown', false],
+        'a list the docblock spells as a record' => ['unknown[]', 'Record<string, unknown>', true],
+    ]);
+});
+
 describe('spellsListAsRecord', function () {
     test('reads a Record arm as the unknown[] a list type spells, every other arm matching', function (string $list, string $record, bool $spells) {
         expect($this->service->spellsListAsRecord($list, $record))->toBe($spells);

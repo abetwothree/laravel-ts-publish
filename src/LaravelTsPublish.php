@@ -2179,7 +2179,7 @@ class LaravelTsPublish
      */
     protected function declaredOrDocblockTypes(array $declared, Closure $docblock): array
     {
-        if ($declared['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($declared['type'])) {
+        if (! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;
         }
 
@@ -2187,11 +2187,7 @@ class LaravelTsPublish
         // docblock shape like `@return array{value: int, label: string}` can usually do better.
         $docblockInfo = $docblock();
 
-        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
-            return $docblockInfo;
-        }
-
-        if (TsTypeString::spellsListAsRecord($declared['type'], $docblockInfo['type'])) {
+        if (TsTypeString::documentedWins($declared['type'], $docblockInfo['type'])) {
             return $docblockInfo;
         }
 

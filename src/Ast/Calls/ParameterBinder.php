@@ -634,7 +634,10 @@ final class ParameterBinder
         if ($value === null || TsTypeString::isVagueTsType($value['type'])) {
             $reader = resolve(PropertyDocblockTypeReader::class);
             $tag = $reader->extractParamTag($docComment, $name, $context);
-            $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
+            $documented = $tag === null ? null : $reader->readDeclared($tag, $context);
+            $value = $documented !== null && TsTypeString::documentedWins($value['type'] ?? 'unknown', $documented['type'])
+                ? $documented
+                : $value;
         }
 
         if (! ValueResult::isPublishableReading($value)) {

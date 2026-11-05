@@ -46,6 +46,22 @@ test('a generic type spells its arguments, split at its top-level commas', funct
     'text after the closing bracket' => ['JsonResource<Post>[]', null],
 ]);
 
+// Post's file reads a bare `Comment` as its namespace's model.
+test('a collection generic spells its kind of key and the concrete model it lists', function (string $type, ?array $expected) {
+    expect(DeclaredClasses::collectionGeneric($type, new ReflectionClass(Post::class)))->toBe($expected);
+})->with([
+    'an int key' => ['Collection<int, Comment>', ['key' => 'int', 'element' => Comment::class]],
+    'only the element, nullable' => ['?Collection<Comment>', ['key' => null, 'element' => Comment::class]],
+    'a string key beside null' => ['Collection<string, Comment>|null', ['key' => 'string', 'element' => Comment::class]],
+    'either kind as a union' => ['Collection<int | string, Comment>', ['key' => 'array-key', 'element' => Comment::class]],
+    'an element that is no concrete model' => ['Collection<string, int>', ['key' => 'string', 'element' => null]],
+    'a nested element' => ['Collection<int, Collection<int, Comment>>', null],
+    'a key no collection takes' => ['Collection<float, Comment>', null],
+    'two collections' => ['Collection<int, Comment>|Collection<int, Post>', null],
+    'no generic' => ['Collection', null],
+    'a list after the bracket' => ['Collection<int, Comment>[]', null],
+]);
+
 test('a native type names one class, static read as the receiver and self as the declarer', function (?ReflectionType $type, ?string $expected) {
     expect(DeclaredClasses::singleClass($type, Post::class, Comment::class))->toBe($expected);
 })->with([

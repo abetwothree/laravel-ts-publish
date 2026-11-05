@@ -103,6 +103,7 @@ Ask what the helper's input domain is, not what calls it:
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Which arm of an array's type is an array or keyed, what do `array_values()`, `values()`, `array_keys()`, `array_filter()` and `array_map()` make of it, how is a list whose keys left `0..n-1` spelled, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
+| Does a docblock's type replace this declared one? | `TsTypeString::documentedWins()` |
 | Does this type have a top-level `null` arm, and what is it with one or without one? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()` |
 | How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |
 | How does this type stand before a postfix `[]` or `?`, which binds tighter than `\|`? | `TsTypeShape::postfixOperand()` |

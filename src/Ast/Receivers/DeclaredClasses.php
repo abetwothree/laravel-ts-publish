@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use ReflectionFunctionAbstract;
 use ReflectionIntersectionType;
@@ -34,11 +35,17 @@ use ReflectionUnionType;
  * @phpstan-type DocblockArms array{
  *     classes: list<class-string>, named: bool, nullable: bool, intersections: Intersections,
  * }
+ * @phpstan-type CollectionGeneric array{key: KeyKind, element: class-string<Model>|null}
+ *
+ * @phpstan-import-type KeyKind from ReceiverType
  *
  * @internal
  */
 final class DeclaredClasses
 {
+    /** The keys a collection generic may spell, either kind written as a union too. */
+    private const string COLLECTION_KEY = '/^(?:int\s*\|\s*string|string\s*\|\s*int|array-key|string|int)$/';
+
     /** Type keywords PHP never lets a class or an import alias take, so an arm naming one is no class in any file. */
     private const array RESERVED_TYPES = [
         'array', 'bool', 'callable', 'false', 'float', 'int', 'iterable', 'mixed', 'never', 'object', 'string', 'true',
@@ -292,6 +299,41 @@ final class DeclaredClasses
         return preg_match('/^[\\\\\w]+\s*<(.+)>$/s', trim($type), $match) === 1
             ? LaravelTsPublish::splitAtTopLevelCommas($match[1])
             : null;
+    }
+
+    /**
+     * The key and element a docblock spells for its one collection, as `Collection<string, Comment>` or
+     * `?Collection<Comment>` does, a `null` arm aside: the key is null where the generic names only the element, and
+     * the element is the concrete model it names, else null; null for any other spelling.
+     *
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports resolve the element
+     * @return CollectionGeneric|null
+     */
+    public static function collectionGeneric(string $phpDocType, ReflectionClass $context): ?array
+    {
+        $arms = array_values(array_filter(
+            LaravelTsPublish::splitPhpDocUnionType($phpDocType),
+            fn (string $arm): bool => strtolower($arm) !== 'null',
+        ));
+        $arguments = count($arms) === 1
+            ? self::genericArguments(str_starts_with($arms[0], '?') ? substr($arms[0], 1) : $arms[0])
+            : null;
+        [$key, $element] = match (count($arguments ?? [])) {
+            1 => ['', $arguments[0]],
+            2 => [$arguments[0], $arguments[1]],
+            default => ['', null],
+        };
+
+        if ($element === null
+            || ($key !== '' && preg_match(self::COLLECTION_KEY, $key) !== 1)
+            || preg_match('/^[\\\\\w]+$/', $element) !== 1
+        ) {
+            return null;
+        }
+
+        $model = DocblockNames::resolve($element, $context);
+
+        return ['key' => ReceiverType::keyKind($key), 'element' => ReceiverType::isConcreteModel($model) ? $model : null];
     }
 
     /**

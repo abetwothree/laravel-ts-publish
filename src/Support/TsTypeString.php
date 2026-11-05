@@ -506,6 +506,16 @@ class TsTypeString
     }
 
     /**
+     * Whether a docblock's type replaces a declared one: the declaration is unknown or vague, and the docblock is
+     * neither, or spells the declaration's list as the record a string-keyed array encodes as.
+     */
+    public function documentedWins(string $declared, string $documented): bool
+    {
+        return $this->isVagueTsType($declared)
+            && (! $this->isVagueTsType($documented) || $this->spellsListAsRecord($declared, $documented));
+    }
+
+    /**
      * Whether a type is a vague list type's arms with an `unknown[]` spelled as a `Record<…>`: a string-keyed array
      * encodes as an object, never as the list a native `array` publishes.
      */

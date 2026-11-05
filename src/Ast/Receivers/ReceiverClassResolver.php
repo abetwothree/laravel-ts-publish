@@ -78,13 +78,13 @@ use Throwable;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
- * @phpstan-type CollectionGeneric array{key: 'string'|'array-key'|'int'|null, element: string}
- *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type DeclaredType from DeclaredClasses
  * @phpstan-import-type BindingGap from AnalysisScope
+ * @phpstan-import-type CollectionGeneric from DeclaredClasses
+ * @phpstan-import-type KeyKind from ReceiverType
  *
  * @internal
  */
@@ -140,9 +140,6 @@ final class ReceiverClassResolver
         Relation::class => 'TRelatedModel',
         Factory::class => 'TModel',
     ];
-
-    /** A collection generic's key, either kind spelled as a union too, for the generic readers' patterns. */
-    private const string DECLARED_KEY = '(int\s*\|\s*string|string\s*\|\s*int|array-key|string|int)';
 
     /** The docblock types that name no object, so a call declaring only these hands no query on. */
     private const array SCALAR_TYPES = [
@@ -642,22 +639,6 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The kind of key a collection generic spells: `array-key` for keys of either kind however written, as `int|string`
-     * spells them too; null where it spells none.
-     *
-     * @return 'string'|'array-key'|'int'|null
-     */
-    private static function keyKind(string $spelled): ?string
-    {
-        return match (preg_replace('/\s+/', '', $spelled)) {
-            '' => null,
-            'string' => 'string',
-            'int' => 'int',
-            default => 'array-key',
-        };
-    }
-
-    /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
      * what the body assigned, narrowed by the `instanceof` proof the read falls within; an unbound variable declines
      * unless a proof names its classes.
@@ -806,39 +787,19 @@ final class ReceiverClassResolver
      */
     private function declaredElementModel(array $span, ReceiverType $declared): ?string
     {
-        $generic = $this->declaredGeneric($span, $declared);
-
-        if ($generic === null) {
-            return null;
-        }
-
-        $element = DocblockNames::resolve($generic['element'], $span['context']);
-
-        return ReceiverType::isConcreteModel($element) ? $element : null;
+        return $this->declaredGeneric($span, $declared)['element'] ?? null;
     }
 
     /**
-     * The key and element an inline `@var` spells for its one collection, as `Collection<string, Comment>` does, a
-     * `null` arm aside; the key is null where the generic names only the element, and null for any other spelling.
+     * The key and element an inline `@var` spells for its one collection, as DeclaredClasses::collectionGeneric() reads
+     * it, where the value is a collection; null otherwise.
      *
      * @param  VarDocBinding  $span
      * @return CollectionGeneric|null
      */
     private function declaredGeneric(array $span, ReceiverType $declared): ?array
     {
-        $arms = array_values(array_filter(
-            LaravelTsPublish::splitPhpDocUnionType($span['type']),
-            fn (string $arm): bool => strtolower($arm) !== 'null',
-        ));
-
-        if (count($arms) !== 1
-            || ! $declared->within([Enumerable::class])
-            || preg_match('/^\??[\\\\\w]+<\s*(?:'.self::DECLARED_KEY.'\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
-        ) {
-            return null;
-        }
-
-        return ['key' => self::keyKind($match[1]), 'element' => $match[2]];
+        return $declared->within([Enumerable::class]) ? DeclaredClasses::collectionGeneric($span['type'], $span['context']) : null;
     }
 
     /**
@@ -2137,24 +2098,27 @@ final class ReceiverClassResolver
      * `Collection<string, Comment>` does; null otherwise.
      *
      * @param  non-empty-list<class-string>  $classes  the classes the method returns
-     * @return array{model: class-string<Model>, key: 'string'|'array-key'|'int'|null}|null
+     * @return array{model: class-string<Model>, key: KeyKind}|null
      */
     private function listedReturnModel(string $class, string $method, array $classes): ?array
     {
         $declared = $this->declaredReturn($class, $method);
 
+        // Only a lone generic, with no `?` and no union arm, names the element here.
         if ($declared === null
             || ! new ReceiverType($classes)->within([Enumerable::class])
-            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:'.self::DECLARED_KEY.'\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
+            || count(LaravelTsPublish::splitPhpDocUnionType($declared)) !== 1
+            || str_starts_with($declared, '?')
         ) {
             return null;
         }
 
-        $element = DocblockNames::resolve($match[2], DeclaringFile::ofMethod(new ReflectionMethod($class, $method)));
+        $generic = DeclaredClasses::collectionGeneric($declared, DeclaringFile::ofMethod(new ReflectionMethod($class, $method)));
+        $element = $generic['element'] ?? null;
 
-        return ReceiverType::isConcreteModel($element)
+        return $generic !== null && $element !== null
             && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $element])
-            ? ['model' => $element, 'key' => self::keyKind($match[1])]
+            ? ['model' => $element, 'key' => $generic['key']]
             : null;
     }
 
