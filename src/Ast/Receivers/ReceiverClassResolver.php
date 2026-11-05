@@ -948,7 +948,8 @@ final class ReceiverClassResolver
 
     /**
      * A chain of property reads on `$this` under the `instanceof` proof in force where it sits: what it holds with that
-     * proof set aside, its own classes narrowed by the proof's; null where none holds.
+     * proof set aside, its own classes narrowed by the proof's, or under an `if` the proof's classes guarded where it
+     * names none; null where no proof holds.
      */
     private function provenPath(PropertyFetch|NullsafePropertyFetch $fetch, AnalysisScope $scope): ?ReceiverType
     {
@@ -974,6 +975,11 @@ final class ReceiverClassResolver
             $held = $this->resolve($fetch, $scope);
         } finally {
             $scope->varGuardBindings[$key] = $guards;
+        }
+
+        // Only an `if` newly reaches a chain no class names; a ternary's arm, at no offsets, keeps its old reading.
+        if ($held === null && ($proof['after'] !== PHP_INT_MIN || $proof['before'] !== null)) {
+            return new ReceiverType($proof['classes'], guarded: true);
         }
 
         return $this->narrowed($held, $proof['classes'])->withShortCircuit(false);

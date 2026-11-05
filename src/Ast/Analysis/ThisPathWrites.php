@@ -10,10 +10,16 @@ use Illuminate\Http\Resources\CollectsResources;
 use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Facades\Gate;
 use PhpParser\Node;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
@@ -30,11 +36,12 @@ use PhpParser\Node\Stmt\Unset_;
 /**
  * What in a body may change what a chain of property reads on `$this` holds, so the guard pass binds no `instanceof`
  * proof of it across: an assignment to it or a chain it reads through, `unset()` of either, either passed by reference,
- * or a call on `$this` or a chain it reads through. Only a write through the chain itself can keep the proof.
+ * `$this` or a chain it reads through passed at all, a call on either, or a call of a callable value.
  *
+ * Only a write through the chain itself keeps the proof, and only an authorization check, `route()` or `url()` a pass.
  * On an API resource a chain the subject does not declare reads through `$this->resource`.
  *
- * @phpstan-type ThisEffect = array{'unset'|'call'|'pass', Node, Expr}
+ * @phpstan-type ThisEffect = array{'unset'|'call'|'pass'|'invoke', Node, Expr}
  *
  * @phpstan-import-type NamedWrite from VariableWrites
  * @phpstan-import-type NamedWrites from VariableWrites
@@ -47,6 +54,18 @@ final class ThisPathWrites
     private const array READING_DECLARERS = [
         JsonResource::class, ResourceCollection::class, ConditionallyLoadsAttributes::class, CollectsResources::class,
     ];
+
+    /** The methods that check an ability on any receiver, reading what they are given. */
+    private const array ABILITY_CHECKS = ['can', 'cannot', 'canany'];
+
+    /** The Gate facade's checks, which read what they are given. */
+    private const array GATE_CHECKS = ['allows', 'denies', 'check', 'any', 'none'];
+
+    /** The helpers that only read a model to build a URL. */
+    private const array URL_HELPERS = ['route', 'url'];
+
+    /** The built-ins that call the callable they are given first. */
+    private const array CALLERS = ['call_user_func', 'call_user_func_array'];
 
     /** @var list<ThisEffect>|null */
     private ?array $effects = null;
@@ -102,6 +121,23 @@ final class ThisPathWrites
     }
 
     /**
+     * The values rooted at `$this` an argument passes: itself, or each an array literal it builds holds.
+     *
+     * @return list<Expr>
+     */
+    private static function thisValues(Expr $value): array
+    {
+        if ($value instanceof Array_) {
+            return array_merge(...array_map(
+                fn (?ArrayItem $item): array => $item === null ? [] : self::thisValues($item->value),
+                $value->items,
+            ));
+        }
+
+        return self::rootsAtThis($value) ? [$value] : [];
+    }
+
+    /**
      * Whether an expression is `$this` or a chain of property or key reads on it, whatever names it spells.
      */
     private static function readsChain(Expr $expr): bool
@@ -125,6 +161,22 @@ final class ThisPathWrites
         }
 
         return $expr instanceof Variable && $expr->name === 'this';
+    }
+
+    /**
+     * Whether a call only reads what it is given: an ability check, a Gate facade check, `route()` or `url()`.
+     */
+    private static function readsOnly(Node $call): bool
+    {
+        return match (true) {
+            $call instanceof MethodCall, $call instanceof NullsafeMethodCall => $call->name instanceof Identifier
+                && in_array($call->name->toLowerString(), self::ABILITY_CHECKS, true),
+            $call instanceof StaticCall => $call->class instanceof Name && $call->name instanceof Identifier
+                && in_array($call->class->toString(), [Gate::class, 'Gate'], true)
+                && in_array($call->name->toLowerString(), self::GATE_CHECKS, true),
+            $call instanceof FuncCall => $call->name instanceof Name && in_array($call->name->toLowerString(), self::URL_HELPERS, true),
+            default => false,
+        };
     }
 
     /**
@@ -184,15 +236,18 @@ final class ThisPathWrites
             'unset' => $through !== null && ! (count($through) === 1 && ModelFills::namesNoTypedMember($classes, $through[0]))
                 && ! ($through === [] && $chain === $path && $expr instanceof ArrayDimFetch && $expr->dim instanceof String_
                     && ModelFills::namesNoTypedMember($classes, $expr->dim->value)),
-            'pass' => $through !== null && $node instanceof CallLike && $this->passesByReference($node, $expr),
+            'pass' => $this->passChanges($node, $expr, $chain, $through, $path),
+            // A closure made before the test, or any callable value, may replace the chain when it runs.
+            'invoke' => true,
             // A call on a chain the proof's reads through may replace it; one on the chain or past it leaves it.
             default => $expr instanceof Variable ? ! $this->onlyReads($node) : $through === [] && $chain !== $path,
         };
     }
 
     /**
-     * The `unset()` targets, calls on `$this` or a chain of it, and arguments rooted at `$this` in the body, closures
-     * and arrow functions included, since they may run before a read; scanned once, on the first proof that asks.
+     * The `unset()` targets, calls on `$this` or a chain of it, calls of a callable value, and values rooted at `$this`
+     * a call is given, in the body, closures and arrow functions included, since they may run before a read; scanned
+     * once, on the first proof that asks.
      *
      * @return list<ThisEffect>
      */
@@ -240,25 +295,66 @@ final class ThisPathWrites
             ));
         }
 
-        if (! $node instanceof CallLike || $node->isFirstClassCallable()) {
+        if ($node instanceof FuncCall && ! $node->name instanceof Name) {
+            return [['invoke', $node, $node->name]];
+        }
+
+        if (! $node instanceof CallLike) {
             return [];
         }
 
         $receiver = match (true) {
             $node instanceof MethodCall, $node instanceof NullsafeMethodCall => $node->var,
-            $node instanceof StaticCall && $node->class instanceof Name && $node->class->isSpecialClassName() => new Variable('this'),
+            $node instanceof StaticCall && $node->class instanceof Name => $node->class->isSpecialClassName() ? new Variable('this') : null,
+            $node instanceof StaticCall => $node->class,
             default => null,
         };
         // A call on what another call returns has its own effect at that inner call.
-        $effects = $receiver !== null && self::readsChain($receiver) ? [['call', $node, $receiver]] : [];
+        $onChain = $receiver !== null && self::readsChain($receiver);
+
+        // A first-class callable binds its receiver for a later call, as a pass of it does.
+        if ($node->isFirstClassCallable()) {
+            return $onChain ? [['pass', $node, $receiver]] : [];
+        }
+
+        $effects = $onChain ? [['call', $node, $receiver]] : [];
+        $callable = $node instanceof FuncCall && in_array($node->name->toLowerString(), self::CALLERS, true)
+            ? $node->getArgs()[0]->value ?? null
+            : null;
+
+        if ($callable !== null && ! ($callable instanceof String_ || $callable instanceof Array_
+            || $callable instanceof ArrowFunction || $callable instanceof ClosureExpr)
+        ) {
+            $effects[] = ['invoke', $node, $callable];
+        }
 
         foreach ($node->getArgs() as $arg) {
-            if (self::rootsAtThis($arg->value) && ! ($arg->value instanceof Variable)) {
-                $effects[] = ['pass', $node, $arg->value];
+            foreach (self::thisValues($arg->value) as $value) {
+                $effects[] = ['pass', $node, $value];
             }
         }
 
         return $effects;
+    }
+
+    /**
+     * Whether a value rooted at `$this` that a call is given may change a chain: `$this`, or a chain the proof's reads
+     * through, given to anything but a check that only reads it; the chain itself, or one through it, by reference.
+     *
+     * @param  list<string>|null  $chain
+     * @param  list<string>|null  $through
+     * @param  list<string>  $path
+     */
+    private function passChanges(Node $call, Expr $value, ?array $chain, ?array $through, array $path): bool
+    {
+        // A call may keep what it is given and replace the chain through it, as `$this->resource->setRelation()` can.
+        $holds = $value instanceof Variable || ($chain === null && self::readsChain($value)) || ($through === [] && $chain !== $path);
+
+        return match (true) {
+            $holds => ! self::readsOnly($call),
+            $through === null => false,
+            default => $call instanceof CallLike && ! $call->isFirstClassCallable() && $this->passesByReference($call, $value),
+        };
     }
 
     /**

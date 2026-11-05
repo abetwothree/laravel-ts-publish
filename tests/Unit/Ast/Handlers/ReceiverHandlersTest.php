@@ -1356,6 +1356,24 @@ describe('narrowing', function () {
         'a call on what the chain reads through' => ['$this->resource->refresh();', []],
         'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
         'a call on the proven value itself' => ['$this->author->refresh();', ['$this->author' => [[[User::class], '$this->author->refresh(); $x = 1;']]]],
+        '$this->resource passed by value' => ['tap($this->resource);', []],
+        '$this passed by value' => ['is_object($this);', []],
+        '$this inside an array passed to new' => ['new \\ArrayObject([$this]);', []],
+        'a chain it reads through inside a callable array' => ['call_user_func([$this->resource, \'refresh\']);', []],
+        '$this inside a callable array' => ['call_user_func([$this, \'toArray\'], $request);', []],
+        'a callable variable called' => ['$swap();', []],
+        'a callable variable passed to call_user_func()' => ['call_user_func($swap);', []],
+        'a method of $this called through $this::' => ['$this::toArray($request);', []],
+        'a first-class callable on $this' => ['$swap = $this->toArray(...);', []],
+        'a first-class callable on what the chain reads through' => ['$swap = $this->resource->refresh(...);', []],
+        'a first-class callable on the proven value' => ['$swap = $this->author->refresh(...);', ['$this->author' => [[[User::class], '$swap = $this->author->refresh(...); $x = 1;']]]],
+        'can() given $this->resource' => ['$request->user()?->can(\'view\', $this->resource);', ['$this->author' => [[[User::class], '$request->user()?->can(\'view\', $this->resource); $x = 1;']]]],
+        'cannot() given $this' => ['$request->user()->cannot(\'view\', $this);', ['$this->author' => [[[User::class], '$request->user()->cannot(\'view\', $this); $x = 1;']]]],
+        'canAny() given $this->resource' => ['$request->user()->canAny([\'view\'], $this->resource);', ['$this->author' => [[[User::class], '$request->user()->canAny([\'view\'], $this->resource); $x = 1;']]]],
+        'Gate::allows() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource); $x = 1;']]]],
+        'Gate::denies() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource); $x = 1;']]]],
+        'route() given $this->resource' => ['route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]],
+        'url() given $this->resource' => ['url(\'posts\', [$this->resource]);', ['$this->author' => [[[User::class], 'url(\'posts\', [$this->resource]); $x = 1;']]]],
     ]);
 
     test('binds a test on a nested $this chain until a write to a chain it reads through', function () {
@@ -1365,7 +1383,10 @@ describe('narrowing', function () {
             ->and(blockNarrowingBindings($test.'$this->author = null; $x = 1; }'))->toBe([])
             ->and(blockNarrowingBindings($test.'$this->author->name = \'Ann\'; $x = 1; }'))
             ->toBe(['$this->author->team' => [[[Team::class], '$this->author->name = \'Ann\'; $x = 1;']]])
-            ->and(blockNarrowingBindings($test.'$this->author->team = null; $x = 1; }'))->toBe([]);
+            ->and(blockNarrowingBindings($test.'$this->author->team = null; $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'tap($this->author); $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'tap($this->author->team); $x = 1; }'))
+            ->toBe(['$this->author->team' => [[[Team::class], 'tap($this->author->team); $x = 1;']]]);
     });
 
     test('proves a foreach value variable non-null in the block its test runs, unless the loop is by reference', function () {

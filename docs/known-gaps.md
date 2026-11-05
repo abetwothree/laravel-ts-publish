@@ -500,7 +500,9 @@ Check which spelling you wrote before you assume a value is `unknown`:
   spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Besides a write to the
   chain or one it reads through, `unset()` of it, passing it by reference, or a call on `$this`, such as
   `$this->reload()` or `$this->getKey()`, or on a chain it reads through, such as `$this->resource->refresh()`, means
-  no binding; `JsonResource`'s own helpers, such as `whenLoaded()`, do not.
+  no binding; `JsonResource`'s own helpers, such as `whenLoaded()`, do not. So does passing `$this` or a chain it reads
+  through to any call, such as `PostResource::make($this->resource)`, but `can()`, `cannot()`, `canAny()`, a `Gate`
+  check, `route()` or `url()`, and calling a closure or callable variable, even one made before the test.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads

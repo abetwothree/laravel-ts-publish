@@ -14,11 +14,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CommentsGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasCallGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorizedGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBlockGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBranchGuardsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
@@ -328,6 +333,44 @@ it('narrows no read of a $this->prop path in an if block that replaces it', func
 
     expect(publishedResourceKeyTypes(ImageableRewriteGuardResource::class, Image::class))->toBe(['t' => 'unknown'])
         ->and(json_encode(new ImageableRewriteGuardResource($image)->resolve(Request::create('/'))))->toBe('{"t":null}');
+});
+
+// A callee given `$this` or `$this->resource`, or a closure made before the test, may swap the morph, so all may stand.
+it('narrows no read of a $this->prop path past a call that may replace what it reads through', function (string $resource) {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $product = new Product;
+    $product->forceFill(['id' => 'p-1']);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+    $image->setRelation('reviewable', $product);
+
+    expect(publishedResourceKeyTypes($resource, Image::class))->toBe(['k' => 'number | string | null'])
+        ->and(json_encode(new $resource($image)->resolve(Request::create('/'))))->toBe('{"k":"p-1"}');
+})->with([
+    '$this->resource passed to a helper' => [ImageableProxyPassGuardResource::class],
+    '$this passed to a helper' => [ImageableThisPassGuardResource::class],
+    'a closure made before the test, called in its block' => [ImageableAliasCallGuardResource::class],
+]);
+
+// An authorization check only reads the model it is given, so the proof holds past it.
+it('narrows a $this->prop path past an authorization check given $this->resource', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+
+    expect(publishedResourceKeyTypes(ImageableAuthorizedGuardResource::class, Image::class))->toBe(['k' => 'number | null'])
+        ->and(json_encode(new ImageableAuthorizedGuardResource($image)->resolve(Request::create('/'))))->toBe('{"k":7}');
+});
+
+// Only the test names the chain's class: a declared return still reads its type, a conditional guess does not (R44).
+it('withdraws a conditional guess, not a declared return, off a $this->prop path an if proves a collection', function () {
+    $comment = new Comment;
+    $comment->forceFill(['id' => 5]);
+    $post = blockItemsPost();
+    $post->setRelation('comments', new EloquentCollection([$comment]));
+
+    expect(resourceProps(CommentsGuardResource::class))->toBe(['random' => 'unknown', 'count' => 'number'])
+        ->and(json_encode(new CommentsGuardResource($post)->resolve(Request::create('/'))))->toBe('{"random":{"id":5},"count":1}');
 });
 
 // A helper read in the arm reads the same object, so the proof holds in its body, unless that writes through `$this`.
