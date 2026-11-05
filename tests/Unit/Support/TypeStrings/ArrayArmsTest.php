@@ -56,7 +56,16 @@ describe('filtered', function () {
         'a list of nulls keeps nothing' => ['null[]', true, 'never[] | Record<number, never>'],
         'a Record keeps its keys' => ['Record<string, number | null>', true, 'Record<string, number>'],
         'a tuple declines' => ['[A, B]', true, null],
-        'an object literal declines' => ['{ a: string }', true, null],
+        'an object literal keeps each member optional' => ['{ a: string; b?: number }', true, '{ a?: string; b?: number }'],
+        'an object literal drops a member\'s nulls' => ['{ a: string | null }', true, '{ a?: string }'],
+        'an object literal drops a null-only member' => ['{ a: string; b: null }', true, '{ a?: string }'],
+        'a callback keeps a null-only member' => ['{ a: string; b: null }', false, '{ a?: string; b?: null }'],
+        'an object literal of null-only members keeps nothing' => ['{ a: null }', true, 'never[]'],
+        'the empty object keeps nothing' => ['{}', true, 'never[]'],
+        'int keys' => ['{ "1": string; "2": string }', true, '{ "1"?: string; "2"?: string }'],
+        'an int key beside a named one declines' => ['{ "1": string; b: string }', true, null],
+        'key 0 declines' => ['{ "0": string; "2": string }', true, null],
+        'an index signature declines' => ['{ [key: string]: string }', true, null],
     ]);
 });
 

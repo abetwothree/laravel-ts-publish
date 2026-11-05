@@ -507,7 +507,8 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
   take any key, so their list declines. An object literal's type and a `Record<string, unknown>` decline, since the
   engine prints a literal without the keys it cannot name, and so does any value marked `unnamedKeys`, a literal with
   such a key however it is reached. The walk takes one `keys()` before any `map()` and only while no step moved the keys, so
-  `keyBy()->keys()` declines. `array_keys()` of an object declines, since PHP throws a `TypeError` on it.
+  `keyBy()->keys()` declines. `array_keys()` of an object declines, since PHP throws a `TypeError` on it; a
+  `Collection` also warns, as the next bullet's `array_map()` does.
 - **A step that hides attributes declines**: `makeHidden()`, `setVisible()` and the others that drop what a model
   serializes leave models their interface no longer describes, so the walk declines them.
 
@@ -525,13 +526,18 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
 - **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
   `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a
   shorter array pads with `null`. A `null` callback returns the one array, or zips several into tuples. An object,
-  a `Collection` included, declines, since PHP throws a `TypeError` on it.
+  a `Collection` included, declines, since PHP throws a `TypeError` on it, and a `Collection` records a warning naming
+  the line. `array_values()` and `array_filter()` of a `Collection` warn the same way, yet keep its items' type.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.
 - **`array_filter($a)` is `$a`'s own array, keys kept**: a list adds the `Record<number, T>` its gaps make, which an
-  API resource re-indexes away, and with no callback no value is `null`. A `null` arm is left out, since PHP throws a
-  `TypeError` on it, and a shape or a tuple declines.
+  API resource re-indexes away, each member of a shape turns optional, and with no callback no value is `null`, so a
+  null-only member drops. A `null` arm is left out, since PHP throws a `TypeError` on it. A tuple declines, and so does
+  a shape whose kept keys may re-index into a list: an int key beside a named one, key `0`, or a key marked
+  `unnamedKeys`. A shape that keeps no member sends `[]`, a gap
+  [known gaps](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
+  records.
 
 `VariableHandler` types a `map()` over any other receiver, such as a local, a model parameter's relation, a query or
 `getRelation()`, and peels a trailing `values()` or `all()` off a chain it can type or a variable whose element the
@@ -579,8 +585,9 @@ PHP's array union `$a + $b` keeps every key `$a` sets. In value position
 literal per write, joined. With every key a literal, that literal holds the items PHP keeps, in
 PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
 cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
-one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
-`+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them as `+=` does.
+one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. For the same reason a nullable
+list operand is spread without its `null`, and two nullable lists add `number`, as PHP adds `null + null` as `0`. With
+no array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them as `+=` does.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -132,7 +133,7 @@ final class BinaryOpHandler implements ExpressionHandler
     {
         // The operands bind as the read resolves them, so there is nothing to enter.
         return $scope->within(static function (): void {}, function () use ($plus, $scope, $engine): array {
-            [$kind, $unions] = $this->boundUnion($plus, $scope, $engine);
+            [$kind, $unions, $bothNullable] = $this->boundUnion($plus, $scope, $engine);
 
             if ($kind !== self::ARRAY) {
                 return ['type' => 'number', 'optional' => false];
@@ -143,35 +144,41 @@ final class BinaryOpHandler implements ExpressionHandler
                 $unions,
             );
 
+            // PHP adds null to null as 0.
+            if ($bothNullable) {
+                $results[] = ['type' => 'number', 'optional' => false];
+            }
+
             return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
         });
     }
 
     /**
-     * A `+`'s kind, and the unions it may be, one for each write a local operand's read sees.
+     * A `+`'s kind, the unions it may be, one for each write a local operand's read sees, and whether both of its
+     * operands are lists that may be null.
      *
      * Each operand the union literal does not read from its syntax is spread as a value bound to its one resolution,
      * so the literal neither resolves it again nor reads its arm by anything but the type it publishes.
      *
-     * @return array{string, non-empty-list<BinaryOp\Plus>}
+     * @return array{string, non-empty-list<BinaryOp\Plus>, bool}
      */
     private function boundUnion(BinaryOp\Plus $plus, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         // `+` on an array and a number throws, so a number literal settles it before any operand is resolved.
         if ($this->isNumberLiteral($plus->left) || $this->isNumberLiteral($plus->right)) {
-            return [self::SCALAR, [$plus]];
+            return [self::SCALAR, [$plus], false];
         }
 
-        [$leftKind, $lefts] = $this->boundSide($plus->left, $scope, $engine);
-        [$rightKind, $rights] = $this->boundSide($plus->right, $scope, $engine);
+        [$leftKind, $lefts, $leftNullable] = $this->boundSide($plus->left, $scope, $engine);
+        [$rightKind, $rights, $rightNullable] = $this->boundSide($plus->right, $scope, $engine);
 
         // Past the cap a side that may be several literals is read as its one value instead.
         if (count($lefts) * count($rights) > self::MAX_SPELLED_LITERALS) {
-            [$leftKind, $lefts] = count($lefts) === 1
-                ? [$leftKind, $lefts]
+            [$leftKind, $lefts, $leftNullable] = count($lefts) === 1
+                ? [$leftKind, $lefts, $leftNullable]
                 : $this->valueOperand($plus->left, $scope, $engine);
-            [$rightKind, $rights] = count($rights) === 1
-                ? [$rightKind, $rights]
+            [$rightKind, $rights, $rightNullable] = count($rights) === 1
+                ? [$rightKind, $rights, $rightNullable]
                 : $this->valueOperand($plus->right, $scope, $engine);
         }
 
@@ -190,61 +197,69 @@ final class BinaryOpHandler implements ExpressionHandler
             }
         }
 
-        return [$kind, $unions];
+        return [$kind, $unions, $leftNullable && $rightNullable];
     }
 
     /**
-     * One side of a `+`: a nested `+`'s unions, or an operand's.
+     * One side of a `+`, and whether it is a list that may be null: a nested `+`'s unions, never null, or an operand's.
      *
-     * @return array{string, non-empty-list<Expr>}
+     * @return array{string, non-empty-list<Expr>, bool}
      */
     private function boundSide(Expr $side, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return $side instanceof BinaryOp\Plus
-            ? $this->boundUnion($side, $scope, $engine)
-            : $this->boundOperand($side, $scope, $engine);
+        if (! $side instanceof BinaryOp\Plus) {
+            return $this->boundOperand($side, $scope, $engine);
+        }
+
+        [$kind, $unions] = $this->boundUnion($side, $scope, $engine);
+
+        return [$kind, $unions, false];
     }
 
     /**
-     * One operand's kind, and the expressions the union literal spreads for it.
+     * One operand's kind, the expressions the union literal spreads for it, and whether it is a list that may be null.
      *
      * A literal, each literal write a local's read sees, or one value.
      *
-     * @return array{string, non-empty-list<Expr>}
+     * @return array{string, non-empty-list<Expr>, bool}
      */
     private function boundOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $writes = $operand instanceof Array_ ? [$operand] : $this->spelledWrites($operand, $scope);
 
         if ($writes !== null && array_all($writes, fn (Expr $write): bool => $write instanceof Array_)) {
-            return [self::ARRAY, $writes];
+            return [self::ARRAY, $writes, false];
         }
 
         return $this->valueOperand($operand, $scope, $engine);
     }
 
     /**
-     * One operand's kind, and the one expression the union literal spreads for its value.
+     * One operand's kind, the one expression the union literal spreads for its value, and whether it is a list that may
+     * be null, an arm left out of the spread since PHP throws on `+` of null and an array.
      *
-     * @return array{string, non-empty-list<Expr>}
+     * @return array{string, non-empty-list<Expr>, bool}
      */
     private function valueOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $result = $engine->resolve($operand);
         $kind = $this->operandKind($result);
+        $nullable = $kind === self::HIDDEN_KEYS && TsTypeString::hasNullArm($result['type']) && ArrayArms::holdsList($result['type']);
 
         // The literal flattens a `$this->method()` spread from the method's own body, as a resource spread does.
-        if ($kind === self::HIDDEN_KEYS && $operand instanceof MethodCall && $this->hasThisReceiver($operand)) {
-            return [self::ARRAY, [$operand]];
+        if ($kind === self::HIDDEN_KEYS && ! $nullable && $operand instanceof MethodCall && $this->hasThisReceiver($operand)) {
+            return [self::ARRAY, [$operand], false];
         }
 
         // No PHP variable can be named `+…`, so the binding shadows none.
         $name = '+'.spl_object_id($operand);
-        $scope->varValueBindings[$name] = $kind === self::UNTYPED
-            ? ['type' => 'Record<string, unknown>', 'optional' => false]
-            : $result;
+        $scope->varValueBindings[$name] = match (true) {
+            $kind === self::UNTYPED => ['type' => 'Record<string, unknown>', 'optional' => false],
+            $nullable => [...$result, 'type' => TsTypeString::withoutNullArm($result['type'])],
+            default => $result,
+        };
 
-        return [$kind, [new Variable($name)]];
+        return [$kind, [new Variable($name)], $nullable];
     }
 
     /**

@@ -215,8 +215,9 @@ final class ArrayArms
     }
 
     /**
-     * What array_filter() leaves of one arm: a Record as itself, a list as itself or the object its gaps make, each
-     * value without its `null` arm where the filter drops nulls; null for any other arm.
+     * What array_filter() leaves of one arm: a Record as itself, a list as itself or the object its gaps make, an
+     * object literal as filteredObject() reads it, each value without its `null` arm where the filter drops nulls;
+     * null for any other arm.
      */
     public static function filtered(string $arm, bool $dropsNull): ?string
     {
@@ -224,6 +225,12 @@ final class ArrayArms
 
         if ($record !== null) {
             return 'Record<'.$record[0].', '.self::filteredValue($record[1], $dropsNull).'>';
+        }
+
+        $members = TsTypeShape::members($arm);
+
+        if ($members !== null) {
+            return self::filteredObject($members, $dropsNull);
         }
 
         $element = self::listElement($arm);
@@ -260,6 +267,35 @@ final class ArrayArms
     public static function listElement(string $type): ?string
     {
         return count(TsTypeShape::splitTopLevel($type, ['|'])) === 1 ? TsTypeShape::elementType($type) : null;
+    }
+
+    /**
+     * What array_filter() leaves of an object literal: each member optional, as any may be dropped, a null-only one
+     * left out where nulls are, and `never[]` for none left; null where the keys it leaves may re-index into a list.
+     *
+     * @param  list<array{string, string}>  $members
+     */
+    private static function filteredObject(array $members, bool $dropsNull): ?string
+    {
+        $keys = array_map(PrintedKey::decode(...), array_column($members, 0));
+        $numeric = array_filter($keys, is_numeric(...));
+
+        // An API resource re-indexes the int keys left once no named one is, and json_encode() lists keys 0..n-1.
+        if (in_array(null, $keys, true) || ($numeric !== [] && count($numeric) < count($keys)) || in_array('0', $keys, true)) {
+            return null;
+        }
+
+        $kept = [];
+
+        foreach ($members as [$key, $value]) {
+            $value = self::filteredValue($value, $dropsNull);
+
+            if ($value !== 'never') {
+                $kept[] = (str_ends_with($key, '?') ? rtrim(substr($key, 0, -1)) : $key).'?: '.$value;
+            }
+        }
+
+        return $kept === [] ? 'never[]' : '{ '.implode('; ', $kept).' }';
     }
 
     /**

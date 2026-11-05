@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableOperandsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfReadingParameterResource;
 use Illuminate\Http\Request;
 use PhpParser\Node;
@@ -166,3 +167,23 @@ it('reads a + over a helper parameter\'s write that reads the parameter, as a va
             'whole' => (object) ['a' => 5, 'b' => 2, 'k' => 1],
         ]);
 });
+
+/**
+ * The type one expression resolves to through NullableOperandsResource's resource profile over a Post.
+ */
+function nullableOperandType(string $php): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(NullableOperandsResource::class), Post::class)->resolve($expr)['type'];
+}
+
+// PHP throws on `null + array` and `array + null`, so a null arm never reaches the union, and adds `null + null` as 0.
+it('strips a nullable list operand\'s null before +', function (string $php, string $type) {
+    expect(nullableOperandType($php))->toBe($type);
+})->with([
+    'a nullable list, then a literal' => ['$this->maybeList() + ["y"]', 'string[]'],
+    'a literal, then a nullable list' => ['["y"] + $this->maybeList()', 'string[]'],
+    'a nullable shape' => ['$this->maybeShape() + ["k" => 1]', '{ k: number; a: string; b: number }'],
+    'two nullable lists, which PHP adds as 0 when both are null' => ['$this->maybeList() + $this->maybeList()', 'string[] | number'],
+]);

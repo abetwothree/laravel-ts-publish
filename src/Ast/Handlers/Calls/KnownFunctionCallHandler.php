@@ -17,10 +17,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Config\Repository;
+use Illuminate\Support\Enumerable;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -77,11 +80,11 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             if ($name === 'array_filter') {
-                return $this->arrayFilterRule(CallArguments::for($expr, new ReflectionFunction('array_filter')), $engine);
+                return $this->arrayFilterRule(CallArguments::for($expr, new ReflectionFunction('array_filter')), $scope, $engine);
             }
 
             if ($name === 'array_values') {
-                return $this->arrayValuesRule(CallArguments::for($expr, new ReflectionFunction('array_values')), $engine);
+                return $this->arrayValuesRule(CallArguments::for($expr, new ReflectionFunction('array_values')), $scope, $engine);
             }
 
             if ($name === 'array_map') {
@@ -255,12 +258,15 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * `array_filter($array)` as the array it is passed, arm by arm: each key it keeps is kept, so a list it leaves a
-     * gap in sends json_encode()'s object of int keys, and with no callback no value is null. A `null` arm is left out,
-     * as PHP throws a TypeError on null; null when another arm, such as a shape or a tuple, leaves the array unread.
+     * gap in sends json_encode()'s object of int keys, each member of a shape may be absent, and with no callback no
+     * value is null.
+     *
+     * A `null` arm is left out, as PHP throws a TypeError on null, and a Collection, which it throws on too, keeps its
+     * items' type beside a warning; null when another arm, such as a tuple, leaves the array unread.
      *
      * @return ValueExpressionResult|null
      */
-    private function arrayFilterRule(CallArguments $args, ExpressionEngine $engine): ?array
+    private function arrayFilterRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $array = $args->named('array')?->value;
 
@@ -268,10 +274,16 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
+        $this->passesObject('array_filter', $array, $scope);
+
         $callback = $args->named('callback')?->value;
         $dropsNull = $callback === null || ($callback instanceof ConstFetch && $callback->name->toLowerString() === 'null');
         $result = $engine->resolve($array);
-        $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => ArrayArms::filtered($arm, $dropsNull));
+        $unnamed = $result['unnamedKeys'] ?? false;
+        // A key the shape leaves out may be all the filter keeps, and its keys may re-index into a list.
+        $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => $unnamed && TsTypeShape::members($arm) !== null
+            ? null
+            : ArrayArms::filtered($arm, $dropsNull));
 
         if ($arms === null || $arms === []) {
             return null;
@@ -284,18 +296,22 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * `array_values($array)` as the list of its values, arm by arm: a list or tuple as itself, a Record as its values,
-     * an object literal as a list of its member types. A `null` arm is left out, as PHP throws a TypeError on null;
-     * null when another arm leaves the array unread.
+     * an object literal as a list of its member types.
+     *
+     * A `null` arm is left out, as PHP throws a TypeError on null, and a Collection, which it throws on too, keeps its
+     * items' type beside a warning; null when another arm leaves the array unread.
      *
      * @return ValueExpressionResult|null
      */
-    private function arrayValuesRule(CallArguments $args, ExpressionEngine $engine): ?array
+    private function arrayValuesRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $array = $args->named('array')?->value;
 
         if ($array === null || $args->hasUnpack()) {
             return null;
         }
+
+        $this->passesObject('array_values', $array, $scope);
 
         $result = $engine->resolve($array);
         $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
@@ -320,7 +336,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     {
         $array = $arguments->named('array')?->value;
 
-        if ($array === null || $arguments->hasUnpack() || resolve(ReceiverClassResolver::class)->resolve($array, $scope) !== null) {
+        if ($array === null || $arguments->hasUnpack() || $this->passesObject('array_keys', $array, $scope)) {
             return null;
         }
 
@@ -387,7 +403,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $inputs = [];
 
         foreach ($arrays as $array) {
-            if (resolve(ReceiverClassResolver::class)->resolve($array, $scope) !== null) {
+            if ($this->passesObject('array_map', $array, $scope)) {
                 return null;
             }
 
@@ -448,6 +464,25 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         return $body === null || $body['type'] === 'unknown'
             ? null
             : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
+    }
+
+    /**
+     * Whether ReceiverClassResolver names an object for an array function's argument, which PHP rejects with a
+     * TypeError; a Collection records a warning naming its line.
+     */
+    private function passesObject(string $function, Expr $array, AnalysisScope $scope): bool
+    {
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($array, $scope);
+
+        if ($receiver !== null && array_any($receiver->classes, static fn (string $class): bool => is_a($class, Enumerable::class, true))) {
+            AnalysisWarnings::addOnce($scope->subjectReflection->getName(), sprintf(
+                '%s() on line %d is passed a Collection, which PHP rejects with a TypeError; call ->values()->all().',
+                $function,
+                $array->getStartLine(),
+            ));
+        }
+
+        return $receiver !== null;
     }
 
     /**

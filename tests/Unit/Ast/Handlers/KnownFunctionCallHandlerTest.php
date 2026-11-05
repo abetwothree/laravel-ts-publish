@@ -6,7 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayFilterShapesEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayFilterShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayKeysSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
@@ -75,8 +78,49 @@ it('leaves array_filter() of a value it cannot read as an array to unknown', fun
     'a spread' => ['array_filter(...$this->options)'],
     'a string' => ['array_filter($this->title)'],
     'an untyped value' => ['array_filter(json_decode($this->title))'],
-    'a shape' => ['array_filter(["a" => $this->title])'],
+    'a shape mixing int and named keys, which a resource re-indexes once only ints are left' => [
+        'array_filter([1 => $this->title, "b" => $this->content])',
+    ],
+    'a shape keyed from 0, which json_encode() writes as a list once only 0..n-1 are left' => [
+        'array_filter([0 => $this->title, 2 => $this->content])',
+    ],
+    'a shape holding a key read at runtime, which may be all it keeps' => ['array_filter([$this->id => $this->title, "a" => $this->title])'],
+    'a shape spreading a list, whose keys may be all it keeps' => ['array_filter(["a" => $this->title, ...explode(",", $this->title)])'],
 ]);
+
+// array_filter() keeps each key it keeps, so each member may be absent, and with no callback no value is null. A
+// filter that keeps none sends `[]`, as docs/known-gaps.md records.
+it('publishes array_filter() of a shape as the shape with each member optional, dropping a null-only member', function (string $php, string $type) {
+    expect(knownFunctionCallType($php))->toBe($type);
+})->with([
+    'a shape' => ['array_filter(["a" => $this->title])', '{ a?: string }'],
+    'a shape holding null' => ['array_filter(["a" => $this->title, "b" => $this->published_at])', '{ a?: string; b?: string }'],
+    'a null-only member' => ['array_filter(["a" => $this->title, "b" => null])', '{ a?: string }'],
+    'a callback' => [
+        'array_filter(["a" => $this->title, "b" => $this->word_count], fn ($v) => $v !== null)',
+        '{ a?: string; b?: number | null }',
+    ],
+    'int keys' => ['array_filter([1 => $this->title, 2 => $this->content])', '{ "1"?: string; "2"?: string }'],
+    'only null members, which leave none' => ['array_filter(["b" => null])', 'never[]'],
+    'an empty list' => ['array_filter([])', 'never[] | Record<number, never>'],
+    'its values' => ['array_values(array_filter(["a" => $this->title, "b" => $this->published_at]))', 'string[]'],
+]);
+
+it('publishes array_filter() of an int-keyed shape as the list a resource re-indexes it into, and as an object elsewhere', function () {
+    $post = (new Post)->forceFill(['title' => 'T', 'content' => '', 'published_at' => null]);
+
+    expect(publishedResourceKeyTypes(ArrayFilterShapesResource::class, Post::class))->toBe([
+        'shape' => '{ a?: string; b?: string }',
+        'null_member' => '{ a?: string }',
+        'int_keyed' => 'string[]',
+        'values' => 'string[]',
+    ])->and(json_encode(new ArrayFilterShapesResource($post)->resolve(Request::create('/'))))
+        ->toBe('{"shape":{"a":"T"},"null_member":{"a":"T"},"int_keyed":["T"],"values":["T"]}')
+        ->and(analyzedKeyTypes(ArrayFilterShapesEvent::class, 'broadcastWith'))->toBe([
+            'shape' => '{ a?: string; b?: string }',
+            'int_keyed' => '{ "1"?: string; "2"?: string }',
+        ])->and(json_encode(new ArrayFilterShapesEvent()->broadcastWith()))->toBe('{"shape":{"a":"T"},"int_keyed":{"1":"T"}}');
+});
 
 it('publishes array_filter() as the array Laravel sends, and a gap in a list as an object', function () {
     expect(publishedResourceKeyTypes(DirectCallsResource::class, Post::class))->toMatchArray([
@@ -355,7 +399,7 @@ it('leaves array_keys() of a value it cannot read as an array to unknown', funct
     'a helper\'s literal keyed only at runtime' => ['array_keys($this->keyedById())'],
 ]);
 
-// PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.
+// PHP throws a TypeError on any object passed as an array, a Collection included.
 it('leaves array_map() over a Collection, or a callable it cannot read, to unknown', function (string $php) {
     expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe('unknown');
 })->with([
@@ -367,6 +411,32 @@ it('leaves array_map() over a Collection, or a callable it cannot read, to unkno
     'a callable variable nothing reads' => ['array_map($callback, $this->names())'],
     'a function no one declares' => ["array_map('no_such_function_anywhere', \$this->names())"],
     'an untyped body over a vague root' => ['array_map(fn ($v) => $v, $this->opaque())'],
+]);
+
+// array_values() and array_filter() keep the type the items publish, and array_map() and array_keys() never had one.
+it('warns that array functions over a Collection throw a TypeError', function (string $php, string $type) {
+    expect(knownFunctionCallType($php))->toBe($type)
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => PostResource::class,
+            'message' => strstr($php, '(', true).'() on line 1 is passed a Collection, which PHP rejects with a TypeError; '
+                .'call ->values()->all().',
+        ]]);
+})->with([
+    'array_values() of a relation' => ['array_values($this->comments)', 'Comment[]'],
+    'array_values() of collect()' => ['array_values(collect([1, 2]))', 'number[]'],
+    'array_filter() of a relation' => ['array_filter($this->comments)', 'Comment[] | Record<number, Comment>'],
+    'array_map() of a relation' => ['array_map(fn ($c) => $c->content, $this->comments)', 'unknown'],
+    'array_map() of a relation as its second array' => ['array_map(fn ($a, $c) => $a, [1], $this->comments)', 'unknown'],
+    'array_keys() of a relation' => ['array_keys($this->comments)', 'unknown'],
+]);
+
+it('does not warn of an array function passed an array or an object other than a Collection', function (string $php) {
+    knownFunctionCallType($php);
+
+    expect(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'a relation\'s items' => ['array_values($this->comments->all())'],
+    'a model' => ['array_values($this->resource)'],
 ]);
 
 // PHPDoc's `T[]` and `array<T>`, a native `array` and a cast take any key, so only a list or int-keyed array lists

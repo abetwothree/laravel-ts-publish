@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -29,9 +30,9 @@ use PhpParser\Node\Scalar\String_;
 /**
  * PHP cast operators: a scalar cast alone sets the type, while `(object)` and `(array)` keep what the operand holds.
  *
- * `(object)` returns an object unchanged and builds a stdClass of an array or a scalar literal, which an API resource's
- * filter never enters. `(array)` keeps an array, and types an object as `unknown[]`: its array form mangles non-public
- * member keys.
+ * `(object)` returns an object unchanged and builds a stdClass of an array, a scalar literal or an enum's value, which
+ * an API resource's filter never enters. `(array)` keeps an array, makes null an empty one, and types an object as
+ * `unknown[]`: its array form mangles non-public member keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -60,7 +61,7 @@ final class CastHandler implements ExpressionHandler
 
     /**
      * `(object) $operand`: an object the receiver resolver names as itself, any other value as the stdClass PHP builds
-     * of each arm, null among them; null where an arm cannot be read.
+     * of each arm, null among them, and an enum's value under `scalar`; null where an arm cannot be read.
      *
      * @return ValueExpressionResult|null
      */
@@ -69,10 +70,12 @@ final class CastHandler implements ExpressionHandler
         $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
         $literalOperand = $this->isScalarLiteral($operand);
         $result = $engine->resolve($operand);
+        $enum = ! $isObject && ValueResult::readsEnumType($result) ? $result['directEnumFqcn'] ?? null : null;
         $arms = ArrayArms::arms($result['type'], fn (string $arm): ?string => match (true) {
             $arm === 'unknown' => null,
             $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
             $isObject => $arm,
+            $enum !== null && $arm === ValueResult::enumTypeName($enum) => '{ scalar: '.$arm.' }',
             default => $this->builtObject($arm, $literalOperand),
         }, skipNull: false);
 
@@ -83,12 +86,20 @@ final class CastHandler implements ExpressionHandler
         // Two arms of an object stay apart: two same-named classes spell one token, each with its own import.
         $type = implode(' | ', $isObject ? $arms : array_values(array_unique($arms)));
 
-        return [...$result, 'type' => $type, 'keepsKeys' => true];
+        if ($enum === null) {
+            return [...$result, 'type' => $type, 'keepsKeys' => true];
+        }
+
+        // The object holds the enum's value inside it, so the type's import rides the embedded channel.
+        unset($result['directEnumFqcn']);
+
+        return [...$result, 'type' => $type, 'keepsKeys' => true, 'embeddedEnumFqcns' => [$enum, ...$result['embeddedEnumFqcns'] ?? []]];
     }
 
     /**
      * `(array) $operand`: an array literal or an operand typed as an array as itself, which an API resource's filter
-     * enters again; any other value, an object the receiver resolver names among them, as `unknown[]`.
+     * enters again, a `null` arm as the empty array PHP makes of it; any other value, an object the receiver resolver
+     * names among them, as `unknown[]`.
      *
      * @return ValueExpressionResult
      */
@@ -100,12 +111,23 @@ final class CastHandler implements ExpressionHandler
 
         if (resolve(ReceiverClassResolver::class)->resolve($operand, $scope) === null) {
             $result = $engine->resolve($operand);
-            $arms = TsTypeString::splitTopLevelUnion($result['type']);
+            $arms = ArrayArms::arms(
+                $result['type'],
+                static fn (string $arm): ?string => match (true) {
+                    $arm === 'null' => 'never[]',
+                    ArrayArms::isArray($arm) => $arm,
+                    default => null,
+                },
+                skipNull: false,
+            );
 
-            if ($arms !== [] && array_all($arms, ArrayArms::isArray(...))) {
+            if ($arms !== null && $arms !== []) {
                 unset($result['keepsKeys']);
+                $filled = array_values(array_diff($arms, ['never[]']));
+                // A list arm already admits the empty array.
+                $kept = $filled !== [] && ArrayArms::holdsList(implode(' | ', $filled)) ? $filled : $arms;
 
-                return $result;
+                return [...$result, 'type' => implode(' | ', array_values(array_unique($kept)))];
             }
         }
 

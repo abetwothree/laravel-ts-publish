@@ -183,7 +183,9 @@ A method typed from its body, such as `if ($flag) { return []; } return ['a' => 
 JSON array, not an object. `MethodReturnTypeResolver::shapeReadsEveryReturn()` reads the empty `[]` as a branch that
 omits the keys. Under `?array`, return `null` on that path instead, which publishes `{ a: number } | null`. A declared
 shape whose keys can all be absent, such as `array{a?: int}` or `array<'a'|'b', int>`, publishes the same object and
-has the same gap: an empty array is sent as `[]`.
+has the same gap: an empty array is sent as `[]`. So does `array_filter()` of a shape, such as
+`array_filter(['a' => $title])`, which publishes `{ a?: string }` though a filter that keeps no member sends `[]`. A
+`| never[]` arm would make `x.a` a TypeScript error, so the shape is published alone.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
