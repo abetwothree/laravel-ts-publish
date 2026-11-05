@@ -46,6 +46,13 @@ class DeclaredCollectionParameterResource extends JsonResource
             'support_keyed_arg_all' => $this->listedAll(collect($this->opaque($this->resource->comments->keyBy('content')->all()))),
             'untyped_support_arg_only' => $this->untypedOnly(collect($this->opaque($this->resource->comments->all()))),
             'enumerable_arg_only' => $this->nativeOnly($this->enumerableComments()),
+            'support_declared_only' => $this->untypedOnlyFive($this->supportDeclared()),
+            'enumerable_declared_first' => $this->typedFirst($this->plainEnumerable()),
+            'string_opaque_value' => $this->stringKeyedValue(collect($this->opaque($this->resource->comments->keyBy('content')->all()))),
+            'eloquent_opaque_value' => $this->commentsValue(new Collection($this->opaque($this->resource->comments->all()))),
+            'literal_list_value' => $this->commentsValue(collect([$this->resource->comments[0], $this->resource->comments[1]])),
+            'string_known_value' => $this->stringKeyedValue($this->resource->comments->keyBy('content')),
+            'keyed_filter_value' => $this->commentsValue($this->resource->comments->keyBy('content')->filter(fn ($c) => $c->id > 0)),
         ];
     }
 
@@ -185,6 +192,52 @@ class DeclaredCollectionParameterResource extends JsonResource
      * @return Enumerable<int, Comment>
      */
     private function enumerableComments(): Enumerable
+    {
+        return $this->resource->comments;
+    }
+
+    /**
+     * The comment whose primary key is 5, the parameter untyped.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function untypedOnlyFive($comments)
+    {
+        return $comments->only([5]);
+    }
+
+    /**
+     * The collection as passed.
+     *
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function commentsValue($comments)
+    {
+        return $comments;
+    }
+
+    /**
+     * The collection as passed, the declaration naming its keys strings.
+     *
+     * @param  Collection<string, Comment>  $comments
+     */
+    private function stringKeyedValue($comments)
+    {
+        return $comments;
+    }
+
+    /**
+     * The comments, declared as a Support collection with no generic.
+     */
+    private function supportDeclared(): SupportCollection
+    {
+        return $this->resource->comments;
+    }
+
+    /**
+     * The comments, declared as any collection with no generic.
+     */
+    private function plainEnumerable(): Enumerable
     {
         return $this->resource->comments;
     }

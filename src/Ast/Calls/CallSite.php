@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use PhpParser\Node\Expr;
@@ -17,7 +18,10 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use ReflectionMethod;
 use ReflectionParameter;
 
@@ -128,7 +132,14 @@ final readonly class CallSite
         if ($documented !== null) {
             $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
 
-            return $binder->passedCollection($parameter, $documented, $this->engine->resolve($argument), $receiver, $this->passesUnreadParameter($argument));
+            return $binder->passedCollection(
+                $parameter,
+                $documented,
+                $this->engine->resolve($argument),
+                $receiver,
+                $this->passesUnreadParameter($argument),
+                $this->boundsArgument($argument),
+            );
         }
 
         $takes = $binder->takesPassedValue($parameter, $method);
@@ -167,6 +178,77 @@ final readonly class CallSite
         $binding = $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
 
         return $unread && $binding !== null ? [...$binding, 'guard' => 'unread'] : $binding;
+    }
+
+    /**
+     * Whether an argument's classes are only what a method declares it returns, which a subclass's object may stand
+     * for: a call to a method declaring a class other than its own, or a `static` return over one, the one write a
+     * local sees followed. `collect()`, `new`, a relation read and a body read name the class the value is.
+     */
+    private function boundsArgument(Expr $argument): bool
+    {
+        $receivers = resolve(ReceiverClassResolver::class);
+
+        // The bound keeps a local that reads its own write from walking without end.
+        for ($step = 0; $step < 16; $step++) {
+            if ($argument instanceof Variable && $this->scope->declaredAt($argument) === null) {
+                $written = $this->scope->soleWriteSeenBy($argument);
+
+                if ($written === null) {
+                    return false;
+                }
+
+                $argument = $written;
+
+                continue;
+            }
+
+            if ((! $argument instanceof MethodCall && ! $argument instanceof NullsafeMethodCall && ! $argument instanceof StaticCall)
+                || ! $argument->name instanceof Identifier
+            ) {
+                return false;
+            }
+
+            $method = $argument->name->toString();
+            $classes = match (true) {
+                $argument instanceof StaticCall => $this->staticCallClasses($argument),
+                $argument->var instanceof Variable && $argument->var->name === 'this' => [$this->scope->thisMemberClass($method, true)->getName()],
+                default => $receivers->resolve($argument->var, $this->scope)?->classes,
+            };
+            $declaring = array_values(array_filter(
+                $classes ?? [],
+                fn (string $class): bool => method_exists($class, $method) && DeclaredClasses::returnType($class, $method) !== null,
+            ));
+
+            if ($declaring === []) {
+                return false;
+            }
+
+            if (! array_all($declaring, fn (string $class): bool => DeclaredClasses::returnsOwnClass($class, $method))) {
+                return true;
+            }
+
+            if ($argument instanceof StaticCall) {
+                return false;
+            }
+
+            $argument = $argument->var;
+        }
+
+        return false;
+    }
+
+    /**
+     * The class a static call names, `self`, `static` and `parent` read as the scope binds them; null for a `$var::`.
+     *
+     * @return list<string>|null
+     */
+    private function staticCallClasses(StaticCall $call): ?array
+    {
+        $class = $this->scope->staticCallClass($call)?->getName()
+            ?? ($call->class instanceof Name && ! $call->class->isSpecialClassName() ? $call->class->toString() : null);
+
+        return $class === null ? null : [$class];
     }
 
     /**

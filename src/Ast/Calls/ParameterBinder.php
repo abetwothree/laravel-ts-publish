@@ -521,9 +521,9 @@ final class ParameterBinder
     }
 
     /**
-     * How an argument binds a parameter a `@param` collection generic declares: by the collection it holds, its value
-     * and keys, the declaration naming only an element it leaves unknown and the kind a moved key is; null where it
-     * names no collection, may end as null, or is guarded and not `unread`, so the declaration binds.
+     * How an argument binds a parameter a `@param` collection generic declares: by the collection it holds, its keys
+     * and value, the declaration naming only an element or keys it leaves unknown, and narrowing a class a method only
+     * declares ($bounded); null where it names no collection, may end as null, or is guarded and not `unread`.
      *
      * @param  CollectionBinding  $declared
      * @param  ValueExpressionResult  $value
@@ -535,6 +535,7 @@ final class ParameterBinder
         array $value,
         ?ReceiverType $receiver,
         bool $unread = false,
+        bool $bounded = false,
     ): ?array {
         if ($receiver === null
             || $receiver->shortCircuits
@@ -545,22 +546,21 @@ final class ParameterBinder
         }
 
         unset($value['absentReadsNull']);
-        $known = TsTypeString::isVagueTsType($value['type']) ? null : [...$value, 'optional' => false];
-        $key = match (true) {
-            $receiver->stringKeyed => 'string',
-            $receiver->keyed => ($declared['key'] ?? null) === 'string' ? 'string' : 'array-key',
-            // A collection whose element nothing names, such as collect()'s, may hold any keys its value leaves open.
-            $receiver->elementModel !== null || ($known !== null && self::listsOnly($known['type'])) => null,
-            default => 'array-key',
-        };
-        $native = $this->nativeClasses($parameter);
+        $declaredKey = $declared['key'] ?? null;
+        $known = self::argumentKey($value['type'], $receiver);
+        // Where nothing names the keys, the value reads as the declaration spells them, as it did with nothing passed;
+        // the receiver admits a moved key unless the declaration names only strings.
+        $key = $known === false ? ($declaredKey === 'string' ? 'string' : 'array-key') : self::keyKind($known, $declaredKey);
+        $valueKey = $known === false ? ($declaredKey === 'int' ? null : $declaredKey) : $key;
         $element = $receiver->elementModel ?? $declared['modelFqcn'];
+        $classes = $bounded ? self::narrowest($receiver->classes, $declared['classes'] ?? [EloquentCollection::class]) : $receiver->classes;
+        $native = $this->nativeClasses($parameter);
 
         return [
             'model' => null,
-            'classes' => $native === null || $receiver->within($native) ? $receiver->classes : $native,
+            'classes' => $native === null || new ReceiverType($classes)->within($native) ? $classes : $native,
             'elementModel' => $element,
-            'value' => $known ?? ($receiver->elementModel === null ? self::listedValue($declared, $element, $key) : null),
+            'value' => self::keyedValue($value, $valueKey) ?? self::listedValue($declared, $element, $valueKey) ?? self::readValue($value),
             'unsaved' => false,
             'refines' => true,
             'declaredOnly' => $receiver->declaredOnly,
@@ -643,18 +643,90 @@ final class ParameterBinder
     }
 
     /**
-     * Whether every arm of a type but `null` is a list, so the value holds keys 0..n-1.
+     * The keys an argument is known to hold: `string` for string keys, `moved` for keys off 0..n-1 of either kind,
+     * `list` for keys 0..n-1, as its receiver, an element it names, or a value spelled only as lists or records says;
+     * false where nothing names them.
      */
-    private static function listsOnly(string $type): bool
+    private static function argumentKey(string $type, ReceiverType $receiver): string|false
     {
-        $arms = array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']);
+        $arms = array_values(array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']));
+        $lists = $arms !== [] && array_all($arms, fn (string $arm): bool => ArrayArms::listElement($arm) !== null);
+        $records = $arms !== [] && array_all($arms, ArrayArms::isKeyed(...));
 
-        return $arms !== [] && array_all($arms, fn (string $arm): bool => ArrayArms::listElement($arm) !== null);
+        return match (true) {
+            $receiver->stringKeyed => 'string',
+            $receiver->keyed || ($receiver->elementModel === null && $records) => 'moved',
+            $receiver->elementModel !== null || $lists => 'list',
+            default => false,
+        };
     }
 
     /**
-     * The value a collection of a declared element reads as under the given keys, spelled from the declaration's one
-     * element type; null where the declaration spells none.
+     * The kind of key known keys bind: a list none, string keys `string`, moved keys `string` where the declaration
+     * names that kind, else either kind.
+     *
+     * @param  KeyKind  $declared
+     * @return KeyKind
+     */
+    private static function keyKind(string $known, ?string $declared): ?string
+    {
+        return match ($known) {
+            'list' => null,
+            'string' => 'string',
+            default => $declared === 'string' ? 'string' : 'array-key',
+        };
+    }
+
+    /**
+     * The classes the narrower of two names, the first where neither is within the other.
+     *
+     * @param  non-empty-list<class-string>  $first
+     * @param  non-empty-list<class-string>  $second
+     * @return non-empty-list<class-string>
+     */
+    private static function narrowest(array $first, array $second): array
+    {
+        return new ReceiverType($second)->within($first) ? $second : $first;
+    }
+
+    /**
+     * An argument's value where its spelling holds the keys bound: a list for a list, no list arm for a `string` key,
+     * not only lists for either kind; null for a vague value or another spelling.
+     *
+     * @param  ValueExpressionResult  $value
+     * @param  KeyKind  $key
+     * @return ValueExpressionResult|null
+     */
+    private static function keyedValue(array $value, ?string $key): ?array
+    {
+        $type = $value['type'];
+        $lists = ArrayArms::holdsList($type) && array_all(
+            array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']),
+            fn (string $arm): bool => ArrayArms::listElement($arm) !== null,
+        );
+        $fits = match ($key) {
+            null => $lists,
+            'string' => ! ArrayArms::holdsList($type),
+            default => ! $lists,
+        };
+
+        return $fits && ! TsTypeString::isVagueTsType($type) ? [...$value, 'optional' => false] : null;
+    }
+
+    /**
+     * An argument's value as it reads, where it is not vague.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult|null
+     */
+    private static function readValue(array $value): ?array
+    {
+        return TsTypeString::isVagueTsType($value['type']) ? null : [...$value, 'optional' => false];
+    }
+
+    /**
+     * The value a collection of one element reads as under the given keys: the declaration's element type where it
+     * names the element, else the element model's own; null where neither spells one type.
      *
      * @param  CollectionBinding  $declared
      * @param  class-string<Model>  $element
@@ -663,12 +735,14 @@ final class ParameterBinder
      */
     private static function listedValue(array $declared, string $element, ?string $key): ?array
     {
-        $types = array_values(array_unique(array_filter(
-            ArrayArms::arms($declared['type'], ArrayArms::elementOf(...)) ?? [],
-            fn (string $type): bool => $type !== 'never',
-        )));
+        $types = $element === $declared['modelFqcn']
+            ? array_values(array_unique(array_filter(
+                ArrayArms::arms($declared['type'], ArrayArms::elementOf(...)) ?? [],
+                fn (string $type): bool => $type !== 'never',
+            )))
+            : [LaravelTsPublish::toTsType($element)['type']];
 
-        if (count($types) !== 1) {
+        if (count($types) !== 1 || $types[0] === 'unknown') {
             return null;
         }
 

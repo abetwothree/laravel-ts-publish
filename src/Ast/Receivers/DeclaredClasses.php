@@ -106,6 +106,26 @@ final class DeclaredClasses
     }
 
     /**
+     * Whether a method's native, tentative or `@return` declaration names the class it is called on, `static` or
+     * `$this`, generic arguments aside, and else only null: what it returns is as exact as its receiver.
+     */
+    public static function returnsOwnClass(string $class, string $method): bool
+    {
+        $reflection = new ReflectionMethod($class, $method);
+        $type = self::reflectedReturnType($reflection);
+
+        if ($type !== null) {
+            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
+        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
+        $returned = array_values(array_diff($arms, ['null']));
+
+        return $returned !== [] && array_all($returned, fn (string $arm): bool => preg_match('/^(?:static|\$this)(?:<.*>)?$/s', $arm) === 1);
+    }
+
+    /**
      * A function's native return type, else the tentative one PHP declares on its own classes' methods, which only an
      * internal method carries, so an override that drops it reads as untyped.
      */
