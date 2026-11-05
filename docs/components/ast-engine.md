@@ -496,9 +496,10 @@ value the member's column holds, as `ModelFills::keepsModelThrough()` decides, o
 of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
 ends at each. [`ThisPathWrites`] answers for a chain on `$this`: an assignment to it or to a chain it reads through,
 `unset()` or a by-reference argument of either, a call on `$this` or on a chain it reads through, the conditional
-helpers `JsonResource` declares aside, `$this` or a chain it reads through passed to any call but an ability or `Gate`
-check, `route()` or `url()`, and a callable value called, or passed from a local whose write makes one, end its proof;
-on an API resource a chain the subject does not declare reads through `$this->resource`. Only a write through the
+helpers `JsonResource` declares aside, `$this` or a chain it reads through passed to any call but an ability check on an
+`Authorizable`, a `Gate` check or Laravel's `route()` or `url()`, and a callable value called, or passed from a local
+whose write makes one, end its proof; a local whose write holds `$this` or a chain stands for it. On an API resource a
+chain the subject does not declare reads through `$this->resource`. Only a write through the
 chain itself keeps it, by `keepsProvenClass()`'s rule. An `if` proof on a chain no class names reads as its classes,
 guarded, so no conditional guess publishes.
 

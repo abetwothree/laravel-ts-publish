@@ -6,6 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use Illuminate\Contracts\Auth\Access\Authorizable;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\CollectsResources;
 use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -17,6 +21,9 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
+use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -32,6 +39,9 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Unset_;
+use ReflectionFunction;
+use ReflectionNamedType;
+use ReflectionParameter;
 
 /**
  * What in a body may change what a chain of property reads on `$this` holds, so the guard pass binds no `instanceof`
@@ -92,9 +102,14 @@ final class ThisPathWrites
             [$name, $node, , $kind] = $write;
 
             // A `foreach` around the test assigns its value before each pass, so never between the test and a read.
-            if ($name === 'this' && ! ($kind === VariableWrite::Foreach && $node->getStartFilePos() < $from)
-                && $this->lands($node, $from, $to, $exits) && ! $this->keepsWrite($write, $path, $classes)
-            ) {
+            if (($kind === VariableWrite::Foreach && $node->getStartFilePos() < $from) || ! $this->lands($node, $from, $to, $exits)) {
+                continue;
+            }
+
+            // A write through a local standing for a chain is one through that chain.
+            $through = $name === 'this' || ($kind === VariableWrite::MemberOrOffset && $this->standsFor($write[2]) !== null);
+
+            if ($through && ! $this->keepsWrite($write, $path, $classes)) {
                 return true;
             }
         }
@@ -121,62 +136,210 @@ final class ThisPathWrites
     }
 
     /**
-     * The values rooted at `$this` an argument passes: itself, or each an array literal it builds holds.
+     * The chain an expression of no call spells on `$this` or on a local standing for one, its names unread; null for
+     * any other root.
      *
-     * @return list<Expr>
+     * @return list<string>|null
      */
-    private static function thisValues(Expr $value): array
+    private static function rawChain(Expr $expr): ?array
     {
-        if ($value instanceof Array_) {
-            return array_merge(...array_map(
-                fn (?ArrayItem $item): array => $item === null ? [] : self::thisValues($item->value),
-                $value->items,
-            ));
-        }
-
-        return self::rootsAtThis($value) ? [$value] : [];
+        return $expr instanceof Variable && $expr->name === 'this' ? [] : AnalysisScope::thisReadPath($expr);
     }
 
     /**
-     * Whether an expression is `$this` or a chain of property or key reads on it, whatever names it spells.
+     * Whether a call runs Laravel's own `route()` or `url()` helper: no namespaced function of that name shadows it,
+     * and the global one is the framework's.
      */
-    private static function readsChain(Expr $expr): bool
+    private static function runsUrlHelper(Name $name): bool
     {
-        while ($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch || $expr instanceof ArrayDimFetch) {
-            $expr = $expr->var;
+        $namespaced = $name->getAttribute('namespacedName');
+
+        if (! in_array($name->toLowerString(), self::URL_HELPERS, true)
+            || ($namespaced instanceof Name && function_exists($namespaced->toString()))
+            || ! function_exists($name->toString())
+        ) {
+            return false;
         }
 
-        return $expr instanceof Variable && $expr->name === 'this';
+        $file = str_replace('\\', '/', (string) new ReflectionFunction($name->toString())->getFileName());
+
+        return str_ends_with($file, '/Illuminate/Foundation/helpers.php');
     }
 
     /**
-     * Whether an expression reads through `$this`: a chain of property, key or method reads rooted at it.
+     * The shortest chain on `$this` an array literal holds, at any depth.
+     *
+     * @return list<string>|null
      */
-    private static function rootsAtThis(Expr $expr): bool
+    private static function heldChain(Array_ $array): ?array
+    {
+        $found = null;
+
+        foreach ($array->items as $item) {
+            $chain = $item->value instanceof Array_ ? self::heldChain($item->value) : self::rawChain($item->value);
+            $found = $chain !== null && ($found === null || count($chain) < count($found)) ? $chain : $found;
+        }
+
+        return $found;
+    }
+
+    /**
+     * The root of a chain of property and key reads, and of method calls too with $throughCalls.
+     */
+    private static function rootOf(Expr $expr, bool $throughCalls): Expr
     {
         while ($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch || $expr instanceof ArrayDimFetch
-            || $expr instanceof MethodCall || $expr instanceof NullsafeMethodCall
+            || ($throughCalls && ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall))
         ) {
             $expr = $expr->var;
         }
 
-        return $expr instanceof Variable && $expr->name === 'this';
+        return $expr;
     }
 
     /**
-     * Whether a call only reads what it is given: an ability check, a Gate facade check, `route()` or `url()`.
+     * The values the body assigns to a local, by `=`, `??=` or `=&`.
+     *
+     * @return list<Expr>
      */
-    private static function readsOnly(Node $call): bool
+    private function assigned(string $name): array
+    {
+        $values = [];
+
+        foreach ($this->writes as [$written, $node]) {
+            if ($written === $name && ($node instanceof Assign || $node instanceof AssignRef || $node instanceof CoalesceAssign)) {
+                $values[] = $node->expr;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * The values an argument passes that a chain on `$this` may be reached through: one rooted at `$this` or at a
+     * local standing for a chain, or a local holding an array of them, itself or each an array literal holds.
+     *
+     * @return list<Expr>
+     */
+    private function chainValues(Expr $value): array
+    {
+        if ($value instanceof Array_) {
+            return array_merge(...array_map(
+                fn (?ArrayItem $item): array => $item === null ? [] : $this->chainValues($item->value),
+                $value->items,
+            ));
+        }
+
+        $root = self::rootOf($value, true);
+        $alias = $root instanceof Variable ? $this->aliasOf($root) : null;
+
+        return ($root instanceof Variable && $root->name === 'this') || ($alias !== null && (! $alias[1] || $root === $value))
+            ? [$value]
+            : [];
+    }
+
+    /**
+     * Whether an expression is `$this` or a chain of property or key reads on it, or on a local standing for a chain.
+     */
+    private function readsChain(Expr $expr): bool
+    {
+        $root = self::rootOf($expr, false);
+
+        return $root instanceof Variable && ($root->name === 'this' || $this->standsFor($root) !== null);
+    }
+
+    /**
+     * The chain a write target's or a read's local root stands for, unless an array literal holds it; null for `$this`
+     * and any other root.
+     *
+     * @return list<string>|null
+     */
+    private function standsFor(Expr $expr): ?array
+    {
+        $root = self::rootOf($expr, false);
+        $alias = $root instanceof Variable ? $this->aliasOf($root) : null;
+
+        return $alias === null || $alias[1] ? null : $alias[0];
+    }
+
+    /**
+     * The chain a local stands for where a write reaching it holds `$this` or a chain of property reads on it, and
+     * whether that write is an array literal holding one; the shortest where several do.
+     *
+     * @return array{list<string>, bool}|null
+     */
+    private function aliasOf(Variable $local): ?array
+    {
+        if (! is_string($local->name) || $local->name === 'this') {
+            return null;
+        }
+
+        $found = null;
+
+        // Where the scan cannot tell which write reaches, as in a block writing through the local, any assignment can.
+        foreach ($this->scope->writesSeenBy($local) ?? $this->assigned($local->name) as $write) {
+            $chain = $write instanceof Array_ ? self::heldChain($write) : self::rawChain($write);
+
+            if ($chain !== null && ($found === null || count($chain) < count($found[0]))) {
+                $found = [$chain, $write instanceof Array_];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Whether a receiver is `user()` on a parameter the signature of the method holding it types a request, which an
+     * API resource's scope leaves unbound.
+     */
+    private function readsRequestUser(Expr $receiver): bool
+    {
+        $variable = ($receiver instanceof MethodCall || $receiver instanceof NullsafeMethodCall) && $receiver->name instanceof Identifier
+            && $receiver->name->toLowerString() === 'user' ? $receiver->var : null;
+        $name = $variable instanceof Variable && is_string($variable->name) ? $variable->name : null;
+        $line = $receiver->getStartLine();
+
+        foreach ($name === null ? [] : $this->scope->declaringClass->getMethods() as $method) {
+            if ($method->getStartLine() > $line || $method->getEndLine() < $line
+                || DeclaringFile::ofMethod($method)->getFileName() !== $this->scope->declaringFileClass->getFileName()
+            ) {
+                continue;
+            }
+
+            return array_any($method->getParameters(), fn (ReflectionParameter $parameter): bool => $parameter->getName() === $name
+                && $parameter->getType() instanceof ReflectionNamedType && is_a($parameter->getType()->getName(), Request::class, true));
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a call only reads what it is given: an ability check on an `Authorizable`, a Gate facade check, or
+     * Laravel's `route()` or `url()`.
+     */
+    private function readsOnly(Node $call): bool
     {
         return match (true) {
             $call instanceof MethodCall, $call instanceof NullsafeMethodCall => $call->name instanceof Identifier
-                && in_array($call->name->toLowerString(), self::ABILITY_CHECKS, true),
+                && in_array($call->name->toLowerString(), self::ABILITY_CHECKS, true) && $this->authorizes($call->var),
             $call instanceof StaticCall => $call->class instanceof Name && $call->name instanceof Identifier
                 && in_array($call->class->toString(), [Gate::class, 'Gate'], true)
                 && in_array($call->name->toLowerString(), self::GATE_CHECKS, true),
-            $call instanceof FuncCall => $call->name instanceof Name && in_array($call->name->toLowerString(), self::URL_HELPERS, true),
+            $call instanceof FuncCall => $call->name instanceof Name && self::runsUrlHelper($call->name),
             default => false,
         };
+    }
+
+    /**
+     * Whether every class a receiver holds is an `Authorizable`, whose ability checks run the app's gates.
+     */
+    private function authorizes(Expr $receiver): bool
+    {
+        $classes = resolve(ReceiverClassResolver::class)->resolve($receiver, $this->scope)->classes ?? [];
+        $model = $classes === [] && $this->readsRequestUser($receiver) ? resolve(AuthUserResolver::class)->model() : null;
+        $classes = $model === null ? $classes : [$model];
+
+        return $classes !== [] && array_all($classes, fn (string $class): bool => is_a($class, Authorizable::class, true));
     }
 
     /**
@@ -240,7 +403,7 @@ final class ThisPathWrites
             // A closure made before the test, or any callable value, may replace the chain when it runs.
             'invoke' => true,
             // A call on a chain the proof's reads through may replace it; one on the chain or past it leaves it.
-            default => $expr instanceof Variable ? ! $this->onlyReads($node) : $through === [] && $chain !== $path,
+            default => $chain === [] ? ! $this->onlyReads($node) : $through === [] && $chain !== $path,
         };
     }
 
@@ -288,10 +451,11 @@ final class ThisPathWrites
      */
     private function effectsOf(Node $node): array
     {
+        // Unsetting a local itself only unbinds it, so only what goes through one standing for a chain counts.
         if ($node instanceof Unset_) {
             return array_values(array_map(
                 fn (Expr $var): array => ['unset', $node, $var],
-                array_filter($node->vars, self::rootsAtThis(...)),
+                array_filter($node->vars, fn (Expr $var): bool => $this->readsChain($var) && ! ($var instanceof Variable && $var->name !== 'this')),
             ));
         }
 
@@ -310,7 +474,7 @@ final class ThisPathWrites
             default => null,
         };
         // A call on what another call returns has its own effect at that inner call.
-        $onChain = $receiver !== null && self::readsChain($receiver);
+        $onChain = $receiver !== null && $this->readsChain($receiver);
 
         // A first-class callable binds its receiver for a later call, as a pass of it does.
         if ($node->isFirstClassCallable()) {
@@ -329,7 +493,7 @@ final class ThisPathWrites
         }
 
         foreach ($node->getArgs() as $arg) {
-            foreach (self::thisValues($arg->value) as $value) {
+            foreach ($this->chainValues($arg->value) as $value) {
                 $effects[] = ['pass', $node, $value];
             }
 
@@ -366,8 +530,9 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a value rooted at `$this` that a call is given may change a chain: `$this`, or a chain the proof's reads
-     * through, given to anything but a check that only reads it; the chain itself, or one through it, by reference.
+     * Whether a value a call is given may change a chain: `$this`, or a chain the proof's reads through, or a local
+     * standing for one, given to anything but a check that only reads it; the chain itself, or one through it, by
+     * reference.
      *
      * @param  list<string>|null  $chain
      * @param  list<string>|null  $through
@@ -376,10 +541,10 @@ final class ThisPathWrites
     private function passChanges(Node $call, Expr $value, ?array $chain, ?array $through, array $path): bool
     {
         // A call may keep what it is given and replace the chain through it, as `$this->resource->setRelation()` can.
-        $holds = $value instanceof Variable || ($chain === null && self::readsChain($value)) || ($through === [] && $chain !== $path);
+        $holds = ($chain === null && $this->readsChain($value)) || ($through === [] && $chain !== $path);
 
         return match (true) {
-            $holds => ! self::readsOnly($call),
+            $holds => ! $this->readsOnly($call),
             $through === null => false,
             default => $call instanceof CallLike && ! $call->isFirstClassCallable() && $this->passesByReference($call, $value),
         };
@@ -428,20 +593,38 @@ final class ThisPathWrites
     }
 
     /**
-     * The chain on `$this` an expression writes or reads, keys stripped and in the spelling every alias shares; null
-     * where a name, a call or the root is not one the source spells.
+     * The chain on `$this` an expression writes or reads, keys stripped and in the spelling every alias shares, read
+     * through a local standing for a chain, or holding an array of them where it is the whole expression; null where a
+     * name, a call or the root is not one the source spells.
      *
      * @return list<string>|null
      */
     private function chainOf(Expr $expr): ?array
     {
+        $bare = $expr;
+
         while ($expr instanceof ArrayDimFetch) {
             $expr = $expr->var;
         }
 
-        $path = AnalysisScope::thisReadPath($expr);
+        $names = [];
 
-        return $path === null ? null : $this->canonical($path);
+        while ($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) {
+            if (! $expr->name instanceof Identifier) {
+                return null;
+            }
+
+            array_unshift($names, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        $alias = $expr instanceof Variable ? $this->aliasOf($expr) : null;
+
+        return match (true) {
+            $expr instanceof Variable && $expr->name === 'this' => $this->canonical($names),
+            $alias === null || ($alias[1] && $expr !== $bare) => null,
+            default => $this->canonical([...$alias[0], ...$names]),
+        };
     }
 
     /**

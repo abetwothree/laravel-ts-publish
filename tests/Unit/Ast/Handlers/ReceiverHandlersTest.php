@@ -1040,6 +1040,7 @@ function guardPassScope(string $body, bool $seed = false): array
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
     $source = '<?php '.$body;
     $stmts = new AstParser()->parseSource($source);
+    $stmts = ($stmts[0] ?? null) instanceof Stmt\Namespace_ ? $stmts[0]->stmts : $stmts;
 
     $host = new class
     {
@@ -1369,9 +1370,12 @@ describe('narrowing', function () {
         'a first-class callable on $this' => ['$swap = $this->toArray(...);', []],
         'a first-class callable on what the chain reads through' => ['$swap = $this->resource->refresh(...);', []],
         'a first-class callable on the proven value' => ['$swap = $this->author->refresh(...);', ['$this->author' => [[[User::class], '$swap = $this->author->refresh(...); $x = 1;']]]],
-        'can() given $this->resource' => ['$request->user()?->can(\'view\', $this->resource);', ['$this->author' => [[[User::class], '$request->user()?->can(\'view\', $this->resource); $x = 1;']]]],
-        'cannot() given $this' => ['$request->user()->cannot(\'view\', $this);', ['$this->author' => [[[User::class], '$request->user()->cannot(\'view\', $this); $x = 1;']]]],
-        'canAny() given $this->resource' => ['$request->user()->canAny([\'view\'], $this->resource);', ['$this->author' => [[[User::class], '$request->user()->canAny([\'view\'], $this->resource); $x = 1;']]]],
+        'can() on the signed-in user, given $this->resource' => ['auth()->user()->can(\'view\', $this->resource);', ['$this->author' => [[[User::class], 'auth()->user()->can(\'view\', $this->resource); $x = 1;']]]],
+        'cannot() on the signed-in user, given $this' => ['auth()->user()?->cannot(\'view\', $this);', ['$this->author' => [[[User::class], 'auth()->user()?->cannot(\'view\', $this); $x = 1;']]]],
+        'canAny() on the signed-in user, given $this->resource' => ['auth()->user()->canAny([\'view\'], $this->resource);', ['$this->author' => [[[User::class], 'auth()->user()->canAny([\'view\'], $this->resource); $x = 1;']]]],
+        'can() on a receiver no class names' => ['$ability->can(\'view\', $this->resource);', []],
+        'can() on a class that is no Authorizable, given $this' => ['(new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper)->can(\'swap\', $this);', []],
+        'route() fully qualified' => ['\\route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], '\\route(\'posts.show\', $this->resource); $x = 1;']]]],
         'Gate::allows() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource); $x = 1;']]]],
         'Gate::denies() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource); $x = 1;']]]],
         'route() given $this->resource' => ['route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]],
@@ -1393,6 +1397,34 @@ describe('narrowing', function () {
         'a local holding no callable' => ['$value = 1;', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
         'a variable no write reaches' => ['', '$this->when(true, $value);', ['$this->author' => [[[User::class], '$this->when(true, $value); $x = 1;']]]],
     ]);
+
+    // A local holding `$this`, a chain the proof's reads through, or an array of them stands for that chain (R48).
+    test('binds a test on a $this chain unless a local standing for a chain it reads through may change it', function (string $before, string $body, array $bindings) {
+        $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
+
+        expect(blockNarrowingBindings($before.$test.$body.' $x = 1; }', seed: true))->toBe($bindings);
+    })->with([
+        'a call on a local holding $this->resource' => ['$model = $this->resource;', '$model->refresh();', []],
+        'a local holding $this->resource, passed' => ['$model = $this->resource;', 'tap($model);', []],
+        'a local holding $this, passed' => ['$self = $this;', 'tap($self);', []],
+        'an array holding $this, passed' => ['$swap = [$this, \'toArray\'];', 'array_map($swap, [1]);', []],
+        'a write through a local holding $this->resource to the member it forwards' => ['$model = $this->resource;', '$model->author = null;', []],
+        'unset() through a local holding $this' => ['$self = $this;', 'unset($self->author);', []],
+        'a write through a local holding $this->resource to another member' => ['$model = $this->resource;', '$model->marker = 1;', ['$this->author' => [[[User::class], '$model->marker = 1; $x = 1;']]]],
+        'a JsonResource helper on a local holding $this' => ['$self = $this;', '$self->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$self->whenLoaded(\'author\'); $x = 1;']]]],
+        'a local holding the chain\'s own value, passed' => ['$author = $this->author;', 'tap($author);', ['$this->author' => [[[User::class], 'tap($author); $x = 1;']]]],
+        'a local holding another chain, called on' => ['$other = $this->marker;', '$other->refresh();', ['$this->author' => [[[User::class], '$other->refresh(); $x = 1;']]]],
+        'a local holding no chain on $this, written through' => ['$other = new \\stdClass;', '$other->author = null;', ['$this->author' => [[[User::class], '$other->author = null; $x = 1;']]]],
+    ]);
+
+    test('binds a test on a $this chain past route() only where it runs Laravel\'s helper', function () {
+        require_once dirname(__DIR__, 3).'/Fixtures/Stubs/NamespacedRouteFunction.php.stub';
+        $guarded = 'if ($this->author instanceof \\Workbench\\App\\Models\\User) { route(\'posts.show\', $this->resource); $x = 1; }';
+
+        expect(blockNarrowingBindings('namespace AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs; '.$guarded))->toBe([])
+            ->and(blockNarrowingBindings('namespace Elsewhere; '.$guarded))
+            ->toBe(['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]);
+    });
 
     test('binds a test on a nested $this chain until a write to a chain it reads through', function () {
         $test = 'if ($this->author->team instanceof \Workbench\App\Models\Team) { ';

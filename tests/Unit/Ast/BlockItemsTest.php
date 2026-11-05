@@ -16,14 +16,17 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CommentsGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAbilityGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasCallGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAliasPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableAuthorizedGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBlockGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBranchGuardsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableProxyPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisPassGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
@@ -352,6 +355,9 @@ it('narrows no read of a $this->prop path past a call that may replace what it r
     '$this passed to a helper' => [ImageableThisPassGuardResource::class],
     'a closure made before the test, called in its block' => [ImageableAliasCallGuardResource::class],
     'a closure made before the test, passed to when() in its block' => [ImageableAliasPassGuardResource::class],
+    '$this->resource passed to a can() that is no Authorizable' => [ImageableAbilityGuardResource::class],
+    'a local holding $this->resource, called on' => [ImageableProxyAliasGuardResource::class],
+    'a local holding $this, passed to a helper' => [ImageableThisAliasGuardResource::class],
 ]);
 
 // An authorization check only reads the model it is given, so the proof holds past it.
