@@ -2325,6 +2325,15 @@ describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
 
         expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
     });
+
+    // #73: a nullable name nothing resolves keeps its null arm beside the unknown.
+    test('reads a nullable name that is neither an alias nor a class as unknown or null', function () {
+        $context = new ReflectionClass(DocblockGenericsFixture::class);
+        $info = $this->service->resolveDocblockTypePartOrAlias('?NoSuchThing', [], $context->getNamespaceName(), $context);
+
+        expect($info['type'])->toBe('unknown | null')
+            ->and($info['classFqcns'])->toBe([]);
+    });
 });
 
 describe('@phpstan-type aliases inside containers and shapes', function () {
@@ -2394,7 +2403,15 @@ describe('resolveGenericContainerType() with an intersection value', function ()
     test('drops an unresolvable intersection member rather than the whole value', function () {
         $info = $this->service->resolveGenericContainerType('list<User&NoSuchThing>', ['User' => User::class], '');
 
-        expect($info['type'])->toBe('User[]');
+        expect($info['type'])->toBe('User[]')
+            ->and($info['classFqcns'])->toBe([User::class]);
+    });
+
+    test('reads an intersection none of whose members resolves as a list of unknown', function () {
+        $info = $this->service->resolveGenericContainerType('list<NoSuchThing&AlsoMissing>', [], '');
+
+        expect($info['type'])->toBe('unknown[]')
+            ->and($info['classFqcns'])->toBe([]);
     });
 });
 

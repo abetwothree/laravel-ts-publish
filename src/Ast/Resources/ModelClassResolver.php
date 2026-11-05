@@ -25,7 +25,8 @@ final class ModelClassResolver
      * Resolve the backing model class.
      *
      * Precedence: the model ProxyDeclaration::model() reads, `#[TsResource(model:)]` first, then the naming convention,
-     * then `#[UseResource]`. A declared class or union the guess is not one of, as a value object, stops the guess.
+     * then `#[UseResource]`. A declared class or union the guess is not one of, as a value object, stops the guess, and
+     * a guess extending an intersection's model member narrows it.
      *
      * @template T of object
      *
@@ -40,16 +41,28 @@ final class ModelClassResolver
         }
 
         $declared = ProxyDeclaration::model($resource);
+        $held = ProxyDeclaration::of($resource);
 
-        if ($declared !== null) {
+        // The tag agrees with a guess that extends an intersection's model member, so the guess narrows it, as a guess
+        // that is any member of an intersection naming no model stands.
+        if ($declared !== null && ! isset($held['intersections'][$declared])) {
             return $declared;
         }
 
         $guessed = $this->guessModelFromConvention($resource) ?? $this->guessModelFromUseResourceAttribute($resource);
-        $held = ProxyDeclaration::of($resource)['classes'] ?? null;
+
+        if ($declared !== null) {
+            return $guessed !== null && is_a($guessed, $declared, true) ? $guessed : $declared;
+        }
 
         // An interface the guessed model implements, as `@mixin Arrayable` names, keeps it; a value object does not.
-        return $held === null || ($guessed !== null && array_any($held, fn (string $class): bool => is_a($guessed, $class, true)))
+        return $held === null || ($guessed !== null && array_any(
+            $held['classes'],
+            fn (string $class): bool => array_any(
+                [$class, ...$held['intersections'][$class] ?? []],
+                fn (string $member): bool => is_a($guessed, $member, true),
+            ),
+        ))
             ? $guessed
             : null;
     }

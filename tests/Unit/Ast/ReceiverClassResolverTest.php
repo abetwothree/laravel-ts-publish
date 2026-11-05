@@ -836,7 +836,7 @@ describe('DeclaredClasses::docblockArms()', function () {
         $context = new ReflectionClass(ReceiverReturnsProbe::class);
 
         expect(DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class))
-            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable]);
+            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable, 'intersections' => []]);
     })->with([
         'bool' => ['bool', false],
         'a nullable string' => ['?string', true],
@@ -866,7 +866,7 @@ describe('DeclaredClasses::docblockArms()', function () {
             DependencyRecorder::stop();
         }
 
-        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true])
+        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true, 'intersections' => []])
             ->and($paths)->toBe([(string) $context->getFileName()]);
     });
 
@@ -875,9 +875,9 @@ describe('DeclaredClasses::docblockArms()', function () {
         $context = new ReflectionClass(ReceiverReturnsProbe::class);
         $arms = fn (string $type): array => DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
 
-        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true])
-            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true])
-            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false]);
+        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true, 'intersections' => []])
+            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true, 'intersections' => []])
+            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false, 'intersections' => []]);
     });
 });
 

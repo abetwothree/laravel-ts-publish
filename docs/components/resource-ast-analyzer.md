@@ -196,6 +196,11 @@ nothing loads, `Model` or `\Eloquent`, which IDE helpers write, declares nothing
 `#[TsResource(model:)]` a tag keeps only the classes that model is. `HeldStats*Resource`, the IDE-helper and interface
 `*PostResource` and `ExplicitPostOverHeldStatsResource` test fixtures pin these.
 
+An intersection such as `@extends JsonResource<Post&HasLabel>` names its primary member, the first that is no
+interface, as its model, and a guessed model that extends that member narrows it. One of interfaces only keeps a guess
+that is any member. `ExplicitPostOverIntersectionResource` and the `*Intersection*`, `LabelingPost`, `CountedPost`,
+`CastablePost` and `LabeledEntry` resource fixtures pin these.
+
 ## JSON:API resources
 
 A `JsonApiResource` subclass publishes the resource object Laravel sends as `data`, read off the runtime class:

@@ -10,10 +10,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CountedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
@@ -37,6 +39,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DraftPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EagerColumnsPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionNullableVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
@@ -64,6 +69,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledEntryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledHolderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixinPostHeldStatsChildResource;
@@ -73,7 +81,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCodeIntersectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostIntersectionExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVarHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
@@ -92,9 +102,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CodedPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CountedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledEntry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
@@ -103,6 +118,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedM
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FlaggedStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -4319,4 +4335,68 @@ it('reads a workbench value object\'s method through a resource over it and a re
         ->and(resourceProps(PostStatsResource::class)['stats_summary'])->toBe('string | null')
         ->and(StatsSummaryResource::make($stats)->response()->getData(true)['data'])
         ->toBe(['views' => 1.5, 'shares' => 2, 'summary' => '1.5 views, 2 shares']);
+});
+
+// B2: an intersection's model is its primary member, and a member the model lacks is read off the one declaring it.
+it('types a member of an intersection from whichever member declares it', function (string $resource, string $model, string $title, string $held) {
+    $data = new ResourceTransformer($resource)->data();
+    $sent = $resource::make((new $held)->forceFill(['id' => 4, 'title' => 'T']))->response()->getData(true)['data'];
+
+    // An abstract model publishes no columns, so its title stays unknown.
+    expect($data->modelClass)->toBe($model)
+        ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'label' => 'string',
+            'proxy_label' => 'string',
+            'id' => 'number',
+            'proxy_id' => 'number',
+            'title' => $title,
+            'proxy_title' => $title,
+        ])
+        ->and($sent)->toBe(['label' => 'L:T', 'proxy_label' => 'L:T', 'id' => 4, 'proxy_id' => 4, 'title' => 'T', 'proxy_title' => 'T']);
+})->with([
+    '@extends JsonResource<AbstractEntry&HasLabel>' => [EntryIntersectionExtendsResource::class, AbstractEntry::class, 'unknown', LabeledEntry::class],
+    '@var AbstractEntry&HasLabel' => [EntryIntersectionVarResource::class, AbstractEntry::class, 'unknown', LabeledEntry::class],
+    '@var (AbstractEntry&HasLabel)|null' => [EntryIntersectionNullableVarResource::class, AbstractEntry::class, 'unknown', LabeledEntry::class],
+    '@extends JsonResource<Post&HasLabel>' => [PostIntersectionExtendsResource::class, Post::class, 'string', LabelingPost::class],
+]);
+
+// R25: a guess any member of an intersection names stands, its other members joining it, as one declared class does.
+it('keeps the naming-convention model behind an intersection it is a member of, or extends the model member of', function (string $resource, ?string $model, array $expected) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect($data->modelClass)->toBe($model)
+        ->and(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected);
+})->with([
+    'a model that implements both' => [LabelingPostResource::class, LabelingPost::class, ['title' => 'string', 'label' => 'string', 'whole' => 'LabelingPost']],
+    'a model that implements one, not the first' => [CountedPostResource::class, CountedPost::class, ['title' => 'string', 'label' => 'string', 'id' => 'number', 'whole' => 'CountedPost']],
+    'a model that implements none' => [CastablePostResource::class, null, ['title' => 'unknown', 'label' => 'string']],
+    'a model that extends the model member' => [LabeledEntryResource::class, LabeledEntry::class, ['title' => 'string', 'label' => 'string']],
+]);
+
+it('reads a value object\'s natively intersection-typed properties member by member', function () {
+    $holder = new LabeledHolder((new LabelingPost)->forceFill(['id' => 1, 'title' => 'P']), (new LabeledEntry)->forceFill(['id' => 4, 'title' => 'T']));
+
+    expect(resourceProps(LabeledHolderResource::class))->toBe([
+        'post_label' => 'string',
+        'post_title' => 'string',
+        'proxy_post_label' => 'string',
+        'entry_label' => 'string | null',
+        'entry_id' => 'number | null',
+        'primary_label' => 'string',
+    ])
+        ->and(LabeledHolderResource::make($holder)->response()->getData(true)['data'])
+        ->toBe(['post_label' => 'L:P', 'post_title' => 'P', 'proxy_post_label' => 'L:P', 'entry_label' => 'L:T', 'entry_id' => 4, 'primary_label' => 'L:P']);
+});
+
+// A member the model lacks is read off the intersection's interface that declares it, a PHP 8.4 property included.
+it('reads a property or method only an intersection\'s interface declares off that interface', function () {
+    expect(resourceProps(PostCodeIntersectionResource::class))->toBe([
+        'code' => 'string',
+        'title' => 'string',
+        'stats_total' => 'number',
+        'proxy_stats_total' => 'number',
+        'code_stats_total' => 'number',
+    ])
+        ->and(PostCodeIntersectionResource::make((new CodedPost)->forceFill(['id' => 4, 'title' => 'T']))->response()->getData(true)['data'])
+        ->toBe(['code' => 'C4', 'title' => 'T', 'stats_total' => 2, 'proxy_stats_total' => 2, 'code_stats_total' => 2]);
 });

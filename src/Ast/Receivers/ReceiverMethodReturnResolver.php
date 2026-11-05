@@ -120,8 +120,9 @@ final class ReceiverMethodReturnResolver
                 continue;
             }
 
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn(
-                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
+            $owner = $receiver->memberOwner($class, $methodName, true);
+            $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? $this->resolveOn(
+                $scope->calleeRuntime(new ReflectionClass($owner), $receiver->runtimeInstance && $owner === $class),
                 $methodName,
                 $fromInside,
                 $site,

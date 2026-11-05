@@ -20,9 +20,12 @@ use ReflectionClass;
  * model, a `@var` redeclaring `$resource`, then the class's own `@extends JsonResource<…>`, `@mixin` and class-level
  * `@property … $resource`, then each ancestor's. ModelClassResolver takes its model; the receiver resolver its classes.
  *
+ * @phpstan-import-type Intersections from DeclaredClasses
+ *
  * @phpstan-type ProxySource = 'var'|'extends'|'mixin'|'property'
  * @phpstan-type ProxyArms = array{
- *     classes: non-empty-list<class-string>, named: bool, nullable: bool, source: ProxySource,
+ *     classes: non-empty-list<class-string>, named: bool, nullable: bool, intersections: Intersections,
+ *     source: ProxySource,
  * }
  *
  * @internal
@@ -32,7 +35,7 @@ final class ProxyDeclaration
     /**
      * What `$resource` is declared to hold: the first declaration naming a class. A tag naming only a class nothing
      * loads, `Model` itself or the `\Eloquent` alias declares nothing, since an IDE helper writes it for the model, and
-     * beside `#[TsResource(model:)]` a tag keeps only the classes that model is.
+     * beside `#[TsResource(model:)]` a tag keeps only the classes that model is, every member of an intersection.
      *
      * @template T of object
      *
@@ -46,7 +49,8 @@ final class ProxyDeclaration
 
     /**
      * The model the declarations name: `#[TsResource(model:)]`'s, else the first model arm of a tag, the class's own
-     * before an ancestor's, else of the `@var`, a null arm allowed, as `@extends JsonResource<Post|null>` names `Post`.
+     * before an ancestor's, else of the `@var`, a null arm allowed, as `@extends JsonResource<Post|null>` names `Post`;
+     * an intersection's arm is its primary member, as `Post&HasLabel` names `Post`.
      *
      * @template T of object
      *
@@ -175,7 +179,7 @@ final class ProxyDeclaration
 
     /**
      * The declarations one class's own docblock spells, in the order of(): an `@extends` of one generic argument, a
-     * `@mixin` and a `@property` naming `$resource`, each keeping only the classes an explicit model is.
+     * `@mixin` and a `@property` naming `$resource`, each keeping only the arms an explicit model is every class of.
      *
      * @template C of object
      * @template T of object
@@ -203,13 +207,18 @@ final class ProxyDeclaration
 
         foreach ($types as $source => $type) {
             $arms = $type === null ? null : DeclaredClasses::docblockArms($type, $class, $resource->getName(), $class->getName());
+            $intersections = $arms['intersections'] ?? [];
             $classes = array_values(array_filter(
                 $arms['classes'] ?? [],
-                fn (string $named): bool => ! self::documentsModel($named) && ($explicit === null || is_a($explicit, $named, true)),
+                fn (string $named): bool => ! self::documentsModel($named) && ($explicit === null || array_all(
+                    [$named, ...$intersections[$named] ?? []],
+                    fn (string $member): bool => is_a($explicit, $member, true),
+                )),
             ));
 
             if ($arms !== null && $classes !== []) {
-                $declarations[] = [...$arms, 'classes' => $classes, 'source' => $source];
+                $kept = array_intersect_key($intersections, array_flip($classes));
+                $declarations[] = [...$arms, 'classes' => $classes, 'intersections' => $kept, 'source' => $source];
             }
         }
 

@@ -46,9 +46,10 @@ final class ReceiverMemberReader
     {
         $results = [];
 
-        foreach ($held->classes as $class) {
+        foreach ($held->classes as $heldClass) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
-            DependencyRecorder::recordClass($class);
+            DependencyRecorder::recordClass($heldClass);
+            $class = $held->memberOwner($heldClass, $name, false);
             $result = is_a($class, Model::class, true)
                 ? self::modelValue($class, $name, $scope, $held->attributeless ? $held->filled : null, $relations)
                 : EnumValueTypes::member($class, $name, $scope->carriesImports)
@@ -78,7 +79,8 @@ final class ReceiverMemberReader
 
         DependencyRecorder::recordClass($class);
 
-        if (! class_exists($class) || ! property_exists($class, $name)) {
+        // An interface declares a property too, as PHP 8.4 lets an intersection's interface member do.
+        if (! DeclaredClasses::isValueClass($class) || ! property_exists($class, $name)) {
             return null;
         }
 
@@ -90,9 +92,7 @@ final class ReceiverMemberReader
             return null;
         }
 
-        $classes = DeclaredClasses::propertyClasses($property, $subject, $class);
-
-        return $classes === null ? null : new ReceiverType($classes);
+        return ReceiverType::declared(DeclaredClasses::propertyType($property, $subject, $class));
     }
 
     /**

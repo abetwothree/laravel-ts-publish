@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use ReflectionMethod;
@@ -14,6 +15,8 @@ use ReflectionProperty;
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
  *
  * @phpstan-import-type CollectedElement from ResourceCollections
+ * @phpstan-import-type Intersections from DeclaredClasses
+ * @phpstan-import-type DeclaredType from DeclaredClasses
  *
  * @internal
  */
@@ -35,6 +38,8 @@ final readonly class ReceiverType
      *                                 returns, so a body read on it knows that class where the scope does
      * @param  bool  $declaredOnly  spelled `self`, `static` or `parent`, so the object may be any subclass that
      *                              overrides a member: one is read by its declaration alone where a subclass can
+     * @param  Intersections  $intersections  the other members of an intersection each class is, as `A&B` holds an A
+     *                                        that is also a B: memberOwner() reads a member A lacks off B
      */
     public function __construct(
         public array $classes,
@@ -49,6 +54,7 @@ final readonly class ReceiverType
         public array $filled = [],
         public bool $runtimeInstance = false,
         public bool $declaredOnly = false,
+        public array $intersections = [],
     ) {}
 
     /**
@@ -62,6 +68,16 @@ final readonly class ReceiverType
     }
 
     /**
+     * A receiver holding what a declaration names, its intersections included; null for a declaration naming none.
+     *
+     * @param  DeclaredType|null  $declared
+     */
+    public static function declared(?array $declared): ?self
+    {
+        return $declared === null ? null : new self($declared['classes'], intersections: $declared['intersections']);
+    }
+
+    /**
      * Whether a class is a model a row can be read into: a subclass of Model that is not abstract.
      *
      * @phpstan-assert-if-true class-string<Model> $class
@@ -69,6 +85,35 @@ final readonly class ReceiverType
     public static function isConcreteModel(string $class): bool
     {
         return is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract();
+    }
+
+    /**
+     * The intersections a union of receivers keeps: of each class, the other members every receiver holding it names,
+     * so `A&B` beside a bare `A` holds an A and no more.
+     *
+     * @param  list<self>  $types
+     * @return Intersections
+     */
+    public static function agreedIntersections(array $types): array
+    {
+        $shared = [];
+
+        foreach ($types as $type) {
+            foreach ($type->classes as $class) {
+                $others = $type->intersections[$class] ?? [];
+                $shared[$class] = isset($shared[$class]) ? array_values(array_intersect($shared[$class], $others)) : $others;
+            }
+        }
+
+        $agreed = [];
+
+        foreach ($shared as $class => $others) {
+            if ($others !== []) {
+                $agreed[$class] = $others;
+            }
+        }
+
+        return $agreed;
     }
 
     /**
@@ -80,6 +125,67 @@ final readonly class ReceiverType
     public static function overridable(ReflectionClass $class, ReflectionMethod|ReflectionProperty $member): bool
     {
         return ! $class->isFinal() && ! $member->isFinal() && ! $member->isPrivate();
+    }
+
+    /**
+     * The class whose public member a read on one of the receiver's classes runs: the class where it declares it, else
+     * the first other member of its intersection that does, else the class, whose `__get()` or `__call()` runs.
+     *
+     * @param  class-string  $class
+     * @return class-string
+     */
+    public function memberOwner(string $class, string $member, bool $isMethod): string
+    {
+        $others = $this->intersections[$class] ?? null;
+
+        if ($others === null) {
+            return $class;
+        }
+
+        // The answer follows each member's declarations, which reflection reads without parsing.
+        foreach ($others as $other) {
+            DependencyRecorder::recordClass($other);
+        }
+
+        return array_find(
+            [$class, ...$others],
+            fn (string $candidate): bool => self::declaresPublic($candidate, $member, $isMethod),
+        ) ?? $class;
+    }
+
+    /**
+     * The same receiver with each class a declared intersection admits also holding the members it is not: a subtype of
+     * the primary member, or of any member where every one is an interface, which a subclass can add.
+     *
+     * @param  Intersections  $declared
+     */
+    public function withIntersections(array $declared): self
+    {
+        if ($declared === []) {
+            return $this;
+        }
+
+        $intersections = $this->intersections;
+
+        foreach ($this->classes as $class) {
+            $others = $intersections[$class] ?? [];
+
+            foreach ($declared as $primary => $members) {
+                $arm = [$primary, ...$members];
+                $admits = interface_exists($primary)
+                    ? array_any($arm, fn (string $member): bool => is_a($class, $member, true))
+                    : is_a($class, $primary, true);
+                $others = $admits ? [...$others, ...$arm] : $others;
+            }
+
+            $others = array_values(array_unique(array_filter($others, fn (string $other): bool => ! is_a($class, $other, true))));
+
+            if ($others !== []) {
+                $intersections[$class] = $others;
+            }
+        }
+
+        return $intersections === $this->intersections ? $this : $this->copy(intersections: $intersections);
     }
 
     /**
@@ -132,7 +238,12 @@ final readonly class ReceiverType
      */
     public function withClasses(array $classes): self
     {
-        return $this->copy(classes: $classes, runtimeInstance: false, declaredOnly: false);
+        return $this->copy(
+            classes: $classes,
+            runtimeInstance: false,
+            declaredOnly: false,
+            intersections: array_intersect_key($this->intersections, array_flip($classes)),
+        );
     }
 
     /**
@@ -162,10 +273,31 @@ final readonly class ReceiverType
     }
 
     /**
+     * Whether a class declares a public instance method or property by the name.
+     *
+     * @param  class-string  $class
+     */
+    private static function declaresPublic(string $class, string $member, bool $isMethod): bool
+    {
+        if ($isMethod) {
+            return method_exists($class, $member) && new ReflectionMethod($class, $member)->isPublic();
+        }
+
+        if (! property_exists($class, $member)) {
+            return false;
+        }
+
+        $property = new ReflectionProperty($class, $member);
+
+        return $property->isPublic() && ! $property->isStatic();
+    }
+
+    /**
      * A copy with the given parts replaced and every other flag kept.
      *
      * @param  non-empty-list<class-string>|null  $classes
      * @param  list<string>|null  $filled
+     * @param  Intersections|null  $intersections
      */
     private function copy(
         ?array $classes = null,
@@ -175,6 +307,7 @@ final readonly class ReceiverType
         ?array $filled = null,
         ?bool $runtimeInstance = null,
         ?bool $declaredOnly = null,
+        ?array $intersections = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -189,6 +322,7 @@ final readonly class ReceiverType
             filled: $filled ?? $this->filled,
             runtimeInstance: $runtimeInstance ?? $this->runtimeInstance,
             declaredOnly: $declaredOnly ?? $this->declaredOnly,
+            intersections: $intersections ?? $this->intersections,
         );
     }
 }

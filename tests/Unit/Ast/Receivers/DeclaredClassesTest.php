@@ -3,9 +3,14 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Commentable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasLabel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinksComments;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedAuthorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
+use Countable;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -51,3 +56,44 @@ test('a native type names one class, static read as the receiver and self as the
     'a union' => [fn () => new ReflectionFunction(fn (): Post|Comment => new Post)->getReturnType(), null],
     'none' => [null, null],
 ]);
+
+// LabeledHolder's file imports AbstractEntry, HasLabel and Post.
+test('a docblock intersection names its primary member, the first that is no interface, and its other members', function (string $type, array $expected) {
+    $context = new ReflectionClass(LabeledHolder::class);
+
+    expect(DeclaredClasses::docblockArms($type, $context, LabeledHolder::class, LabeledHolder::class))->toBe($expected);
+})->with([
+    'a model and an interface' => ['AbstractEntry&HasLabel', [
+        'classes' => [AbstractEntry::class], 'named' => true, 'nullable' => false, 'intersections' => [AbstractEntry::class => [HasLabel::class]],
+    ]],
+    'the interface first' => ['HasLabel&Post', [
+        'classes' => [Post::class], 'named' => true, 'nullable' => false, 'intersections' => [Post::class => [HasLabel::class]],
+    ]],
+    'only interfaces' => ['HasLabel&\\Countable', [
+        'classes' => [HasLabel::class], 'named' => true, 'nullable' => false, 'intersections' => [HasLabel::class => [Countable::class]],
+    ]],
+    'a DNF arm beside null' => ['(AbstractEntry&HasLabel)|null', [
+        'classes' => [AbstractEntry::class], 'named' => true, 'nullable' => true, 'intersections' => [AbstractEntry::class => [HasLabel::class]],
+    ]],
+    'a DNF arm beside a class' => ['(AbstractEntry&HasLabel)|Post', [
+        'classes' => [AbstractEntry::class, Post::class], 'named' => true, 'nullable' => false, 'intersections' => [AbstractEntry::class => [HasLabel::class]],
+    ]],
+    'a member the primary already is' => ['\\'.LabelingPost::class.'&HasLabel', [
+        'classes' => [LabelingPost::class], 'named' => true, 'nullable' => false, 'intersections' => [],
+    ]],
+    'arms sharing a primary keep the members every one names' => ['(Post&HasLabel)|Post', [
+        'classes' => [Post::class], 'named' => true, 'nullable' => false, 'intersections' => [],
+    ]],
+    'a member no class loads' => ['Post&NoSuchContract', ['classes' => [], 'named' => false, 'nullable' => false, 'intersections' => []]],
+    'a builtin member' => ['Post&string', ['classes' => [], 'named' => false, 'nullable' => false, 'intersections' => []]],
+    'a group holding two intersections' => ['(Post)&(HasLabel)', ['classes' => [], 'named' => false, 'nullable' => false, 'intersections' => []]],
+]);
+
+test('a native intersection or DNF type names each arm\'s primary member, and its other members', function (string $property) {
+    $type = new ReflectionProperty(LabeledHolder::class, $property)->getType();
+    $primary = $property === 'post' ? Post::class : AbstractEntry::class;
+
+    expect(DeclaredClasses::nativeType($type, LabeledHolder::class, LabeledHolder::class))
+        ->toBe(['classes' => [$primary], 'intersections' => [$primary => [HasLabel::class]]])
+        ->and(DeclaredClasses::nativeClasses($type, LabeledHolder::class, LabeledHolder::class))->toBe([$primary]);
+})->with(['an intersection' => ['post'], 'a DNF type beside null' => ['entry']]);

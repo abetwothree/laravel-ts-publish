@@ -80,6 +80,7 @@ use Throwable;
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
+ * @phpstan-import-type Intersections from DeclaredClasses
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
  *
@@ -397,11 +398,13 @@ final class ReceiverClassResolver
         $backingNarrowsAll = $declared === null
             || $this->admittedByEvery($declared['classes'], $scope->forwardsUndeclaredMembersTo);
 
-        return match (true) {
+        $held = match (true) {
             $scope->provenProxy === null && $backingNarrowsAll => $proxy,
             $classes === null => null,
             default => new ReceiverType($classes),
         };
+
+        return $held?->withIntersections($this->proxyIntersections($scope));
     }
 
     /**
@@ -879,7 +882,10 @@ final class ReceiverClassResolver
         }
 
         return $this->carried($receiver, $this->merge(
-            array_map(fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($class, $name), $receiver->classes),
+            array_map(
+                fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($receiver->memberOwner($class, $name, false), $name),
+                $receiver->classes,
+            ),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
         ));
     }
@@ -908,7 +914,7 @@ final class ReceiverClassResolver
 
         return FrameworkClasses::is(DeclaringFile::ofProperty($property, $owner)->getName())
             ? null
-            : $this->typeOf(DeclaredClasses::propertyClasses($property, $owner, $scope->runtime->class->getName()));
+            : ReceiverType::declared(DeclaredClasses::propertyType($property, $owner, $scope->runtime->class->getName()));
     }
 
     /**
@@ -924,7 +930,10 @@ final class ReceiverClassResolver
         };
 
         return $held === null ? null : $this->merge(
-            array_map(fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($class, $name), $held->classes),
+            array_map(
+                fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($held->memberOwner($class, $name, false), $name),
+                $held->classes,
+            ),
             false,
         );
     }
@@ -1057,7 +1066,7 @@ final class ReceiverClassResolver
 
         $result = $this->merge(
             array_map(
-                fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false, $receiver->relatedModel),
+                fn (string $class): ?ReceiverType => $this->memberMethod($receiver->memberOwner($class, $method, true), $method, false, $receiver->relatedModel),
                 $receiver->classes,
             ),
             $shortCircuits,
@@ -1941,7 +1950,8 @@ final class ReceiverClassResolver
      */
     private function returned(string $class, string $method, ?string $staticClass = null): ?ReceiverType
     {
-        $classes = DeclaredClasses::returnClasses($class, $method, $staticClass);
+        $returned = DeclaredClasses::returnType($class, $method, $staticClass);
+        $classes = $returned['classes'] ?? null;
 
         if ($classes === [EloquentCollection::class] && ReceiverType::isConcreteModel($class)) {
             $declared = $this->declaredReturn($class, $method);
@@ -1956,7 +1966,7 @@ final class ReceiverClassResolver
         }
 
         if (($classes !== null && $classes !== [Builder::class]) || ! is_a($class, Model::class, true)) {
-            return $this->typeOf($classes);
+            return ReceiverType::declared($returned);
         }
 
         $declared = $classes === null ? null : $this->declaredReturn($class, $method);
@@ -2195,19 +2205,51 @@ final class ReceiverClassResolver
      */
     private function redeclaredProxyArms(AnalysisScope $scope): ?array
     {
+        $backing = $scope->forwardsUndeclaredMembersTo;
         $declared = ProxyDeclaration::of($scope->proxyDeclarer());
+        $declared = $declared === null ? null : $this->ledByBacking($declared, $backing);
 
         if ($declared === null || $declared['source'] === 'var' || $declared['nullable']) {
             return $declared;
         }
-
-        $backing = $scope->forwardsUndeclaredMembersTo;
 
         // `@mixin Post`, or `@mixin Arrayable` over a post, names only the backing class, which keeps its own path.
         $namesModel = (count($declared['classes']) === 1 && is_a($declared['classes'][0], Model::class, true))
             || ($backing !== null && array_all($declared['classes'], fn (string $class): bool => is_a($backing, $class, true)));
 
         return $namesModel ? null : $declared;
+    }
+
+    /**
+     * The declared arms with each intersection of interfaces led by a member the backing class implements, so it
+     * stands in for that member as for a class it is: `@mixin HasLabel&Arrayable` over a post leads with Arrayable.
+     *
+     * @param  ProxyArms  $declared
+     * @return ProxyArms
+     */
+    private function ledByBacking(array $declared, ?string $backing): array
+    {
+        if ($backing === null || $declared['intersections'] === []) {
+            return $declared;
+        }
+
+        $classes = [];
+        $intersections = [];
+
+        foreach ($declared['classes'] as $class) {
+            $members = [$class, ...$declared['intersections'][$class] ?? []];
+            $lead = interface_exists($class) && ! is_a($backing, $class, true)
+                ? array_find($members, fn (string $member): bool => is_a($backing, $member, true)) ?? $class
+                : $class;
+            $others = array_values(array_diff($members, [$lead]));
+            $classes[] = $lead;
+
+            if ($others !== []) {
+                $intersections[$lead] = $others;
+            }
+        }
+
+        return [...$declared, 'classes' => array_values(array_unique($classes)), 'intersections' => $intersections];
     }
 
     /**
@@ -2276,9 +2318,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a call forwarded to `$this->resource` may run on, in the order they answer: those an `instanceof`
-     * proof holds it to, then those the subject declares it to hold, each the backing model is or extends standing for
-     * it, then the guard's class and the backing class, unless the declaration names a class other than a model.
+     * The classes a call forwarded to `$this->resource` may run on, in the order they answer: an `instanceof` proof's,
+     * the declared ones, the backing model standing for each it is or extends, the guard's and the backing class unless
+     * a declared class is no model, then the other members of a declared intersection.
      *
      * @return list<class-string>
      */
@@ -2296,20 +2338,41 @@ final class ReceiverClassResolver
         $fallback = array_any($backed, fn (string $class): bool => ! is_a($class, Model::class, true))
             ? []
             : [$scope->instanceOfWrappedClass, $backing];
+        $order = array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
+        $declared = $this->proxyIntersections($scope);
 
-        return array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
+        if ($order === [] || $declared === []) {
+            return $order;
+        }
+
+        // A method only an intersection's other member declares runs there, so those members answer after every class.
+        $others = new ReceiverType($order)->withIntersections($declared)->intersections;
+
+        return array_values(array_unique([...$order, ...array_merge(...array_values($others))]));
+    }
+
+    /**
+     * The intersections the subject declares `$this->resource` to be, as `@extends JsonResource<Post&HasLabel>` does.
+     *
+     * @return Intersections
+     */
+    private function proxyIntersections(AnalysisScope $scope): array
+    {
+        return ProxyDeclaration::of($scope->proxyDeclarer())['intersections'] ?? [];
     }
 
     /**
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
-     * An element or related model, and a resource collection's items, survive only when every part agrees on them; a
-     * collection is keyed, a model unsaved or attributeless, and a receiver read by declarations, when any part is.
+     * An element or related model, a resource collection's items, and an intersection survive only when every part
+     * agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read by declarations,
+     * when any part is.
      *
      * @param  list<ReceiverType|null>  $types
      */
     private function merge(array $types, bool $shortCircuits): ?ReceiverType
     {
+        $parts = [];
         $classes = [];
         $elementModels = [];
         $relatedModels = [];
@@ -2326,6 +2389,7 @@ final class ReceiverClassResolver
                 return null;
             }
 
+            $parts[] = $type;
             $classes = [...$classes, ...$type->classes];
             $elementModels[$type->elementModel ?? ''] = $type->elementModel;
             $relatedModels[$type->relatedModel ?? ''] = $type->relatedModel;
@@ -2357,6 +2421,7 @@ final class ReceiverClassResolver
             attributeless: $attributeless,
             filled: $filled ?? [],
             declaredOnly: $declaredOnly,
+            intersections: ReceiverType::agreedIntersections($parts),
         );
     }
 

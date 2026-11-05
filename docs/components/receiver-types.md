@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
+| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms, an intersection's members, a generic's arguments; and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
 | [`ProxyDeclaration`] | What an API resource's `$this->resource` is declared to hold, from its `@var`, `@extends`, `@mixin` or `@property`, and the model that names |
 | [`CollectionSteps`] | A chain's steps, root first, what each does to the items and their keys, and which hands back one item, for the receiver resolvers and the model-finder, relation-chain and `collect()` handlers, the last two walking a chain through `walk()` |
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
@@ -121,6 +121,15 @@ nor the member is final and the member is not private, is read by its declaratio
 ternary, a `??` or a block's write that joins it, and to a parameter it is passed to that is untyped or that the
 argument narrows (`relativeParameters`). Such an inline `@var` names no collection element, and an `instanceof`
 proof's classes drop the mark.
+
+### Intersections
+
+A declaration spelling `A&B`, native or docblock, a DNF arm such as `(A&B)|null` included, holds its primary member, the
+first that is no interface, in `ReceiverType::$classes` and the rest in `$intersections`. A call or property read goes
+to `ReceiverType::memberOwner()`: the class where it declares the public member, else the first other member that does,
+so `Post&HasLabel`'s `label()` types from `HasLabel`. A resource's declared intersection joins `proxyHeld()`, and its
+other members answer last in `proxyCallOrder()`. A union keeps them only where every part names them, and a receiver
+built without them reads the primary member alone, never a class the value is not.
 
 ### Visibility
 
