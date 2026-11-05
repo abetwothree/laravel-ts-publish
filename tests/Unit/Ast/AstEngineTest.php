@@ -66,7 +66,7 @@ it('reads a property @var docblock and returns null when there is none', functio
     $reflection = new ReflectionClass(DeclaredProps::class);
 
     expect($reader->read($reflection->getProperty('tags')))
-        ->toBe(['type' => 'string[]', 'optional' => false])
+        ->toBe(['type' => 'string[]', 'optional' => false, 'listKeys' => true])
         ->and($reader->read($reflection->getProperty('id')))->toBeNull();
 });
 

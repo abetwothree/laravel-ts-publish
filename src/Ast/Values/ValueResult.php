@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
@@ -930,6 +931,13 @@ final class ValueResult
 
         if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
             $result['unnamedKeys'] = true;
+        }
+
+        // Every list arm keeps its int keys only where each branch spelling one says so.
+        $lists = array_filter($branchResults, fn (array $inner): bool => ArrayArms::holdsList($inner['type']));
+
+        if ($lists !== [] && array_all($lists, fn (array $inner): bool => $inner['listKeys'] ?? false)) {
+            $result['listKeys'] = true;
         }
 
         return $result;

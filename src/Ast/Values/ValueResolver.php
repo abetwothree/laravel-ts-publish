@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
@@ -222,15 +223,19 @@ final class ValueResolver
                 : null;
 
             if ($constant !== null) {
-                return $constant;
+                return [...$constant, 'listKeys' => true];
             }
         } catch (ConstExprEvaluationException) {
         }
 
         $elements = [];
+        $listed = true;
 
         foreach ($items as $item) {
             $element = $engine->reading()->arrayValue($engine->resolve($item->value));
+
+            // A spread copies the string keys of an array keyed by anything, such as PHPDoc's `T[]`, into this one.
+            $listed = $listed && (! $item->unpack || ($element['listKeys'] ?? false) || ! ArrayArms::holdsList($element['type']));
 
             if ($item->unpack) {
                 $elementType = $this->spreadListElementType($element['type']);
@@ -249,13 +254,15 @@ final class ValueResolver
 
         // Every element is present in every response, so one no rule types cannot be left out as a union arm is.
         if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
-            return ['type' => 'unknown[]', 'optional' => false];
+            return ['type' => 'unknown[]', 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
         }
 
         // A missing when*() element drops its `optional`: an API resource removes it and re-indexes the rest.
         $union = ValueResult::unionResults($elements);
 
-        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
+        unset($union['listKeys']);
+
+        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
     }
 
     /**

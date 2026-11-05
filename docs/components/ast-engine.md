@@ -826,8 +826,9 @@ returns that `null`, which the ternary union would keep. Under an Inertia readin
 exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
 arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
 (`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. A left the receiver resolver reads as a
-collection with no `?->`, its type holding no `null`, is returned whole, since `??` never runs the right operand of an
-object. Otherwise it unions both operands through `unionResults()`, which leaves an untyped one out.
+collection, its type holding no `null`, is returned whole where it is read from `$this`, `$this->resource` or a call
+through other collections alone: `??` tests the whole read, so a relation of a to-one relation or of `first()` is null
+wherever that model is. Otherwise it unions both operands through `unionResults()`, which leaves an untyped one out.
 `applyConditionalDefault()` records a default only beside a value arm with a type.
 `BranchJoin::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's

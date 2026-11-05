@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AllowDynamicProperties;
@@ -84,6 +85,7 @@ use UnitEnum;
  *    omit?: bool,
  *    keepsKeys?: bool,
  *    closedToDottedKeys?: bool,
+ *    listKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeTypeInfo = array{
@@ -108,6 +110,9 @@ use UnitEnum;
  * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
  * never enters, so its numeric keys are never re-indexed. `closedToDottedKeys`, when true, says that object is a
  * `JsonSerializable` Inertia does not open, so a dotted key under it replaces it.
+ *
+ * `listKeys`, when true, says each list arm of `type` is keyed by ints, as `list<T>` and `array<int, T>` are; PHPDoc's
+ * `T[]` and `array<T>` take any key.
  *
  * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
  * file exports behind it, or null where an override spells that name, in a nested shape or a container too: a reader
@@ -1032,6 +1037,7 @@ class LaravelTsPublish
         // X[] shorthand (but not TS-style unions — split upstream)
         if (str_ends_with($type, '[]')) {
             $inner = $this->resolveDocblockContainerValue(substr($type, 0, -2), $useMap, $namespace);
+            unset($inner['listKeys']);
 
             return $this->wrapAsArray($inner);
         }
@@ -1055,6 +1061,7 @@ class LaravelTsPublish
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
         $literalKeys = $isList || count($args) !== 2 ? null : $this->stringLiteralKeys($args[0]);
+        unset($inner['listKeys']);
 
         // Any of the keys may be absent, and json_encode() writes string keys as an object.
         if ($literalKeys !== null) {
@@ -1072,11 +1079,15 @@ class LaravelTsPublish
             return $inner;
         }
 
+        // The list arm holds the int keys, which the Record arm beside it leaves out.
         if ($keyType === 'array-key' || $keyType === 'mixed') {
-            return $this->wrapAsMaybeKeyedArray($inner);
+            return [...$this->wrapAsMaybeKeyedArray($inner), 'listKeys' => true];
         }
 
-        return $this->wrapAsArray($inner);
+        // `array<T>` takes any key, as `T[]` does, though both publish as a list.
+        $intKeyed = $isList || (count($args) === 2 && ($keyType === 'int' || $this->isIntegerSubtype($keyType)));
+
+        return [...$this->wrapAsArray($inner), ...($intKeyed ? ['listKeys' => true] : [])];
     }
 
     /**
@@ -1557,6 +1568,13 @@ class LaravelTsPublish
 
         if ($keyed !== [] && array_all($keyed, fn (array $info): bool => $info['keepsKeys'] ?? false)) {
             $result['keepsKeys'] = true;
+        }
+
+        // Every list arm keeps its int keys only where each arm spelling one says so.
+        $lists = array_filter($infos, fn (array $info): bool => ArrayArms::holdsList($info['type']));
+
+        if ($lists !== [] && array_all($lists, fn (array $info): bool => $info['listKeys'] ?? false)) {
+            $result['listKeys'] = true;
         }
 
         return $result;

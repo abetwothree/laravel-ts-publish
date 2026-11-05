@@ -128,7 +128,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         unset($items['keepsKeys'], $items['unnamedKeys']);
 
-        return [...$items, 'type' => $type, 'optional' => false];
+        return [...$items, 'type' => $type, 'optional' => false, 'listKeys' => true];
     }
 
     /**

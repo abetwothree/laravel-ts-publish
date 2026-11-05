@@ -112,3 +112,46 @@ describe('mapped', function () {
         expect(ArrayArms::mapped('string[]', 'A | B'))->toBe('(A | B)[]');
     });
 });
+
+describe('keysOf, keysList and keysListOf', function () {
+    test('the keys one arm holds: a list\'s numbers only where it is keyed by ints, never an open literal\'s', function (string $arm, bool $listed, ?string $keys) {
+        expect(ArrayArms::keysOf($arm, $listed))->toBe($keys);
+    })->with([
+        'a list keyed by ints' => ['string[]', true, 'number'],
+        'a list keyed by anything, as PHPDoc\'s T[]' => ['string[]', false, null],
+        'a native array' => ['unknown[]', false, null],
+        'a tuple' => ['[A, B]', false, 'number'],
+        'the empty list' => ['never[]', false, 'never'],
+        'a Record keyed by strings' => ['Record<string, number>', false, 'string'],
+        'a Record keyed by numbers' => ['Record<number, number>', false, 'number'],
+        'a Record keyed by an alias' => ['Record<StatusType, number>', false, null],
+        'a literal printed without the keys it cannot name' => ['Record<string, unknown>', false, null],
+        'an object literal, which may be open' => ['{ a: string }', false, null],
+        'a scalar' => ['string', false, null],
+    ]);
+
+    test('the list a type\'s keys make, a null arm left out', function (string $type, bool $listed, ?string $keys) {
+        expect(ArrayArms::keysList($type, $listed))->toBe($keys);
+    })->with([
+        'a nullable Record' => ['Record<string, string> | null', false, 'string[]'],
+        'a list beside a Record, keyed by ints' => ['number[] | Record<string, number>', true, '(number | string)[]'],
+        'a list beside a Record, keyed by anything' => ['number[] | Record<string, number>', false, null],
+        'null alone' => ['null', false, null],
+        'the empty list beside a Record' => ['never[] | Record<string, number>', false, 'string[]'],
+    ]);
+
+    test('the list array_keys() makes of the keys PHP holds', function (array $keys, string $list) {
+        expect(ArrayArms::keysListOf($keys))->toBe($list);
+    })->with([
+        'keys 0..n-1' => [[0, 1, 2], 'number[]'],
+        'no key' => [[], 'never[]'],
+        'ints out of order' => [[1, 0], '(1 | 0)[]'],
+        'names and ints' => [['a', 200, -3], "('a' | 200 | -3)[]"],
+        'an int past a JSON number\'s exact range' => [[PHP_INT_MAX, 'a'], "(number | 'a')[]"],
+    ]);
+
+    test('whether a type holds a list arm', function () {
+        expect(ArrayArms::holdsList('string[] | null'))->toBeTrue()
+            ->and(ArrayArms::holdsList('Record<string, number> | [A, B]'))->toBeFalse();
+    });
+});

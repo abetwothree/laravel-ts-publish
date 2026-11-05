@@ -413,7 +413,8 @@ it('strips a held object\'s null where json_encode() sends it', function () {
         ->toBe('number | string');
 });
 
-// A collection is an object, which is never null, so `??` hands it back and never runs its right operand.
+// A collection read through no null object is never null, so `??` hands it back and never runs its right operand; a
+// relation of a to-one relation or of `first()` is null where that model is.
 it('returns a left holding a collection whole, and unions the right of a left that may be null', function (string $php, string $type) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
@@ -426,6 +427,10 @@ it('returns a left holding a collection whole, and unions the right of a left th
     'a collect() value' => ['collect($this->names()) ?? $this->scores', 'string[]'],
     'a nullable attribute' => ['$this->options ?? collect($this->scores)->all()', 'Record<string, string> | Record<string, number>'],
     'a relation behind a ?->' => ['$this->resource?->comments ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'the subject\'s relation' => ['$this->resource->comments ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation of a to-one relation, which may be null' => ['$this->author->posts ?? collect($this->scores)->all()', 'Post[] | Record<string, number>'],
+    'a relation of first(), which may be null' => ['$this->comments->first()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'a relation of last(), which may be null' => ['$this->comments->last()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
 ]);
 
 it('declines a non-coalesce BinaryOp', function () {

@@ -501,10 +501,12 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
 `concat()` and a `first()`/`last()` terminal through the walk's hook. These rules hold around them:
 
 - **`keys()` and `array_keys()` list the keys PHP holds**: a constant array's or a literal's own keys, read from the
-  literal where each is a constant (`ValueResolver::literalKeys()`), else `ArrayArms::keysList()`'s list numbers and
-  `Record` key types. An object literal's type and a `Record<string, unknown>` decline, since the engine prints a
-  literal without the keys it cannot name, and so does any value marked `unnamedKeys`, a literal with such a key
-  however it is reached. The walk takes one `keys()` before any `map()` and only while no step moved the keys, so
+  literal where each is a constant (`ValueResolver::literalKeys()`), else `ArrayArms::keysList()`'s `Record` key types
+  and a list's numbers where the value is marked `listKeys`: a list literal, a `list<T>`, `array<int, T>` or
+  `array<array-key, T>` docblock, or a collection's items. PHPDoc's `T[]` and `array<T>`, a native `array` and a cast
+  take any key, so their list declines. An object literal's type and a `Record<string, unknown>` decline, since the
+  engine prints a literal without the keys it cannot name, and so does any value marked `unnamedKeys`, a literal with
+  such a key however it is reached. The walk takes one `keys()` before any `map()` and only while no step moved the keys, so
   `keyBy()->keys()` declines. `array_keys()` of an object declines, since PHP throws a `TypeError` on it.
 - **A step that hides attributes declines**: `makeHidden()`, `setVisible()` and the others that drop what a model
   serializes leave models their interface no longer describes, so the walk declines them.

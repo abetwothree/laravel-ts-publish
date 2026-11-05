@@ -301,7 +301,7 @@ it('falls back to the docblock @return, in PHPStan\'s tag order, when the body a
     ],
     'a @phpstan-return over a vague @return' => [
         "/**\n * @return array\n * @phpstan-return list<int>\n */",
-        ['type' => 'number[]', 'optional' => false],
+        ['type' => 'number[]', 'optional' => false, 'listKeys' => true],
     ],
 ]);
 

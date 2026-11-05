@@ -113,11 +113,11 @@ final class ArrayArms
     }
 
     /**
-     * The keys of one arm as PHP holds them: a list's or a tuple's numbers and a Record's `string` or `number` keys;
-     * `never` for an arm holding none. Null for any other arm: an object literal or a `Record<string, unknown>` may be
-     * a literal whose print leaves out the keys it cannot name, and a key type naming more may need an import.
+     * The keys of one arm as PHP holds them: a tuple's numbers, a list's where $listed says it is keyed by ints, a
+     * Record's `string` or `number` keys, `never` for none. Null otherwise: a list may be PHPDoc's `T[]`, and an object
+     * literal or a `Record<string, unknown>` a literal printed without the keys it cannot name.
      */
-    public static function keysOf(string $arm): ?string
+    public static function keysOf(string $arm, bool $listed = false): ?string
     {
         if ($arm === 'never[]' || $arm === '[]') {
             return 'never';
@@ -131,18 +131,26 @@ final class ArrayArms
             return $named && $arm !== 'Record<string, unknown>' ? $record[0] : null;
         }
 
-        return TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null ? 'number' : null;
+        return TsTypeShape::isWrapped($arm, '[', ']') || ($listed && TsTypeShape::elementType($arm) !== null) ? 'number' : null;
     }
 
     /**
      * The list `array_keys()` and `keys()` make of a type, each arm's keys as keysOf() reads them, a `null` arm left
      * out; null where no other arm is left, or one cannot be read.
      */
-    public static function keysList(string $type): ?string
+    public static function keysList(string $type, bool $listed = false): ?string
     {
-        $keys = self::arms($type, self::keysOf(...));
+        $keys = self::arms($type, static fn (string $arm): ?string => self::keysOf($arm, $listed));
 
         return $keys === null || $keys === [] ? null : TsTypeShape::listType(array_values(array_diff($keys, ['never'])));
+    }
+
+    /**
+     * Whether any top-level arm of a type is a list, `T[]` or `Array<T>`, whose keys its spelling leaves open.
+     */
+    public static function holdsList(string $type): bool
+    {
+        return array_any(TsTypeShape::splitTopLevel($type, ['|']), static fn (string $arm): bool => self::listElement($arm) !== null);
     }
 
     /**

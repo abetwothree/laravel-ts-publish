@@ -15,6 +15,13 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 
 /**
  * Analyze a null-coalescing expression (`$left ?? $right`).
@@ -41,8 +48,8 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
         if ($expr instanceof BinaryOp\Coalesce) {
             $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
 
-            // A collection is an object, never null, so `??` hands it back whole and never runs its right operand.
-            if ($this->holdsCollection($expr->left, $leftResult, $scope)) {
+            // A collection read through no null object is never null, so `??` hands it back and never runs its right.
+            if ($this->holdsCollection($expr->left, $leftResult, $scope, $engine)) {
                 return $leftResult;
             }
 
@@ -95,19 +102,51 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * Whether an operand holds a collection on every path: a type with no `null` arm, which the receiver resolver
-     * reads as a collection that no `?->` can end as null.
+     * Whether an operand holds a collection on every path: a type with no `null` arm, which the receiver resolver reads
+     * as a collection, read through no object but the subject and other collections. `??` tests the whole read, and a
+     * property of a null model, such as a to-one relation's or a `first()`'s, is null too.
      *
      * @param  ValueExpressionResult  $result
      */
-    private function holdsCollection(Expr $operand, array $result, AnalysisScope $scope): bool
+    private function holdsCollection(Expr $operand, array $result, AnalysisScope $scope, ExpressionEngine $engine): bool
     {
         if ($result['type'] === 'unknown' || TsTypeString::hasNullArm($result['type'])) {
             return false;
         }
 
-        $receiver = resolve(ReceiverClassResolver::class)->resolve($operand, $scope);
+        $read = $operand;
 
-        return $receiver !== null && ! $receiver->shortCircuits && $receiver->within([Enumerable::class]);
+        while (true) {
+            $receiver = resolve(ReceiverClassResolver::class)->resolve($read, $scope);
+
+            if ($receiver === null || $receiver->shortCircuits || ! $receiver->within([Enumerable::class])
+                || ($read !== $operand && TsTypeString::hasNullArm($engine->resolve($read)['type']))) {
+                return false;
+            }
+
+            // A variable may be unset and an array key absent, either of which `??` reads as null.
+            if (! $read instanceof PropertyFetch && ! $read instanceof MethodCall) {
+                return $read instanceof FuncCall || $read instanceof StaticCall || $read instanceof New_;
+            }
+
+            $read = $read->var;
+
+            if ($this->isSubject($read)) {
+                return true;
+            }
+        }
+    }
+
+    /**
+     * Whether an expression is the subject a read starts from, `$this` or a resource's `$this->resource`, which the
+     * engine reads as never null.
+     */
+    private function isSubject(Expr $expr): bool
+    {
+        $root = $expr instanceof PropertyFetch && $expr->name instanceof Identifier && $expr->name->toString() === 'resource'
+            ? $expr->var
+            : $expr;
+
+        return $root instanceof Variable && $root->name === 'this';
     }
 }

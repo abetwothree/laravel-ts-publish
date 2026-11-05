@@ -79,8 +79,8 @@ trait ReadsCollectedItems
 
     /**
      * The list `array_keys($items)` or `collect($items)->keys()` makes: the keys a constant array or a literal holds
-     * where it names each one, else the keys $result's type names as ArrayArms::keysList() reads them, but for a
-     * literal holding a key its type leaves out; null where none can be read.
+     * where it names each one, else the keys $result's type names as ArrayArms::keysList() reads them, a list's only
+     * where it is marked keyed by ints, and none for a literal holding a key its type leaves out; null where none can.
      *
      * @param  ValueExpressionResult  $result
      * @return ValueExpressionResult|null
@@ -91,10 +91,10 @@ trait ReadsCollectedItems
         $list = match (true) {
             $keys !== null => ArrayArms::keysListOf($keys),
             $result['unnamedKeys'] ?? false => null,
-            default => ArrayArms::keysList($result['type']),
+            default => ArrayArms::keysList($result['type'], $result['listKeys'] ?? false),
         };
 
-        return $list === null ? null : ['type' => $list, 'optional' => false];
+        return $list === null ? null : ['type' => $list, 'optional' => false, 'listKeys' => true];
     }
 
     /**

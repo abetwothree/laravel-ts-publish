@@ -185,11 +185,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         // keys() lists the relation's numbers, which no model's map(), pluck() or terminal reads.
         if ($walk['keys']) {
-            $keys = (string) ArrayArms::keysList($relationInfo['type']);
+            $keys = (string) ArrayArms::keysList($relationInfo['type'], true);
 
             return $mapNode !== null || $pluckNode !== null || $isTerminal
                 ? null
-                : ['type' => $sequentialKeys ? $keys : ArrayArms::keyedList($keys), 'optional' => false];
+                : ['type' => $sequentialKeys ? $keys : ArrayArms::keyedList($keys), 'optional' => false, 'listKeys' => true];
         }
 
         if ($isTerminal) {
@@ -205,12 +205,14 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             ];
         }
 
+        // A relation's models are listed 0..n-1, and a step that moves their keys keeps ints under the list arm.
         if ($mapNode === null && $pluckNode === null) {
             return [
                 ...ValueResult::unknown(),
                 'type' => $sequentialKeys ? $relationInfo['type'] : ArrayArms::keyedList($relationInfo['type']),
                 'optional' => false,
                 'modelFqcn' => $elementModel,
+                'listKeys' => true,
             ];
         }
 
@@ -227,7 +229,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $pluckResult['type'] = ArrayArms::keyedList($pluckResult['type']);
             }
 
-            return [...ValueResult::unknown(), ...$pluckResult];
+            return [...ValueResult::unknown(), ...$pluckResult, 'listKeys' => true];
         }
 
         // filter() reaches a mapped item only where the chain hands back an array.

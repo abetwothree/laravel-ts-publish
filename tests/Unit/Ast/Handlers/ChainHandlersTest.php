@@ -168,7 +168,7 @@ it('resolves a relation collection chain to the element-typed array', function (
 
     $result = (new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
 
-    expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class]);
+    expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class, 'listKeys' => true]);
 });
 
 // Guard-order pin: `$this->members->take(5)` matches BOTH the collection-chain guard and the

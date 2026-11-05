@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayKeysSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
@@ -367,3 +368,38 @@ it('leaves array_map() over a Collection, or a callable it cannot read, to unkno
     'a function no one declares' => ["array_map('no_such_function_anywhere', \$this->names())"],
     'an untyped body over a vague root' => ['array_map(fn ($v) => $v, $this->opaque())'],
 ]);
+
+// PHPDoc's `T[]` and `array<T>`, a native `array` and a cast take any key, so only a list or int-keyed array lists
+// numbers; a `??` left read through a null object is null too, so its right operand runs.
+it('reads list keys only from a list, and a coalesce left whole only through a non-null chain, as Laravel sends them', function () {
+    $post = (new Post)->forceFill(['id' => 1, 'title' => 'T']);
+    $post->setRelation('author', null);
+    $post->setRelation('comments', new EloquentCollection);
+
+    expect(publishedResourceKeyTypes(ArrayKeysSourcesResource::class, Post::class))->toBe([
+        'plain' => 'unknown',
+        'doc_array' => 'unknown',
+        'native_return' => 'unknown',
+        'doc_return' => 'unknown',
+        'cast' => 'unknown',
+        'spread_default' => 'unknown',
+        'bracket_doc' => 'unknown',
+        'generic_doc' => 'unknown',
+        'collect_plain' => 'unknown',
+        'collect_bracket_doc' => 'unknown',
+        'list_doc' => 'number[]',
+        'int_keyed_doc' => 'number[]',
+        'array_key_doc' => '(number | string)[]',
+        'author_posts' => 'Post[] | Record<string, number>',
+        'first_replies' => 'Comment[] | Record<string, number>',
+        'last_replies' => 'Comment[] | Record<string, number>',
+        'author_comments' => 'Comment[] | { a: number }',
+        'comments_only' => 'Comment[]',
+    ])->and(json_encode(new ArrayKeysSourcesResource($post)->resolve(Request::create('/'))))->toBe(
+        '{"plain":["x"],"doc_array":["x"],"native_return":["k"],"doc_return":["k"],"cast":["id"],'
+        .'"spread_default":[0,"x","y"],"bracket_doc":["a"],"generic_doc":["b"],"collect_plain":["x"],'
+        .'"collect_bracket_doc":["a"],"list_doc":[0,1],"int_keyed_doc":[3,5],"array_key_doc":["c"],'
+        .'"author_posts":{"x":1,"y":2},"first_replies":{"x":1,"y":2},"last_replies":{"x":1,"y":2},'
+        .'"author_comments":{"a":1},"comments_only":[]}',
+    );
+});
