@@ -720,6 +720,21 @@ it('assumes a callee\'s runtime class unless the call runs on this runtime insta
         ->and($assumes($scope->calleeRuntime($base, true)))->toBe([$assumed]);
 })->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
+// An `if` proof's offsets are the caller's, so only one a ternary's arm binds, at no offsets, reaches the callee.
+it('keeps a caller\'s proof on a $this chain for a subject method\'s body only where it holds at every offset', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $arm = ['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null];
+    $block = ['classes' => [Team::class], 'after' => 10, 'before' => 90];
+    $scope->varGuardBindings = ['$this->author' => [$arm], '$this->editor' => [$block], '$this->owner' => [$block, $arm]];
+
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
+        fn (): array => $scope->varGuardBindings,
+    );
+
+    expect($inside)->toBe(['$this->author' => [$arm], '$this->owner' => [$arm]]);
+});
+
 // A write replaces what the caller's test saw on that path and every path through it, and only those.
 it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);

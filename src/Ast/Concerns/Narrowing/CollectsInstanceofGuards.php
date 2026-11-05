@@ -6,13 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ThisPathWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
@@ -63,6 +62,8 @@ trait CollectsInstanceofGuards
      * reads the variable unnarrowed. A variable written between the test and the end of what it narrows is not bound,
      * unless the write is an assignment through a member or key of it that keepsProvenClass() says keeps the proof.
      *
+     * A chain of property reads on `$this` binds the same way, unless ThisPathWrites finds what may change it there.
+     *
      * @param  array<Node\Stmt>  $stmts
      * @param  NamedWrites|null  $writes  the body's writes, when the caller has scanned them
      */
@@ -70,7 +71,7 @@ trait CollectsInstanceofGuards
     {
         $writes ??= VariableWrites::of($stmts, $scope);
 
-        $this->bindBlockGuards($stmts, null, $scope, $writes);
+        $this->bindBlockGuards($stmts, null, $scope, $writes, new ThisPathWrites($stmts, $writes, $scope));
         $this->proveGuardedReads($stmts, $scope, $writes);
     }
 
@@ -160,9 +161,9 @@ trait CollectsInstanceofGuards
     }
 
     /**
-     * What a condition proves of variables when it holds, or fails: each `instanceof` test on a variable that must then
-     * pass, through `!`, an `&&` that holds and an `||` that fails, or one `||` chain of tests on one variable that
-     * holds, with the classes and the test. A test on `$this->resource` proves under AnalysisScope::PROXY_GUARDS.
+     * What a condition proves of its subjects when it holds, or fails: each `instanceof` test on a variable or a chain
+     * of property reads on `$this` that must then pass, through `!`, an `&&` that holds and an `||` that fails, or one
+     * `||` chain of tests on one subject that holds, with the classes and the test.
      *
      * @return VariableProofs
      */
@@ -179,7 +180,7 @@ trait CollectsInstanceofGuards
         $proof = $holds ? $this->instanceofProof($cond) : null;
         $subject = $proof === null ? null : $this->instanceofSubject($proof[0], $scope);
 
-        return $proof === null || $subject === null || $subject['kind'] === 'path' ? [] : [[$subject, $proof[1], $cond]];
+        return $proof === null || $subject === null ? [] : [[$subject, $proof[1], $cond]];
     }
 
     /**
@@ -189,16 +190,16 @@ trait CollectsInstanceofGuards
      * @param  array<Node\Stmt>  $stmts
      * @param  NamedWrites  $writes
      */
-    private function bindBlockGuards(array $stmts, ?int $end, AnalysisScope $scope, array $writes): void
+    private function bindBlockGuards(array $stmts, ?int $end, AnalysisScope $scope, array $writes, ThisPathWrites $paths): void
     {
         foreach ($stmts as $stmt) {
             if ($stmt instanceof If_) {
-                $this->bindIfGuards($stmt, $end, $scope, $writes);
+                $this->bindIfGuards($stmt, $end, $scope, $writes, $paths);
             }
 
             foreach (StatementBlocks::inner($stmt) as $block) {
                 if ($block !== []) {
-                    $this->bindBlockGuards($block, $block[array_key_last($block)]->getEndFilePos(), $scope, $writes);
+                    $this->bindBlockGuards($block, $block[array_key_last($block)]->getEndFilePos(), $scope, $writes, $paths);
                 }
             }
         }
@@ -211,7 +212,7 @@ trait CollectsInstanceofGuards
      *
      * @param  NamedWrites  $writes
      */
-    private function bindIfGuards(If_ $if, ?int $end, AnalysisScope $scope, array $writes): void
+    private function bindIfGuards(If_ $if, ?int $end, AnalysisScope $scope, array $writes, ThisPathWrites $paths): void
     {
         $failed = [];
         $leaving = true;
@@ -219,7 +220,8 @@ trait CollectsInstanceofGuards
         $pastChain = [];
 
         foreach ([$if, ...$if->elseifs] as $branch) {
-            $this->bindBranch([...$failed, ...$this->instanceofProofs($branch->cond, true, $scope)], $branch->stmts, $scope, $writes);
+            $proofs = [...$failed, ...$this->instanceofProofs($branch->cond, true, $scope)];
+            $this->bindBranch($proofs, $branch->stmts, $scope, $writes, $paths);
             $failed = [...$failed, ...$this->instanceofProofs($branch->cond, false, $scope)];
             $last = $branch->stmts === [] ? null : $branch->stmts[array_key_last($branch->stmts)];
             // A whole body's branch must leave the function; a nested block's may also jump out of its loop or switch.
@@ -234,12 +236,12 @@ trait CollectsInstanceofGuards
         }
 
         if ($if->else !== null) {
-            $this->bindBranch($failed, $if->else->stmts, $scope, $writes);
+            $this->bindBranch($failed, $if->else->stmts, $scope, $writes, $paths);
         }
 
         foreach ($pastChain as [$subject, $classes, $test]) {
             // A body that always leaves never reaches the statements past the chain, so neither does a write inside it.
-            if (! $this->writtenWithin($subject['variable'], $test->getStartFilePos(), $end, $exits, $writes, $classes, $scope)) {
+            if (! $this->writtenPastTest($subject, $classes, $test, $end, $exits, $writes, $paths, $scope)) {
                 $this->bindGuard($scope, $subject['key'], $classes, $if->getEndFilePos(), $end);
             }
         }
@@ -253,7 +255,7 @@ trait CollectsInstanceofGuards
      * @param  array<Node\Stmt>  $block
      * @param  NamedWrites  $writes
      */
-    private function bindBranch(array $proofs, array $block, AnalysisScope $scope, array $writes): void
+    private function bindBranch(array $proofs, array $block, AnalysisScope $scope, array $writes, ThisPathWrites $paths): void
     {
         if ($block === []) {
             return;
@@ -262,7 +264,7 @@ trait CollectsInstanceofGuards
         $before = $block[array_key_last($block)]->getEndFilePos();
 
         foreach ($proofs as [$subject, $classes, $test]) {
-            if (! $this->writtenWithin($subject['variable'], $test->getStartFilePos(), $before, [], $writes, $classes, $scope)) {
+            if (! $this->writtenPastTest($subject, $classes, $test, $before, [], $writes, $paths, $scope)) {
                 $this->bindGuard($scope, $subject['key'], $classes, $block[0]->getStartFilePos() - 1, $before);
             }
         }
@@ -276,11 +278,6 @@ trait CollectsInstanceofGuards
      */
     private function bindGuard(AnalysisScope $scope, string $name, array $classes, int $after, ?int $before): void
     {
-        // Outside an API resource, `$this->resource` is a member like any other.
-        if ($name === AnalysisScope::PROXY_GUARDS && ! $scope->hasResourceProxy()) {
-            return;
-        }
-
         $around = $scope->proofAt($name, $after + 1);
 
         $scope->varGuardBindings[$name][] = [
@@ -424,12 +421,33 @@ trait CollectsInstanceofGuards
         // A member of `$this` reads as one of the value the proxy's proof tested, as one of `$this->resource` does.
         $onSubject = ($holder instanceof Variable && $holder->name === $variable)
             || ($variable === 'this' && $holder instanceof Expr && $this->isResourceFetch($holder));
-        $attributes = resolve(ModelAttributeResolver::class);
 
-        return ($onSubject && array_all($classes, fn (string $class): bool => is_a($class, Model::class, true)
-                && $attributes->resolveAttribute($class, $member)['type'] === 'unknown'
-                && $attributes->resolveRelation($class, $member)['type'] === 'unknown'))
+        return ($onSubject && ModelFills::namesNoTypedMember($classes, $member))
             || ModelFills::keepsModelThrough($node, $variable, $classes, $scope);
+    }
+
+    /**
+     * Whether a proof's subject may change between its test and $to, outside $exits: a variable or `$this->resource`
+     * by a write through the variable, a chain on `$this` by whatever ThisPathWrites reads as changing it.
+     *
+     * @param  InstanceofSubject  $subject
+     * @param  non-empty-list<class-string>  $classes
+     * @param  list<array<Node\Stmt>>  $exits
+     * @param  NamedWrites  $writes
+     */
+    private function writtenPastTest(
+        array $subject,
+        array $classes,
+        Expr $test,
+        ?int $to,
+        array $exits,
+        array $writes,
+        ThisPathWrites $paths,
+        AnalysisScope $scope,
+    ): bool {
+        return $subject['kind'] === 'path'
+            ? $paths->reach($subject['key'], $test->getStartFilePos(), $to, $exits, $classes)
+            : $this->writtenWithin($subject['variable'], $test->getStartFilePos(), $to, $exits, $writes, $classes, $scope);
     }
 
     /**

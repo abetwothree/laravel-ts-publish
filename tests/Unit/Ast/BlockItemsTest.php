@@ -15,6 +15,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBlockGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableBranchGuardsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableEarlyGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
@@ -25,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenPageColl
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenThisHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use PhpParser\Node;
@@ -281,6 +286,48 @@ test('an instanceof ternary on a $this->prop narrows the reads through it', func
         ->toBe('{"title":"Banana","key":7,"either_key":7,"open_key":7}')
         ->and(json_encode(new MemberNarrowedResource($productImage)->resolve(Request::create('/'))))
         ->toBe('{"title":null,"key":null,"either_key":null,"open_key":"p-1"}');
+});
+
+// An `if` proves the chain it tests as a ternary does, in each block it runs and past a guard that always leaves.
+it('narrows a $this->prop path inside an if block, its else and past an early return', function (string $resource, array $types, array $sent) {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $user = new User;
+    $user->forceFill(['id' => 1, 'name' => 'Ada']);
+    $sends = function (Model $imageable) use ($resource): string {
+        $image = new Image;
+        $image->setRelation('imageable', $imageable);
+
+        return (string) json_encode(new $resource($image)->resolve(Request::create('/')));
+    };
+
+    expect(publishedResourceKeyTypes($resource, Image::class))->toBe($types)
+        ->and([$sends(blockItemsPost()), $sends($user)])->toBe($sent);
+})->with([
+    'a block that returns' => [ImageableBlockGuardResource::class, ['t' => 'string | null', 'id' => 'number | null', 'kind' => 'string'], [
+        '{"t":"Banana","id":7,"kind":"post"}',
+        '{"t":null,"id":null,"kind":"other"}',
+    ]],
+    'past a guard that returns' => [ImageableEarlyGuardResource::class, ['t' => 'string | null'], ['{"t":"Banana"}', '{"t":null}']],
+    'blocks that assign, an else, $this->resource and a ternary inside' => [ImageableBranchGuardsResource::class, [
+        'assigned' => 'string | null',
+        'branched' => 'string | null',
+        'proxied' => 'string | null',
+        'nested' => 'string | null',
+    ], [
+        '{"assigned":"Banana","branched":"Banana","proxied":"Banana","nested":"Banana"}',
+        '{"assigned":null,"branched":null,"proxied":null,"nested":null}',
+    ]],
+]);
+
+// The write replaces what the test saw, so no read in the block holds the tested class.
+it('narrows no read of a $this->prop path in an if block that replaces it', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+    $image->setRelation('reviewable', null);
+
+    expect(publishedResourceKeyTypes(ImageableRewriteGuardResource::class, Image::class))->toBe(['t' => 'unknown'])
+        ->and(json_encode(new ImageableRewriteGuardResource($image)->resolve(Request::create('/'))))->toBe('{"t":null}');
 });
 
 // A helper read in the arm reads the same object, so the proof holds in its body, unless that writes through `$this`.

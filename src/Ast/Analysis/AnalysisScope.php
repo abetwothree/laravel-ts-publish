@@ -1236,11 +1236,16 @@ final class AnalysisScope
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
         $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
-        $paths = $replacesProxy ? [] : array_filter(
-            $this->thisPathProofs(),
-            fn (string $key): bool => ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->')),
-            ARRAY_FILTER_USE_KEY,
-        );
+        $paths = [];
+
+        // An `if` proof holds at this body's offsets alone; a ternary arm's holds at every offset, a callee's too.
+        foreach ($replacesProxy ? [] : $this->thisPathProofs() as $key => $guards) {
+            $held = array_values(array_filter($guards, fn (array $guard): bool => $guard['after'] === PHP_INT_MIN && $guard['before'] === null));
+
+            if ($held !== [] && ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->'))) {
+                $paths[$key] = $held;
+            }
+        }
 
         $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);

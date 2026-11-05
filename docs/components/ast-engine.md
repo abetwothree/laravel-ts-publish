@@ -277,8 +277,9 @@ docblocks say what each binding table holds. These eight facts span other classe
   `$this->resource`, `PROXY_GUARDS`; for a chain of property reads on `$this`, `'$this->'` and its names. No variable
   spells the last two, so no parameter claim or `copyBindings()` reaches them. `enterMethod()` sets the proxy's aside
   with every name table, `provenProxy` carrying what holds. A chain's proofs (`thisPathProofs()`) reach a closure's
-  body and a subject method's, except a path the body writes whole or one through it; with `provenProxy`, none does
-  once the body replaces `$this->resource` (`CollectsInstanceofGuards::rewrittenThisPaths()`).
+  body, and those a ternary's arm binds at no offsets a subject method's, except a path the body writes whole or one
+  through it; with `provenProxy`, none does once the body replaces `$this->resource`
+  (`CollectsInstanceofGuards::rewrittenThisPaths()`).
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
@@ -465,18 +466,20 @@ and each restores its binding in a `finally`:
   where its test holds and every earlier one failed, and past the chain to the end of its block, where the tests of its
   leading branches that always leave failed. A branch leaves a whole body by a last `return`, `throw` or `exit()` no
   `break` or `continue` skips, and a nested block also by a last `break` or `continue`, whatever its level.
-  `instanceofProofs()` reads a test through `!`, an `&&` that holds, an `||` that fails, or an `||` chain on one
-  variable. An earlier `return` and a guard's own body read `$x` unnarrowed, and a proof inside another holds what both
-  prove (`InstanceofNarrowing::proven()`). On an API resource a test on `$this->resource` binds under
+  `instanceofProofs()` reads a test on a variable or a chain of property reads on `$this` through `!`, an `&&` that
+  holds, an `||` that fails, or an `||` chain on one subject. An earlier `return` and a guard's own body read `$x`
+  unnarrowed, and a proof inside another holds what both prove (`InstanceofNarrowing::proven()`). A chain's proof is
+  read as a ternary's is. On an API resource a test on `$this->resource` binds under
   `AnalysisScope::PROXY_GUARDS`, and `NarrowsInstanceofSubjects::resolveUnderProxyProof()` resolves a value inside one
   of its spans through `resolveNarrowed()`, as a ternary's proven arm, and a value nested in it reads that proof as
   applied.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varGuardBindings` past its test, or records `provenProxy` for `$this->resource`, setting
   `modelClass` too when one model is left, or binds a chain of property reads on `$this` under its key at every offset
-  while the arm resolves. `ReceiverClassResolver::fromPropertyFetch()` reads a chain under its proof as what it holds
-  with that proof set aside, narrowed by the tested classes. A test that rules out no class `$resource` is redeclared
-  as, and no `null` it admits, records nothing, and an arm that writes its subject is not narrowed.
+  while the arm resolves. `ReceiverClassResolver::fromPropertyFetch()` reads a chain under the latest proof in force as
+  what it holds with that proof set aside, narrowed by the proof's classes, so every proof around it applies too. A
+  test that rules out no class `$resource` is redeclared as, and no `null` it admits, records nothing, and an arm that
+  writes its subject is not narrowed.
 
 `AnalysisScope::guardAt()` gives the proof a read falls within, the one that starts latest. `fromVariable()` narrows
 whatever binds the variable by it, so a `morphTo` parameter's targets narrow and a collection keeps its element, and a
@@ -491,7 +494,10 @@ in some form ([By-reference calls](#by-reference-calls)); neither sees one on a 
 through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a
 value the member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation
 of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
-ends at each.
+ends at each. [`ThisPathWrites`] answers for a chain on `$this`: an assignment to it or to a chain it reads through,
+`unset()` or a by-reference argument of either, and a call on `$this` or on a chain it reads through end its proof,
+the conditional helpers `JsonResource` declares aside; on an API resource a chain the subject does not declare reads
+through `$this->resource`. Only a write through the chain itself keeps it, by `keepsProvenClass()`'s rule.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -985,6 +991,7 @@ These pages cover the engine's neighbors:
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
+[`ThisPathWrites`]: ../../src/Ast/Analysis/ThisPathWrites.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
 [body-fallback]: receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does

@@ -148,21 +148,54 @@ final class ModelFills
      */
     public static function keepsModelThrough(Node $node, string $name, array $models, AnalysisScope $scope): bool
     {
-        [$holder, $member] = self::writtenMember($node) ?? [null, '', false];
+        [$holder] = self::writtenMember($node) ?? [null];
         $relation = $holder instanceof PropertyFetch && $holder->var instanceof Variable && $holder->var->name === $name
             && $holder->name instanceof Identifier ? $holder->name->toString() : null;
-        $relations = resolve(ModelAttributeResolver::class);
-        $related = $relation === null ? [] : array_map(
-            fn (string $model): ?string => $relations->resolveRelation($model, $relation)['modelFqcn'],
-            $models,
-        );
-        $holds = match (true) {
-            $holder instanceof Variable && $holder->name === $name => $models,
-            $related !== [] && ! in_array(null, $related, true) => $related,
-            default => [],
+
+        return match (true) {
+            $holder instanceof Variable && $holder->name === $name => self::keepsModelsAt($node, $models, null, $scope),
+            $relation !== null => self::keepsModelsAt($node, $models, $relation, $scope),
+            default => false,
         };
+    }
+
+    /**
+     * Whether a write through a member or key of a value holding models stores a value its column holds, on those
+     * models or, through $relation of them, on the one model that relation holds for each.
+     *
+     * @param  list<class-string>  $models
+     */
+    public static function keepsModelsAt(Node $node, array $models, ?string $relation, AnalysisScope $scope): bool
+    {
+        $member = self::writtenMember($node)[1] ?? '';
+        $relations = resolve(ModelAttributeResolver::class);
+        $holds = [];
+
+        foreach ($models as $model) {
+            $held = $relation === null ? $model : $relations->resolveRelation($model, $relation)['modelFqcn'];
+
+            if ($held === null) {
+                return false;
+            }
+
+            $holds[] = $held;
+        }
 
         return self::storesWithinColumn($node, $member, $holds, $scope);
+    }
+
+    /**
+     * Whether a member is one no column or relation of any of some models types, each class being a model.
+     *
+     * @param  list<class-string>  $classes
+     */
+    public static function namesNoTypedMember(array $classes, string $member): bool
+    {
+        $attributes = resolve(ModelAttributeResolver::class);
+
+        return array_all($classes, fn (string $class): bool => is_a($class, Model::class, true)
+            && $attributes->resolveAttribute($class, $member)['type'] === 'unknown'
+            && $attributes->resolveRelation($class, $member)['type'] === 'unknown');
     }
 
     /**

@@ -496,14 +496,17 @@ Check which spelling you wrote before you assume a value is `unknown`:
   `BlockScopedBindingsResource` shows. A write to `$x` between the test and the end of what it narrows means no binding
   at all, even for reads before that write, unless it is an assignment through a member or key of `$x` that
   stores a constant its column holds, such as `$x->title = 'Draft'`, or names no column or relation, such as
-  `$x->seen = true`.
+  `$x->seen = true`. A chain of property reads on `$this`, such as `$this->imageable`, binds the same way, each
+  spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Besides a write to the
+  chain or one it reads through, `unset()` of it, passing it by reference, or a call on `$this`, such as
+  `$this->reload()` or `$this->getKey()`, or on a chain it reads through, such as `$this->resource->refresh()`, means
+  no binding; `JsonResource`'s own helpers, such as `whenLoaded()`, do not.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
   on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
   ([`TernaryHandler`](../src/Ast/Handlers/Operators/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
-  the one model a test on it leaves. An `if` binds no chain other than `$this->resource`: inside
-  `if ($this->imageable instanceof Post) { … }`, `$this->imageable` reads the whole `morphTo` union.
+  the one model a test on it leaves.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.

@@ -1247,7 +1247,7 @@ describe('narrowing', function () {
         'a positive test whose body reads nothing' => ['$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return null; }', []],
         'an && of negated tests' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post && ! $b instanceof \Workbench\App\Models\User) { return null; }', []],
         'every negated || operand' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post || ! $b instanceof \Workbench\App\Models\User) { return null; }', ['a' => [Post::class], 'b' => [User::class]]],
-        'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', []],
+        'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', ['$this->author' => [User::class]]],
     ]);
 
     test('a chain whose leading branch always leaves binds past the chain, and a positive test only inside its block', function () {
@@ -1326,6 +1326,47 @@ describe('narrowing', function () {
             ]],
         ],
     ]);
+
+    // A write that may replace the chain, or what it reads through, ends its proof; one through it keeps the class.
+    test('binds a test on a $this chain unless something between the test and its read may change the chain', function (string $body, array $bindings) {
+        expect(blockNarrowingBindings('if ($this->author instanceof \Workbench\App\Models\User) { '.$body.' $x = 1; }'))->toBe($bindings);
+    })->with([
+        'nothing' => ['', ['$this->author' => [[[User::class], '$x = 1;']]]],
+        'an assignment to the chain' => ['$this->author = null;', []],
+        'an assignment to a chain it reads through' => ['$this->resource = null;', []],
+        'an assignment through the proxy to the member it forwards' => ['$this->resource->author = null;', []],
+        'an assignment to another chain' => ['$this->marker = 1;', ['$this->author' => [[[User::class], '$this->marker = 1; $x = 1;']]]],
+        'a member no column or relation types' => ['$this->author->seen = true;', ['$this->author' => [[[User::class], '$this->author->seen = true; $x = 1;']]]],
+        'a value its column holds' => ['$this->author->name = \'Ann\';', ['$this->author' => [[[User::class], '$this->author->name = \'Ann\'; $x = 1;']]]],
+        'a value its column does not hold' => ['$this->author->name = 5;', []],
+        'unset() of the chain' => ['unset($this->author);', []],
+        'unset() of a member no column or relation types' => ['unset($this->author->seen);', ['$this->author' => [[[User::class], 'unset($this->author->seen); $x = 1;']]]],
+        'unset() of a typed member' => ['unset($this->author->name);', []],
+        'the chain passed by reference' => ['settype($this->author, \'array\');', []],
+        'the chain passed by value' => ['is_object($this->author);', ['$this->author' => [[[User::class], 'is_object($this->author); $x = 1;']]]],
+        'a key no column or relation types' => ['$this->author[\'seen\'] = true;', ['$this->author' => [[[User::class], '$this->author[\'seen\'] = true; $x = 1;']]]],
+        'a related model\'s member, a value its column holds' => ['$this->author->profile->timezone = \'UTC\';', ['$this->author' => [[[User::class], '$this->author->profile->timezone = \'UTC\'; $x = 1;']]]],
+        'a related model\'s member, a value its column does not hold' => ['$this->author->profile->timezone = 5;', []],
+        'a chain named at runtime' => ['$this->{$name} = 1;', []],
+        'unset() of a key no column or relation types' => ['unset($this->author[\'seen\']);', ['$this->author' => [[[User::class], 'unset($this->author[\'seen\']); $x = 1;']]]],
+        'a method the subject declares' => ['$this->toArray($request);', []],
+        'a method the subject declares, called through static' => ['static::toArray($request);', []],
+        'a method JsonResource declares, called through parent' => ['parent::toArray($request);', ['$this->author' => [[[User::class], 'parent::toArray($request); $x = 1;']]]],
+        'a method JsonResource forwards to the model' => ['$this->refresh();', []],
+        'a call on what the chain reads through' => ['$this->resource->refresh();', []],
+        'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
+        'a call on the proven value itself' => ['$this->author->refresh();', ['$this->author' => [[[User::class], '$this->author->refresh(); $x = 1;']]]],
+    ]);
+
+    test('binds a test on a nested $this chain until a write to a chain it reads through', function () {
+        $test = 'if ($this->author->team instanceof \Workbench\App\Models\Team) { ';
+
+        expect(blockNarrowingBindings($test.'$x = 1; }'))->toBe(['$this->author->team' => [[[Team::class], '$x = 1;']]])
+            ->and(blockNarrowingBindings($test.'$this->author = null; $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'$this->author->name = \'Ann\'; $x = 1; }'))
+            ->toBe(['$this->author->team' => [[[Team::class], '$this->author->name = \'Ann\'; $x = 1;']]])
+            ->and(blockNarrowingBindings($test.'$this->author->team = null; $x = 1; }'))->toBe([]);
+    });
 
     test('proves a foreach value variable non-null in the block its test runs, unless the loop is by reference', function () {
         $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
