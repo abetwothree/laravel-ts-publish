@@ -600,12 +600,11 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'by_value_use_bare?' => 'User',
         'by_reference_use_write?' => 'unknown',
         'exiting_branch?' => 'string | null',
-        'falling_branch?' => 'unknown',
-        // Each branch a continue, a break or a caught throw leaves ends the binding, so the read past it is unknown and
-        // the closure's union leaves it out (known gap); it no longer reads the User's `name`.
-        'continued_branch?' => 'number',
-        'broken_branch?' => 'number',
-        'caught_branch?' => 'number',
+        // Past the write the read joins the User and the Profile, which has no `name`, so Laravel sends null for it.
+        'falling_branch?' => 'string | null',
+        'continued_branch?' => 'number | string | null',
+        'broken_branch?' => 'number | string | null',
+        'caught_branch?' => 'string | number | null',
         'nested_falling_branch?' => 'string | number | null',
         'concat_value?' => 'string',
         'branch_value?' => 'string',

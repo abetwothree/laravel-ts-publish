@@ -68,7 +68,6 @@ use ReflectionMethod;
  *      after: int,
  *      before: int|null,
  *      expr: Expr,
- *      nested?: true,
  *      relative?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
@@ -875,17 +874,14 @@ final class AnalysisScope
     }
 
     /**
-     * The inline `@var` on a write nested in a block that assigned a value, which still types that value where a join
-     * carries it past the block, or null.
+     * The inline `@var` on the write that assigned a value, which still types that value where a join carries it past
+     * the span the tag holds for, or null.
      *
      * @return VarDocBinding|null
      */
     public function declaredWrite(string $name, Expr $value): ?array
     {
-        return array_find(
-            $this->varDocBindings[$name] ?? [],
-            fn (array $binding): bool => isset($binding['nested']) && $binding['expr'] === $value,
-        );
+        return array_find($this->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $value);
     }
 
     /**

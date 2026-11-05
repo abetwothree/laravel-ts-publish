@@ -40,6 +40,9 @@ final class ReceiverMemberReader
      * The value `<receiver>->name` sends, unioned over every class the receiver holds; null when any class cannot type
      * it. The caller adds the `| null` of a `?->` or of the receiver's short circuit.
      *
+     * On a variable's join, a model lacking the member reads it as null, as Model::__get() does, where another class
+     * types it.
+     *
      * @param  bool  $relations  a model's relation answers a name no attribute does, as for `->name`, not for
      *                           getAttributeValue()
      * @return ValueExpressionResult|null
@@ -47,6 +50,7 @@ final class ReceiverMemberReader
     public static function value(ReceiverType $held, string $name, AnalysisScope $scope, bool $relations = true): ?array
     {
         $results = [];
+        $readsNull = false;
 
         foreach ($held->classes as $heldClass) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
@@ -62,6 +66,12 @@ final class ReceiverMemberReader
                     ?? self::propertyValue($class, $name, $held->declaredOnly),
             };
 
+            if ($result === null && $held->joined && is_a($class, Model::class, true) && self::lacks($class, $name)) {
+                $readsNull = true;
+
+                continue;
+            }
+
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
                 return null;
@@ -70,9 +80,13 @@ final class ReceiverMemberReader
             $results[] = $result;
         }
 
-        return count($results) === 1
-            ? $results[0]
-            : ValueResult::unionResults($results);
+        if ($results === []) {
+            return null;
+        }
+
+        $union = count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
+
+        return $readsNull ? [...$union, 'type' => TsTypeString::withNullArm($union['type'])] : $union;
     }
 
     /**
@@ -313,6 +327,20 @@ final class ReceiverMemberReader
         return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+$/', TsTypeString::withoutNullArm($type['type'])) === 1
             ? ReceiverType::of($held[0])
             : null;
+    }
+
+    /**
+     * Whether a model has nothing Model::__get() reads under a name, so the read is null: no attribute or `@property`
+     * it lists, and no method or property of the name, a relation's included.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private static function lacks(string $model, string $name): bool
+    {
+        return self::listedAttributeName($model, $name) === null
+            && ! method_exists($model, $name)
+            && ! property_exists($model, $name)
+            && resolve(ModelAttributeResolver::class)->resolveAttribute($model, $name)['type'] === 'unknown';
     }
 
     /**

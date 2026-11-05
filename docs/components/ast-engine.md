@@ -559,9 +559,9 @@ it, and an untyped member stays `unknown`.
 
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
-same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), a bound
-name's only where a statement of its block follows the write. A block may not run and a loop runs it again, so a read
-before the write or past the block stays unbound, as does a name a reference can write through (`=&`, `use (&$x)`,
+same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), as a
+top-level `@var` types its write's value in a join past its span. A block may not run and a loop runs it again, so a
+read before the write or past the block stays unbound, as does a name a reference can write through (`=&`, `use (&$x)`,
 `foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on every path, the join below binds it. A
 name a parameter or a seeded binding holds takes its gaps from the join below instead. A body drops the outer gaps of
 each name it writes that holds no binding, so a closure's own `$x` never reads its enclosing block's, while a bound name
@@ -575,7 +575,8 @@ span a binding gap: past a top-level `$x = …;` a read takes that value, past a
 `if` whose every branch, `else` included, ends with its own `$x = …;` or such an `if`, or always leaves the function, a
 read takes only those branches' values, a local written once there included (`branchValues()`); a value that may be a
 callable (`HeldCallables::mayHold()`, a variable it cannot follow counted) leaves it unbound, since a returned Closure
-object reads apart. A member read leaves out a joined `null`, as it does a ternary's `null` arm. A write in a block that
+object reads apart. A member read leaves out a joined `null`, as it does a ternary's `null` arm, and a write naming no
+class beside a value that names one, with a warning (`ReceiverClassResolver::fromGap()`). A write in a block that
 always exits reaches no read past it. Any other write leaves the name unbound until its next top-level `$x = …;`, and a
 name a reference can write through is never joined. A parameter takes the same walk from its own binding, for values
 only, and walks each block a statement holds too, so a read there past the block's own `$x = …;` takes that value: an
@@ -870,9 +871,10 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 `KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler`,
 `ConditionalMethodHandler::applyConditionalDefault()`, `MatchHandler`'s arms, `VariableHandler`'s join of a parameter
 past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
-where an earlier value still reaches the read), the walk's branch join (`walk-branch-join`, naming the last key write or
-array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a
-spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
+where an earlier value still reaches the read), `ReceiverClassResolver::fromGap()`'s join of a receiver (`binding-join`
+too: a write naming no class beside a value that names one), the walk's branch join (`walk-branch-join`, naming the last
+key write or array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's
+sides or a spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
 it drops. `CoalesceHandler` strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never
 returns that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
@@ -895,9 +897,9 @@ answer.
 Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Where a drop leaves the union only `null`
 and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
 when nothing was dropped. The three join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
-the read, so beside a typed arm it warns that the published type may not admit every value the read sends. It covers
-only a value a join leaves out: past a write naming no class, a member read keeps the old class (`receiversKeep`) and
-warns of nothing.
+the read, so beside a typed arm it warns that the published type may not admit every value the read sends. A receiver's
+join, which publishes no type of its own, warns through `warnOfLeftOut()` alone; past a write naming no class where
+`receiversKeep` holds, a member read keeps the old class and warns of nothing.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
 `provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the

@@ -148,6 +148,19 @@ final class DroppedUnionArms
             return self::warnOfPlaceholder($union, $dropped, $scope);
         }
 
+        self::warnOfLeftOut($dropped, $scope);
+
+        return $union;
+    }
+
+    /**
+     * Warn in the run output, once per arm a join left out beside typed ones, that the published type may not admit
+     * every value the read sends; a receiver's join, which publishes no type of its own, warns through this alone.
+     *
+     * @param  list<Expr>  $dropped  the arms the join left out
+     */
+    public static function warnOfLeftOut(array $dropped, AnalysisScope $scope): void
+    {
         foreach ($dropped as $arm) {
             self::warn($scope->subjectReflection->getName(), sprintf(
                 'The value on line %d leaves out `%s`, which could not be typed, so its published type may not admit '
@@ -156,8 +169,6 @@ final class DroppedUnionArms
                 new Standard()->prettyPrintExpr($arm),
             ));
         }
-
-        return $union;
     }
 
     /**

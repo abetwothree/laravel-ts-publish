@@ -532,7 +532,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A value a gap's write assigned, as the inline `@var` on it declares where it is nested in a block.
+     * A value a gap's write assigned, as the inline `@var` on that write declares where it has one.
      *
      * @return ValueExpressionResult|null
      */

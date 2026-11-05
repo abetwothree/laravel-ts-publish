@@ -48,6 +48,8 @@ final readonly class ReceiverType
      *                               yields, or a callback parameter it binds, is guarded; the list's own steps are not
      * @param  bool  $stringKeyed  a method's declared list names its keys a bare `string`, so its `all()` is the record
      *                             the declaration reads, trusted as any declared type
+     * @param  bool  $joined  a variable's join of the values its writes and its old binding leave, each class one of
+     *                        them, so a model lacking a member another class has reads it as null
      */
     public function __construct(
         public array $classes,
@@ -66,6 +68,7 @@ final readonly class ReceiverType
         public bool $guarded = false,
         public bool $guardsElement = false,
         public bool $stringKeyed = false,
+        public bool $joined = false,
     ) {}
 
     /**
@@ -344,6 +347,14 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver marked as a variable's join of what its writes and old binding leave.
+     */
+    public function asJoined(): self
+    {
+        return $this->copy(joined: true);
+    }
+
+    /**
      * Whether an item the receiver's element yields, or a callback's parameter it binds, is guarded.
      */
     public function guardsItems(): bool
@@ -432,6 +443,7 @@ final readonly class ReceiverType
         ?bool $guardsElement = null,
         bool $dropsElement = false,
         ?bool $stringKeyed = null,
+        ?bool $joined = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -450,6 +462,7 @@ final readonly class ReceiverType
             guarded: $guarded ?? $this->guarded,
             guardsElement: $guardsElement ?? $this->guardsElement,
             stringKeyed: $stringKeyed ?? $this->stringKeyed,
+            joined: $joined ?? $this->joined,
         );
     }
 }

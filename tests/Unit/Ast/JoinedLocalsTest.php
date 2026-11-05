@@ -3,12 +3,16 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedTopLevelVarResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -31,7 +35,7 @@ function joinedPost(bool $pinned): Post
 /**
  * What Laravel sends for a joined fixture over the post, pinned or not.
  *
- * @param  class-string<JoinedLocalsResource|JoinedParametersResource>  $resource
+ * @param  class-string<JsonResource>  $resource
  * @return array<string, mixed>
  */
 function joinedSends(string $resource, bool $pinned): array
@@ -217,6 +221,49 @@ test('a parameter keeps its old value past a nested write the engine cannot type
         ->toMatchArray(['kept_upper' => 'BANANA', 'kept_filtered' => ['a' => 'x'], 'kept_author' => []])
         ->and(joinedSends(JoinedParametersResource::class, false))
         ->toMatchArray(['kept_upper' => 'Banana', 'kept_filtered' => ['a' => 'x', 'b' => ''], 'kept_author' => ['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']]);
+});
+
+// The tag's write is the block's last statement, so past the block the old value or the tag's may reach the read.
+test('a parameter\'s @var on its block\'s last statement joins the old value', function () {
+    expect(publishedResourceKeyTypes(JoinedLastStatementVarResource::class, Post::class))
+        ->toMatchArray(['param_last?' => 'string | number', 'param_not_last?' => 'string | number'])
+        ->and(joinedSends(JoinedLastStatementVarResource::class, true))->toMatchArray(['param_last' => 5, 'param_not_last' => 5])
+        ->and(joinedSends(JoinedLastStatementVarResource::class, false))
+        ->toMatchArray(['param_last' => 'Banana', 'param_not_last' => 'Banana']);
+});
+
+// A model without the attribute reads it as null, so each model of the join answers: the user has no `content` and the
+// comment no `name`.
+test('a member read past a parameter\'s last-statement @var reads each class', function () {
+    expect(publishedResourceKeyTypes(JoinedLastStatementVarResource::class, Post::class))->toMatchArray([
+        'param_last_class?' => 'string | null',
+        'name_last?' => 'string | null',
+        'name_last_untyped?' => 'string | null',
+    ])
+        ->and(joinedSends(JoinedLastStatementVarResource::class, true))
+        ->toMatchArray(['param_last_class' => 'hi', 'name_last' => null, 'name_last_untyped' => null])
+        ->and(joinedSends(JoinedLastStatementVarResource::class, false))
+        ->toMatchArray(['param_last_class' => null, 'name_last' => 'Ann', 'name_last_untyped' => 'Ann']);
+});
+
+// The later write's value no rule types is left out beside the tag's, with a warning naming it.
+test('a top-level @var joins a later nested write', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedTopLevelVarResource::class, Post::class))->toBe([
+        'top_var_nested_write' => 'string',
+        'top_var_nested_number' => 'number | string',
+        'top_var_nested_typed' => 'string',
+    ])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => JoinedTopLevelVarResource::class,
+            'message' => 'The value on line 29 leaves out `$this->opaque($this->comments->last())`, which could not be typed, '
+                .'so its published type may not admit every value it sends. Give what it reads a return type or a `@return` docblock.',
+        ]])
+        ->and(joinedSends(JoinedTopLevelVarResource::class, true))
+        ->toBe(['top_var_nested_write' => 'hi', 'top_var_nested_number' => 'x', 'top_var_nested_typed' => 'hi'])
+        ->and(joinedSends(JoinedTopLevelVarResource::class, false))
+        ->toBe(['top_var_nested_write' => 'hi', 'top_var_nested_number' => 1, 'top_var_nested_typed' => 'hi']);
 });
 
 test('a nested @var types the value a join carries past its block', function () {

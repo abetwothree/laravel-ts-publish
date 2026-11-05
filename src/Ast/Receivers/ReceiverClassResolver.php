@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
@@ -879,7 +880,10 @@ final class ReceiverClassResolver
     /**
      * Resolve a variable inside a gap through the values its writes assigned, a `null` aside, joined with the binding
      * the name came in with where that may still hold, or where the gap keeps it for a write naming no class; null when
-     * one names none. The values join as merge() joins a union's parts.
+     * the old binding names none, or no value does. The values join as merge() joins a union's parts.
+     *
+     * A write naming no class beside a value that names one is left out with a warning, as a value's join leaves out an
+     * arm it cannot type.
      *
      * @param  BindingGap  $gap
      */
@@ -896,28 +900,32 @@ final class ReceiverClassResolver
             $values,
         ));
         $keepsOld = $gap[3] || ($gap[4] && in_array(null, $written, true));
-        $written = $gap[4] ? array_values(array_filter($written)) : $written;
         $old = $keepsOld && isset($scope->varClassBindings[$name])
             ? new ReceiverType($scope->varClassBindings[$name])
             : ($keepsOld ? $this->fromBindings($name, $scope, $read) : null);
-        $receivers = $keepsOld ? [$old, ...$written] : $written;
+        $receivers = [...($keepsOld ? [$old] : []), ...array_values(array_filter($written))];
 
-        if ($gap[2] === null || $receivers === [] || in_array(null, $receivers, true)) {
+        if ($gap[2] === null || ($keepsOld && $old === null) || $receivers === []) {
             return null;
         }
 
-        if (count($receivers) === 1) {
-            return $receivers[0];
+        $dropped = $gap[4] ? [] : array_values(array_filter(
+            $values,
+            fn (int $index): bool => $written[$index] === null,
+            ARRAY_FILTER_USE_KEY,
+        ));
+
+        foreach ($dropped as $value) {
+            DroppedUnionArms::record($value, $scope, 'binding-join');
         }
 
-        $joined = $this->merge($receivers, false);
+        DroppedUnionArms::warnOfLeftOut($dropped, $scope);
 
-        // The join keeps only its classes and these two marks of what merge() agrees.
-        return $joined === null ? null : new ReceiverType($joined->classes, declaredOnly: $joined->declaredOnly, guarded: $joined->guarded);
+        return count($receivers) === 1 ? $receivers[0] : $this->merge($receivers, false)?->asJoined();
     }
 
     /**
-     * Resolve a value a gap's write assigned, as the inline `@var` on it declares where it is nested in a block.
+     * Resolve a value a gap's write assigned, as the inline `@var` on that write declares where it has one.
      */
     private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
     {

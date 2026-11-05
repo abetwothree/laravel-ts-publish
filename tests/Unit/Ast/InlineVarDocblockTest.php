@@ -164,9 +164,10 @@ describe('an inline @var on a local assignment', function () {
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; $x = null; $x->b;',
             [[CartTotals::class], null],
         ],
+        // Past the loop the tag still types its write's value, and a member read of the loop's `null` throws.
         'a later write inside a loop, which ends the span where the loop starts' => [
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; foreach ([1] as $i) { $x->b; $x = null; } $x->c;',
-            [[CartTotals::class], null, null],
+            [[CartTotals::class], null, [CartTotals::class]],
         ],
         'a by-reference closure use after it' => [
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; $f = function () use (&$x) {}; $x->b;',
