@@ -21,12 +21,15 @@ class RandomPickPostResource extends JsonResource
     public function toArray(Request $request): array
     {
         $labels = new RandomLabels(['a', 'b']);
+        $arguments = [null];
 
         return [
             'comment' => $this->resource->comments->random(),
             'comments' => $this->resource->comments->random(2),
             'base_comment' => $this->resource->comments->toBase()->random(),
             'built_comment' => PageItemResource::make($this->resource)->comments->random(),
+            'unpacked' => $this->resource->comments->random(...$arguments),
+            'built_unpacked' => PageItemResource::make($this->resource)->comments->random(...$arguments),
             'label' => RandomLabelsResource::make($labels)->pick(),
             'labels' => RandomLabelsResource::make($labels)->labels,
         ];

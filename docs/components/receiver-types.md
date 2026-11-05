@@ -373,13 +373,17 @@ One more rule reads no model, and runs before the eleven on a resource collectio
 
 Two more read the call's own arguments:
 
-- **`random()`**: on a collection whose item is known, a resource collection's element or a published `elementModel`,
-  that runs `Collection`'s or `LazyCollection`'s own: the item for no `$number` or a `null` one, since an empty
-  collection throws; a list for an integer literal or a callable; both where the argument may be null. A list picked
-  with `$preserveKeys` adds the object arm. Any other receiver keeps the docblock reading.
-- **A conditional `@return`** on a resource collection's items or on what an API resource forwards a call to: one the
-  docblock reader keeps only the first token of (`LaravelTsPublish::extractReturnTypeFromDocblock()`) declines unless a
-  rule proves the arm, so `$this->collection->pop()` publishes `unknown`, never a word of its condition.
+- **`random()`**: on a collection whose item is known, a resource collection's element or an `elementModel` the run
+  publishes by the check a relation names its model by (`PublishedModelRegistry::isPublished()`), that runs
+  `Collection`'s or `LazyCollection`'s own: the item for no `$number` or a `null` one, since an empty collection
+  throws; a list for an integer literal or a callable; both where the argument may be null. A list picked with
+  `$preserveKeys` adds the object arm, and an unpacked call keeps every arm. Any other receiver keeps the docblock
+  reading.
+- **A conditional `@return`** on a resource collection's items or on what an API resource forwards a call to: where
+  the docblock reader keeps only the first token of one naming more than strings
+  (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that token's type is withdrawn, so
+  `$this->collection->random()` with no element publishes `unknown`, never a word of its condition. A rule's answer, a
+  body's and a bracketed type that is no conditional, such as `(int|string)[]`, stand.
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,

@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -221,7 +222,7 @@ final class ReceiverMethodReturnResolver
      * union the answers; null when any class declines, or none can run it.
      *
      * @param  bool  $armsOnly  a resource collection's items, or what an API resource forwards a call to: there a
-     *                          conditional `@return` publishes only the arm a rule proves, never a guess at one
+     *                          conditional `@return` publishes a rule's or the body's answer, never a guess at an arm
      * @return ValueExpressionResult|null
      */
     private function resolveEach(
@@ -250,16 +251,17 @@ final class ReceiverMethodReturnResolver
 
             $owner = $receiver->memberOwner($class, $methodName, true);
             $held = ProxyDeclaration::forwarded($owner, $methodName, true);
+            $read = fn (): ?array => $this->resolveOn(
+                $scope->calleeRuntime(new ReflectionClass($owner), $receiver->runtimeInstance && $owner === $class),
+                $methodName,
+                $fromInside,
+                $site,
+                $receiver->declaredOnly,
+            );
             $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? match (true) {
                 $held !== null => $this->resolveEach($held, $methodName, $scope, false, $call, $site, true),
-                $armsOnly && $this->guessesConditionalArm($owner, $methodName) => null,
-                default => $this->resolveOn(
-                    $scope->calleeRuntime(new ReflectionClass($owner), $receiver->runtimeInstance && $owner === $class),
-                    $methodName,
-                    $fromInside,
-                    $site,
-                    $receiver->declaredOnly,
-                ),
+                $armsOnly => $this->withoutConditionalGuess($owner, $methodName, $read()),
+                default => $read(),
             };
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -758,7 +760,7 @@ final class ReceiverMethodReturnResolver
     /**
      * What a collection's own `random()` hands back where its item is known: the item for no `$number` or a `null` one,
      * since an empty collection throws, a list for a count or a callable, and either where the argument may be null.
-     * A list of items picked with `$preserveKeys` keeps their keys, which may leave 0..n-1.
+     * A list of items picked with `$preserveKeys`, or by an unpacked call, may keep keys that leave 0..n-1.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
@@ -779,17 +781,15 @@ final class ReceiverMethodReturnResolver
         }
 
         $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, 'random'));
-
-        if ($arguments->hasUnpack()) {
-            return null;
-        }
-
+        $unpacked = $arguments->hasUnpack();
         $number = $arguments->named('number')?->value;
         $kept = $arguments->named('preserveKeys')?->value;
         $list = ValueResult::arrayWrapType($item['type']);
-        $list = $kept === null || $this->isLiteral($kept, 'false') ? $list : ArrayArms::keyedList($list);
+        $list = ! $unpacked && ($kept === null || $this->isLiteral($kept, 'false')) ? $list : ArrayArms::keyedList($list);
 
+        // An unpacked call may pass any argument, so every arm stays.
         $type = match (true) {
+            $unpacked => $item['type'].' | '.$list,
             $number === null || $this->isLiteral($number, 'null') => $item['type'],
             $number instanceof Int_ || $number instanceof ClosureExpr || $number instanceof ArrowFunction => $list,
             default => $item['type'].' | '.$list,
@@ -800,7 +800,7 @@ final class ReceiverMethodReturnResolver
 
     /**
      * One item of a collection whose items are known, as its value: a resource collection's collected element, else
-     * the published model a collection lists; null otherwise.
+     * the model a collection lists, where this run publishes it; null otherwise.
      *
      * @return ValueExpressionResult|null
      */
@@ -810,13 +810,12 @@ final class ReceiverMethodReturnResolver
             return $receiver->collectedElement === null ? null : ResourceCollections::elementValue($receiver->collectedElement);
         }
 
-        if ($receiver->elementModel === null) {
+        // A relation names its related model by this check, so its items are named as its own read names them.
+        if ($receiver->elementModel === null || ! PublishedModelRegistry::isPublished($receiver->elementModel)) {
             return null;
         }
 
-        $model = [...ValueResult::unknown(), 'type' => class_basename($receiver->elementModel), 'modelFqcn' => $receiver->elementModel];
-
-        return ValueResult::namesOnlyPublishedModels($model) ? $model : null;
+        return [...ValueResult::unknown(), 'type' => class_basename($receiver->elementModel), 'modelFqcn' => $receiver->elementModel];
     }
 
     /**
@@ -828,20 +827,33 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a method's `@return` is a conditional with an arm other than a string, of which the docblock reader keeps
-     * only the first token: what that reading publishes is a guess at one arm, or a word of the condition.
+     * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token of a
+     * conditional naming more than strings, which may spell a type, as `($number is null ? …)` does. A body's stands.
      *
      * @param  class-string  $class
+     * @param  ValueExpressionResult|null  $result
+     * @return ValueExpressionResult|null
      */
-    private function guessesConditionalArm(string $class, string $methodName): bool
+    private function withoutConditionalGuess(string $class, string $methodName, ?array $result): ?array
     {
-        if (! method_exists($class, $methodName)) {
-            return false;
+        if ($result === null || ! method_exists($class, $methodName)) {
+            return $result;
         }
 
-        $read = LaravelTsPublish::extractReturnTypeFromDocblock((string) new ReflectionMethod($class, $methodName)->getDocComment());
+        $method = new ReflectionMethod($class, $methodName);
+        $docComment = (string) $method->getDocComment();
+        $declared = resolve(PropertyDocblockTypeReader::class)->extractReturnType($docComment);
 
-        return $read !== null && str_starts_with($read, '(');
+        if ($declared === null
+            || preg_match('/^\(\s*\S+\s+is\s/', $declared) !== 1
+            || LaravelTsPublish::extractReturnTypeFromDocblock($docComment) === 'string'
+        ) {
+            return $result;
+        }
+
+        $guess = resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::docblockReturnTypes($method));
+
+        return $guess !== null && $guess['type'] === $result['type'] ? null : $result;
     }
 
     /**

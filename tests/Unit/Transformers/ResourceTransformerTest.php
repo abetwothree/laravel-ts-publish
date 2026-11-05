@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BracketedReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
@@ -92,6 +93,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostExtendsResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostIntersectionExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVarHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RandomNotificationUserResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RandomPickPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
@@ -124,6 +126,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpecialPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BracketedBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FlaggedStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
@@ -164,6 +167,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
@@ -4569,6 +4573,8 @@ it('types random() as the item or a list of them by its argument, and declines a
         'comments' => 'Comment[]',
         'base_comment' => 'Comment',
         'built_comment' => 'Comment',
+        'unpacked' => 'Comment | Comment[] | Record<string, Comment>',
+        'built_unpacked' => 'Comment | Comment[] | Record<string, Comment>',
         'label' => 'unknown',
         'labels' => 'string[]',
     ])
@@ -4576,6 +4582,43 @@ it('types random() as the item or a list of them by its argument, and declines a
         ->and(array_column($sent['comments'], 'id'))->toEqualCanonicalizing([3, 4])
         ->and($sent['base_comment']['id'])->toBeIn([3, 4])
         ->and($sent['built_comment']['id'])->toBeIn([3, 4])
+        ->and($sent['unpacked']['id'])->toBeIn([3, 4])
+        ->and($sent['built_unpacked']['id'])->toBeIn([3, 4])
         ->and($sent['label'])->toBe('a')
         ->and($sent['labels'])->toBe(['a', 'b']);
+});
+
+// random() names the item the relation's own read names, a framework model included.
+it('types random() on a collection of framework models as the model the relation names', function () {
+    $user = (new User)->forceFill(['id' => 1, 'name' => 'U'])->setRelation('notifications', new EloquentCollection([
+        (new DatabaseNotification)->forceFill(['id' => 'n1', 'type' => 'T', 'data' => ['a' => 1]]),
+        (new DatabaseNotification)->forceFill(['id' => 'n2', 'type' => 'T', 'data' => ['a' => 2]]),
+    ]));
+    $sent = json_decode((string) json_encode(RandomNotificationUserResource::make($user)->resolve()), true);
+
+    expect(resourceProps(RandomNotificationUserResource::class))->toBe([
+        'direct' => 'DatabaseNotification',
+        'built' => 'DatabaseNotification',
+        'built_two' => 'DatabaseNotification[]',
+        'built_list' => 'DatabaseNotification[]',
+    ])
+        ->and($sent['direct']['id'])->toBeIn(['n1', 'n2'])
+        ->and($sent['built']['id'])->toBeIn(['n1', 'n2'])
+        ->and(array_column($sent['built_two'], 'id'))->toEqualCanonicalizing(['n1', 'n2'])
+        ->and(array_column($sent['built_list'], 'id'))->toBe(['n1', 'n2']);
+});
+
+// R32: only a conditional's first-token guess is withdrawn; a bracketed type, and a type the body proves, stand.
+it('reads a bracketed @return through a forward as declared, and a conditional one as its body proves it', function () {
+    $sent = json_decode((string) json_encode(BracketedReadsResource::make(new BracketedBag([1, 'a']))->resolve()), true);
+
+    expect(resourceProps(BracketedReadsResource::class))->toBe([
+        'ids' => '(number | string)[]',
+        'one' => 'number | string | null',
+        'maker' => 'null',
+        'proven' => 'number | string',
+        'opaque' => 'unknown',
+        'answer' => 'string',
+    ])
+        ->and($sent)->toBe(['ids' => [1, 'a'], 'one' => 1, 'maker' => null, 'proven' => 1, 'opaque' => 1, 'answer' => 'yes']);
 });
