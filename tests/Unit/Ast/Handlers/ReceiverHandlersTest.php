@@ -65,7 +65,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RelationValueOverridePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TranslatedTitlePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamesakeStatusCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
@@ -2518,6 +2520,21 @@ describe('getAttribute() and getAttributeValue() of a literal key', function () 
         ['$this->getAttribute(\'title\')', 'unknown'],
         ['$this->resource->getAttributeValue(\'title\')', 'string'],
     ]);
+
+    test('keep today\'s reading where getAttribute() would run an override of getAttributeValue() or getRelationValue()', function (string $model, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'getAttributeValue() overridden' => [TranslatedTitlePost::class, '$this->resource->getAttribute(\'title\')', 'unknown'],
+        'getAttributeValue() overridden, through the proxy' => [TranslatedTitlePost::class, '$this->getAttribute(\'title\')', 'unknown'],
+        'getRelationValue() overridden, a relation' => [RelationValueOverridePost::class, '$this->resource->getAttribute(\'author\')', 'unknown'],
+        'getRelationValue() overridden, a column' => [RelationValueOverridePost::class, '$this->resource->getAttribute(\'title\')', 'string'],
+    ]);
+
+    test('Laravel\'s own getAttribute() reads through an overridden getAttributeValue()', function () {
+        expect((new TranslatedTitlePost)->forceFill(['title' => 'x'])->getAttribute('title'))->toBe(['en' => 'x']);
+    });
 
     test('read through a nullsafe call as the property read or null', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);

@@ -242,17 +242,17 @@ or on a model-less subject's own typed property. Through `$this->resource` it re
 final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as `$this->resource::m()` does,
 and the bare `$this->m()`, `$this::m()`, `static::m()` and `self::m()` do when no macro has the name: only a public
 method, with the receiver rules' answer for a model method a model rule types (`typesModelMethod()`, every rule
-`modelRule()` holds), such as `getKey()`, `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and
-leaves those methods, and a filter on a held model, to the receiver rules, as it leaves a resource collection's items.
-Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so
-`$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
+`modelRule()` holds), such as `getKey()`, `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a
+subject's own property it reads `forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver
+rules, as it leaves a resource collection's items. Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s,
+inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
 `ReceiverMethodReturnResolver` checks eleven convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares ten loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()`,
-`getAuthIdentifier()` and `getAttribute()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
+Laravel declares ten loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()`, `getAuthIdentifier()`
+and `getAttribute()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
 `Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`,
 `Collection::all()` declares `array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the
 template `TValue|null`. Each rule answers only on the receiver it names:
@@ -303,10 +303,12 @@ template `TValue|null`. Each rule answers only on the receiver it names:
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
 - **`getAttribute()`, `getAttributeValue()`**: on a concrete model that runs `HasAttributes`' own, called with one
   literal string key, what `->key` reads ([`ReceiverMemberReader::value()`][`ReceiverMemberReader`]), since
-  `Model::__get()` is `getAttribute()`. `getAttributeValue()` never loads a relation, so a relation's name stays
-  `unknown`, though Laravel sends `null`. Any other key, an unpacked argument, an override and `getRawOriginal()` or
-  `getOriginal()` keep their reflected `mixed`. In a model's own body the receiver is `$this`
-  (`ReceiverMethodCallHandler::filteredModelSubject()`).
+  `Model::__get()` is `getAttribute()`. Laravel's `getAttribute()` reads through `getAttributeValue()`, and a relation
+  through `getRelationValue()`, so an override of the first, as a translatable-attributes trait makes, declines both
+  calls, and one of the second declines a relation's name. `getAttributeValue()` never loads a relation, so a
+  relation's name stays `unknown`, though Laravel sends `null`. Any other key, an unpacked argument, an override of the
+  method itself and `getRawOriginal()` or `getOriginal()` keep their reflected `mixed`. In a model's own body the
+  receiver is `$this` (`ReceiverMethodCallHandler::filteredModelSubject()`).
 - **`only()`, `except()`**: a class that runs `Support\Collection`'s own filter publishes `Record<string, unknown>` for
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
@@ -502,8 +504,9 @@ A read on `$this->prop` types from the class `prop` holds, as a call does.
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
   its import. On an `attributeless` receiver a column adds `| null`, as Laravel reads a missing attribute, unless the
   model's new instance holds a default for it or an accessor or cast class computes it. A relation to one adds
-  `| null` there too, since Laravel has no key to find its row by; a relation to many sends the empty list its type
-  admits.
+  `| null` there too where it has no default model and a column it finds its row by was left unwritten
+  (`LoadedRelations::parentKeys()`): the foreign key, and a `morphTo()`'s type, or the local key of a `hasOne()`,
+  `morphOne()` or through relation. A relation to many sends the empty list its type admits.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).

@@ -7877,6 +7877,24 @@ it('reads a new model\'s column and to-one relation through getAttribute() as th
         ->and([$sent->attr_new, $sent->attr_new_relation, $sent->prop_new_relation])->toBe([null, null, null]);
 });
 
+it('reads a new model\'s relation to one whose key a write set, or that has a default, without the null', function () {
+    (new User)->forceFill(['id' => 1, 'name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'x'])->save();
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0]);
+    $post->setRelation('author', new User)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'filled_key_relation' => 'User',
+        'filled_key_attr' => 'User',
+        'default_relation' => 'User',
+        'default_attr' => 'User',
+    ])
+        ->and([$sent->filled_key_relation->name, $sent->filled_key_attr->name])->toBe(['Ada', 'Ada'])
+        ->and($sent->default_relation)->not->toBeNull()
+        ->and($sent->default_attr)->not->toBeNull();
+});
+
 it('keeps today\'s reading for a getAttribute() key that is no literal, an unpacked one and the original-value reads', function () {
     expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
         'attr_dynamic' => 'unknown',

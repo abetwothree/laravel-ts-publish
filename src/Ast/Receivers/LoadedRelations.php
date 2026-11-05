@@ -97,6 +97,23 @@ final class LoadedRelations
     private const array SERIALIZERS = ['toArray', 'jsonSerialize', 'relationsToArray', 'getArrayableRelations', 'getArrayableItems'];
 
     /**
+     * The columns of its own model a to-one relation finds its row by: the foreign key, and a morphTo's type, or the
+     * local key of a hasOne or morphOne; null for any other relation.
+     *
+     * @param  Relation<Model, Model, mixed>  $relation
+     * @return non-empty-list<string>|null
+     */
+    public static function parentKeys(Relation $relation): ?array
+    {
+        return match (true) {
+            $relation instanceof MorphTo => [$relation->getForeignKeyName(), $relation->getMorphType()],
+            $relation instanceof BelongsTo => [$relation->getForeignKeyName()],
+            $relation instanceof HasOneOrMany => [$relation->getLocalKeyName()],
+            default => null,
+        };
+    }
+
+    /**
      * The `{ key: Type; … }` object a `load()` or `loadMissing()` call adds to a model, and the models it names.
      *
      * Null where the argument is not a literal, Laravel throws on it, or it adds no member this types.
@@ -584,11 +601,12 @@ final class LoadedRelations
             return false;
         }
 
-        [$parentKeys, $relatedKey] = match (true) {
-            $relation instanceof MorphTo => [[$relation->getForeignKeyName(), $relation->getMorphType()], null],
-            $relation instanceof BelongsTo => [[$relation->getForeignKeyName()], $relation->getOwnerKeyName()],
-            $relation instanceof HasOneOrMany => [[$relation->getLocalKeyName()], $relation->getForeignKeyName()],
-            default => [null, null],
+        $parentKeys = $relation instanceof Relation ? self::parentKeys($relation) : null;
+        $relatedKey = match (true) {
+            $relation instanceof MorphTo => null,
+            $relation instanceof BelongsTo => $relation->getOwnerKeyName(),
+            $relation instanceof HasOneOrMany => $relation->getForeignKeyName(),
+            default => null,
         };
 
         return $parentKeys !== null

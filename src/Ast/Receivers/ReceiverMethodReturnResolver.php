@@ -399,13 +399,19 @@ final class ReceiverMethodReturnResolver
             return fn (): ?array => $this->publishedModelOrNull($class);
         }
 
-        // Model::__get() is getAttribute(), so a literal key reads as the property does; an override reads as declared.
-        if (in_array($methodName, self::ATTRIBUTE_READS, true) && $this->runsModelMethod($class, $methodName)) {
+        // Model::__get() is getAttribute(), so a literal key reads as the property does. It reads attributes through
+        // getAttributeValue() and relations through getRelationValue(); an override of any of them reads as declared.
+        if (in_array($methodName, self::ATTRIBUTE_READS, true)
+            && $this->runsModelMethod($class, $methodName)
+            && $this->runsModelMethod($class, 'getAttributeValue')
+        ) {
+            $relations = $methodName === 'getAttribute' && $this->runsModelMethod($class, 'getRelationValue');
+
             return fn (ReceiverType $receiver, AnalysisScope $scope, MethodCall|NullsafeMethodCall|StaticCall|null $call): ?array => $this->attributeRead(
                 $receiver->withClasses([$class]),
-                $methodName,
                 $scope,
                 $call,
+                $relations,
             );
         }
 
@@ -422,24 +428,22 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * What `getAttribute('name')` or `getAttributeValue('name')` reads off one model: the member `->name` reads, the
-     * second skipping a relation, which it never loads; null for any key but one literal string, and for a static call,
-     * which `parent::` can make from an override.
+     * What `getAttribute('name')` or `getAttributeValue('name')` reads off one model: the member `->name` reads, a
+     * relation only where the call loads one; null for any key but one literal string, and for a static call, which
+     * `parent::` can make from an override.
      *
      * @return ValueExpressionResult|null
      */
     private function attributeRead(
         ReceiverType $model,
-        string $methodName,
         AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
+        bool $relations,
     ): ?array {
         $args = $call instanceof MethodCall || $call instanceof NullsafeMethodCall ? $call->getArgs() : [];
         $key = count($args) === 1 && ! $args[0]->unpack ? $args[0]->value : null;
 
-        return $key instanceof String_
-            ? ReceiverMemberReader::value($model, $key->value, $scope, relations: $methodName === 'getAttribute')
-            : null;
+        return $key instanceof String_ ? ReceiverMemberReader::value($model, $key->value, $scope, $relations) : null;
     }
 
     /**

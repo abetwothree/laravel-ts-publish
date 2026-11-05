@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DefaultAuthorPost;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Workbench\App\Enums\Status;
@@ -48,6 +49,13 @@ describe('value()', function () {
             ->and($new->author)->toBeNull()
             ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(), 'comments'))->toBe('Comment[]')
             ->and($new->comments->all())->toBe([]);
+    });
+
+    test('reads a relation to one without the null where a write set its key or it has a default model', function () {
+        expect(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(['user_id']), 'author'))->toBe('User')
+            ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(['title']), 'author'))->toBe('User | null')
+            ->and(memberReaderType(ReceiverType::of(DefaultAuthorPost::class)->asAttributeless(), 'author'))->toBe('User')
+            ->and((new DefaultAuthorPost)->author)->toBeInstanceOf(User::class);
     });
 
     test('reads attributes alone where relations are left out, as getAttributeValue() does', function () {

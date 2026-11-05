@@ -16,8 +16,12 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneOrManyThrough;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionProperty;
+use Throwable;
 
 /**
  * One member read off a class a receiver holds, as PHP and Model::__get() read it: a model's attribute (accessor, cast,
@@ -40,14 +44,13 @@ final class ReceiverMemberReader
      */
     public static function value(ReceiverType $held, string $name, AnalysisScope $scope, bool $relations = true): ?array
     {
-        $attributeless = $held->attributeless && ! in_array($name, $held->filled, true);
         $results = [];
 
         foreach ($held->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
-                ? self::modelValue($class, $name, $scope, $attributeless, $relations)
+                ? self::modelValue($class, $name, $scope, $held->attributeless ? $held->filled : null, $relations)
                 : EnumValueTypes::member($class, $name, $scope->carriesImports)
                     ?? self::propertyValue($class, $name, $held->declaredOnly);
 
@@ -119,20 +122,21 @@ final class ReceiverMemberReader
     }
 
     /**
-     * One model's attribute (accessor → cast → column) or, failing that, its relation; a column or a relation to one a
-     * model with no attributes reads is null.
+     * One model's attribute (accessor → cast → column) or, failing that, its relation; on a model holding only the
+     * filled columns, a column or a relation to one that reads null adds it.
      *
      * @param  class-string<Model>  $modelFqcn
+     * @param  list<string>|null  $filled  the columns a model with no attributes was written; null for any other model
      * @return ValueExpressionResult|null
      */
-    private static function modelValue(string $modelFqcn, string $name, AnalysisScope $scope, bool $attributeless, bool $relations): ?array
+    private static function modelValue(string $modelFqcn, string $name, AnalysisScope $scope, ?array $filled, bool $relations): ?array
     {
         $resolver = resolve(ModelAttributeResolver::class);
         $attribute = resolve(ReflectedTypeAcceptor::class)
             ->accept($resolver->resolveAttribute($modelFqcn, $name, $scope->carriesImports, $scope->casesAsLiterals));
 
         if ($attribute !== null) {
-            return $attributeless && self::readsNullWithoutAttributes($resolver, $modelFqcn, $name)
+            return $filled !== null && ! in_array($name, $filled, true) && self::readsNullWithoutAttributes($resolver, $modelFqcn, $name)
                 ? [...$attribute, 'type' => TsTypeString::withNullArm($attribute['type'])]
                 : $attribute;
         }
@@ -143,8 +147,8 @@ final class ReceiverMemberReader
             return null;
         }
 
-        // With no key to find it by, Laravel reads a relation to one as null and a relation to many as empty.
-        $type = $attributeless && ! str_ends_with($relation['type'], '[]')
+        // A relation to many reads empty, which its list admits.
+        $type = $filled !== null && ! str_ends_with($relation['type'], '[]') && self::findsNoRow($resolver, $modelFqcn, $name, $filled)
             ? TsTypeString::withNullArm($relation['type'])
             : $relation['type'];
 
@@ -181,6 +185,32 @@ final class ReceiverMemberReader
             && ! array_key_exists($name, $instance->getAttributes())
             && ! in_array($cast, ['accessor', 'attribute'], true)
             && ($castClass === null || ! class_exists($castClass) || enum_exists($castClass));
+    }
+
+    /**
+     * Whether a relation to one reads null on a model holding only the filled columns: it has no default model, and a
+     * column it finds its row by is unset. A relation this cannot build reads null.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  list<string>  $filled
+     */
+    private static function findsNoRow(ModelAttributeResolver $resolver, string $modelFqcn, string $name, array $filled): bool
+    {
+        try {
+            $relation = $resolver->getInstance($modelFqcn)?->{$name}();
+        } catch (Throwable) {
+            return true;
+        }
+
+        if (! $relation instanceof Relation) {
+            return true;
+        }
+
+        $keys = LoadedRelations::parentKeys($relation)
+            ?? ($relation instanceof HasOneOrManyThrough ? [$relation->getLocalKeyName()] : null);
+        $default = property_exists($relation, 'withDefault') && (bool) new ReflectionProperty($relation, 'withDefault')->getValue($relation);
+
+        return ! $default && ($keys === null || array_diff($keys, $filled) !== []);
     }
 
     /**
