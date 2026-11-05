@@ -34,9 +34,11 @@ final class ReceiverMemberReader
      * The value `<receiver>->name` sends, unioned over every class the receiver holds; null when any class cannot type
      * it. The caller adds the `| null` of a `?->` or of the receiver's short circuit.
      *
+     * @param  bool  $relations  a model's relation answers a name no attribute does, as for `->name`, not for
+     *                           getAttributeValue()
      * @return ValueExpressionResult|null
      */
-    public static function value(ReceiverType $held, string $name, AnalysisScope $scope): ?array
+    public static function value(ReceiverType $held, string $name, AnalysisScope $scope, bool $relations = true): ?array
     {
         $attributeless = $held->attributeless && ! in_array($name, $held->filled, true);
         $results = [];
@@ -45,7 +47,7 @@ final class ReceiverMemberReader
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
-                ? self::modelValue($class, $name, $scope, $attributeless)
+                ? self::modelValue($class, $name, $scope, $attributeless, $relations)
                 : EnumValueTypes::member($class, $name, $scope->carriesImports)
                     ?? self::propertyValue($class, $name, $held->declaredOnly);
 
@@ -117,13 +119,13 @@ final class ReceiverMemberReader
     }
 
     /**
-     * One model's attribute (accessor → cast → column) or, failing that, its relation; a column a model with no
-     * attributes reads is null.
+     * One model's attribute (accessor → cast → column) or, failing that, its relation; a column or a relation to one a
+     * model with no attributes reads is null.
      *
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private static function modelValue(string $modelFqcn, string $name, AnalysisScope $scope, bool $attributeless): ?array
+    private static function modelValue(string $modelFqcn, string $name, AnalysisScope $scope, bool $attributeless, bool $relations): ?array
     {
         $resolver = resolve(ModelAttributeResolver::class);
         $attribute = resolve(ReflectedTypeAcceptor::class)
@@ -135,14 +137,19 @@ final class ReceiverMemberReader
                 : $attribute;
         }
 
-        $relation = $resolver->resolveRelation($modelFqcn, $name);
+        $relation = $relations ? $resolver->resolveRelation($modelFqcn, $name) : null;
 
-        if ($relation['type'] === 'unknown') {
+        if ($relation === null || $relation['type'] === 'unknown') {
             return null;
         }
 
+        // With no key to find it by, Laravel reads a relation to one as null and a relation to many as empty.
+        $type = $attributeless && ! str_ends_with($relation['type'], '[]')
+            ? TsTypeString::withNullArm($relation['type'])
+            : $relation['type'];
+
         /** @var ValueExpressionResult $result */
-        $result = [...ValueResult::unknown(), 'type' => $relation['type']];
+        $result = [...ValueResult::unknown(), 'type' => $type];
 
         if ($relation['modelFqcn'] !== null) {
             $result['modelFqcn'] = $relation['modelFqcn'];

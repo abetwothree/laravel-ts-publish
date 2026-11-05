@@ -101,13 +101,17 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
     }
 
     /**
-     * `$this` itself for an `only()`/`except()` in a model's own body, which the chain handler declines.
+     * `$this` itself for an `only()`/`except()`, `getAttribute()` or `getAttributeValue()` in a model's own body, which
+     * the chain handler declines.
      *
      * The receiver rules then answer as they do for any model receiver, token-free where the scope carries no import.
      */
     private function filteredModelSubject(MethodCall|NullsafeMethodCall|StaticCall $call, AnalysisScope $scope): ?ReceiverType
     {
-        return $call instanceof StaticCall || ! $this->callsAttributeFilter($call)
+        $readsAttribute = $call->name instanceof Identifier
+            && in_array($call->name->toString(), ReceiverMethodReturnResolver::ATTRIBUTE_READS, true);
+
+        return $call instanceof StaticCall || ! ($readsAttribute || $this->callsAttributeFilter($call))
             ? null
             : resolve(ReceiverClassResolver::class)->modelSubject($scope);
     }

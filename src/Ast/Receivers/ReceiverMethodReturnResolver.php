@@ -30,6 +30,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -39,12 +40,18 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type RuleCall MethodCall|NullsafeMethodCall|StaticCall|null
+ * @phpstan-type ModelRule Closure(ReceiverType, AnalysisScope, RuleCall): (ValueExpressionResult|null)
+ *
  * @internal
  */
 final class ReceiverMethodReturnResolver
 {
     use FiltersAttributeKeys;
     use ResolvesFilteredRelationTypes;
+
+    /** The model methods that read one attribute by name, as a property read does. */
+    public const array ATTRIBUTE_READS = ['getAttribute', 'getAttributeValue'];
 
     /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
@@ -267,7 +274,7 @@ final class ReceiverMethodReturnResolver
         $modelRule = $this->modelRule($class, $methodName);
 
         if ($modelRule !== null) {
-            return $modelRule($receiver);
+            return $modelRule($receiver, $scope, $call);
         }
 
         // A base collection holding the models, as toBase() hands back, has no modelKeys().
@@ -367,7 +374,7 @@ final class ReceiverMethodReturnResolver
      * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() also names these.
      *
      * @param  class-string  $class
-     * @return (Closure(ReceiverType): (ValueExpressionResult|null))|null
+     * @return ModelRule|null
      */
     private function modelRule(string $class, string $methodName): ?Closure
     {
@@ -392,6 +399,16 @@ final class ReceiverMethodReturnResolver
             return fn (): ?array => $this->publishedModelOrNull($class);
         }
 
+        // Model::__get() is getAttribute(), so a literal key reads as the property does; an override reads as declared.
+        if (in_array($methodName, self::ATTRIBUTE_READS, true) && $this->runsModelMethod($class, $methodName)) {
+            return fn (ReceiverType $receiver, AnalysisScope $scope, MethodCall|NullsafeMethodCall|StaticCall|null $call): ?array => $this->attributeRead(
+                $receiver->withClasses([$class]),
+                $methodName,
+                $scope,
+                $call,
+            );
+        }
+
         // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
         if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
             return fn (): array => $this->attributeRecordResult(nullable: false);
@@ -401,6 +418,27 @@ final class ReceiverMethodReturnResolver
 
         return $held !== null && $this->runsModelMethod($class, $methodName)
             ? fn (): array => [...ValueResult::unknown(), 'type' => $held]
+            : null;
+    }
+
+    /**
+     * What `getAttribute('name')` or `getAttributeValue('name')` reads off one model: the member `->name` reads, the
+     * second skipping a relation, which it never loads; null for any key but one literal string, and for a static call,
+     * which `parent::` can make from an override.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function attributeRead(
+        ReceiverType $model,
+        string $methodName,
+        AnalysisScope $scope,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
+        $args = $call instanceof MethodCall || $call instanceof NullsafeMethodCall ? $call->getArgs() : [];
+        $key = count($args) === 1 && ! $args[0]->unpack ? $args[0]->value : null;
+
+        return $key instanceof String_
+            ? ReceiverMemberReader::value($model, $key->value, $scope, relations: $methodName === 'getAttribute')
             : null;
     }
 

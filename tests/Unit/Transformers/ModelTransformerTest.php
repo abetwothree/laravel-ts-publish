@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
@@ -2063,4 +2064,10 @@ test('a trait of the model\'s own namespace, used with no import, binds its temp
         ->and($data->appends['first_linked']['type'] ?? null)->toBe('Comment | null')
         ->and($data->appends['latest']['type'] ?? null)->toBe('Comment | null')
         ->and($data->typeImports)->toBe(['../../../../../workbench/app/models' => ['Comment']]);
+});
+
+test('a getter reading getAttribute() of a literal key publishes the attribute it reads', function () {
+    $data = (new ModelTransformer(AttributeCardPost::class))->data();
+
+    expect($data->mutators['shout']['type'] ?? null)->toBe('string');
 });

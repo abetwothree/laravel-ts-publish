@@ -38,8 +38,23 @@ describe('value()', function () {
 
     test('reads a column a model with no attributes holds as null, unless a write filled it', function () {
         expect(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(), 'title'))->toBe('string | null')
-            ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(['title']), 'title'))->toBe('string')
-            ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(), 'author'))->toBe('User');
+            ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(['title']), 'title'))->toBe('string');
+    });
+
+    test('reads a relation to one a model with no attributes has no key for as null, and a relation to many as empty', function () {
+        $new = new Post;
+
+        expect(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(), 'author'))->toBe('User | null')
+            ->and($new->author)->toBeNull()
+            ->and(memberReaderType(ReceiverType::of(Post::class)->asAttributeless(), 'comments'))->toBe('Comment[]')
+            ->and($new->comments->all())->toBe([]);
+    });
+
+    test('reads attributes alone where relations are left out, as getAttributeValue() does', function () {
+        $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+
+        expect(ReceiverMemberReader::value(ReceiverType::of(Post::class), 'title', $scope, relations: false)['type'] ?? null)->toBe('string')
+            ->and(ReceiverMemberReader::value(ReceiverType::of(Post::class), 'author', $scope, relations: false))->toBeNull();
     });
 
     test('unions every class the receiver holds, and declines when one cannot type the member', function () {

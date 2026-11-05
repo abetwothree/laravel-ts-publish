@@ -53,6 +53,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariableHeldModel
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeOverridePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
@@ -1501,16 +1503,19 @@ describe('getKey()', function () {
     });
 
     // VariableHandler declines every method typesByRule() names, so a rule ruleFor() gains reaches a variable unedited.
-    // A load() is asked with a call that loads one of the model's relations, which its rule reads.
+    // A load() is asked with a call that loads one of the model's relations, and an attribute read with one naming its
+    // key, which their rules read.
     test('typesByRule() names exactly the methods ruleFor() answers', function (string $class, array $named) {
         $rules = resolve(ReceiverMethodReturnResolver::class);
         $ruleFor = new ReflectionMethod($rules, 'ruleFor');
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), $class);
         $methods = get_class_methods($class);
         $relation = resolve(ModelAttributeResolver::class)->getRelations($class)?->first()['name'] ?? 'none';
-        $callOf = fn (string $method): ?Expr => in_array($method, ['load', 'loadMissing'], true)
-            ? receiverHandlerExpr('$model->'.$method.'("'.$relation.'")')
-            : null;
+        $callOf = fn (string $method): ?Expr => match (true) {
+            in_array($method, ['load', 'loadMissing'], true) => receiverHandlerExpr('$model->'.$method.'("'.$relation.'")'),
+            in_array($method, ReceiverMethodReturnResolver::ATTRIBUTE_READS, true) => receiverHandlerExpr('$model->'.$method.'("id")'),
+            default => null,
+        };
 
         $typed = array_values(array_filter($methods, fn (string $method): bool => $rules->typesByRule($class, $method)));
         $answered = array_values(array_filter(
@@ -1520,7 +1525,7 @@ describe('getKey()', function () {
 
         expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except');
     })->with([
-        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing']],
+        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing', 'getAttribute', 'getAttributeValue']],
         'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding', 'load']],
         'one identified by another column' => [EmailIdentifierUser::class, ['getKey', 'getAuthIdentifier']],
         'an abstract model' => [CallPathAbstractModel::class, ['getKey']],
@@ -2495,4 +2500,29 @@ describe('the workbench Opaque helper', function () {
         'a relation' => ['\Workbench\App\Support\Opaque::value($this->resource->tags)'],
         'a literal' => ['\Workbench\App\Support\Opaque::value(1)'],
     ]);
+});
+
+describe('getAttribute() and getAttributeValue() of a literal key', function () {
+    test('read in a model\'s own method as the property read', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AttributeCardPost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource->card()'))['type'])->toBe('{ t: string; p: string; acc: string | null }');
+    });
+
+    test('keep today\'s reading on a model that overrides getAttribute(), whose getAttributeValue() is still Laravel\'s', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AttributeOverridePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getAttribute(\'title\')', 'unknown'],
+        ['$this->getAttribute(\'title\')', 'unknown'],
+        ['$this->resource->getAttributeValue(\'title\')', 'string'],
+    ]);
+
+    test('read through a nullsafe call as the property read or null', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource?->getAttribute(\'title\')'))['type'])->toBe('string | null')
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->author?->getAttributeValue(\'name\')'))['type'])->toBe('string | null');
+    });
 });

@@ -249,10 +249,10 @@ Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relati
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks ten convention rules on each class before
+`ReceiverMethodReturnResolver` checks eleven convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares nine loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()` and
-`getAuthIdentifier()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
+Laravel declares ten loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()`,
+`getAuthIdentifier()` and `getAttribute()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
 `Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`,
 `Collection::all()` declares `array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the
 template `TValue|null`. Each rule answers only on the receiver it names:
@@ -301,6 +301,12 @@ template `TValue|null`. Each rule answers only on the receiver it names:
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
+- **`getAttribute()`, `getAttributeValue()`**: on a concrete model that runs `HasAttributes`' own, called with one
+  literal string key, what `->key` reads ([`ReceiverMemberReader::value()`][`ReceiverMemberReader`]), since
+  `Model::__get()` is `getAttribute()`. `getAttributeValue()` never loads a relation, so a relation's name stays
+  `unknown`, though Laravel sends `null`. Any other key, an unpacked argument, an override and `getRawOriginal()` or
+  `getOriginal()` keep their reflected `mixed`. In a model's own body the receiver is `$this`
+  (`ReceiverMethodCallHandler::filteredModelSubject()`).
 - **`only()`, `except()`**: a class that runs `Support\Collection`'s own filter publishes `Record<string, unknown>` for
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
@@ -339,7 +345,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the ten on a resource collection's items alone:
+One more rule reads no model, and runs before the eleven on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
@@ -495,7 +501,9 @@ A read on `$this->prop` types from the class `prop` holds, as a call does.
 - **A model**: `ModelAttributeResolver::resolveAttribute()`, then `resolveRelation()`, the order `Model::__get()` uses.
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
   its import. On an `attributeless` receiver a column adds `| null`, as Laravel reads a missing attribute, unless the
-  model's new instance holds a default for it or an accessor or cast class computes it; a relation reads as ever.
+  model's new instance holds a default for it or an accessor or cast class computes it. A relation to one adds
+  `| null` there too, since Laravel has no key to find its row by; a relation to many sends the empty list its type
+  admits.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).

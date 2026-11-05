@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributeReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceReshapedResource;
@@ -7831,4 +7832,56 @@ it('types preg_match()\'s matches from the pattern\'s groups and its flags', fun
             .'"all_direct":[[],[]],"marked":[],"failing":[],"mark_group":[],"mark_text":[],"computed":[]}');
 
     AnalysisWarnings::reset();
+});
+
+it('reads getAttribute() and getAttributeValue() of a literal key as the property read', function () {
+    $author = new User;
+    $author->forceFill(['id' => 3, 'name' => 'Ada']);
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0, 'user_id' => 3]);
+    $post->setRelation('author', $author)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr' => 'string',
+        'attr_value' => 'string',
+        'attr_proxy' => 'string',
+        'attr_local' => 'string',
+        'attr_rel_one' => 'string',
+        'attr_accessor' => 'string | null',
+        'attr_rel_elem' => 'string | null',
+        'attr_enum' => 'StatusType',
+        'attr_relation' => 'User',
+        'attr_closure?' => 'string',
+        'attr_missing' => 'unknown',
+        'attr_value_relation' => 'unknown',
+    ])
+        ->and($sent->attr)->toBe('T')
+        ->and($sent->attr_relation->name)->toBe('Ada')
+        ->and($sent->attr_value_relation)->toBeNull()
+        ->and($sent->attr_rel_elem)->toBeNull()
+        ->and($sent->attr_missing)->toBeNull();
+});
+
+it('reads a new model\'s column and to-one relation through getAttribute() as the null Laravel sends', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0]);
+    $post->setRelation('author', new User)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr_new' => 'string | null',
+        'attr_new_relation' => 'User | null',
+        'prop_new_relation' => 'User | null',
+    ])
+        ->and([$sent->attr_new, $sent->attr_new_relation, $sent->prop_new_relation])->toBe([null, null, null]);
+});
+
+it('keeps today\'s reading for a getAttribute() key that is no literal, an unpacked one and the original-value reads', function () {
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr_dynamic' => 'unknown',
+        'attr_unpacked' => 'unknown',
+        'raw_original' => 'unknown',
+        'original' => 'unknown',
+    ]);
 });
