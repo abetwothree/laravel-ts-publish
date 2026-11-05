@@ -2150,7 +2150,7 @@ final class ReceiverClassResolver
     {
         $class = $this->scopeClassName($name, $scope);
 
-        return DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
+        return DeclaredClasses::isValueClass($class) ? ReceiverType::of($class) : null;
     }
 
     /**
@@ -2161,7 +2161,7 @@ final class ReceiverClassResolver
         $abstract = ($call->getArgs()[0] ?? null)?->value;
         $class = $abstract === null ? null : $this->classNameFetch($abstract)?->toString();
 
-        return $class !== null && DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
+        return $class !== null && DeclaredClasses::isValueClass($class) ? ReceiverType::of($class) : null;
     }
 
     /**

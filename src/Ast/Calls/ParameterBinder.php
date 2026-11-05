@@ -76,7 +76,7 @@ final class ParameterBinder
         $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
         $class = $type instanceof Name ? self::typeClassName($type, $scope) : null;
 
-        return $class !== null && (class_exists($class) || interface_exists($class))
+        return $class !== null && DeclaredClasses::isValueClass($class)
             ? [$class, $param->type instanceof NullableType]
             : null;
     }

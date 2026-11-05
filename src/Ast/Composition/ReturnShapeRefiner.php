@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -149,6 +150,6 @@ final class ReturnShapeRefiner
     {
         $fqcn = DocblockNames::resolve($name, LaravelTsPublish::methodDeclaringFileClass($method));
 
-        return DocblockNames::isClassLike($fqcn);
+        return DeclaredClasses::isClassLike($fqcn);
     }
 }

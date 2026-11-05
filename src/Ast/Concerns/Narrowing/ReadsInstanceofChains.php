@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
@@ -54,7 +55,7 @@ trait ReadsInstanceofChains
 
         $class = $expr->class->toString();
 
-        return class_exists($class) || interface_exists($class) ? [$expr->expr, $class] : null;
+        return DeclaredClasses::isValueClass($class) ? [$expr->expr, $class] : null;
     }
 
     /**

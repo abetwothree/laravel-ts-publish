@@ -615,7 +615,7 @@ class LaravelTsPublish
 
                     $sourceClass = DocblockNames::resolve($import[2], $context);
 
-                    if (DocblockNames::isClassLike($sourceClass)) {
+                    if (DeclaredClasses::isClassLike($sourceClass)) {
                         $resolved = $this->resolvePhpstanTypeAlias($import[1], new ReflectionClass($sourceClass), $seen);
                     }
 
@@ -1115,7 +1115,7 @@ class LaravelTsPublish
 
         $qualified = $namespace.'\\'.$type;
 
-        return $namespace !== '' && DocblockNames::isClassLike($qualified) ? $qualified : $type;
+        return $namespace !== '' && DeclaredClasses::isClassLike($qualified) ? $qualified : $type;
     }
 
     /**

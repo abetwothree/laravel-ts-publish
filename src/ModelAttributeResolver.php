@@ -1263,12 +1263,12 @@ class ModelAttributeResolver
         $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
 
         if ($returnType === null
-            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*<(.+)>$/s', trim($returnType), $m)
+            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*</', trim($returnType))
         ) {
             return null;
         }
 
-        $get = LaravelTsPublish::splitAtTopLevelCommas($m[1])[0] ?? '';
+        $get = DeclaredClasses::genericArguments($returnType)[0] ?? '';
         $names = array_values(array_filter(
             LaravelTsPublish::splitPhpDocUnionType(ltrim($get, '?')),
             fn (string $part): bool => strtolower($part) !== 'null',
@@ -1281,7 +1281,7 @@ class ModelAttributeResolver
 
         $class = DocblockNames::resolve($match[1], LaravelTsPublish::methodDeclaringFileClass($method));
 
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+        return DeclaredClasses::isValueClass($class) ? $class : null;
     }
 
     /**
@@ -1340,17 +1340,7 @@ class ModelAttributeResolver
      */
     protected function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
     {
-        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
-            return null;
-        }
-
-        $class = match ($type->getName()) {
-            'static' => $staticClass,
-            'self' => $selfClass,
-            default => $type->getName(),
-        };
-
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+        return DeclaredClasses::singleClass($type, $staticClass, $selfClass);
     }
 
     /**

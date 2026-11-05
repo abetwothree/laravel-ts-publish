@@ -27,15 +27,4 @@ final class DocblockNames
             $context->getNamespaceName(),
         );
     }
-
-    /**
-     * Whether a class, interface, trait or enum of this name can be loaded.
-     *
-     * @phpstan-assert-if-true class-string $fqcn
-     */
-    public static function isClassLike(string $fqcn): bool
-    {
-        // An autoloader loads the file a name maps to whatever kind it declares, so one autoload attempt answers all.
-        return class_exists($fqcn) || interface_exists($fqcn, false) || trait_exists($fqcn, false);
-    }
 }

@@ -122,11 +122,11 @@ final class DeclaredClasses
             $class = match ($name) {
                 'static' => $staticClass,
                 'self' => $selfClass,
-                'parent' => self::isClassLike($selfClass) ? (string) get_parent_class($selfClass) : '',
+                'parent' => self::isValueClass($selfClass) ? (string) get_parent_class($selfClass) : '',
                 default => $name,
             };
 
-            if (($member->isBuiltin() && $name !== 'static') || ! self::isClassLike($class)) {
+            if (($member->isBuiltin() && $name !== 'static') || ! self::isValueClass($class)) {
                 return null;
             }
 
@@ -196,7 +196,7 @@ final class DeclaredClasses
                 default => DocblockNames::resolve($name, $context),
             };
 
-            if (self::isClassLike($class)) {
+            if (self::isValueClass($class)) {
                 $classes[] = $class;
             } else {
                 $named = false;
@@ -207,14 +207,58 @@ final class DeclaredClasses
     }
 
     /**
-     * Whether a name is a loadable class, interface, or enum: a type a value can have, so never a trait, unlike
-     * DocblockNames::isClassLike().
+     * The one class a native type names, `static` read as the class the value was read through and `self` as the class
+     * that declares the type; null for a builtin, a union or an intersection.
+     *
+     * @return class-string|null
+     */
+    public static function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
+    {
+        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
+            return null;
+        }
+
+        $class = match ($type->getName()) {
+            'static' => $staticClass,
+            'self' => $selfClass,
+            default => $type->getName(),
+        };
+
+        return self::isValueClass($class) ? $class : null;
+    }
+
+    /**
+     * The arguments a generic type such as `JsonResource<Post>` or `Attribute<string, never>` spells, trimmed, split at
+     * its top-level commas; null when the type has none.
+     *
+     * @return list<string>|null
+     */
+    public static function genericArguments(string $type): ?array
+    {
+        return preg_match('/^[\\\\\w]+\s*<(.+)>$/s', trim($type), $match) === 1
+            ? LaravelTsPublish::splitAtTopLevelCommas($match[1])
+            : null;
+    }
+
+    /**
+     * Whether a name is a loadable class, interface or enum: a type a value can have, so never a trait.
+     *
+     * @phpstan-assert-if-true class-string $name
+     */
+    public static function isValueClass(string $name): bool
+    {
+        return class_exists($name) || interface_exists($name) || enum_exists($name);
+    }
+
+    /**
+     * Whether a name is a loadable class, interface, trait or enum: anything a docblock may name.
      *
      * @phpstan-assert-if-true class-string $name
      */
     public static function isClassLike(string $name): bool
     {
-        return class_exists($name) || interface_exists($name) || enum_exists($name);
+        // An autoloader loads the file a name maps to whatever kind it declares, so one autoload attempt answers all.
+        return class_exists($name) || interface_exists($name, false) || trait_exists($name, false);
     }
 
     /**

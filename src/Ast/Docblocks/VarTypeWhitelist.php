@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -301,6 +302,6 @@ final readonly class VarTypeWhitelist
             || $this->context->getNamespaceName() === ''
             || isset(LaravelTsPublish::parseFileUseStatements($this->context)[Str::before($name, '\\')]);
 
-        return $throughFile && (class_exists($resolved) || interface_exists($resolved)) ? $resolved : null;
+        return $throughFile && DeclaredClasses::isValueClass($resolved) ? $resolved : null;
     }
 }

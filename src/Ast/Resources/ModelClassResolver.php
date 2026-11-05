@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
@@ -103,8 +104,10 @@ final class ModelClassResolver
             $resolved = $this->resolveDocblockType($matches[0], $resource);
         }
 
-        if (preg_match('/^[\w\\\\]+<([\w\\\\]+)>/', DocblockTags::type($docComment, 'extends') ?? '', $matches) === 1) {
-            $resolved = $this->resolveDocblockType($matches[1], $resource);
+        $arguments = DeclaredClasses::genericArguments(DocblockTags::type($docComment, 'extends') ?? '') ?? [];
+
+        if (count($arguments) === 1 && preg_match('/^[\w\\\\]+$/', $arguments[0]) === 1) {
+            $resolved = $this->resolveDocblockType($arguments[0], $resource);
         }
 
         if ($resolved === null || ! class_exists($resolved) || ! is_a($resolved, Model::class, true)) {

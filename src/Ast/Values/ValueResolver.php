@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -104,7 +105,7 @@ final class ValueResolver
 
         $className = $this->constantClassName($expr->class, $scope);
 
-        if ($className === null || ! $this->classLikeExists($className)) {
+        if ($className === null || ! DeclaredClasses::isValueClass($className)) {
             return null;
         }
 
@@ -616,16 +617,6 @@ final class ValueResolver
     }
 
     /**
-     * Whether a class, interface or enum of this name can be loaded.
-     *
-     * @phpstan-assert-if-true class-string $className
-     */
-    private function classLikeExists(string $className): bool
-    {
-        return class_exists($className) || interface_exists($className) || enum_exists($className);
-    }
-
-    /**
      * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
      * where the types are published, an enum case's `->name` or `->value`, or the cases an enum's `cases()` lists.
      *
@@ -661,7 +652,7 @@ final class ValueResolver
             return $className;
         }
 
-        $constant = $className !== null && $this->classLikeExists($className)
+        $constant = $className !== null && DeclaredClasses::isValueClass($className)
             ? new ReflectionClass($className)->getReflectionConstant($constName)
             : false;
 
