@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Support\Opaque;
 
 /** Same-pattern keys the index-signature union declines: one names a resource, one is untyped. */
 final class SamePatternDeclinedResource extends JsonResource
@@ -56,6 +57,6 @@ final class SamePatternDeclinedResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

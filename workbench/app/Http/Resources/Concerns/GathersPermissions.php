@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Http\Resources\Concerns;
 
 use Illuminate\Database\Eloquent\Model;
+use Workbench\App\Support\Opaque;
 
 trait GathersPermissions
 {
@@ -106,6 +107,6 @@ trait GathersPermissions
     /** Deliberately untyped so only the docblocks above can type what it returns. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A docblock-filled payload signature beside a resource-typed same-pattern key broadcastWith()'s own cast retypes, so
@@ -51,6 +52,6 @@ final class MethodCastFillBroadcastEvent implements ShouldBroadcast
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->post->getAttribute('title');
+        return Opaque::value($this->post->title);
     }
 }

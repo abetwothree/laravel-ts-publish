@@ -2321,7 +2321,7 @@ describe('a collection step that keeps its items', function () {
         ],
         'a @var collection of plain values keyed by string, over a value that names no class' => [
             '/** @var \Illuminate\Support\Collection<string, int> $m */ '
-                .'$m = $this->resource->getAttribute(\'comments\')->pluck(\'id\', \'content\'); return $m->all();',
+                .'$m = \Workbench\App\Support\Opaque::value($this->resource->comments)->pluck(\'id\', \'content\'); return $m->all();',
             'number[] | Record<string, number>',
             $keys,
             ['beta', 'alpha'],
@@ -2482,4 +2482,17 @@ describe('a collection step that keeps its items', function () {
         expect(collectionFactsType($body))->toBe('unknown')
             ->and($run($body))->toBeNull();
     });
+});
+
+describe('the workbench Opaque helper', function () {
+    test('publishes unknown for a typed argument, so a fixture can hide a type behind it', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with([
+        'a column read through the proxy' => ['\Workbench\App\Support\Opaque::value($this->title)'],
+        'a column read off $this->resource' => ['\Workbench\App\Support\Opaque::value($this->resource->title)'],
+        'a relation' => ['\Workbench\App\Support\Opaque::value($this->resource->tags)'],
+        'a literal' => ['\Workbench\App\Support\Opaque::value(1)'],
+    ]);
 });

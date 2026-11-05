@@ -30,6 +30,7 @@ use Workbench\App\Enums\WeekDays;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
+use Workbench\App\Support\Opaque;
 
 /**
  * Helpers the workbench fixture leaves out, one per edge of the rule: each wraps one of the team's enums, or returns a
@@ -70,11 +71,11 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     }
 
     /**
-     * The team's latest status read through getAttribute(), which the engine cannot type, or null without a team.
+     * The team's latest status read through Opaque::value(), which the engine cannot type, or null without a team.
      */
     public function attributeStatusResource(): ?EnumResource
     {
-        return $this->resource === null ? null : EnumResource::make($this->resource->getAttribute('latest_status'));
+        return $this->resource === null ? null : EnumResource::make(Opaque::value($this->resource->latest_status));
     }
 
     /**

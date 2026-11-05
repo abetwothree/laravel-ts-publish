@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Support\Opaque;
 
 /** One shape per method, each putting a docblock-filled index signature beside a key it could conflict with. */
 final class IndexSignatureConflictResource extends JsonResource
@@ -241,6 +242,6 @@ final class IndexSignatureConflictResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }
