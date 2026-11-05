@@ -74,6 +74,7 @@ use ReflectionMethod;
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type ByReferenceForm array{
  *      effect: ByReferenceEffect,
+ *      matches: string|null,
  *      values: list<Expr>,
  *      path: list<string>,
  *      callback: ArrowFunction|ClosureExpr|null,

@@ -18,8 +18,8 @@ use PhpParser\Node\Scalar\String_;
 
 /**
  * A literal-key read, `$data['a']` or `$pair[1]`, typed from the member each arm of its holder's type names for the
- * key, with `null` for a `null` arm, which PHP reads as null. An optional member reads optional: a `when*()` slot holds
- * the `MissingValue` an API resource leaves out, and a bare read of a missing key throws, so neither sends `null`.
+ * key, with `null` for a `null` arm. An optional member reads optional, for the `MissingValue` a `when*()` slot holds,
+ * unless the holder's `absentKeys` says it only lacks the key, whose bare read throws and never sends `null`.
  *
  * Declines an arm that is no object literal or tuple, since a list, a Record or an index signature names no key the
  * array is sure to hold, an arm lacking the key, an `unknown` member, and a member naming a class, which no import
@@ -44,12 +44,15 @@ final class OffsetReadHandler implements ExpressionHandler
             return null;
         }
 
-        return $this->keyRead($engine->resolve($expr->var)['type'], (string) $expr->dim->value);
+        $holder = $engine->resolve($expr->var);
+        $read = $this->keyRead($holder['type'], (string) $expr->dim->value);
+
+        return $read !== null && ($holder['absentKeys'] ?? false) ? [...$read, 'optional' => false] : $read;
     }
 
     /**
-     * What a key reads from a holder: each arm's member, and `null` for a `null` arm, optional where a member is. Null
-     * where an arm declines, or no arm is an array.
+     * What a key reads from a holder: each arm's member, and `null` for a `null` arm, optional where a member is; an
+     * empty array arm holds none. Null where an arm declines, or no arm holds a member.
      *
      * @return ValueExpressionResult|null
      */
@@ -60,6 +63,11 @@ final class OffsetReadHandler implements ExpressionHandler
         $nullOnly = true;
 
         foreach (TsTypeShape::splitTopLevel($holder, ['|']) as $arm) {
+            // An empty array holds no key, whose bare read throws and whose `??` gives the default.
+            if ($arm === 'never[]' || $arm === '[]') {
+                continue;
+            }
+
             [$member, $optionalMember] = $arm === 'null' ? ['null', false] : $this->armMember($arm, $key);
 
             if ($member === null) {

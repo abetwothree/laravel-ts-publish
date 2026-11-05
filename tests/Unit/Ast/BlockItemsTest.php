@@ -227,17 +227,20 @@ test('an offset read takes the member each arm of its holder names, and declines
     'a member naming a class' => ['{ a: Post }', '$x["a"]', null],
     'a computed key' => ['{ a: number }', '$x[$k]', null],
     'a holder that is only null' => ['null', '$x["a"]', null],
+    'an empty array arm, which holds no key' => ['{ a: number } | never[]', '$x["a"]', 'number'],
+    'an empty tuple arm' => ['{ a?: number } | []', '$x["a"]', '?number'],
+    'a holder that is only an empty array' => ['never[] | null', '$x["a"]', null],
     'a string' => ['string', '$x["a"]', null],
 ]);
 
-// A named group keys the groups and a flag nests them, so both still publish only the `[]` beside them, a known gap. A
-// call that may not run leaves what the name held, so it writes only over a name nothing else writes, or a string list.
-test('preg_match() with no flag and no named group writes a list of strings, but not over a value a skipped call leaves', function () {
+// A named group keys the groups and a flag nests them. A call that may not run leaves what the name held, so it writes
+// only over a name nothing else writes, or a value its matches stand for.
+test('preg_match() writes its matches, but not over a value a skipped call leaves', function () {
     expect(publishedResourceKeyTypes(PregMatchResource::class, Post::class))->toBe([
         'm' => 'string[]',
         'bare' => 'string[]',
-        'named' => 'never[]',
-        'offsets' => 'never[]',
+        'named' => '{ "0": string; first?: string; "1"?: string } | never[]',
+        'offsets' => '[string, number][]',
         'kept' => 'unknown',
         'maybe' => 'string[]',
         'decoded' => 'unknown',

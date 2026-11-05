@@ -197,8 +197,9 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
 | `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first where Inertia reads the value: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown`. Under `Encoded` the wrapper declines, since `json_encode()` sends the prop object as `{}` | None |
 
-`OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, sits
-after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no pair.
+`OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, an
+empty array arm holding none, sits after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no
+pair.
 
 These `MethodCall` pairs are the ones most likely to break under an edit:
 
@@ -579,17 +580,21 @@ back to the list it was, a tuple to the list of its members; a count out-paramet
 within, and `array_walk_recursive()` each leaf. A walk's callback values are read in the callback's own scope, its
 parameters bound to the element and its key, and `.=` or an arithmetic operator as the operation it performs. A
 `foreach` element written before the loop counts only when a loop around both can run it again. A call on a literal key
-of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` with no flags
-and a literal pattern naming no group writes its `$matches` variable a list of strings, `WritesMatches`. A call may not
-run, so the list replaces a held value only where that is an empty or string list, and a parameter's binding ends only
-at a call that is a statement of the body. A name no other write reaches, the form's `sole`, holds the list past the
-call wherever no binding still holds, a parameter's included: a skipped call leaves an unbound name undefined, which
-Laravel throws on and `??` replaces. Every other callee, a flag, a named group or a computed key replaces the value.
-`seedBody()` counts no keeping call as a write and records its form in `AnalysisScope::$byReferenceForms`, with the span
-of reads it holds for, placed as a binding end or gap is: a copy taken before the call reads the value as it was.
-`VariableHandler` reads the value the forms leave, or drops a read whose value lacks one. A class binding ends there,
-since no form but `ksort()`'s is an object's. A reader that takes a local by its syntax, such as an array literal's
-keys, reads `InspectsAstNodes::spelledWrites()`, which declines a read past such a call.
+of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` and
+`preg_match_all()` with a literal pattern and constant flags write their `$matches` variable the type
+[`PregMatches`](../../src/Ast/Calls/PregMatches.php) reads, `WritesMatches`, carried as the form's `matches`: PCRE
+itself names the pattern's groups, from a probe that wraps the pattern in a group repeated zero times. A call may not
+run, so the matches replace a held value only where that is an empty list or a value they stand for, and a parameter's
+binding ends only at a call that is a statement of the body. A name no other write reaches, the form's `sole`, holds the
+matches past the call wherever no binding still holds, a parameter's included: a skipped call leaves an unbound name
+undefined, which Laravel throws on and `??` replaces. The matches carry `absentKeys`, so `$m['name']` reads a group PHP
+may leave out as required: its bare read throws, and `??` replaces it. Every other callee, a computed pattern or flag,
+or a computed key replaces the value. `seedBody()` counts no keeping call as a write and records its form in
+`AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end or gap is: a copy taken
+before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or drops a read whose
+value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a local
+by its syntax, such as an array literal's keys, reads `InspectsAstNodes::spelledWrites()`, which declines a read past
+such a call.
 
 ### What deliberately stays unbound
 

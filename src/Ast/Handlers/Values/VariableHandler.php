@@ -179,8 +179,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
                 ?? $this->keyBuiltValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
-        if ($value === null && $this->writtenWhole($expr, $scope)) {
-            $value = [...ValueResult::unknown(), 'type' => 'string[]', 'optional' => false];
+        $matches = $value === null ? $this->writtenMatches($expr, $scope) : null;
+
+        if ($matches !== null) {
+            $value = [...ValueResult::unknown(), 'type' => $matches, 'optional' => false, 'absentKeys' => true];
         }
 
         $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
@@ -538,6 +540,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         return $scope->resolvingName($name, function () use ($forms, $value, $scope, $engine): ?array {
             $type = $value['type'];
+            $matched = false;
 
             foreach ($forms as $form) {
                 $read = [];
@@ -549,31 +552,35 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
                         ? array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $form['values'])
                         : $this->writtenByCallback($callback, $form['values'], $element, $key, $scope, $engine);
                 };
-                $type = $form['effect']->left($type, $written, $form['path'], $scope->reindexesNumericKeys);
+                $type = $form['effect']->left($type, $written, $form['path'], $scope->reindexesNumericKeys, $form['matches']);
 
                 if ($type === null) {
                     return null;
                 }
+
+                $matched = $form['effect'] === ByReferenceEffect::WritesMatches;
             }
 
-            return [...$value, 'type' => $type];
+            return [...$value, 'type' => $type, ...($matched ? ['absentKeys' => true] : [])];
         });
     }
 
     /**
-     * Whether a read holds the list of strings preg_match() writes into a name no other write reaches, past a call and
-     * no longer holding a binding: only a call that is a statement of the body ends one. A skipped call leaves an
-     * unbound name undefined, which Laravel throws on and `??` replaces with its default.
+     * The type of the matches preg_match() or preg_match_all() writes into a name no other write reaches, for a read
+     * past the call no longer holding a binding: only a call that is a statement of the body ends one. A skipped call
+     * leaves an unbound name undefined, which Laravel throws on and `??` replaces with its default.
      */
-    private function writtenWhole(Variable $read, AnalysisScope $scope): bool
+    private function writtenMatches(Variable $read, AnalysisScope $scope): ?string
     {
         if (! is_string($read->name) || ($scope->bindsName($read->name) && $scope->holdsBinding($read))) {
-            return false;
+            return null;
         }
 
         $form = $scope->formsAt($read)[0] ?? null;
 
-        return $form !== null && $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === [];
+        return $form !== null && $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === []
+            ? $form['matches']
+            : null;
     }
 
     /**

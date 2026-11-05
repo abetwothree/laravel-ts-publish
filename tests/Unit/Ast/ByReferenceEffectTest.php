@@ -53,12 +53,26 @@ it('leaves a value the type it held while it has the form the call keeps', funct
     'a walk writing nothing' => [ByReferenceEffect::WritesElements, '{ a: number }', [], '{ a: number }'],
     'a walk over a class' => [ByReferenceEffect::WritesElements, 'User', [], null],
     'a replacing call' => [ByReferenceEffect::Replaces, 'string[]', [], null],
-    'preg_match()\'s matches over a value the scan cannot type, which a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'unknown', [], null],
-    'preg_match()\'s matches over an empty list' => [ByReferenceEffect::WritesMatches, 'never[]', [], 'string[]'],
-    'preg_match()\'s matches over an empty tuple' => [ByReferenceEffect::WritesMatches, '[]', [], 'string[]'],
-    'preg_match()\'s matches over a list of strings' => [ByReferenceEffect::WritesMatches, 'string[]', [], 'string[]'],
-    'preg_match()\'s matches over a string a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'string', [], null],
-    'preg_match()\'s matches over a nullable list' => [ByReferenceEffect::WritesMatches, 'string[] | null', [], null],
+]);
+
+// A call that may not run leaves the value held, so the matches replace only an empty list or a value they stand for.
+it('leaves preg_match()\'s matches over a value they stand for', function (string $type, string $matches, ?string $left) {
+    expect(ByReferenceEffect::WritesMatches->left($type, fn (string $element, string $key): array => [], matches: $matches))->toBe($left);
+})->with([
+    'a value the scan cannot type, which a call that may not run leaves' => ['unknown', 'string[]', null],
+    'an empty list' => ['never[]', 'string[]', 'string[]'],
+    'an empty tuple' => ['[]', 'string[]', 'string[]'],
+    'a list of strings' => ['string[]', 'string[]', 'string[]'],
+    'a string a call that may not run leaves' => ['string', 'string[]', null],
+    'a nullable list' => ['string[] | null', 'string[]', null],
+    'an empty list, under matches keyed by name' => ['never[]', '{ "0": string; n?: string; "1"?: string } | never[]', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'the same matches keyed by name' => [
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+    ],
+    'a list of strings, under matches keyed by name' => ['string[]', '{ "0": string; n?: string; "1"?: string } | never[]', null],
+    'a list of strings, under offsets' => ['string[]', '[string, number][]', null],
 ]);
 
 // An API resource re-indexes a list a key-keeping sort reorders, so there it sends the list it was.

@@ -46,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchFlagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadDeclinesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
@@ -7779,3 +7780,44 @@ test('a helper read as a value publishes what its returns hold, and a finder ins
     'a finder' => ['find', '?unknown'],
     'keys() of the attribute whenHas() passes' => ['keys', '?string[]'],
 ]);
+
+// A group that did not take part is dropped from the end of the matches, or kept as null under PREG_UNMATCHED_AS_NULL,
+// and a named group keys the matches as an object; a pattern the call computes stays unread.
+it('types preg_match()\'s matches from the pattern\'s groups and its flags', function () {
+    AnalysisWarnings::reset();
+    $post = fn (string $title): Post => (new Post)->forceFill(['title' => $title]);
+    $sent = fn (string $title, array $query = []): string => (string) json_encode(
+        new PregMatchFlagsResource($post($title))->resolve(Request::create('/', 'GET', $query)),
+    );
+
+    expect(publishedResourceKeyTypes(PregMatchFlagsResource::class, Post::class))->toBe([
+        'plain' => 'string[]',
+        'plain_direct' => 'string[]',
+        'named' => '{ "0": string; first?: string; "1"?: string } | never[]',
+        'named_direct' => '{ "0": string; first?: string; "1"?: string } | never[]',
+        'named_first' => 'string | null',
+        'first_matched' => 'string',
+        'offset' => '[string, number][]',
+        'unmatched' => '(string | null)[]',
+        'named_unmatched' => '{ "0": string; first: string | null; "1": string | null; second: string | null; "2": string | null } | never[]',
+        'named_offset' => '{ "0": [string, number]; first?: [string, number]; "1"?: [string, number] } | never[]',
+        'zero_flags' => 'string[]',
+        'all' => 'string[][]',
+        'all_direct' => 'string[][]',
+        'computed' => 'never[]',
+    ])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The value on line 50 publishes `never[]`, an array that is always empty, because `$computed` could not be typed '
+                .'and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+        ])
+        ->and($sent('aBc'))->toBe('{"plain":["B","B"],"plain_direct":["B","B"],"named":{"0":"B","first":"B","1":"B"},'
+            .'"named_direct":{"0":"B","first":"B","1":"B"},"named_first":"B","first_matched":"B","offset":[["B",1],["B",1]],'
+            .'"unmatched":["B","B",null],"named_unmatched":{"0":"B","first":"B","1":"B","second":null,"2":null},'
+            .'"named_offset":{"0":["B",1],"first":["B",1],"1":["B",1]},"zero_flags":["B","B"],"all":[["B"],["B"]],'
+            .'"all_direct":[["B"],["B"]],"computed":[]}')
+        ->and($sent('zzz', ['pattern' => 1]))->toBe('{"plain":[],"plain_direct":[],"named":[],"named_direct":[],"named_first":null,'
+            .'"first_matched":"none","offset":[],"unmatched":[],"named_unmatched":[],"named_offset":[],"zero_flags":[],"all":[[],[]],'
+            .'"all_direct":[[],[]],"computed":[]}');
+
+    AnalysisWarnings::reset();
+});
