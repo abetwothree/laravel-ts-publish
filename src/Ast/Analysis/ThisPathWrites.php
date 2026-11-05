@@ -31,14 +31,12 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Function_;
-use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use ReflectionFunction;
@@ -82,7 +80,7 @@ final class ThisPathWrites
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
 
-    /** @var array{list<CallLike>, list<Unset_>}|null */
+    /** @var array{list<array{CallLike, list<string>}>, list<Unset_>}|null */
     private ?array $nodes = null;
 
     /**
@@ -120,7 +118,7 @@ final class ThisPathWrites
         [$calls, $unsets] = $this->nodes();
 
         return array_any($unsets, fn (Unset_ $unset): bool => $this->lands($unset, $from, $to, $exits) && $this->unsetChanges($unset, $path, $classes))
-            || array_any($calls, fn (CallLike $call): bool => $this->lands($call, $from, $to, $exits) && ! $this->safeCall($call, $path));
+            || array_any($calls, fn (array $call): bool => $this->lands($call[0], $from, $to, $exits) && ! $this->safeCall($call[0], $path, $call[1]));
     }
 
     /**
@@ -188,28 +186,16 @@ final class ThisPathWrites
     }
 
     /**
-     * The `return` statements of a body, never a nested function's.
+     * The names of a closure's parameters.
      *
-     * @param  array<mixed>  $nodes
-     * @return list<Return_>
+     * @return list<string>
      */
-    private static function ownReturns(array $nodes): array
+    private static function parameterNames(ClosureExpr|ArrowFunction $closure): array
     {
-        $returns = [];
-
-        foreach ($nodes as $node) {
-            if ($node instanceof Return_) {
-                $returns[] = $node;
-            }
-
-            if ($node instanceof Node && ! $node instanceof FunctionLike && ! $node instanceof ClassLike) {
-                foreach ($node->getSubNodeNames() as $name) {
-                    $returns = [...$returns, ...self::ownReturns(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}])];
-                }
-            }
-        }
-
-        return $returns;
+        return array_values(array_filter(array_map(
+            fn (Param $param): ?string => $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null,
+            $closure->params,
+        )));
     }
 
     /**
@@ -285,8 +271,9 @@ final class ThisPathWrites
      * hold no local, no `$this` but through the chain or a chain apart from it, and no closure returning one.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $parameters  the parameters of the closures around the call
      */
-    private function safeCall(CallLike $call, array $path): bool
+    private function safeCall(CallLike $call, array $path, array $parameters = []): bool
     {
         // A first-class callable binds its receiver for a later call, so that receiver must be safe to hand on.
         if ($call->isFirstClassCallable()) {
@@ -298,15 +285,15 @@ final class ThisPathWrites
             };
 
             return ! ($call instanceof StaticCall && $call->class instanceof Name && $call->class->isSpecialClassName())
-                && ($receiver === null || $this->safeValue($receiver, $path));
+                && ($receiver === null || $this->safeValue($receiver, $path, $parameters));
         }
 
         return match (true) {
-            $call instanceof MethodCall, $call instanceof NullsafeMethodCall => $this->safeMethodCall($call, $path),
-            $call instanceof StaticCall => $this->safeStaticCall($call, $path),
-            $call instanceof FuncCall => $this->safeFunctionCall($call, $path),
+            $call instanceof MethodCall, $call instanceof NullsafeMethodCall => $this->safeMethodCall($call, $path, $parameters),
+            $call instanceof StaticCall => $this->safeStaticCall($call, $path, $parameters),
+            $call instanceof FuncCall => $this->safeFunctionCall($call, $path, $parameters),
             $call instanceof New_ => $call->class instanceof Name && ! $call->class->isSpecialClassName()
-                && $this->safeArguments($call, $path),
+                && $this->safeArguments($call, $path, $parameters),
             default => false,
         };
     }
@@ -315,19 +302,20 @@ final class ThisPathWrites
      * Whether a method call is known not to reach the chain.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $parameters  the parameters of the closures around the call
      */
-    private function safeMethodCall(MethodCall|NullsafeMethodCall $call, array $path): bool
+    private function safeMethodCall(MethodCall|NullsafeMethodCall $call, array $path, array $parameters): bool
     {
         $name = $call->name instanceof Identifier ? $call->name->toLowerString() : null;
 
         return match (true) {
             $name === null => false,
             $call->var instanceof Variable && $call->var->name === 'this' => in_array($name, self::RESOURCE_HELPERS, true)
-                && $this->onlyReads($call) && $this->safeArguments($call, $path),
+                && $this->onlyReads($call) && $this->safeArguments($call, $path, $parameters),
             in_array($name, self::ABILITY_CHECKS, true) && $this->signedInUser($call->var, $call) => true,
             // Reading the signed-in user an ability check runs on reaches nothing else.
             $name === 'user' && $this->signedInUser($call, $call) => true,
-            default => $this->safeValue($call->var, $path) && $this->safeArguments($call, $path),
+            default => $this->safeValue($call->var, $path, $parameters) && $this->safeArguments($call, $path, $parameters),
         };
     }
 
@@ -336,8 +324,9 @@ final class ThisPathWrites
      * may run on `$this`.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $parameters  the parameters of the closures around the call
      */
-    private function safeStaticCall(StaticCall $call, array $path): bool
+    private function safeStaticCall(StaticCall $call, array $path, array $parameters): bool
     {
         $class = $call->class;
 
@@ -345,7 +334,7 @@ final class ThisPathWrites
             ! $class instanceof Name || $class->isSpecialClassName() => false,
             in_array($class->toString(), [Gate::class, 'Gate'], true) && $call->name instanceof Identifier
                 && in_array($call->name->toLowerString(), self::GATE_CHECKS, true) => true,
-            default => $this->safeArguments($call, $path),
+            default => $this->safeArguments($call, $path, $parameters),
         };
     }
 
@@ -354,14 +343,15 @@ final class ThisPathWrites
      * there, or handing one to call_user_func(), may run anything.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $parameters  the parameters of the closures around the call
      */
-    private function safeFunctionCall(FuncCall $call, array $path): bool
+    private function safeFunctionCall(FuncCall $call, array $path, array $parameters): bool
     {
         $name = $call->name;
 
         if (! $name instanceof Name) {
-            return ($name instanceof ClosureExpr || $name instanceof ArrowFunction) && $this->safeValue($name, $path)
-                && $this->safeArguments($call, $path);
+            return ($name instanceof ClosureExpr || $name instanceof ArrowFunction) && $this->safeValue($name, $path, $parameters)
+                && $this->safeArguments($call, $path, $parameters);
         }
 
         if (self::runsLaravelHelper($name, self::URL_HELPERS)) {
@@ -371,17 +361,18 @@ final class ThisPathWrites
         $callable = in_array($name->toLowerString(), self::CALLERS, true) ? $call->getArgs()[0]->value ?? null : null;
 
         return ($callable === null || $callable instanceof String_ || $callable instanceof ClosureExpr || $callable instanceof ArrowFunction)
-            && $this->safeArguments($call, $path);
+            && $this->safeArguments($call, $path, $parameters);
     }
 
     /**
      * Whether every argument of a call is safe to hand on, and none passes the chain, or one through it, by reference.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $parameters  the parameters of the closures around the call
      */
-    private function safeArguments(CallLike $call, array $path): bool
+    private function safeArguments(CallLike $call, array $path, array $parameters): bool
     {
-        return array_all($call->getArgs(), fn (Node\Arg $arg): bool => $this->safeValue($arg->value, $path)
+        return array_all($call->getArgs(), fn (Node\Arg $arg): bool => $this->safeValue($arg->value, $path, $parameters)
             && ! ($this->chainOf($arg->value) !== null && $this->passesByReference($call, $arg->value)));
     }
 
@@ -393,8 +384,12 @@ final class ThisPathWrites
      * @param  list<string>  $path
      * @param  list<string>  $parameters
      */
-    private function safeValue(Node $node, array $path, array $parameters = []): bool
+    private function safeValue(Node $node, array $path, array $parameters = [], bool $acrossCalls = true): bool
     {
+        if (! $acrossCalls && $node instanceof CallLike) {
+            return true;
+        }
+
         if ($node instanceof Variable) {
             return is_string($node->name) && $node->name !== 'this' && in_array($node->name, $parameters, true);
         }
@@ -405,15 +400,15 @@ final class ThisPathWrites
             $chain = $this->chainOf($node);
             $through = $chain === null ? [] : self::through($chain, $path);
 
-            return $chain !== null && ($through !== [] || $chain === $path) && $this->safeChildren($node, $path, $parameters, $root);
+            return $chain !== null && ($through !== [] || $chain === $path) && $this->safeChildren($node, $path, $parameters, $acrossCalls, $root);
         }
 
         return match (true) {
-            $node instanceof ClosureExpr, $node instanceof ArrowFunction => $this->safeClosure($node, $path),
+            $node instanceof ClosureExpr, $node instanceof ArrowFunction => $this->safeClosure($node, $path, $parameters),
             $node instanceof ClassLike => false,
             ($node instanceof ClassConstFetch || $node instanceof StaticPropertyFetch || $node instanceof StaticCall
                 || $node instanceof New_) && ! ($node->class instanceof Name && ! $node->class->isSpecialClassName()) => false,
-            default => $this->safeChildren($node, $path, $parameters),
+            default => $this->safeChildren($node, $path, $parameters, $acrossCalls),
         };
     }
 
@@ -423,12 +418,14 @@ final class ThisPathWrites
      * @param  list<string>  $path
      * @param  list<string>  $parameters
      */
-    private function safeChildren(Node $node, array $path, array $parameters, ?Node $skip = null): bool
+    private function safeChildren(Node $node, array $path, array $parameters, bool $acrossCalls, ?Node $skip = null): bool
     {
         foreach ($node->getSubNodeNames() as $name) {
             foreach (is_array($node->{$name}) ? $node->{$name} : [$node->{$name}] as $child) {
                 if ($child instanceof Node && $child !== $skip
-                    && ! ($this->isChainLink($node, $child) ? $this->safeChildren($child, $path, $parameters, $skip) : $this->safeValue($child, $path, $parameters))
+                    && ! ($this->isChainLink($node, $child)
+                        ? $this->safeChildren($child, $path, $parameters, $acrossCalls, $skip)
+                        : $this->safeValue($child, $path, $parameters, $acrossCalls))
                 ) {
                     return false;
                 }
@@ -448,23 +445,22 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a closure is safe to hand to a call: no value it returns holds anything safeValue() refuses, its own
-     * parameters aside. What it calls is read with the rest of the span.
+     * Whether a closure is safe to hand to a call: it imports by value and never writes an import, writes through
+     * nothing, and holds no value safeValue() refuses outside its calls, its parameters and outer closures' aside. Its
+     * calls are read with the rest of the span, which reaches into closures.
      *
      * @param  list<string>  $path
+     * @param  list<string>  $outer
      */
-    private function safeClosure(ClosureExpr|ArrowFunction $closure, array $path): bool
+    private function safeClosure(ClosureExpr|ArrowFunction $closure, array $path, array $outer): bool
     {
-        $parameters = array_values(array_filter(array_map(
-            fn (Param $param): ?string => $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null,
-            $closure->params,
-        )));
-        $returns = $closure instanceof ArrowFunction ? [$closure->expr] : array_values(array_filter(array_map(
-            fn (Return_ $return): ?Expr => $return->expr,
-            self::ownReturns($closure->stmts),
-        )));
+        $parameters = [...$outer, ...self::parameterNames($closure)];
+        $body = $closure instanceof ArrowFunction ? [$closure->expr] : $closure->stmts;
+        $imports = $closure instanceof ClosureExpr ? array_map(fn (Node\ClosureUse $use): string|Expr => $use->var->name, $closure->uses) : [];
 
-        return array_all($returns, fn (Expr $returned): bool => $this->safeValue($returned, $path, $parameters));
+        return ! ($closure instanceof ClosureExpr && array_any($closure->uses, fn (Node\ClosureUse $use): bool => $use->byRef))
+            && ! array_any(VariableWrites::of($body), fn (array $write): bool => in_array($write[0], $imports, true) || self::writesThrough($write[2]))
+            && array_all($body, fn (Node $node): bool => $this->safeValue($node, $path, $parameters, false));
     }
 
     /**
@@ -534,9 +530,10 @@ final class ThisPathWrites
 
     /**
      * The calls and `unset()` statements of the body, closures and arrow functions included, since they may run before
-     * a read; never a nested class's or named function's. Scanned once, on the first proof that asks.
+     * a read, each call with the parameters of the closures around it; never a nested class's or named function's.
+     * Scanned once, on the first proof that asks.
      *
-     * @return array{list<CallLike>, list<Unset_>}
+     * @return array{list<array{CallLike, list<string>}>, list<Unset_>}
      */
     private function nodes(): array
     {
@@ -546,24 +543,26 @@ final class ThisPathWrites
 
         $calls = [];
         $unsets = [];
-        $nodes = $this->stmts;
+        $stack = array_map(fn (Node $stmt): array => [$stmt, []], $this->stmts);
 
-        while ($nodes !== []) {
-            $node = array_pop($nodes);
+        while ($stack !== []) {
+            [$node, $parameters] = array_pop($stack);
 
             if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_) {
                 continue;
             }
 
             if ($node instanceof CallLike) {
-                $calls[] = $node;
+                $calls[] = [$node, $parameters];
             } elseif ($node instanceof Unset_) {
                 $unsets[] = $node;
             }
 
+            $inner = $node instanceof ClosureExpr || $node instanceof ArrowFunction ? [...$parameters, ...self::parameterNames($node)] : $parameters;
+
             foreach ($node->getSubNodeNames() as $name) {
                 foreach (is_array($node->{$name}) ? $node->{$name} : [$node->{$name}] as $child) {
-                    $nodes[] = $child;
+                    $stack[] = [$child, $inner];
                 }
             }
         }

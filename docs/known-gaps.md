@@ -505,7 +505,9 @@ Check which spelling you wrote before you assume a value is `unknown`:
   test's chain reads through, such as `Str::limit($this->imageable->title, 50)`. A closure given to one may return
   only what such a call may take, its own parameters aside. One call outside that list between the test and a read,
   such as `$this->reload()`, `PostResource::make($this->resource)` or a call on a local, publishes every read of the
-  chain unnarrowed. A gate or policy callback a `Gate` or ability check runs is trusted, even one that writes the model.
+  chain unnarrowed. A gate or policy callback a `Gate` or ability check runs is trusted, even one that writes the model,
+  and so is a callable another `$this` property holds, handed to a call that takes a callback, such as
+  `array_map($this->mapper, …)`.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads

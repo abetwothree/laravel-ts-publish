@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableRewriteG
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableSafeCallsGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisAliasGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableThisPassGuardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ImageableUseRequestGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
@@ -390,14 +391,17 @@ it('narrows a $this->prop path past calls that cannot reach it', function () {
 });
 
 // An authorization check only reads the model it is given, so the proof holds past it.
-it('narrows a $this->prop path past an authorization check given $this->resource', function () {
+it('narrows a $this->prop path past an authorization check given $this->resource', function (string $resource) {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
     $image = new Image;
     $image->setRelation('imageable', blockItemsPost());
 
-    expect(publishedResourceKeyTypes(ImageableAuthorizedGuardResource::class, Image::class))->toBe(['k' => 'number | null'])
-        ->and(json_encode(new ImageableAuthorizedGuardResource($image)->resolve(Request::create('/'))))->toBe('{"k":7}');
-});
+    expect(publishedResourceKeyTypes($resource, Image::class))->toBe(['k' => 'number | null'])
+        ->and(json_encode(new $resource($image)->resolve(Request::create('/'))))->toBe('{"k":7}');
+})->with([
+    'on the method\'s own request parameter' => [ImageableAuthorizedGuardResource::class],
+    'inside a closure importing that parameter by value' => [ImageableUseRequestGuardResource::class],
+]);
 
 // Only the test names the chain's class: a declared return still reads its type, a conditional guess does not (R44).
 it('withdraws a conditional guess, not a declared return, off a $this->prop path an if proves a collection', function () {
