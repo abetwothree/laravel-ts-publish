@@ -1006,7 +1006,7 @@ class LaravelTsPublish
         }
 
         $args = array_map('trim', $this->splitAtTopLevelCommas($m[2]));
-        $keyType = count($args) === 2 ? strtolower($args[0]) : 'int';
+        $keyType = count($args) === 2 ? $this->containerKeyKind(strtolower($args[0])) : 'int';
         $valueTypeString = count($args) === 2 ? $args[1] : $args[0];
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
@@ -3428,5 +3428,16 @@ class LaravelTsPublish
     private function isParenthesized(string $phpType): bool
     {
         return str_ends_with($phpType, ')') && str_starts_with($phpType, '(') && $this->closesAtEnd($phpType);
+    }
+
+    /**
+     * A container's key as the converter reads it: `int|string`, however spelled, is `array-key`; any other as written.
+     */
+    private function containerKeyKind(string $key): string
+    {
+        $arms = array_map(trim(...), explode('|', $key));
+        sort($arms);
+
+        return $arms === ['int', 'string'] ? 'array-key' : $key;
     }
 }

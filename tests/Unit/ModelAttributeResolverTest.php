@@ -897,6 +897,7 @@ test('a @property tag naming a @phpstan-type alias whole, inside a list or insid
     'the alias whole' => ['owner_snapshot', '{ a: number } | null'],
     'the alias inside a list' => ['tags', '{ a: number }[] | null'],
     'the alias inside a shape' => ['meta_info', '{ row: { a: number } } | null'],
+    'the alias behind a ?' => ['related_users', '{ a: number } | null'],
 ]);
 
 test('an AsArrayObject cast resolves to the array-or-record union', function () {

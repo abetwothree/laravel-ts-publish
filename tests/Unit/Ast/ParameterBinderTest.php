@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LocalAliasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenModelMemberResource;
@@ -635,7 +636,9 @@ test('reads one parameter\'s @phpstan-param, @psalm-param or @param tag, and dec
 })->with([
     'a list' => ["/**\n * @param  list<Post>  \$posts\n */", 'list<Post>'],
     'another parameter first' => ["/**\n * @param  int  \$limit\n * @param  list<Post>  \$posts  the posts\n */", 'list<Post>'],
-    'a form the local whitelist declines' => ["/**\n * @param  Post[]  \$posts\n */", null],
+    'a bracket list' => ["/**\n * @param  Post[]  \$posts\n */", 'Post[]'],
+    'a form the local whitelist declines' => ["/**\n * @param  class-string<Post>  \$posts\n */", null],
+    'an alias the file does not define' => ["/**\n * @param  Pair  \$posts\n */", null],
     '@phpstan-param over @param' => ["/**\n * @param  array  \$posts\n * @phpstan-param  list<Post>  \$posts\n */", 'list<Post>'],
     'a variadic' => ["/**\n * @param  Post  ...\$posts\n */", 'Post'],
     'a by-reference parameter' => ["/**\n * @param  Post  &\$posts\n */", 'Post'],
@@ -649,6 +652,19 @@ test('reads one parameter\'s @phpstan-param, @psalm-param or @param tag, and dec
     'an unsealed list shape' => ["/**\n * @param  list{int, ...}  \$posts\n */", null],
     'no tag' => ['/** Nothing. */', null],
 ]);
+
+test('reads a @param naming an alias for an untyped or array parameter', function () {
+    $sent = json_decode((string) json_encode(LocalAliasResource::make(new Post)->resolve()), true);
+
+    expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(LocalAliasResource::class)->properties))->toMatchArray([
+        'helper' => '{ p: { a: number; b: string } }',
+        'helper_array' => '{ p: { a: number; b: string } }',
+        'helper_renamed' => '{ p: { c: boolean; d: number[] } }',
+    ])
+        ->and($sent['helper'])->toBe(['p' => ['a' => 1, 'b' => 'x']])
+        ->and($sent['helper_array'])->toBe(['p' => ['a' => 1, 'b' => 'x']])
+        ->and($sent['helper_renamed'])->toBe(['p' => ['c' => true, 'd' => [1]]]);
+});
 
 test('reads a list shape @param as the tuple it declares', function () {
     $reader = resolve(PropertyDocblockTypeReader::class);

@@ -8,13 +8,16 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Enumerable;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
 /**
  * Reads a rack's comments where a declaration types them: a callback's or a helper's declared parameter, and an
- * inline `@var` over what a forward hands back.
+ * inline `@var` over what a forward hands back, in each form a local binds.
+ *
+ * @phpstan-type CommentList EloquentCollection<int, Comment>
  *
  * @extends JsonResource<CommentRack>
  */
@@ -33,6 +36,12 @@ class GuardedDeclarationsResource extends JsonResource
         $listed = $post->comments;
         /** @var EloquentCollection<int, Comment> $own */
         $own = $this->resource->comments();
+        /** @var Collection<Comment> $oneParamListed */
+        $oneParamListed = $post->comments;
+        /** @var EloquentCollection<int|string, Comment> $eitherListed */
+        $eitherListed = $post->comments;
+        /** @var CommentList $aliasListed */
+        $aliasListed = $post->comments;
 
         return [
             'array_typed' => array_map(fn (Comment $comment) => $comment->post->comments->pluck('id')->random(), $post->comments->all()),
@@ -61,6 +70,12 @@ class GuardedDeclarationsResource extends JsonResource
 
                 return $this->postedContent($held);
             }),
+            'declared_one_param_first' => $oneParamListed->first()->post->comments->pluck('id')->random(),
+            'declared_one_param_array' => array_map(fn ($comment) => $comment->post->comments->pluck('id')->random(), $oneParamListed->all()),
+            'declared_either_first' => $eitherListed->first()->post->comments->pluck('id')->random(),
+            'declared_either_map' => $eitherListed->map(fn ($comment) => $comment->post->comments->pluck('id')->random()),
+            'declared_alias_first' => $aliasListed->first()->post->comments->pluck('id')->random(),
+            'declared_alias_array' => array_map(fn ($comment) => $comment->post->comments->pluck('id')->random(), $aliasListed->all()),
         ];
     }
 

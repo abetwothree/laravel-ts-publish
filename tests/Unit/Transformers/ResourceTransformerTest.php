@@ -4797,6 +4797,10 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         'declared_eloquent_all' => 'Record<string, Comment>',
         'declared_int_all' => 'Comment[] | Record<string, Comment>',
         'declared_eloquent_int_all' => 'Comment[] | Record<string, Comment>',
+        'declared_int' => 'Comment[] | Record<string, Comment>',
+        'declared_eloquent_either_all' => 'Comment[] | Record<string, Comment>',
+        'declared_any_all' => 'Comment[] | Record<string, Comment>',
+        'either_keyed_all' => 'Comment[] | Record<string, Comment>',
     ])
         ->and($sent['ids'])->toBe(['a' => 3, 'b' => 4])
         ->and($sent['ids_all'])->toBe(['a' => 3, 'b' => 4])
@@ -4822,9 +4826,17 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($sent['declared_eloquent_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($sent['declared_int_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($sent['declared_eloquent_int_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['declared_int'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['declared_eloquent_either_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['declared_any_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['either_keyed_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($numbered['all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['declared_int_all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['declared_eloquent_int_all'])->toBe([$comment(3), $comment(4)])
+        ->and($numbered['declared_int'])->toBe([$comment(3), $comment(4)])
+        ->and($numbered['declared_eloquent_either_all'])->toBe([$comment(3), $comment(4)])
+        ->and($numbered['declared_any_all'])->toBe([$comment(3), $comment(4)])
+        ->and($numbered['either_keyed_all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['ids'])->toBe([3, 4])
         ->and($numbered['model_keys'])->toBe([3, 4]);
 });
@@ -4858,6 +4870,12 @@ it('reads a declaration under the guard as it reads one without it', function ()
         'callback_relay' => 'unknown',
         'callback_member_helper' => 'unknown',
         'callback_local_helper' => 'unknown',
+        'declared_one_param_first' => 'number',
+        'declared_one_param_array' => 'number[]',
+        'declared_either_first' => 'number',
+        'declared_either_map' => 'number[] | Record<string, number>',
+        'declared_alias_first' => 'number',
+        'declared_alias_array' => 'number[]',
     ])
         ->and($sent['array_typed'])->toBe([3000, 4000])
         ->and($sent['array_typed_held'])->toBe([3000, 4000])
@@ -4880,7 +4898,13 @@ it('reads a declaration under the guard as it reads one without it', function ()
         ->and($sent['declared_own_first'])->toBe(3000)
         ->and($sent['callback_relay'])->toBe(['in3', 'in4'])
         ->and($sent['callback_member_helper'])->toBe(['in3', 'in4'])
-        ->and($sent['callback_local_helper'])->toBe(['in3', 'in4']);
+        ->and($sent['callback_local_helper'])->toBe(['in3', 'in4'])
+        ->and($sent['declared_one_param_first'])->toBe(3000)
+        ->and($sent['declared_one_param_array'])->toBe([3000, 4000])
+        ->and($sent['declared_either_first'])->toBe(3000)
+        ->and($sent['declared_either_map'])->toBe([3000, 4000])
+        ->and($sent['declared_alias_first'])->toBe(3000)
+        ->and($sent['declared_alias_array'])->toBe([3000, 4000]);
 });
 
 // A collection's own paginator keeps its property reading, though Laravel sends its toArray(): a known gap.

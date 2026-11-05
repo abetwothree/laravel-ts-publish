@@ -83,8 +83,9 @@ answers:
 1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets.
 2. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file, with the one concrete model a collection generic such as
-   `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
-   [AST engine § Declared locals](ast-engine.md#declared-locals).
+   `Collection<int, Comment>` or `Collection<Comment>` lists as `elementModel`, `keyed` for a `string`, `int|string` or
+   `array-key` key, and `stringKeyed` for a bare `string` one. An alias the `@var` names reads as its definition, in
+   the file that wrote it. See [AST engine § Declared locals](ast-engine.md#declared-locals).
 3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
    `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
    `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a

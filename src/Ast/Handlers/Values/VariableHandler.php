@@ -456,10 +456,34 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * the `null` an untypable arm's drop left, as AccessorBodyAnalyzer reads a body. Then the `@var` type, if it is
      * precise enough to publish, optional where the reading was, since Laravel drops a missing conditional value.
      *
+     * A collection is sent as its all() reads, so a record the `@var` keys of either kind keeps its list arm.
+     *
      * @param  VarDocBinding  $span
      * @return ValueExpressionResult|null
      */
     private function declaredLocalValue(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $value = $this->declaredReadingOrTag($name, $span, $scope, $engine);
+
+        if ($value === null || $this->keyedAll($value['type']) === $value['type']) {
+            return $value;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolveDeclared($name, $span, $scope);
+
+        return $receiver !== null && $receiver->keyed && ! $receiver->stringKeyed && $receiver->within([Enumerable::class])
+            ? [...$value, 'type' => $this->keyedAll($value['type'])]
+            : $value;
+    }
+
+    /**
+     * A declared local's reading where it stands, else its `@var` type where that can replace it; see
+     * declaredLocalValue().
+     *
+     * @param  VarDocBinding  $span
+     * @return ValueExpressionResult|null
+     */
+    private function declaredReadingOrTag(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $dropped = DroppedUnionArms::dropped();
         // A placeholder the tag replaces is never published, so the warnings its reading raised are not either.

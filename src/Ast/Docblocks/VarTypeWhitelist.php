@@ -13,9 +13,9 @@ use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
- * The PHPDoc forms an inline `@var` on a local may bind: scalars, classes the file names, unions, `?T`, `list<X>`,
- * `array<K, X>` keyed by `int`, `string` or string literals, keyed `array{…}` and `object{…}`, positional `list{…}` and
- * `array{…}`, and the two collections.
+ * The PHPDoc forms an inline `@var` on a local may bind: scalars, classes the file names, aliases it sees, unions,
+ * `?T`, `T[]`, `list<X>`, `array<K, X>` keyed by `int`, `string`, both, `array-key` or string literals, keyed
+ * `array{…}` and `object{…}`, positional `list{…}` and `array{…}`, and the two collections, keyed or by element alone.
  *
  * A callable reads as `unknown`, so it is taken only as a shape's member, and counted.
  *
@@ -29,6 +29,9 @@ final readonly class VarTypeWhitelist
     private const SCALARS = ['int', 'string', 'bool', 'float', 'null', 'true', 'false'];
 
     private const KEYS = ['int', 'string'];
+
+    /** The key of either kind, which the docblock resolution reads as `array-key`. */
+    private const EITHER_KEY = 'array-key';
 
     private const COLLECTIONS = [Collection::class, EloquentCollection::class];
 
@@ -72,7 +75,7 @@ final readonly class VarTypeWhitelist
 
     /**
      * Split a type into tokens, or null when it holds any other character. A shape's opener, each member's key with
-     * its `?` and `:`, a quoted string and a callable's `callable(` are single tokens.
+     * its `?` and `:`, a quoted string, a callable's `callable(`, `array-key` and a list's `[]` are single tokens.
      *
      * @return list<string>|null
      */
@@ -81,7 +84,7 @@ final readonly class VarTypeWhitelist
         $name = '\\\\?[a-z_\x80-\xff][\w\x80-\xff]*(?:\\\\[a-z_\x80-\xff][\w\x80-\xff]*)*';
         $literal = '\'[^\'\\\\]*\'|"[^"\\\\]*"';
         preg_match_all(
-            '/\s*('.self::KEY.'|(?:array|list|object)\{|callable\(|'.$literal.'|'.$name.'|[|?<>},():])\s*/i',
+            '/\s*('.self::KEY.'|(?:array|list|object)\{|callable\(|'.self::EITHER_KEY.'(?![\w-])|'.$literal.'|'.$name.'|\[\]|[|?<>},():])\s*/i',
             $type,
             $matches,
         );
@@ -120,13 +123,30 @@ final readonly class VarTypeWhitelist
     }
 
     /**
-     * One form starting at a token: a bare scalar or class, a list, a keyed array, a shape, a collection, or a shape
-     * member's callable.
+     * One form starting at a token, listed by each `[]` that follows it.
      *
      * @param  list<string>  $tokens
      * @return Part|null
      */
     private function form(array $tokens, int $at, bool $member): ?array
+    {
+        $part = $this->baseForm($tokens, $at, $member);
+
+        while ($part !== null && ($tokens[$part['end']] ?? null) === '[]') {
+            $part['end']++;
+        }
+
+        return $part;
+    }
+
+    /**
+     * One form starting at a token: a bare scalar, class or alias, a list, a keyed array, a shape, a collection, or a
+     * shape member's callable.
+     *
+     * @param  list<string>  $tokens
+     * @return Part|null
+     */
+    private function baseForm(array $tokens, int $at, bool $member): ?array
     {
         $name = $tokens[$at] ?? '';
         $next = $tokens[$at + 1] ?? null;
@@ -139,20 +159,27 @@ final readonly class VarTypeWhitelist
             $name === 'object{' => $this->members($tokens, $at + 1, 0),
             $name === 'list{' => $this->positional($tokens, $at + 1, 0),
             $name === 'callable(' => $member ? $this->callable($tokens, $at + 1) : null,
-            $next === '<' => in_array($this->className($name), self::COLLECTIONS, true) ? $this->keyed($tokens, $at + 2) : null,
+            $next === '<' => in_array($this->className($name), self::COLLECTIONS, true)
+                ? $this->keyed($tokens, $at + 2) ?? $this->closed($tokens, $this->type($tokens, $at + 2))
+                : null,
             default => $this->bareClass($name, $at),
         };
     }
 
     /**
-     * A generic's `int`, `string` or string-literal-union key, its value type and the closing `>`.
+     * A generic's key, its value type and the closing `>`: `int`, `string`, both as a union, `array-key`, or a union of
+     * string literals.
      *
      * @param  list<string>  $tokens
      * @return Part|null
      */
     private function keyed(array $tokens, int $at): ?array
     {
-        if (! in_array($tokens[$at] ?? null, self::KEYS, true)) {
+        $key = $tokens[$at] ?? null;
+
+        if ($this->isKeyUnion($tokens, $at)) {
+            $at += 2;
+        } elseif ($key !== self::EITHER_KEY && ! in_array($key, self::KEYS, true)) {
             // A union of string literals reads as an object of optional keys; a decimal int one is an int key.
             while ($this->isTextLiteral($tokens[$at] ?? '') && ($tokens[$at + 1] ?? null) === '|') {
                 $at += 2;
@@ -259,15 +286,32 @@ final readonly class VarTypeWhitelist
     }
 
     /**
-     * A bare class name at a token, or null when it names no class.
+     * A bare class name, or an alias the file's class sees where it names no class, at a token; else null.
      *
      * @return Part|null
      */
     private function bareClass(string $name, int $at): ?array
     {
-        $class = $this->className($name);
+        $named = $this->className($name) !== null
+            || (TypeAliases::isName($name) && TypeAliases::find($name, $this->context) !== null);
 
-        return $class === null ? null : ['end' => $at + 1, 'unknowns' => 0];
+        return $named ? ['end' => $at + 1, 'unknowns' => 0] : null;
+    }
+
+    /**
+     * Whether the tokens at a position spell a key of either kind as a union, `int|string` or `string|int`.
+     *
+     * @param  list<string>  $tokens
+     */
+    private function isKeyUnion(array $tokens, int $at): bool
+    {
+        $first = $tokens[$at] ?? null;
+        $second = $tokens[$at + 2] ?? null;
+
+        return in_array($first, self::KEYS, true)
+            && ($tokens[$at + 1] ?? null) === '|'
+            && in_array($second, self::KEYS, true)
+            && $second !== $first;
     }
 
     /**

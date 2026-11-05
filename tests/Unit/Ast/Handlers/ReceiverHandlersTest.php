@@ -2493,10 +2493,11 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        // Only the tag declares the keys, and a bare `string` one is trusted as the record all() sends (R37).
         'a @var collection of plain values keyed by string, over a value that names no class' => [
             '/** @var \Illuminate\Support\Collection<string, int> $m */ '
                 .'$m = \Workbench\App\Support\Opaque::value($this->resource->comments)->pluck(\'id\', \'content\'); return $m->all();',
-            'number[] | Record<string, number>',
+            'Record<string, number>',
             $keys,
             ['beta', 'alpha'],
         ],

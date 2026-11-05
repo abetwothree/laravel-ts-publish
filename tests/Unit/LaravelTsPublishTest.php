@@ -2150,6 +2150,23 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'numeric string keys' => ["array<'1'|'2', int>", 'number[]'],
         'a literal beside a string key' => ["array<'a'|string, int>", 'number[]'],
     ]);
+
+    // PHP stores a numeric string key as an int, so keys of either kind may still be a list json_encode() writes.
+    test('reads an int|string key as array-key', function (string $phpType, string $expected) {
+        expect($this->service->resolveGenericContainerType($phpType, ['Collection' => Collection::class], '')['type'] ?? null)
+            ->toBe($expected);
+    })->with([
+        'int|string' => ['array<int|string, int>', 'number[] | Record<string, number>'],
+        'string|int' => ['array<string|int, int>', 'number[] | Record<string, number>'],
+        'spaced' => ['array<int | string, int>', 'number[] | Record<string, number>'],
+        'nullable' => ['?array<int|string, int>', 'number[] | Record<string, number> | null'],
+        'an iterable' => ['iterable<int|string, int>', 'number[] | Record<string, number>'],
+        'a collection' => ['Collection<int|string, int>', 'number[] | Record<string, number>'],
+        'array-key, as before' => ['array<array-key, int>', 'number[] | Record<string, number>'],
+        'an int key, as before' => ['array<int, int>', 'number[]'],
+        'a string key, as before' => ['array<string, int>', 'Record<string, number>'],
+        'a union with a third kind, as before' => ['array<int|string|float, int>', 'number[]'],
+    ]);
 });
 
 describe('phpstan type aliases', function () {

@@ -255,8 +255,8 @@ These readers apply it, each with the scope and the fallback its page gives:
   to `A`. So
   `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: TaskAssignment })[]`.
 - **Key types**: a string-refinement key, such as `non-empty-string` or `class-string<Model>`, gives
-  `Record<string, X>`. An `array-key` or `mixed` key gives `X[] | Record<string, X>`, because the keys may not be
-  sequential.
+  `Record<string, X>`. An `array-key`, `int|string` or `mixed` key gives `X[] | Record<string, X>`, because the keys
+  may not be sequential.
 - **A leading `?`**: `?array<int, int>` has the `?` stripped, the rest resolved and `| null` appended, as `toTsType()`
   does for a plain type. Without it the container pattern would not match, and partial matching would return a
   plausible wrong scalar.
@@ -275,8 +275,8 @@ give `unknown`. It caches each class's answers for the run; `LaravelTsPublish::r
 it.
 
 The alias resolves against its defining class's imports and namespace, not the referencing class's.
-An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
-property's `@var`, against the class whose docblock is read; one already being expanded, as in
+An alias also resolves inside a container, a shape, a group or another alias, on a property's or a promoted
+property's `@var`, and on a local's inline `@var` or a method's `@param`, against the class whose docblock is read; one already being expanded, as in
 `@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
 appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
 `filters?:`.

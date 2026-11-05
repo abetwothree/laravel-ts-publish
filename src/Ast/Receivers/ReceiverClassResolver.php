@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -82,6 +83,7 @@ use Throwable;
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
  * @phpstan-import-type VarDocBinding from AnalysisScope
+ * @phpstan-import-type DeclaredType from DeclaredClasses
  * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
@@ -529,10 +531,13 @@ final class ReceiverClassResolver
      * read. The `@var` fills in only where that names no class the engine can use, or the element an Eloquent
      * collection value leaves unnamed, with the model its collection generic lists. A guarded value reads as unread.
      *
+     * An alias the `@var` names reads as its definition.
+     *
      * @param  VarDocBinding  $span
      */
     public function resolveDeclared(string $name, array $span, AnalysisScope $scope): ?ReceiverType
     {
+        $span = $this->expandedAlias($span);
         $assigned = $this->unguarded($this->fromBoundExpression($name, $span['expr'], $scope), $span);
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
@@ -557,9 +562,10 @@ final class ReceiverClassResolver
             return $assigned->declaredOnly ? $filled->asDeclaredOnly() : $filled;
         }
 
-        $declared = $this->typeOf($this->declaredClasses($span, $scope));
+        $declaredType = $this->declaredType($span, $scope);
+        $declared = ReceiverType::declared($declaredType);
 
-        if ($declared === null) {
+        if ($declaredType === null || $declared === null) {
             return $assigned;
         }
 
@@ -570,11 +576,11 @@ final class ReceiverClassResolver
         }
 
         $element = $this->declaredElementModel($span, $declared);
-        [$keyed] = ReceiverType::declaredKeys($this->declaredGeneric($span, $declared)['key'] ?? null);
+        [$keyed, $stringKeyed] = ReceiverType::declaredKeys($this->declaredGeneric($span, $declared)['key'] ?? null);
 
         return $element === null && ! $keyed
             ? $declared
-            : ReceiverType::collection($declared->classes, $element, $keyed, false, false);
+            : ReceiverType::collection($declared->classes, $element, $keyed, $stringKeyed, false)->withIntersections($declaredType);
     }
 
     /**
@@ -750,15 +756,45 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes an inline `@var` names, read as a property's `@var` is; null when it names a type that is not a
-     * loadable class.
+     * The classes an inline `@var` names, with each intersection's other members, read as a property's `@var` is; null
+     * when it names a type that is not a loadable class.
      *
      * @param  VarDocBinding  $span
-     * @return non-empty-list<class-string>|null
+     * @return DeclaredType|null
      */
-    private function declaredClasses(array $span, AnalysisScope $scope): ?array
+    private function declaredType(array $span, AnalysisScope $scope): ?array
     {
-        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->runtime->class->getName(), $span['context']->getName());
+        return DeclaredClasses::docblockType($span['type'], $span['context'], $scope->runtime->class->getName(), $span['context']->getName());
+    }
+
+    /**
+     * An inline `@var` read through the alias it names beside an optional `null`, as the alias's definition in the file
+     * that wrote it, and through each alias that definition names in turn; any other `@var` as it is.
+     *
+     * @param  VarDocBinding  $span
+     * @return VarDocBinding
+     */
+    private function expandedAlias(array $span): array
+    {
+        // The bound ends an alias that names itself, which TypeAliases answers as written.
+        for ($step = 0; $step < 8; $step++) {
+            $arms = array_values(array_filter(
+                LaravelTsPublish::splitPhpDocUnionType($span['type']),
+                fn (string $arm): bool => strtolower($arm) !== 'null',
+            ));
+            $name = count($arms) === 1 ? ltrim($arms[0], '?') : '';
+            $alias = TypeAliases::isName($name) && ! DeclaredClasses::isValueClass(DocblockNames::resolve($name, $span['context']))
+                ? TypeAliases::find($name, $span['context'])
+                : null;
+
+            if ($alias === null) {
+                return $span;
+            }
+
+            $span = [...$span, 'type' => $alias['definition'], 'context' => new ReflectionClass($alias['class'])];
+        }
+
+        return $span;
     }
 
     /**

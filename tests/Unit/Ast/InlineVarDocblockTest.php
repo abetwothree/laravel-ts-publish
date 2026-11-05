@@ -11,6 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredLocalFormsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LocalAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasCode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -307,12 +311,8 @@ describe('an inline @var on a local assignment', function () {
         'an intersection' => ['\Workbench\App\Models\Post&\JsonSerializable'],
         'an unclosed shape' => ['array{a: int'],
         'an empty shape' => ['array{}'],
-        'a bracket list' => ['int[]'],
         'a parenthesized union' => ['(int|string)[]'],
-        'a key union' => ['array<int|string, int>'],
-        'an array-key key' => ['array<array-key, int>'],
         'a one-parameter array' => ['array<int>'],
-        'a one-parameter collection' => ['\Illuminate\Support\Collection<\Workbench\App\Models\Comment>'],
         'a generic that is not a collection' => ['\Workbench\App\Models\Post<int, int>'],
         'a pseudo-type' => ['non-empty-string'],
         'an integer range' => ['int<0, max>'],
@@ -336,6 +336,12 @@ describe('an inline @var on a local assignment', function () {
         'a closure in a shape' => ['array{fn: \Closure(int): string}'],
         'a numeric string key' => ["array<'1'|'2', int>"],
         'a literal key beside a scalar key' => ["array<'a'|string, int>"],
+        'an unimported global class in a namespaced file' => ['DateTimeImmutable'],
+        'a bracket list of an unimported global class' => ['DateTimeImmutable[]'],
+        'an alias the file does not define' => ['NoSuchAlias'],
+        'an array object' => ['\\ArrayObject<string, int>'],
+        'a bracket list before a generic' => ['int[]<int>'],
+        'a bracket list of a callable' => ['callable(int): string[]'],
     ]);
 
     test('binds a tag built only from supported forms, and reads it in full', function (string $type, ?string $read) {
@@ -423,7 +429,81 @@ describe('an inline @var on a local assignment', function () {
         'a record slot holding a scalar or a list' => ['array<string, int|list<int>>', 'Record<string, number | number[]>'],
         'a list slot holding two records' => ['list<array<string, int>|array<string, bool>>', '(Record<string, number> | Record<string, boolean>)[]'],
         'a list slot holding a shape or null' => ['list<array{a: int}|null>', '({ a: number } | null)[]'],
+        'a bracket list' => ['int[]', 'number[]'],
+        'a bracket list of an imported class' => ['User[]', 'User[]'],
+        'a nullable bracket list' => ['?int[]', 'number[] | null'],
+        'a bracket list of lists' => ['int[][]', 'number[][]'],
+        'a bracket list after a generic' => ['list<int>[]', 'number[][]'],
+        'a bracket list after a shape' => ['array{a: int}[]', '{ a: number }[]'],
+        'a key union' => ['array<int|string, int>', 'number[] | Record<string, number>'],
+        'a key union written the other way' => ['array<string|int, int>', 'number[] | Record<string, number>'],
+        'an array-key key' => ['array<array-key, int>', 'number[] | Record<string, number>'],
+        'a one-parameter collection' => ['\\Illuminate\\Support\\Collection<\\Workbench\\App\\Models\\Comment>', 'Comment[]'],
+        'a collection keyed by a key union' => ['\\Illuminate\\Support\\Collection<int|string, Comment>', 'Comment[] | Record<string, Comment>'],
+        'a collection keyed by array-key' => ['\\Illuminate\\Support\\Collection<array-key, Comment>', 'Comment[] | Record<string, Comment>'],
     ]);
+
+    test('binds a bracket list, a one-parameter collection and an int|string or array-key keyed array', function () {
+        $resolved = function (string $declared, string $read = '$d'): string {
+            [$scope, $returned] = inlineVarReturned('/** @var '.$declared.' $d */ $d = json_decode(""); return '.$read.';');
+
+            return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned)['type'];
+        };
+        $collection = '\\Illuminate\\Support\\Collection<\\Workbench\\App\\Models\\Comment>';
+
+        expect($resolved('\\Workbench\\App\\Models\\Comment[]'))->toBe('Comment[]')
+            ->and($resolved('string[]'))->toBe('string[]')
+            ->and($resolved($collection))->toBe('Comment[]')
+            ->and($resolved($collection, '$d->first()?->content'))->toBe('string | null')
+            ->and($resolved('array<int|string, \\Workbench\\App\\Models\\Comment>'))->toBe('Comment[] | Record<string, Comment>')
+            ->and($resolved('array<array-key, string>'))->toBe('string[] | Record<string, string>');
+    });
+
+    test('binds a local @var naming a @phpstan-type, an imported alias and a renamed import', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(LocalAliasResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(LocalAliasResource::make(new Post)->resolve()), true);
+
+        expect($props->only(['local', 'nullable_local', 'list_local', 'imported', 'renamed'])->all())->toBe([
+            'local' => '{ a: number; b: string }',
+            'nullable_local' => '{ a: number; b: string } | null',
+            'list_local' => '{ a: number; b: string }[]',
+            'imported' => '{ c: boolean; d: number[] }',
+            'renamed' => '{ c: boolean; d: number[] }',
+        ])
+            ->and($sent['local'])->toBe(['a' => 1, 'b' => 'x'])
+            ->and($sent['list_local'])->toBe([['a' => 1, 'b' => 'x']])
+            ->and($sent['renamed'])->toBe(['c' => true, 'd' => [1]]);
+    });
+
+    // Only a bare `string` key is the record all() sends (R37); keys of either kind may be a list, so both arms stay.
+    test('reads a local\'s receiver from each form it binds: a one-parameter collection, keys and an alias', function () {
+        $post = (new Post)->forceFill(['id' => 4, 'title' => 'T'])
+            ->setRelation('comments', new EloquentCollection([CommentRack::comment(3), CommentRack::comment(4)]));
+        $sent = json_decode((string) json_encode(DeclaredLocalFormsResource::make($post)->resolve()), true);
+        $comment = fn (int $id): array => CommentRack::comment($id)->toArray();
+
+        expect(resourceProps(DeclaredLocalFormsResource::class))->toBe([
+            'one_param_first' => 'string | null',
+            'either' => 'Comment[] | Record<string, Comment>',
+            'either_all' => 'Comment[] | Record<string, Comment>',
+            'either_first' => 'string | null',
+            'any_key_all' => 'Comment[] | Record<string, Comment>',
+            'keyed_all' => 'Record<string, Comment>',
+            'aliased' => 'Comment[]',
+            'aliased_first' => 'string | null',
+            'nullable_aliased_first' => 'string | null',
+            'keyed_alias_all' => 'Record<string, Comment>',
+        ])
+            ->and($sent['one_param_first'])->toBe('c3')
+            ->and($sent['either'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['either_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['keyed_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['aliased'])->toBe([$comment(3), $comment(4)])
+            ->and($sent['nullable_aliased_first'])->toBe('c3')
+            ->and($sent['keyed_alias_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)]);
+    });
 
     test('binds a local by its @phpstan-var or @psalm-var over a plain @var', function () {
         [$scope, $returned] = inlineVarReturned("/**\n * @var array \$l\n * @phpstan-var list<string> \$l\n */ \$l = json_decode(\"\"); return \$l;");
@@ -469,7 +549,7 @@ describe('an inline @var on a local assignment', function () {
         'a shape key, which stays a key' => ['array{self: int, static?: string}', ['self' => Team::class, 'static' => Team::class], 'array{self: int, static?: string}'],
         'a quoted key' => ["array{'self': int}", ['self' => Team::class], "array{'self': int}"],
         'a parent the declaring class lacks' => ['parent', ['self' => Team::class], null],
-        'a bracket list, declined as any class\'s is' => ['self[]', ['self' => Team::class], null],
+        'a bracket list' => ['self[]', ['self' => Team::class], '\\'.Team::class.'[]'],
         'a class constant' => ['self::NAME', ['self' => Team::class], null],
         'a conditional type\'s arm, declined as before' => ['($d is null ? self : static)', ['self' => Team::class, 'static' => Team::class], null],
     ]);
@@ -524,6 +604,21 @@ describe('an inline @var on a local assignment', function () {
 
         expect([$named?->elementModel, $named?->declaredOnly])->toBe([Comment::class, true])
             ->and([$spelled?->elementModel, $spelled?->declaredOnly])->toBe([null, true]);
+    });
+
+    // The whitelist declines `&` today, so only a span built by hand reaches the receiver half with one.
+    test('keeps an intersection\'s other members on the receiver a declared local names', function () {
+        $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $span = [
+            'type' => '\\'.Post::class.'&\\'.HasCode::class,
+            'context' => $scope->declaringFileClass,
+            'after' => 0,
+            'before' => null,
+            'expr' => new Variable('unbound'),
+        ];
+        $held = resolve(ReceiverClassResolver::class)->resolveDeclared('p', $span, $scope);
+
+        expect([$held?->classes, $held?->intersections])->toBe([[Post::class], [Post::class => [HasCode::class]]]);
     });
 
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
