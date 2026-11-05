@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ArrayMapKeysEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
@@ -14,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ArrayMapResource;
@@ -249,6 +252,75 @@ it('maps the cases a vague helper returns with array_map(), reading each as its 
         'spread_values' => '{ s: StatusType; n: StatusType }',
     ]);
 });
+
+// PHP stores a key written as a decimal integer, such as `'200'` or `'-3'`, as an int, and keeps any other a string.
+it('types array_keys() as the list of its array\'s keys, arm by arm', function (string $php, string $type) {
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe($type);
+})->with([
+    'a record' => ['array_keys($this->scores)', 'string[]'],
+    'a record or null, whose null throws' => ['array_keys($this->options)', 'string[]'],
+    'a record or an empty list' => ['array_keys($this->options ?? [])', 'string[]'],
+    'a list' => ['array_keys($this->names())', 'number[]'],
+    'a list, searched for a value' => ['array_keys($this->names(), "ann")', 'number[]'],
+    'a shape' => ['array_keys(["a" => 1, "b" => 2])', "('a' | 'b')[]"],
+    'a shape keyed by numbers and a decimal' => ['array_keys(["a" => 1, 200 => 2, "1.5" => 3, "-3" => 4])', "('a' | 200 | '1.5' | -3)[]"],
+    'an empty list' => ['array_keys([])', 'never[]'],
+]);
+
+/**
+ * Seeded constant arrays of 1 to 5 keys: names, quotes and spaces, decimal integers written as ints or strings, strings
+ * PHP keeps as strings though they read as numbers, and an int past JavaScript's safe range. No key is negative: a
+ * literal's `-3 =>` key is read as no key at all, before array_keys() is.
+ *
+ * @return list<array<int|string, int>>
+ */
+function arrayKeysCases(int $seed, int $cases): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $pool = ['a', 'b_c', "it's", 'a"b', 'x y', 'é', '0', '7', '200', '07', '1.5', '-0', ' 1', '1e3', 12, 0, 1, PHP_INT_MAX];
+    $arrays = [];
+
+    for ($case = 0; $case < $cases; $case++) {
+        $array = [];
+
+        foreach (range(1, $random->getInt(1, 5)) as $value) {
+            $array[$pool[$random->getInt(0, count($pool) - 1)]] = $value;
+        }
+
+        $arrays[] = $array;
+    }
+
+    return $arrays;
+}
+
+// The engine reads each key back from the shape it prints, so the list must hold exactly the keys PHP's own
+// array_keys() returns, as JSON carries them: a list's keys as `number`, each other key as its literal.
+it('lists exactly the keys PHP holds of any constant array', function () {
+    foreach (arrayKeysCases(100, 150) as $array) {
+        $published = knownFunctionCallType('array_keys('.var_export($array, true).')');
+        $sent = array_map(
+            static fn (int|string $key): string => is_int($key) && abs($key) > 9_007_199_254_740_991 ? 'number' : JsEmitter::toJsLiteral($key),
+            array_keys($array),
+        );
+        $members = explode(' | ', (string) preg_replace('/^\((.*)\)\[\]$|^(.*)\[\]$/', '$1$2', $published));
+        sort($members);
+        $sent = array_values(array_unique($sent));
+        sort($sent);
+
+        expect($members)->toBe(array_is_list($array) ? ['number'] : $sent, var_export($array, true).' published '.$published);
+    }
+});
+
+it('leaves array_keys() of a value it cannot read as an array to unknown', function (string $php) {
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe('unknown');
+})->with([
+    'no array' => ['array_keys()'],
+    'a spread' => ['array_keys(...$this->counts())'],
+    'a string' => ['array_keys($this->title)'],
+    'a value nothing types' => ['array_keys($this->opaque())'],
+    'a relation\'s collection, which PHP throws on' => ['array_keys($this->comments)'],
+    'a collect() value, which PHP throws on' => ['array_keys(collect($this->names()))'],
+]);
 
 // PHP throws a TypeError on any object passed as an array, a Collection included; Task 7 warns of it.
 it('leaves array_map() over a Collection, or a callable it cannot read, to unknown', function (string $php) {

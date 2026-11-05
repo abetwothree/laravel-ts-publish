@@ -23,7 +23,7 @@ use ReflectionMethod;
  * and the collection handlers walk a chain and read each step here, so they agree on each step.
  *
  * @phpstan-type ChainStep array{name: string, node: MethodCall}
- * @phpstan-type StepWalk array{keyed: bool, map: MethodCall|null}
+ * @phpstan-type StepWalk array{keyed: bool, map: MethodCall|null, keys: bool}
  *
  * @internal
  */
@@ -102,8 +102,9 @@ final class CollectionSteps
      * Walk a chain's steps after its root as both collection handlers read them: `all()` and a step keeping the keys
      * leave them, another step keeping the items moves them as keyedAfter() says, and at most one `map()` maps them.
      *
-     * $other reads any other step, handing back whether the keys are out of 0..n-1 after it, or null to decline the
-     * chain, as a chain with no $other does. $eloquent says the collection is an Eloquent\Collection.
+     * One `keys()` before it re-lists the items as their keys, where no step moved those yet. $other reads any other
+     * step before `keys()`, handing back whether the keys are out of 0..n-1 after it, or null to decline the chain, as
+     * a chain with no $other does. $eloquent says the collection is an Eloquent\Collection.
      *
      * @param  list<ChainStep>  $steps
      * @param  (Closure(ChainStep, bool): ?bool)|null  $other
@@ -113,6 +114,7 @@ final class CollectionSteps
     {
         $keyed = false;
         $map = null;
+        $keys = false;
 
         foreach ($steps as $step) {
             $name = $step['name'];
@@ -133,7 +135,14 @@ final class CollectionSteps
                 continue;
             }
 
-            $after = $other === null ? null : $other($step, $keyed);
+            // A step that moved the keys, such as keyBy(), leaves keys() a type it cannot read.
+            if ($name === 'keys' && ! $keys && ! $keyed && $map === null) {
+                $keys = true;
+
+                continue;
+            }
+
+            $after = $other === null || $keys ? null : $other($step, $keyed);
 
             if ($after === null) {
                 return null;
@@ -142,7 +151,7 @@ final class CollectionSteps
             $keyed = $after;
         }
 
-        return ['keyed' => $keyed, 'map' => $map];
+        return ['keyed' => $keyed, 'map' => $map, 'keys' => $keys];
     }
 
     /**

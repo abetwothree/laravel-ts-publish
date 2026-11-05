@@ -25,8 +25,8 @@ trait ReadsCollectedItems
 {
     /**
      * The array `collect($items)` holds: null as no items, a constant array typed as a parameter default is, and an
-     * expression typed as one list, tuple, Record or object shape as itself, the empty tuple as the empty list; a value
-     * nothing types as `unknown`. Null for any other value.
+     * expression typed as one list, tuple, Record or object shape as itself, the empty tuple as the empty list and a
+     * `null` arm as no items; a value nothing types as `unknown`. Null for any other value.
      *
      * @return ValueExpressionResult|null
      */
@@ -53,15 +53,22 @@ trait ReadsCollectedItems
             return [...$result, 'optional' => false];
         }
 
-        if (count(TsTypeString::splitTopLevelUnion($type)) !== 1) {
+        $arms = TsTypeString::splitTopLevelUnion($type);
+        $items = array_values(array_diff($arms, ['null']));
+
+        if (count($items) > 1) {
             return null;
         }
 
         // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
-        $type = $type === '[]' ? 'never[]' : $type;
+        $type = $items === [] || $items[0] === '[]' ? 'never[]' : $items[0];
+        $listed = str_ends_with($type, '[]');
 
-        return str_ends_with($type, '[]') || str_starts_with($type, '{') || TsTypeShape::recordArguments($type) !== null
-            ? [...$result, 'type' => $type, 'optional' => false]
-            : null;
+        if (! $listed && ! str_starts_with($type, '{') && TsTypeShape::recordArguments($type) === null) {
+            return null;
+        }
+
+        // collect(null) holds no items, which json_encode() writes as `[]`: a list admits that, a Record or shape not.
+        return [...$result, 'type' => $listed || count($arms) === 1 ? $type : $type.' | never[]', 'optional' => false];
     }
 }

@@ -38,9 +38,9 @@ use ReflectionMethod;
 use stdClass;
 
 /**
- * A call to a known PHP built-in function typed from its reflected return type, `array_filter()`, `array_values()` and
- * `array_map()` as the array they send, and Laravel helpers whose shape is knowable: `config()`, `auth()->user()`,
- * `request()->user()`, `now()`, `today()`, `str()`, `url()` and `collect()`.
+ * A call to a known PHP built-in function typed from its reflected return type, `array_filter()`, `array_values()`,
+ * `array_keys()` and `array_map()` as the array they send, and Laravel helpers whose shape is knowable: `config()`,
+ * `auth()->user()`, `request()->user()`, `now()`, `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -86,6 +86,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'array_map') {
                 return $this->arrayMapRule($expr, $scope, $engine);
+            }
+
+            if ($name === 'array_keys') {
+                return $this->arrayKeysRule(CallArguments::for($expr, new ReflectionFunction('array_keys')), $scope, $engine);
             }
 
             $helper = $this->valueHelperRule($name, $expr, $scope, $engine);
@@ -303,6 +307,26 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         unset($result['keepsKeys']);
 
         return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+    }
+
+    /**
+     * `array_keys($array)` as the list of its keys, arm by arm as ArrayArms::keysOf() reads them; a search value keeps
+     * some of the same keys. A `null` arm is left out, as PHP throws a TypeError on null; null for an object, which PHP
+     * throws on too, or an arm it cannot read.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function arrayKeysRule(CallArguments $arguments, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $array = $arguments->named('array')?->value;
+
+        if ($array === null || $arguments->hasUnpack() || resolve(ReceiverClassResolver::class)->resolve($array, $scope) !== null) {
+            return null;
+        }
+
+        $keys = ArrayArms::keysList($engine->resolve($array)['type']);
+
+        return $keys === null ? null : ['type' => $keys, 'optional' => false];
     }
 
     /**

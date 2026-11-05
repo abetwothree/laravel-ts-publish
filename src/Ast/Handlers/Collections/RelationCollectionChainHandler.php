@@ -121,7 +121,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
     /**
      * Analyze a method-call chain on `$this->{manyRelation}` of identity-preserving ops plus at most
-     * one `map()`/`pluck()`, or an argless `first()`/`last()`.
+     * one `map()`/`pluck()` or `keys()`, or an argless `first()`/`last()`.
      *
      * Anything else returns null and falls through — e.g. `$this->items->count()` reaches the count() rule.
      *
@@ -182,6 +182,15 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         $mapNode = $walk['map'];
         $sequentialKeys = ! $walk['keyed'];
+
+        // keys() lists the relation's numbers, which no model's map(), pluck() or terminal reads.
+        if ($walk['keys']) {
+            $keys = (string) ArrayArms::keysList($relationInfo['type']);
+
+            return $mapNode !== null || $pluckNode !== null || $isTerminal
+                ? null
+                : ['type' => $sequentialKeys ? $keys : ArrayArms::keyedList($keys), 'optional' => false];
+        }
 
         if ($isTerminal) {
             if ($mapNode !== null || $pluckNode !== null) {

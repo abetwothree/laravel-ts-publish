@@ -215,3 +215,69 @@ test('a map() over the case a vague helper returns reads it as its enum', functi
         'collected_shape_values' => '{ s: StatusType }',
     ]);
 });
+
+// keys() re-lists the keys of items still keyed 0..n-1, or of a Record or a shape a collect() root holds; collect(null)
+// holds none. A step that moved the keys first, such as filter() or keyBy(), leaves keys() unread.
+it('types keys() in a collect() pipeline over a list, a record and a nullable root', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record' => ['collect($this->scores)->keys()->all()', 'string[]'],
+    'a record, kept' => ['collect($this->scores)->keys()', 'string[]'],
+    'a nullable record' => ['collect($this->options)->keys()->all()', 'string[]'],
+    'a shape keyed by a name and a number' => ['collect(["a" => 1, 200 => "x"])->keys()->all()', "('a' | 200)[]"],
+    'a list' => ['collect($this->names())->keys()->all()', 'number[]'],
+    'a list, kept' => ['collect($this->counts())->keys()', 'number[]'],
+    'a relation' => ['$this->comments->keys()->all()', 'number[]'],
+    'a record re-listed by values()' => ['collect($this->scores)->values()->keys()->all()', 'number[]'],
+    'a list after a step that keeps its keys' => ['collect($this->names())->take(1)->keys()->all()', 'number[]'],
+    'keys mapped' => ['collect($this->names())->keys()->map(fn ($i) => $i * 2)->all()', 'number[]'],
+    'keys filtered' => ['collect($this->scores)->keys()->filter()->all()', 'string[] | Record<string, string>'],
+    'null' => ['collect(null)->keys()->all()', 'never[]'],
+    'a list after filter()' => ['collect($this->names())->filter()->keys()->all()', 'unknown'],
+    'a relation after keyBy()' => ['$this->comments->keyBy(\'id\')->keys()->all()', 'unknown'],
+    'a relation\'s keys mapped by the map arm' => ['$this->comments->keys()->map(fn ($k) => $k)->all()', 'number[]'],
+    'a value nothing types' => ['collect($this->opaque())->keys()->all()', 'unknown'],
+    'a record mapped first' => ['collect($this->scores)->map(fn ($v) => $v)->keys()->all()', 'unknown'],
+]);
+
+// collect(null) is empty, which json_encode() writes as `[]`: a list admits that, a Record or a shape adds `never[]`.
+it('types collect() of a record and of a nullable root', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record, kept' => ['collect($this->scores)', 'Record<string, number>'],
+    'a record\'s all()' => ['collect($this->scores)->all()', 'Record<string, number>'],
+    'a nullable record, kept' => ['collect($this->options)', 'Record<string, string> | never[]'],
+    'a nullable record\'s all()' => ['collect($this->options)->all()', 'Record<string, string> | never[]'],
+    'a record\'s values()' => ['collect($this->scores)->values()->all()', 'number[]'],
+    'a nullable record\'s values()' => ['collect($this->options)->values()->all()', 'string[]'],
+    'a shape\'s values()' => ['collect(["a" => $this->title, "b" => 1])->values()->all()', '(string | number)[]'],
+    'a record mapped' => ['collect($this->scores)->map(fn (int $v): string => (string) $v)->all()', 'Record<string, string>'],
+    'a nullable record mapped, its empty arm as a list' => ['collect($this->options)->map(fn ($v) => strlen($v))->all()', 'Record<string, number> | number[]'],
+    'a record\'s values() mapped' => ['collect($this->scores)->values()->map(fn ($v) => $v * 2)->all()', 'number[]'],
+    'a nullable list' => ['collect($this->tags ?? null)->map(fn ($t) => $t->id)->all()', 'number[]'],
+    'a record filtered, whose keys a Record may lose' => ['collect($this->scores)->filter()->all()', 'unknown'],
+]);
+
+// The steps that keep the items are CollectionSteps' own, so the collect() and relation chains read each one alike.
+it('walks each step CollectionSteps says keeps the items', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a front take()' => ['collect([1, 2])->take(1)->all()', 'number[]'],
+    'shuffle()' => ['collect([1, 2])->shuffle()->all()', 'number[]'],
+    'each()' => ['collect([1, 2])->each(fn () => null)->all()', 'number[]'],
+    'keyBy()' => ['collect([1, 2])->keyBy(fn ($n) => $n)->all()', 'number[] | Record<string, number>'],
+    'sortDesc()' => ['collect([1, 2])->sortDesc()->all()', 'number[] | Record<string, number>'],
+    'sortBy() then values()' => ['collect($this->names())->sortBy(fn ($n) => $n)->values()->all()', 'string[]'],
+    'sortBy() after map()' => ['collect($this->names())->map(fn ($n) => $n)->sortBy(fn ($n) => $n)->all()', 'string[] | Record<string, string>'],
+    'a relation\'s tap() then first()' => ['$this->comments->tap(fn () => null)->first()', 'Comment | null'],
+    'a relation\'s sort() then values(), kept' => ['$this->comments->sort()->values()', 'Comment[]'],
+]);

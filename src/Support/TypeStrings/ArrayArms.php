@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 
 /**
  * The arms of an array's published type, read one at a time: which arm is an array or a keyed one, the list each
- * values() spelling makes, what `array_filter()` and `array_map()` make of an arm and the value each element holds,
- * the two spellings of a list whose keys left 0..n-1, and the element of a one-armed list.
+ * values() spelling makes, its keys, what `array_filter()` and `array_map()` make of an arm and the value each element
+ * holds, the two spellings of a list whose keys left 0..n-1, and the element of a one-armed list.
  *
  * A stateless reader; Ast\Members\ArrayArm models an arm that a write changes.
  *
@@ -19,6 +21,9 @@ use Closure;
  */
 final class ArrayArms
 {
+    /** The largest integer a JSON number carries exactly to JavaScript. */
+    private const int MAX_SAFE_INTEGER = 9_007_199_254_740_991;
+
     /**
      * Each top-level arm of a type through $map, in order, a `null` arm left out where $skipNull; null where $map
      * declines an arm.
@@ -92,14 +97,59 @@ final class ArrayArms
     }
 
     /**
-     * The list `values()` re-indexes a collection of this type into, each arm as valuesOf() lists it and a
-     * short-circuit `null` kept; null where an arm cannot be read.
+     * The list `values()` re-indexes a collection of this type into, each arm as valuesOf() lists it, an empty arm left
+     * out beside another and a short-circuit `null` kept; null where an arm cannot be read.
      */
     public static function valuesList(string $type): ?string
     {
         $lists = self::arms($type, static fn (string $arm): ?string => $arm === 'null' ? $arm : self::valuesOf($arm), skipNull: false);
 
-        return $lists === null || $lists === [] ? null : TsTypeString::hoistNull($lists);
+        if ($lists === null || $lists === []) {
+            return null;
+        }
+
+        $filled = array_values(array_diff($lists, ['never[]', 'null']));
+
+        return TsTypeString::hoistNull($filled === [] ? $lists : array_values(array_diff($lists, ['never[]'])));
+    }
+
+    /**
+     * The keys of one arm as PHP holds them: a list's or a tuple's numbers, a Record's `string` or `number` keys, and
+     * an object literal's own, a decimal integer as the int PHP stores it; `never` for an arm holding none. Null for
+     * any other arm, or a key type that names more than `string` and `number`.
+     */
+    public static function keysOf(string $arm): ?string
+    {
+        if ($arm === 'never[]' || $arm === '[]') {
+            return 'never';
+        }
+
+        $record = TsTypeShape::recordArguments($arm);
+
+        if ($record !== null) {
+            return array_all(TsTypeShape::splitTopLevel($record[0], ['|']), static fn (string $key): bool => in_array($key, ['string', 'number'], true))
+                ? $record[0]
+                : null;
+        }
+
+        $members = TsTypeShape::members($arm);
+
+        if ($members !== null) {
+            return self::memberKeys(array_column($members, 0));
+        }
+
+        return TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null ? 'number' : null;
+    }
+
+    /**
+     * The list `array_keys()` and `keys()` make of a type, each arm's keys as keysOf() reads them, a `null` arm left
+     * out; null where no other arm is left, or one cannot be read.
+     */
+    public static function keysList(string $type): ?string
+    {
+        $keys = self::arms($type, self::keysOf(...));
+
+        return $keys === null || $keys === [] ? null : TsTypeShape::listType(array_values(array_diff($keys, ['never'])));
     }
 
     /**
@@ -189,6 +239,34 @@ final class ArrayArms
     public static function listElement(string $type): ?string
     {
         return count(TsTypeShape::splitTopLevel($type, ['|'])) === 1 ? TsTypeShape::elementType($type) : null;
+    }
+
+    /**
+     * The keys of an object literal's printed members, as the union of the literals PHP holds them as; `never` for no
+     * member, and null where one is an index signature or a key no printer writes.
+     *
+     * @param  list<string>  $printed
+     */
+    private static function memberKeys(array $printed): ?string
+    {
+        $keys = [];
+
+        foreach ($printed as $member) {
+            $key = PrintedKey::decode($member);
+
+            if ($key === null) {
+                return null;
+            }
+
+            $int = PhpArrayKey::storedInt($key);
+            $keys[] = match (true) {
+                $int === null => JsEmitter::toJsLiteral($key),
+                abs($int) > self::MAX_SAFE_INTEGER => 'number',
+                default => (string) $int,
+            };
+        }
+
+        return $keys === [] ? 'never' : implode(' | ', array_values(array_unique($keys)));
     }
 
     /**

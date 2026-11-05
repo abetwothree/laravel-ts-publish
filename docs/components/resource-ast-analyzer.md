@@ -487,8 +487,10 @@ Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/Collections/RelationCollectionChainHandler.php) takes a chain rooted at
 `$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
 [`CollectionPipelineHandler`](../../src/Ast/Handlers/Collections/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
-and reads the element type off `$arg` when it resolves to `X[]`; any other array `$arg` holds takes only a `map()` and
-`all()`. A top-level `|` declines, since the elements could come from either arm. Both walk their steps through
+and reads the element type off `$arg` when it resolves to `X[]`; any other array `$arg` holds takes only a `map()`,
+`all()`, and a leading `values()` or `keys()` that lists it. A top-level `|` declines, since the elements could come
+from either arm, but for a `null` arm: `collect(null)` holds no items, so a list stays itself and a `Record` or a shape
+adds `never[]`. Both walk their steps through
 `CollectionSteps::walk()`, which tracks whether the keys are still `0..n-1`. Once they are not, the handler adds the
 object arm `json_encode()` emits, from `ArrayArms::keyedList()`. A bare `collect($arg)` is typed by
 [`KnownFunctionCallHandler`](../../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
@@ -497,6 +499,11 @@ is its element types. A list literal, bare or collected, is typed by
 
 Both read the steps that keep the items from `CollectionSteps`, so they agree on each; a relation chain adds `pluck()`,
 `concat()` and a `first()`/`last()` terminal through the walk's hook. These rules hold around them:
+
+- **`keys()` and `array_keys()` list the keys PHP holds**: `ArrayArms::keysList()` reads a list's numbers, a
+  `Record`'s key type and an object literal's own keys, a decimal integer key as the int PHP stores it. The walk
+  takes one `keys()` before any `map()` and only while no step moved the keys, so `keyBy()->keys()` declines.
+  `array_keys()` of an object declines, since PHP throws a `TypeError` on it.
 
 - **`values` restores `0..n-1`, and `all` keeps the keys**: `all()` hands back the underlying array, and a
   `Collection<X>` and its array both render `X[]`, so it is identity on the published type.

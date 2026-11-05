@@ -160,7 +160,8 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
     })->with(['getter first' => 'getter', 'method first' => 'method', 'an import-less read first' => 'import-less']);
 
     // listing() reads the accessor back without imports, and that read's tie-break needs the accessor's analysis with
-    // imports, which a model read is already running: the method's shape must not depend on which was read first.
+    // imports, which a model read is already running: the method's shape must not depend on which was read first. The
+    // `??` unions the shape its right operand collects, as nothing proves the left one non-null.
     test('a method reading back an accessor whose import-less spelling is vague publishes one shape in any read order', function (string $first) {
         $reads = [
             'model' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(ReadOrderAccessorModel::class, 'listed_comments')['type'],
@@ -175,9 +176,9 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
         }
 
         expect($types)->toMatchArray([
-            'model' => 'Comment[]',
+            'model' => 'Comment[] | { v: Comment[]; id: number }',
             'method' => '{ v: Comment[]; id: number }',
-            'import-less' => 'unknown[]',
+            'import-less' => 'unknown[] | { v: Comment[]; id: number }',
         ]);
     })->with(['model first' => 'model', 'method first' => 'method', 'an import-less read first' => 'import-less']);
 });

@@ -7758,8 +7758,8 @@ test('a spread of a helper whose returns differ publishes the keys of each', fun
         ->toBe(['id' => 'number', 'a' => 'number', 'b?' => 'string', 'slug' => 'string', 'active' => 'number']);
 });
 
-// The last two need rules of their own: a finder in this profile, keys() in a pipeline.
-test('a helper read as a value publishes what its returns hold, and two whenHas() callbacks stay unread', function (string $key, string $type) {
+// The finder needs a rule of its own in this profile.
+test('a helper read as a value publishes what its returns hold, and a finder inside whenHas() stays unread', function (string $key, string $type) {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
@@ -7777,5 +7777,5 @@ test('a helper read as a value publishes what its returns hold, and two whenHas(
     'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
     'Str::upper(), whose conditional return is a string either way' => ['str_static', '?string'],
     'a finder' => ['find', '?unknown'],
-    'keys()' => ['keys', '?unknown'],
+    'keys() of the attribute whenHas() passes' => ['keys', '?string[]'],
 ]);
