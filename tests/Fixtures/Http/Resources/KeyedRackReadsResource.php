@@ -28,6 +28,10 @@ class KeyedRackReadsResource extends JsonResource
         $declared = $this->resource->keyedComments();
         /** @var EloquentCollection<string, Comment> $declaredEloquent */
         $declaredEloquent = $this->resource->keyedEloquent();
+        /** @var Collection<int, Comment> $declaredInt */
+        $declaredInt = $this->resource->keyedComments();
+        /** @var EloquentCollection<int, Comment> $declaredEloquentInt */
+        $declaredEloquentInt = $this->resource->keyedEloquent();
 
         return [
             'ids' => $this->resource->keyedComments()->map(fn ($comment) => $comment->id),
@@ -52,6 +56,8 @@ class KeyedRackReadsResource extends JsonResource
             'declared_first_id' => $declared->first()->id,
             'declared_random' => $declared->random(),
             'declared_eloquent_all' => $declaredEloquent->all(),
+            'declared_int_all' => $declaredInt->all(),
+            'declared_eloquent_int_all' => $declaredEloquentInt->all(),
         ];
     }
 }

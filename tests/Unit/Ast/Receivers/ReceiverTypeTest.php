@@ -202,6 +202,7 @@ test('a list a method declares under string keys is keyed', function (string $ph
     'string keys' => ['$this->resource->keyedComments()', true, true],
     'string keys, Eloquent' => ['$this->resource->keyedEloquent()', true, true],
     'keys of either kind' => ['$this->resource->anyKeyed()', true, false],
+    'keys of either kind, spelled as a union' => ['$this->resource->eitherKeyed()', true, false],
     'a union of string-keyed lists' => ['$flag ? $this->resource->keyedComments() : $this->resource->keyedComments()', true, true],
     'a union beside a list' => ['$flag ? $this->resource->keyedComments() : $this->resource->comments()', true, false],
     'a step re-keying them' => ['$this->resource->keyedComments()->sortBy("id")', true, false],

@@ -77,7 +77,7 @@ use Throwable;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
- * @phpstan-type CollectionGeneric array{key: string|null, element: string}
+ * @phpstan-type CollectionGeneric array{key: 'string'|'array-key'|'int'|null, element: string}
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type ProxyArms from ProxyDeclaration
@@ -138,6 +138,9 @@ final class ReceiverClassResolver
         Relation::class => 'TRelatedModel',
         Factory::class => 'TModel',
     ];
+
+    /** A collection generic's key, either kind spelled as a union too, for the generic readers' patterns. */
+    private const string DECLARED_KEY = '(int\s*\|\s*string|string\s*\|\s*int|array-key|string|int)';
 
     /** The docblock types that name no object, so a call declaring only these hands no query on. */
     private const array SCALAR_TYPES = [
@@ -533,6 +536,7 @@ final class ReceiverClassResolver
         $assigned = $this->unguarded($this->fromBoundExpression($name, $span['expr'], $scope), $span);
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
+            $assigned = $this->keysAsDeclared($assigned, $span);
             $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class] && ! isset($span['relative'])
                 ? $this->declaredElementModel($span, $assigned)
                 : null;
@@ -566,7 +570,7 @@ final class ReceiverClassResolver
         }
 
         $element = $this->declaredElementModel($span, $declared);
-        $keyed = in_array($this->declaredGeneric($span, $declared)['key'] ?? null, ['string', 'array-key'], true);
+        [$keyed] = ReceiverType::declaredKeys($this->declaredGeneric($span, $declared)['key'] ?? null);
 
         return $element === null && ! $keyed
             ? $declared
@@ -629,6 +633,22 @@ final class ReceiverClassResolver
         }
 
         return false;
+    }
+
+    /**
+     * The kind of key a collection generic spells: `array-key` for keys of either kind however written, as `int|string`
+     * spells them too; null where it spells none.
+     *
+     * @return 'string'|'array-key'|'int'|null
+     */
+    private static function keyKind(string $spelled): ?string
+    {
+        return match (preg_replace('/\s+/', '', $spelled)) {
+            '' => null,
+            'string' => 'string',
+            'int' => 'int',
+            default => 'array-key',
+        };
     }
 
     /**
@@ -717,6 +737,19 @@ final class ReceiverClassResolver
     }
 
     /**
+     * A value an inline `@var` sits over, read as the record a bare `string` key declares only where the `@var` spells
+     * no key or that one too.
+     *
+     * @param  VarDocBinding  $span
+     */
+    private function keysAsDeclared(ReceiverType $assigned, array $span): ReceiverType
+    {
+        $key = $this->declaredGeneric($span, $assigned)['key'] ?? null;
+
+        return $key === null || ReceiverType::declaredKeys($key)[1] ? $assigned : $assigned->withoutStringKeys();
+    }
+
+    /**
      * The classes an inline `@var` names, read as a property's `@var` is; null when it names a type that is not a
      * loadable class.
      *
@@ -764,12 +797,12 @@ final class ReceiverClassResolver
 
         if (count($arms) !== 1
             || ! $declared->within([Enumerable::class])
-            || preg_match('/^\??[\\\\\w]+<\s*(?:(int|array-key|string)\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
+            || preg_match('/^\??[\\\\\w]+<\s*(?:'.self::DECLARED_KEY.'\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
         ) {
             return null;
         }
 
-        return ['key' => $match[1] === '' ? null : $match[1], 'element' => $match[2]];
+        return ['key' => self::keyKind($match[1]), 'element' => $match[2]];
     }
 
     /**
@@ -2040,15 +2073,13 @@ final class ReceiverClassResolver
         if (($classes !== null && $classes !== [Builder::class]) || ! is_a($class, Model::class, true)) {
             $listed = $classes === null ? null : $this->listedReturnModel($class, $method, $classes);
 
-            return $listed === null
-                ? ReceiverType::declared($returned)
-                : new ReceiverType(
-                    $classes,
-                    elementModel: $listed['model'],
-                    keyed: $listed['key'] !== null,
-                    guardsElement: true,
-                    stringKeyed: $listed['key'] === 'string',
-                );
+            if ($listed === null) {
+                return ReceiverType::declared($returned);
+            }
+
+            [$keyed, $stringKeyed] = ReceiverType::declaredKeys($listed['key']);
+
+            return ReceiverType::collection($classes, $listed['model'], $keyed, $stringKeyed, true);
         }
 
         $declared = $classes === null ? null : $this->declaredReturn($class, $method);
@@ -2064,11 +2095,11 @@ final class ReceiverClassResolver
 
     /**
      * The model a method's `@return` lists in a collection, as `EloquentCollection<int, Comment>` does, where the
-     * method's value names it too: a concrete model the run publishes, with the `string` or `array-key` key the list
-     * spells, as `Collection<string, Comment>` does; null otherwise.
+     * method's value names it too: a concrete model the run publishes, with the kind of key the list spells, as
+     * `Collection<string, Comment>` does; null otherwise.
      *
      * @param  non-empty-list<class-string>  $classes  the classes the method returns
-     * @return array{model: class-string<Model>, key: 'string'|'array-key'|null}|null
+     * @return array{model: class-string<Model>, key: 'string'|'array-key'|'int'|null}|null
      */
     private function listedReturnModel(string $class, string $method, array $classes): ?array
     {
@@ -2076,7 +2107,7 @@ final class ReceiverClassResolver
 
         if ($declared === null
             || ! new ReceiverType($classes)->within([Enumerable::class])
-            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:(int|array-key|string)\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
+            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:'.self::DECLARED_KEY.'\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
         ) {
             return null;
         }
@@ -2085,10 +2116,7 @@ final class ReceiverClassResolver
 
         return ReceiverType::isConcreteModel($element)
             && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $element])
-            ? ['model' => $element, 'key' => match ($match[1]) {
-                'string', 'array-key' => $match[1],
-                default => null,
-            }]
+            ? ['model' => $element, 'key' => self::keyKind($match[1])]
             : null;
     }
 

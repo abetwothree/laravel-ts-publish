@@ -78,6 +78,16 @@ final class CommentRack
     }
 
     /**
+     * The comments under the rack's keys, declared as keys of either kind spelled as a union.
+     *
+     * @return Collection<int|string, Comment>
+     */
+    public function eitherKeyed(): Collection
+    {
+        return collect(array_combine($this->keys, [self::comment(3), self::comment(4)]));
+    }
+
+    /**
      * The comments under keys of either kind.
      *
      * @return Collection<array-key, Comment>

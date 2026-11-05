@@ -81,6 +81,8 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'nothing collected: a read on the item first() returns' => [PageRawCollection::class, '$this->resource->first()?->title', 'unknown'],
         'nothing collected: random() names no condition word' => [PageRawCollection::class, '$this->collection->random()', 'unknown'],
         'nothing collected: random() on the value' => [PageRawCollection::class, '$this->resource->random()', 'unknown'],
+        'nothing collected: split() on the value' => [PageRawCollection::class, '$this->resource->split(2)', 'unknown'],
+        'nothing collected: splitIn() on the value' => [PageRawCollection::class, '$this->resource->splitIn(2)', 'unknown'],
         'nothing collected: total()' => [PageRawCollection::class, '$this->resource->total()', 'number'],
         'nothing collected: only()' => [PageRawCollection::class, "\$this->resource->only(['id'])", 'unknown[] | Record<string, unknown>'],
         'nothing collected: $this->collection' => [PageRawCollection::class, '$this->collection', 'unknown[]'],

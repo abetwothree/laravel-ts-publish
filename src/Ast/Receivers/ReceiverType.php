@@ -44,8 +44,8 @@ final readonly class ReceiverType
      *                         where a conditional `@return` publishes no guess at an arm, as its own reading would
      * @param  bool  $guardsElement  set with an element only a method's declared list names: an item the element
      *                               yields, or a callback parameter it binds, is guarded; the list's own steps are not
-     * @param  bool  $stringKeyed  a method's declared list names its keys `string`, so its `all()` is the record the
-     *                             declaration reads, trusted as any declared type
+     * @param  bool  $stringKeyed  a method's declared list names its keys a bare `string`, so its `all()` is the record
+     *                             the declaration reads, trusted as any declared type
      */
     public function __construct(
         public array $classes,
@@ -108,6 +108,18 @@ final readonly class ReceiverType
             guardsElement: $guardsElement,
             stringKeyed: $stringKeyed,
         );
+    }
+
+    /**
+     * The keys a collection declaration spells, as `[keyed, stringKeyed]`: off 0..n-1 for a `string` key or one of
+     * either kind, and the record its `all()` sends only for a bare `string` one, since either kind may be a list.
+     *
+     * @param  'string'|'array-key'|'int'|null  $key  the kind of key, `array-key` however either kind is spelled
+     * @return array{bool, bool}
+     */
+    public static function declaredKeys(?string $key): array
+    {
+        return [$key === 'string' || $key === 'array-key', $key === 'string'];
     }
 
     /**
@@ -306,6 +318,14 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver no longer read as the record a bare `string` key declares.
+     */
+    public function withoutStringKeys(): self
+    {
+        return $this->stringKeyed ? $this->copy(stringKeyed: false) : $this;
+    }
+
+    /**
      * Whether an item the receiver's element yields, or a callback's parameter it binds, is guarded.
      */
     public function guardsItems(): bool
@@ -393,6 +413,7 @@ final readonly class ReceiverType
         ?bool $guarded = null,
         ?bool $guardsElement = null,
         bool $dropsElement = false,
+        ?bool $stringKeyed = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -410,7 +431,7 @@ final readonly class ReceiverType
             intersections: $intersections ?? $this->intersections,
             guarded: $guarded ?? $this->guarded,
             guardsElement: $guardsElement ?? $this->guardsElement,
-            stringKeyed: $this->stringKeyed,
+            stringKeyed: $stringKeyed ?? $this->stringKeyed,
         );
     }
 }
