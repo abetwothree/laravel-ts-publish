@@ -85,6 +85,7 @@ use ReflectionMethod;
  * }
  * @phpstan-type BindingGap array{0: int, 1: int, 2: list<Expr>|null, 3: bool, 4: bool, 5?: list<Expr>}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
+ * @phpstan-type ParameterGuard 'unread'|'guarded'|'element'
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
@@ -107,7 +108,7 @@ use ReflectionMethod;
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap,
  *      relativeParameters: array<string, true>,
- *      guardedParameters: array<string, bool>
+ *      guardedParameters: array<string, ParameterGuard>
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -335,10 +336,11 @@ final class AnalysisScope
     public array $relativeParameters = [];
 
     /**
-     * The parameters bound from a guarded receiver (ReceiverType::$guarded): true where the parameter is guarded, false
-     * where only what its element yields is, as a list a method declares hands on.
+     * The parameters bound from a guarded receiver (ReceiverType::$guarded): `element` where only what the parameter's
+     * element yields is guarded, `guarded` where the parameter is, and `unread` where it is bound in a callback no
+     * reading reaches without the guard, so a helper it is handed keeps the guard across a declared parameter.
      *
-     * @var array<string, bool>
+     * @var array<string, ParameterGuard>
      */
     public array $guardedParameters = [];
 

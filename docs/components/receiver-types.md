@@ -96,10 +96,18 @@ Steps 1, 3 and 4's `closureParamExprBindings` answer only while `AnalysisScope::
 first write that replaces a parameter, step 4's `localVarBindings` answers.
 
 A parameter `ParameterBinder` bound from a guarded receiver, a callback's from its element or a helper's from its
-argument, keeps that guard through `AnalysisScope::$guardedParameters`: whole, or only its element's for a declared
-list. A callback parameter's declared model stays unguarded where the declaration alone would read the callback, and
-`array_map()` and `collect()->map()` take the guard where `readsGuarded()` finds the array read off a guarded receiver,
-through `collect()` too.
+argument, keeps that guard through `AnalysisScope::$guardedParameters`: `guarded`, or `element` for a declared list.
+The guard withdraws only what no reading reached without it, so a declaration reads as it does unguarded:
+
+- A callback parameter's declared model stays unguarded where the declaration alone reads the callback: always in
+  `array_map()` and `collect()->map()`, which take the guard where `readsGuarded()` finds the array read off a guarded
+  receiver, through `collect()` but never past an inline `@var` local; on a receiver's `map()`, where
+  `mayHoldCollection()` holds.
+- A helper's declared parameter of any class binds a guarded argument as it binds one never passed (`CallSite`).
+  Only a value read off an `unread` callback parameter, one a guarded receiver's `map()` binds, keeps its guard
+  across it, since no reading reaches that callback without it.
+- An inline `@var` over a guarded value types the local by the `@var` alone, and over a declared list's value without
+  the element only the list names (`unguarded()`).
 
 Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
@@ -386,12 +394,13 @@ Two more read the call's own arguments:
   `$preserveKeys` adds the object arm, and an unpacked call keeps every arm. Any other receiver keeps the docblock
   reading.
 - **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, a callback or helper
-  parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first token of one naming more than strings
-  (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that token's type is withdrawn, so
-  `$this->collection->random()` with no element, and `$this->collection->pluck('title')->random()`, publish `unknown`,
-  never a word of the condition. A rule's answer, a body's and a bracketed type that is no conditional, such as
-  `(int|string)[]`, stand. A guarded paginator's step that hands the paginator back, such as `through()`, publishes
-  nothing, since its properties never spell the `toArray()` Laravel sends.
+  parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first
+  token of one naming more than strings (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that
+  token's type is withdrawn, so `$this->collection->random()` with no element, and
+  `$this->collection->pluck('title')->random()`, publish `unknown`, never a word of the condition. A rule's answer, a
+  body's and a bracketed type that is no conditional, such as `(int|string)[]`, stand. A guarded paginator's step
+  that hands the paginator back, such as `through()`, publishes nothing, since its properties never spell the
+  `toArray()` Laravel sends; a resource collection's own paginator keeps that reading.
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,

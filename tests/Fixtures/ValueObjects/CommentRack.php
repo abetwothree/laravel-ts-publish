@@ -50,6 +50,14 @@ final class CommentRack
     }
 
     /**
+     * The comments, in a collection whose declaration names no item.
+     */
+    public function bare(): EloquentCollection
+    {
+        return new EloquentCollection([self::comment(3)]);
+    }
+
+    /**
      * The comments under string keys.
      *
      * @return Collection<string, Comment>

@@ -13,6 +13,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\Variable;
 use ReflectionMethod;
 use ReflectionParameter;
 
@@ -106,6 +111,9 @@ final readonly class CallSite
      * classes it holds where the declaration names an abstract class, interface or union, or a model no row backs yet
      * where it names that concrete model; null otherwise.
      *
+     * A guarded argument leaves a declaration to read as it does with nothing passed, but one read off a callback's
+     * `unread` parameter keeps its guard across any declaration, as no reading reaches that callback without it.
+     *
      * @return PassedBinding|null
      */
     private function bindingFor(ReflectionParameter $parameter, ReflectionMethod $method, Expr $argument): ?array
@@ -120,26 +128,68 @@ final readonly class CallSite
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
+        $unread = $this->passesUnreadParameter($argument);
+
+        if ($unread && $model !== null && $receiver !== null && $receiver->within([$model])) {
+            $binding = $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: true);
+
+            return $binding === null ? null : [...$binding, 'guard' => 'unread'];
+        }
 
         // A declared model binds as a row that exists; only an argument no row backs yet reads differently, as a new
-        // declared model whichever of its classes it holds, since passedBinding() marks only one class unsaved. The
-        // declaration names its class, so no guard rides in.
+        // declared model whichever of its classes it holds, since passedBinding() marks only one class unsaved.
         if ($model !== null) {
-            if ($receiver === null || ! $receiver->unsaved || ! $receiver->within([$model])) {
+            if ($receiver === null || $receiver->guarded || ! $receiver->unsaved || ! $receiver->within([$model])) {
                 return null;
             }
 
             $held = count($receiver->classes) === 1 ? $receiver : new ReceiverType([$model], unsaved: true);
-            $binding = $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
 
-            return $binding === null ? null : [...$binding, 'guarded' => false, 'guardsElement' => false];
+            return $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
         }
 
-        if ($declared !== null && ! $binder->narrows($declared, $receiver)) {
+        if ($declared !== null && (($receiver?->guarded === true && ! $unread) || ! $binder->narrows($declared, $receiver))) {
             return null;
         }
 
-        return $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
+        $binding = $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
+
+        return $unread && $binding !== null ? [...$binding, 'guard' => 'unread'] : $binding;
+    }
+
+    /**
+     * Whether an argument is read off a callback's parameter bound where no reading reaches the callback without the
+     * guard: the parameter itself, a member read or call on it, or a local whose one write is such a read.
+     */
+    private function passesUnreadParameter(Expr $argument): bool
+    {
+        if (! in_array('unread', $this->scope->guardedParameters, true)) {
+            return false;
+        }
+
+        // The bound keeps a local that reads its own write from walking without end.
+        for ($step = 0; $step < 16; $step++) {
+            if ($argument instanceof Variable && is_string($argument->name) && $this->scope->holdsBinding($argument)
+                && ($this->scope->guardedParameters[$argument->name] ?? null) === 'unread'
+            ) {
+                return true;
+            }
+
+            $next = match (true) {
+                $argument instanceof MethodCall, $argument instanceof NullsafeMethodCall,
+                $argument instanceof PropertyFetch, $argument instanceof NullsafePropertyFetch => $argument->var,
+                $argument instanceof Variable && $this->scope->declaredAt($argument) === null => $this->scope->soleWriteSeenBy($argument),
+                default => null,
+            };
+
+            if ($next === null) {
+                return false;
+            }
+
+            $argument = $next;
+        }
+
+        return false;
     }
 
     /**

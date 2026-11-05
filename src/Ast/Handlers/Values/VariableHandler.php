@@ -691,7 +691,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             $scope->mapResultArrayed,
             $scope,
             $engine,
-            guarded: $receiver?->guarded === true && ! $this->mayHoldCollection($call->var, $declared, $scope),
+            unread: $receiver?->guarded === true && ! $this->mayHoldCollection($call->var, $declared, $scope),
             guardsElement: $receiver?->guardsItems() === true,
         );
 

@@ -526,13 +526,13 @@ final class ReceiverClassResolver
     /**
      * Resolve a variable an inline `@var` declares: the annotated assignment replaces what it held, so its own value is
      * read. The `@var` fills in only where that names no class the engine can use, or the element an Eloquent
-     * collection value leaves unnamed, with the model its collection generic lists.
+     * collection value leaves unnamed, with the model its collection generic lists. A guarded value reads as unread.
      *
      * @param  VarDocBinding  $span
      */
     public function resolveDeclared(string $name, array $span, AnalysisScope $scope): ?ReceiverType
     {
-        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
+        $assigned = $this->unguarded($this->fromBoundExpression($name, $span['expr'], $scope));
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
             $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class] && ! isset($span['relative'])
@@ -586,7 +586,8 @@ final class ReceiverClassResolver
 
     /**
      * Whether a value, such as the array a callback maps, is read off a guarded receiver: any object its calls, reads
-     * and `collect()` wrappings hold, or those of the one write a variable sees, since `collect()` names no guard.
+     * and `collect()` wrappings hold, or those of the one write a variable sees, since `collect()` names no guard. A
+     * local an inline `@var` declares reads by its declaration, so the walk stops there.
      */
     public function readsGuarded(Expr $expr, AnalysisScope $scope): bool
     {
@@ -607,7 +608,7 @@ final class ReceiverClassResolver
             $next = match (true) {
                 $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall,
                 $expr instanceof PropertyFetch, $expr instanceof NullsafePropertyFetch => $expr->var,
-                $expr instanceof Variable => $scope->soleWriteSeenBy($expr),
+                $expr instanceof Variable && $scope->declaredAt($expr) === null => $scope->soleWriteSeenBy($expr),
                 default => null,
             };
 
@@ -690,6 +691,24 @@ final class ReceiverClassResolver
     }
 
     /**
+     * A value an inline `@var` sits over, as the declaration met it without the guard: none for a guarded one, which
+     * only the guard's reach reads, and a declared list's classes alone, without the element only it names.
+     */
+    private function unguarded(?ReceiverType $assigned): ?ReceiverType
+    {
+        return match (true) {
+            $assigned === null || $assigned->guarded => null,
+            $assigned->guardsElement => new ReceiverType(
+                $assigned->classes,
+                $assigned->shortCircuits,
+                declaredOnly: $assigned->declaredOnly,
+                intersections: $assigned->intersections,
+            ),
+            default => $assigned,
+        };
+    }
+
+    /**
      * The classes an inline `@var` names, read as a property's `@var` is; null when it names a type that is not a
      * loadable class.
      *
@@ -754,8 +773,8 @@ final class ReceiverClassResolver
     {
         $held = $this->boundReceiver($name, $scope, $read);
         $held = match ($scope->guardedParameters[$name] ?? null) {
-            true => $held?->asGuarded(),
-            false => $held?->asGuardingElement(),
+            'unread', 'guarded' => $held?->asGuarded(),
+            'element' => $held?->asGuardingElement(),
             null => $held,
         };
 

@@ -60,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardRulesPostR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GenericOrEnumVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedArrayableExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedCallbacksResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDeclarationsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedJsonSerializableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedSummarizableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
@@ -91,6 +92,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthand
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PagedHelpersPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCodeIntersectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCodeOrSpecialVarResource;
@@ -4809,4 +4811,74 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($numbered['all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['ids'])->toBe([3, 4])
         ->and($numbered['model_keys'])->toBe([3, 4]);
+});
+
+// A declaration reads as it would with no guard: a callback's declared model where the declaration alone reads the
+// callback, a helper's declared parameter, and an inline `@var`. A helper a guarded callback hands its parameter, or
+// what it reads off it, stays guarded, as the callback is.
+it('reads a declaration under the guard as it reads one without it', function () {
+    $sent = json_decode((string) json_encode(GuardedDeclarationsResource::make(new CommentRack)->resolve()), true);
+
+    expect(resourceProps(GuardedDeclarationsResource::class))->toBe([
+        'array_typed' => 'number[]',
+        'array_typed_held' => 'number[]',
+        'array_typed_declared' => 'number[]',
+        'declared_array' => 'number[]',
+        'declared_array_local' => 'number[]',
+        'declared_collected' => 'number[]',
+        'helper_interface' => 'number',
+        'helper_interface_built' => 'number',
+        'helper_interface_first' => 'unknown',
+        'declared_forward_map' => 'number[]',
+        'declared_forward_array' => 'number[]',
+        'declared_forward_pick' => 'number',
+        'declared_forward_first' => 'number',
+        'callback_helper' => 'unknown',
+        'callback_helper_built' => 'unknown',
+        'callable_helper' => 'unknown',
+        'callback_helper_own' => 'number[]',
+        'direct_helper' => 'number',
+        'declared_own_first' => 'number',
+        'callback_relay' => 'unknown',
+        'callback_member_helper' => 'unknown',
+        'callback_local_helper' => 'unknown',
+    ])
+        ->and($sent['array_typed'])->toBe([3000, 4000])
+        ->and($sent['array_typed_held'])->toBe([3000, 4000])
+        ->and($sent['array_typed_declared'])->toBe([3000])
+        ->and($sent['declared_array'])->toBe([3000])
+        ->and($sent['declared_array_local'])->toBe([3000])
+        ->and($sent['declared_collected'])->toBe([3000])
+        ->and($sent['helper_interface'])->toBeIn([3, 4])
+        ->and($sent['helper_interface_built'])->toBeIn([3, 4])
+        ->and($sent['helper_interface_first'])->toBe('in3')
+        ->and($sent['declared_forward_map'])->toBe([3000, 4000])
+        ->and($sent['declared_forward_array'])->toBe([3000, 4000])
+        ->and($sent['declared_forward_pick'])->toBeIn([3, 4])
+        ->and($sent['declared_forward_first'])->toBe(3000)
+        ->and($sent['callback_helper'])->toBe(['in3', 'in4'])
+        ->and($sent['callback_helper_built'])->toBe(['in3', 'in4'])
+        ->and($sent['callable_helper'])->toBe(['in3', 'in4'])
+        ->and($sent['callback_helper_own'])->toBe([3000, 4000])
+        ->and($sent['direct_helper'])->toBe(3000)
+        ->and($sent['declared_own_first'])->toBe(3000)
+        ->and($sent['callback_relay'])->toBe(['in3', 'in4'])
+        ->and($sent['callback_member_helper'])->toBe(['in3', 'in4'])
+        ->and($sent['callback_local_helper'])->toBe(['in3', 'in4']);
+});
+
+// A collection's own paginator keeps its property reading, though Laravel sends its toArray(): a known gap.
+it('reads a helper\'s declared interface over $this->collection, and the paginator a collection holds, as without the guard', function () {
+    $collection = new PagedHelpersPostCollection(new LengthAwarePaginator([
+        (new Post)->forceFill(['id' => 1, 'title' => 'T1']),
+        (new Post)->forceFill(['id' => 2, 'title' => 'T2']),
+    ], 2, 15, 1));
+    $sent = json_decode((string) json_encode($collection->resolve()), true);
+
+    expect(resourceProps(PagedHelpersPostCollection::class))->toBe([
+        'helper_ids' => 'number',
+        'side' => '{ onEachSide: number }',
+    ])
+        ->and($sent['helper_ids'])->toBeIn([1, 2])
+        ->and($sent['side'])->toMatchArray(['current_page' => 1, 'total' => 2]);
 });

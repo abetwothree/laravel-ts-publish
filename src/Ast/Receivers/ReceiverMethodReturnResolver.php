@@ -260,7 +260,9 @@ final class ReceiverMethodReturnResolver
             );
             $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? match (true) {
                 $held !== null => $this->resolveEach($held, $methodName, $scope, false, $call, $site, true),
-                $armsOnly => $this->handsBackPaginator($owner, $methodName) ? null : $this->withoutConditionalGuess($owner, $methodName, $read()),
+                $armsOnly => $receiver->guarded && $this->handsBackPaginator($owner, $methodName)
+                    ? null
+                    : $this->withoutConditionalGuess($owner, $methodName, $read()),
                 default => $read(),
             };
 
@@ -829,7 +831,8 @@ final class ReceiverMethodReturnResolver
 
     /**
      * Whether a paginator's method hands the paginator itself back, as `through()` does: Laravel sends its toArray(),
-     * which the shape its properties read never spells, so a guarded receiver publishes no reading of it.
+     * which the shape its properties read never spells, so a guarded receiver publishes no reading of it; a resource
+     * collection's own paginator keeps the reading it has without the guard.
      */
     private function handsBackPaginator(string $class, string $methodName): bool
     {

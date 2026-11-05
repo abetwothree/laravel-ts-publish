@@ -31,8 +31,8 @@ trait BindsMapCallbacks
      * as PHP throws on it. Null where an arm is no array, or the callback cannot be read for an element.
      *
      * Each element binds as elementOf() reads it, with $elementModel or the model the element names, guarded where
-     * $guarded says the array is read off a guarded receiver. $arrayed says JsonResource::filter() reaches the result
-     * as an array.
+     * $guarded says the array is read off a guarded receiver and no declaration names the model, which reads the
+     * callback alone. $arrayed says JsonResource::filter() reaches the result as an array.
      *
      * @param  ValueExpressionResult  $input
      * @param  class-string<Model>|null  $elementModel
@@ -67,7 +67,7 @@ trait BindsMapCallbacks
                 $model = $elementModel ?? ($carried !== null && $element === class_basename($carried) && is_a($carried, Model::class, true)
                     ? $carried
                     : null);
-                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine, $guarded);
+                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine, guardsElement: $guarded);
 
                 if ($body === null || $body['type'] === 'unknown') {
                     return null;
@@ -153,7 +153,7 @@ trait BindsMapCallbacks
         bool $arrayed,
         AnalysisScope $scope,
         ExpressionEngine $engine,
-        bool $guarded = false,
+        bool $unread = false,
         bool $guardsElement = false,
     ): ?array {
         $callback = CallableForms::asOneValueClosure(CallableForms::heldCallable($callback, $scope), count($parameters));
@@ -167,7 +167,7 @@ trait BindsMapCallbacks
             null,
             $engine,
             fn (): array => $engine->resolve($callback),
-            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, true, $guarded, $guardsElement),
+            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, true, $unread, $guardsElement),
             function () use ($scope, $arrayed): void {
                 $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
                 $scope->mapResultArrayed = false;
@@ -197,7 +197,7 @@ trait BindsMapCallbacks
         AnalysisScope $scope,
         ExpressionEngine $engine,
         ?array $keyValue = null,
-        bool $guarded = false,
+        bool $unread = false,
         bool $guardsElement = false,
     ): ?array {
         if ($callback === null) {
@@ -210,7 +210,7 @@ trait BindsMapCallbacks
             $parameters[] = $keyValue;
         }
 
-        return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine, $guarded, $guardsElement);
+        return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine, $unread, $guardsElement);
     }
 
     /**
