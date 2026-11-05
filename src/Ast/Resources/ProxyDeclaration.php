@@ -140,7 +140,7 @@ final class ProxyDeclaration
      * What a member read off an API resource that is not a collection reads, held(): `resource`, a declared property,
      * and a member the class lacks, which Laravel's own `__get()`, or `__call()` where no macro answers, forwards.
      *
-     * Null otherwise, and where a resource is held, which would forward again.
+     * Null otherwise, and where a resource is held, which would forward again. The answer is guarded.
      */
     public static function forwarded(string $class, string $member, bool $isMethod): ?ReceiverType
     {
@@ -162,7 +162,7 @@ final class ProxyDeclaration
 
         return $held === null || array_any($held->classes, fn (string $holds): bool => is_a($holds, JsonResource::class, true))
             ? null
-            : $held;
+            : $held->asGuarded();
     }
 
     /**

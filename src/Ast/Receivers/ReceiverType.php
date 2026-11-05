@@ -40,6 +40,8 @@ final readonly class ReceiverType
      *                              overrides a member: one is read by its declaration alone where a subclass can
      * @param  Intersections  $intersections  the other members of an intersection each class is, as `A&B` holds an A
      *                                        that is also a B: memberOwner() reads a member A lacks off B
+     * @param  bool  $guarded  reached from a resource collection's `$collection` or what an API resource forwards to,
+     *                         where a conditional `@return` publishes no guess at an arm, as its own reading would
      */
     public function __construct(
         public array $classes,
@@ -55,6 +57,7 @@ final readonly class ReceiverType
         public bool $runtimeInstance = false,
         public bool $declaredOnly = false,
         public array $intersections = [],
+        public bool $guarded = false,
     ) {}
 
     /**
@@ -237,6 +240,14 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver marked as reached from a resource collection's `$collection` or an API resource's forward.
+     */
+    public function asGuarded(): self
+    {
+        return $this->guarded ? $this : $this->copy(guarded: true);
+    }
+
+    /**
      * The same value holding other classes, as an `instanceof` test narrows it: the proof names them, not a spelling.
      *
      * @param  non-empty-list<class-string>  $classes
@@ -313,6 +324,7 @@ final readonly class ReceiverType
         ?bool $runtimeInstance = null,
         ?bool $declaredOnly = null,
         ?array $intersections = null,
+        ?bool $guarded = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -328,6 +340,7 @@ final readonly class ReceiverType
             runtimeInstance: $runtimeInstance ?? $this->runtimeInstance,
             declaredOnly: $declaredOnly ?? $this->declaredOnly,
             intersections: $intersections ?? $this->intersections,
+            guarded: $guarded ?? $this->guarded,
         );
     }
 }

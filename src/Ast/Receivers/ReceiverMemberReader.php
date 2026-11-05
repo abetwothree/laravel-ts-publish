@@ -90,7 +90,7 @@ final class ReceiverMemberReader
         if ($forwarded !== null) {
             return match (true) {
                 $name === 'resource' => $forwarded,
-                count($forwarded->classes) === 1 => self::classes($forwarded->memberOwner($forwarded->classes[0], $name, false), $name),
+                count($forwarded->classes) === 1 => self::classes($forwarded->memberOwner($forwarded->classes[0], $name, false), $name)?->asGuarded(),
                 default => null,
             };
         }

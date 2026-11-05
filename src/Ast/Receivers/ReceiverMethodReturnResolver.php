@@ -114,7 +114,7 @@ final class ReceiverMethodReturnResolver
         MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
         ?CallSite $site = null,
     ): ?array {
-        $result = $this->resolveEach($receiver, $methodName, $scope, $fromInside, $call, $site, $receiver->collectedItems);
+        $result = $this->resolveEach($receiver, $methodName, $scope, $fromInside, $call, $site, $receiver->collectedItems || $receiver->guarded);
 
         if ($result === null) {
             return null;
@@ -221,8 +221,8 @@ final class ReceiverMethodReturnResolver
      * Type a method on every class the receiver holds, an API resource's undeclared one on what it forwards to, and
      * union the answers; null when any class declines, or none can run it.
      *
-     * @param  bool  $armsOnly  a resource collection's items, or what an API resource forwards a call to: there a
-     *                          conditional `@return` publishes a rule's or the body's answer, never a guess at an arm
+     * @param  bool  $armsOnly  a resource collection's items, a guarded receiver, or what an API resource forwards a
+     *                          call to: a conditional `@return` there publishes a rule's or the body's answer, no guess
      * @return ValueExpressionResult|null
      */
     private function resolveEach(

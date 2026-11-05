@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedCallsPos
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CountedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DerivedItemsPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeBranchJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeDroppedClashResource;
@@ -80,6 +81,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledHolderReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingShelfReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixinPostHeldStatsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullablePostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
@@ -130,6 +132,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\BracketedBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FlaggedStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ListingShelf;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -4621,4 +4624,63 @@ it('reads a bracketed @return through a forward as declared, and a conditional o
         'answer' => 'string',
     ])
         ->and($sent)->toBe(['ids' => [1, 'a'], 'one' => 1, 'maker' => null, 'proven' => 1, 'opaque' => 1, 'answer' => 'yes']);
+});
+
+// A method declared to list a published model hands that model to random(); any other item stays unread on a chain a
+// resource's forward or `$this->collection` begins, never the conditional's first word.
+it('types random() off a declared list of a published model, and leaves every other item a forward lists unread', function () {
+    $sent = json_decode((string) json_encode(ListingShelfReadsResource::make(new ListingShelf)->resolve()), true);
+
+    expect(resourceProps(ListingShelfReadsResource::class))->toBe([
+        'comment' => 'Comment',
+        'built_comments' => 'Comment[]',
+        'built_comment' => 'Comment',
+        'built_comment_pair' => 'Comment[]',
+        'built_note' => 'unknown',
+        'built_note_pair' => 'unknown',
+        'built_abstract' => 'unknown',
+        'built_words' => 'string[]',
+        'built_word' => 'unknown',
+        'built_word_pair' => 'unknown',
+        'built_row' => 'unknown',
+        'built_row_pair' => 'unknown',
+    ])
+        ->and($sent['comment']['id'])->toBeIn([3, 4])
+        ->and(array_column($sent['built_comments'], 'id'))->toBe([3, 4])
+        ->and($sent['built_comment']['id'])->toBeIn([3, 4])
+        ->and(array_column($sent['built_comment_pair'], 'id'))->toEqualCanonicalizing([3, 4])
+        ->and($sent['built_note']['id'])->toBeIn(['n1', 'n2'])
+        ->and(array_column($sent['built_note_pair'], 'id'))->toEqualCanonicalizing(['n1', 'n2'])
+        ->and($sent['built_abstract'])->toBe([])
+        ->and($sent['built_words'])->toBe(['a', 'b'])
+        ->and($sent['built_word'])->toBeIn(['a', 'b'])
+        ->and($sent['built_word_pair'])->toEqualCanonicalizing(['a', 'b'])
+        ->and($sent['built_row'])->toBeIn([['x' => 1], ['x' => 2]])
+        ->and($sent['built_row_pair'])->toEqualCanonicalizing([['x' => 1], ['x' => 2]]);
+});
+
+it('leaves random() unread on a collection derived from $this->collection whose item it does not name', function () {
+    $collection = new DerivedItemsPostCollection(collect([
+        (new Post)->forceFill(['id' => 1, 'title' => 'T1']),
+        (new Post)->forceFill(['id' => 2, 'title' => 'T2']),
+    ]));
+    $sent = json_decode((string) json_encode($collection->resolve()), true);
+    $items = [['id' => 1, 'title' => 'T1'], ['id' => 2, 'title' => 'T2']];
+
+    expect(resourceProps(DerivedItemsPostCollection::class))->toBe([
+        'values' => 'unknown',
+        'title' => 'unknown',
+        'title_pair' => 'unknown',
+        'base' => 'unknown',
+        'filtered' => 'unknown',
+        'mapped' => 'unknown',
+        'mapped_pair' => 'unknown',
+    ])
+        ->and($sent['values'])->toBeIn($items)
+        ->and($sent['title'])->toBeIn(['T1', 'T2'])
+        ->and($sent['title_pair'])->toEqualCanonicalizing(['T1', 'T2'])
+        ->and($sent['base'])->toBeIn($items)
+        ->and($sent['filtered'])->toBeIn($items)
+        ->and($sent['mapped'])->toBeIn([1, 2])
+        ->and($sent['mapped_pair'])->toEqualCanonicalizing([1, 2]);
 });

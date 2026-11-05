@@ -7,7 +7,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabeledHolderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingShelfReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledEntry;
@@ -17,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HeldStats;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
 use Illuminate\Contracts\Support\Arrayable;
 use PhpParser\Node\Expr;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
 /** The expression one PHP statement holds. */
@@ -87,3 +90,46 @@ test('a union of receivers keeps an intersection only where every part agrees on
     'both parts an intersection' => ['$flag ? $this->resource->post : $this->resource->post', [Post::class => [HasLabel::class]]],
     'one part the bare class' => ['$flag ? $this->resource->post : new \\Workbench\\App\\Models\\Post', []],
 ]);
+
+test('a copy keeps the guard', function () {
+    $type = ReceiverType::of(Post::class)->asGuarded();
+
+    expect($type->guarded)->toBeTrue()
+        ->and(ReceiverType::of(Post::class)->guarded)->toBeFalse()
+        ->and($type->asGuarded())->toBe($type)
+        ->and($type->withShortCircuit(true)->guarded)->toBeTrue()
+        ->and($type->asUnsaved()->guarded)->toBeTrue()
+        ->and($type->asAttributeless()->guarded)->toBeTrue()
+        ->and($type->asRuntimeInstance()->guarded)->toBeTrue()
+        ->and($type->asDeclaredOnly()->guarded)->toBeTrue()
+        ->and($type->withClasses([Comment::class])->guarded)->toBeTrue();
+});
+
+// The guard starts at `$this->collection` and at what a resource forwards to, and every step and union carries it on.
+test('a receiver reached from $this->collection or a forward is guarded down its chain', function (string $subject, string $php, bool $guarded) {
+    $scope = new AnalysisScope(new ReflectionClass($subject), null);
+    $scope->seedCollectionFacts(new ReflectionClass($subject));
+
+    expect(resolve(ReceiverClassResolver::class)->resolve(receiverTypeExpr($php), $scope)?->guarded)->toBe($guarded);
+})->with([
+    '$this->collection' => [ItemReadingPostCollection::class, '$this->collection', true],
+    'a step keeping its items' => [ItemReadingPostCollection::class, '$this->collection->values()', true],
+    'a step replacing them' => [ItemReadingPostCollection::class, '$this->collection->pluck("title")', true],
+    'its item' => [ItemReadingPostCollection::class, '$this->collection->first()', true],
+    'a union with an unguarded part' => [ItemReadingPostCollection::class, '$flag ? \\Illuminate\\Support\\Collection::make([]) : $this->collection->values()', true],
+    'the items $this->resource holds' => [ItemReadingPostCollection::class, '$this->resource', false],
+    'a forwarded call' => [ListingShelfReadsResource::class, '\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Http\\Resources\\ListingShelfResource::make($this->resource)->words()', true],
+    'a forwarded property' => [ItemReadingPostCollection::class, '$this->resource->first()?->author', true],
+    'what a resource holds, read whole' => [ItemReadingPostCollection::class, '$this->resource->first()?->resource', true],
+    'a call on the held class itself' => [ListingShelfReadsResource::class, '$this->resource->words()', false],
+]);
+
+test('a method declared to list a published model hands that model on as the element', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ListingShelfReadsResource::class), null);
+    $resolver = resolve(ReceiverClassResolver::class);
+
+    expect($resolver->resolve(receiverTypeExpr('$this->resource->comments()'), $scope)?->elementModel)->toBe(Comment::class)
+        ->and($resolver->resolve(receiverTypeExpr('$this->resource->notes()'), $scope)?->elementModel)->toBeNull()
+        ->and($resolver->resolve(receiverTypeExpr('$this->resource->abstracts()'), $scope)?->elementModel)->toBeNull()
+        ->and($resolver->resolve(receiverTypeExpr('$this->resource->words()'), $scope)?->elementModel)->toBeNull();
+});

@@ -901,7 +901,7 @@ final class ReceiverClassResolver
 
         // Laravel's constructor sets a collection's `$collection` to a Support\Collection of its items, paged or not.
         if ($name === 'collection' && $scope->subjectReflection->isSubclassOf(ResourceCollection::class)) {
-            return new ReceiverType([Collection::class], collectedItems: true, collectedElement: $scope->collectedElement);
+            return new ReceiverType([Collection::class], collectedItems: true, collectedElement: $scope->collectedElement, guarded: true);
         }
 
         $owner = $scope->thisMemberClass($name, false);
@@ -1500,7 +1500,7 @@ final class ReceiverClassResolver
                     $held->classes,
                 ),
                 false,
-            );
+            )?->asGuarded();
         }
 
         $built = $queried === null ? null : $this->queriedModel($class, $method, $queried);
@@ -1979,7 +1979,9 @@ final class ReceiverClassResolver
         }
 
         if (($classes !== null && $classes !== [Builder::class]) || ! is_a($class, Model::class, true)) {
-            return ReceiverType::declared($returned);
+            $listed = $classes === null ? null : $this->listedReturnModel($class, $method, $classes);
+
+            return $listed === null ? ReceiverType::declared($returned) : new ReceiverType($classes, elementModel: $listed);
         }
 
         $declared = $classes === null ? null : $this->declaredReturn($class, $method);
@@ -1991,6 +1993,32 @@ final class ReceiverClassResolver
         $read = $this->modelMethodReturn($class, $method);
 
         return $read !== null && ($classes === null || $read->within($classes)) ? $read : $this->typeOf($classes);
+    }
+
+    /**
+     * The model a method's `@return` lists in a collection, as `EloquentCollection<int, Comment>` does, where the
+     * method's value names it too: a concrete model the run publishes; null otherwise.
+     *
+     * @param  non-empty-list<class-string>  $classes  the classes the method returns
+     * @return class-string<Model>|null
+     */
+    private function listedReturnModel(string $class, string $method, array $classes): ?string
+    {
+        $declared = $this->declaredReturn($class, $method);
+
+        if ($declared === null
+            || ! new ReceiverType($classes)->within([Enumerable::class])
+            || preg_match('/^\\\\?[\\\\\w]+<\s*(?:(?:int|array-key|string)\s*,\s*)?(\\\\?[\\\\\w]+)\s*>$/', $declared, $match) !== 1
+        ) {
+            return null;
+        }
+
+        $element = DocblockNames::resolve($match[1], DeclaringFile::ofMethod(new ReflectionMethod($class, $method)));
+
+        return ReceiverType::isConcreteModel($element)
+            && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $element])
+            ? $element
+            : null;
     }
 
     /**
@@ -2301,8 +2329,8 @@ final class ReceiverClassResolver
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
      * An element or related model, a resource collection's items, and an intersection survive only when every part
-     * agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read by declarations,
-     * when any part is.
+     * agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read by declarations or
+     * guarded, when any part is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -2319,6 +2347,7 @@ final class ReceiverClassResolver
         $attributeless = false;
         $filled = null;
         $declaredOnly = false;
+        $guarded = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -2335,6 +2364,7 @@ final class ReceiverClassResolver
             $keyed = $keyed || $type->keyed;
             $attributeless = $attributeless || $type->attributeless;
             $declaredOnly = $declaredOnly || $type->declaredOnly;
+            $guarded = $guarded || $type->guarded;
             if ($type->attributeless) {
                 // Each part with no attributes holds only the columns written into all of them.
                 $filled = $filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled));
@@ -2358,15 +2388,18 @@ final class ReceiverClassResolver
             filled: $filled ?? [],
             declaredOnly: $declaredOnly,
             intersections: ReceiverType::agreedIntersections($parts),
+            guarded: $guarded,
         );
     }
 
     /**
      * A member's value read through a receiver spelled `self`, `static` or `parent`, marked as that receiver is: the
-     * class it names may be a subclass's override's too.
+     * class it names may be a subclass's override's too. A guarded receiver's member is guarded as well.
      */
     private function carried(ReceiverType $receiver, ?ReceiverType $member): ?ReceiverType
     {
+        $member = $receiver->guarded ? $member?->asGuarded() : $member;
+
         return $receiver->declaredOnly ? $member?->asDeclaredOnly() : $member;
     }
 

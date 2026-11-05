@@ -18,7 +18,7 @@ These classes carry receiver inference:
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
 | [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()` and `merge()` hand down the chain |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
@@ -55,7 +55,7 @@ reflection answers, a decline included.
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()`, and `user()` on `auth()`, the `Auth` facade, `request()`, `Auth::guard()` or `auth()->guard()` | `AuthUserResolver::model()`, when that is not `null`, for `$request->user()`. The other spellings take `AuthUserResolver::soleModel()`, that model only while no configured guard's provider names another Eloquent model, since a route's guard middleware can make any guard the default ([known gap][gap-guards]). Only the default guard is read, so a guard named on any spelling but `$request->user()`, such as `auth('admin')`, `Auth::guard('admin')` or `request()->user('admin')`, names nothing ([`ResolvesAuthHelperCalls`]) |
-| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method. On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
+| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`). On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
 | `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare, or to an attribute scope, reads as the same call on `X::query()`, since `Model::__callStatic()` runs it on a new query (`QueryForwarding::queriesStatically()`), and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
@@ -379,11 +379,12 @@ Two more read the call's own arguments:
   throws; a list for an integer literal or a callable; both where the argument may be null. A list picked with
   `$preserveKeys` adds the object arm, and an unpacked call keeps every arm. Any other receiver keeps the docblock
   reading.
-- **A conditional `@return`** on a resource collection's items or on what an API resource forwards a call to: where
-  the docblock reader keeps only the first token of one naming more than strings
+- **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, or on what an API resource
+  forwards a call to: where the docblock reader keeps only the first token of one naming more than strings
   (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that token's type is withdrawn, so
-  `$this->collection->random()` with no element publishes `unknown`, never a word of its condition. A rule's answer, a
-  body's and a bracketed type that is no conditional, such as `(int|string)[]`, stand.
+  `$this->collection->random()` with no element, and `$this->collection->pluck('title')->random()`, publish `unknown`,
+  never a word of the condition. A rule's answer, a body's and a bracketed type that is no conditional, such as
+  `(int|string)[]`, stand.
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
