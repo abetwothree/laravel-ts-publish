@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
@@ -143,8 +144,11 @@ final class ModelFinderHandler implements ExpressionHandler
             ? $this->read($call, $scope, $engine)['result'] ?? null
             : $this->paginatorStep($call, $scope, $engine)['result'] ?? $this->builderObject($call, $scope);
 
-        // A model with no published file would publish a token nothing imports.
-        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+        // With no published set, a framework or abstract model would publish a token nothing imports. With one, the
+        // model channel must stay, so the key holding the result declines whole rather than keeping its other arms.
+        return $result !== null && (! PublishedModelRegistry::isEmpty() || ValueResult::namesOnlyPublishedModels($result))
+            ? $result
+            : null;
     }
 
     /**

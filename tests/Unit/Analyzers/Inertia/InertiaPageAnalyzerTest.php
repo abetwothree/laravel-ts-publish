@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -43,6 +44,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SignedInUserController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UnpublishedFinderController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
@@ -2397,6 +2399,15 @@ it('publishes a factory build as a list once a count is set, else as one model',
 it('publishes a resource prop built around a controller\'s Conditionable::when() as required', function () {
     expect(pageData(ConditionableWrapController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
         .'made: { data: UserResource }, built: { data: UserResource }, listed: AnonymousResourceCollection<UserResource> }');
+});
+
+// A key naming a model the registered set leaves out publishes `unknown` whole, so a ternary's `null` arm or a
+// collection guess never stands in for the user Laravel sends.
+it('keeps a page key whose finder names a model the registered set leaves out', function () {
+    PublishedModelRegistry::register([Post::class, Comment::class]);
+
+    expect(pageData(UnpublishedFinderController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'found: unknown, collected: (UserCollection & ResourcePagination) | JsonResourcePaginator<never> }');
 });
 
 // Every body reads the chain alike, the resolved resource's own interface too, so the page restates none of its keys.

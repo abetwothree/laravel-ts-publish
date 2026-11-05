@@ -94,7 +94,9 @@ reads against the root model. `count()` on any `Enumerable` is a number, and a k
 object arm `json_encode()` writes. A factory's `make()` or `create()` is a list once a count step or argument sets one,
 and a model's query with no terminal is the builder object `json_encode()` writes. A paginator's own setter, such as
 `withQueryString()`, keeps the paginator it is called on, and `through()` is that paginator over what its callback
-returns ([`PaginatorSteps`]). Like every receiver read, it declines a result naming a model with no published file.
+returns ([`PaginatorSteps`]). With no published set registered, it declines a result naming a framework or abstract
+model, which has no file. With one, it keeps the model channel, so `MethodAnalysis::addProperty()` declines the key
+holding a model the set leaves out whole, rather than a ternary or `??` keeping only its other arms.
 
 `ResourceExpressionHandlersTest` pins `make()`'s sequence, the filtered profiles and the behavioral pins below.
 `MethodCallOrderingMatrixTest` runs every pair of `MethodCall` claimants in both orders over a curated corpus. A pair in
