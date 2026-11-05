@@ -44,6 +44,8 @@ final readonly class ReceiverType
      *                         where a conditional `@return` publishes no guess at an arm, as its own reading would
      * @param  bool  $guardsElement  set with an element only a method's declared list names: an item the element
      *                               yields, or a callback parameter it binds, is guarded; the list's own steps are not
+     * @param  bool  $stringKeyed  a method's declared list names its keys `string`, so its `all()` is the record the
+     *                             declaration reads, trusted as any declared type
      */
     public function __construct(
         public array $classes,
@@ -61,6 +63,7 @@ final readonly class ReceiverType
         public array $intersections = [],
         public bool $guarded = false,
         public bool $guardsElement = false,
+        public bool $stringKeyed = false,
     ) {}
 
     /**
@@ -362,6 +365,7 @@ final readonly class ReceiverType
             intersections: $intersections ?? $this->intersections,
             guarded: $guarded ?? $this->guarded,
             guardsElement: $guardsElement ?? $this->guardsElement,
+            stringKeyed: $this->stringKeyed,
         );
     }
 }

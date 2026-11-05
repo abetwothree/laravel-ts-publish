@@ -172,13 +172,18 @@ test('a step the engine presumes keeps a declared list\'s items keeps its guard 
     expect([$type?->elementModel, $type?->guardsElement])->toBe([Comment::class, true]);
 });
 
-test('a list a method declares under string keys is keyed', function (string $php, bool $keyed) {
+// Only `string` keys mark the declared record its all() trusts; `array-key` ones may be ints, as a list's are.
+test('a list a method declares under string keys is keyed', function (string $php, bool $keyed, bool $stringKeyed) {
     $scope = new AnalysisScope(new ReflectionClass(GuardedCallbacksResource::class), null);
+    $type = resolve(ReceiverClassResolver::class)->resolve(receiverTypeExpr($php), $scope);
 
-    expect(resolve(ReceiverClassResolver::class)->resolve(receiverTypeExpr($php), $scope)?->keyed)->toBe($keyed);
+    expect([$type?->keyed, $type?->stringKeyed, $type?->asGuarded()->stringKeyed])->toBe([$keyed, $stringKeyed, $stringKeyed]);
 })->with([
-    'int keys' => ['$this->resource->comments()', false],
-    'string keys' => ['$this->resource->keyedComments()', true],
-    'string keys, Eloquent' => ['$this->resource->keyedEloquent()', true],
-    'keys of either kind' => ['$this->resource->anyKeyed()', true],
+    'int keys' => ['$this->resource->comments()', false, false],
+    'string keys' => ['$this->resource->keyedComments()', true, true],
+    'string keys, Eloquent' => ['$this->resource->keyedEloquent()', true, true],
+    'keys of either kind' => ['$this->resource->anyKeyed()', true, false],
+    'a union of string-keyed lists' => ['$flag ? $this->resource->keyedComments() : $this->resource->keyedComments()', true, true],
+    'a union beside a list' => ['$flag ? $this->resource->keyedComments() : $this->resource->comments()', true, false],
+    'a step re-keying them' => ['$this->resource->keyedComments()->sortBy("id")', true, false],
 ]);

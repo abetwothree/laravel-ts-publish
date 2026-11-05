@@ -196,6 +196,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * the receiver chain, which alone knows its element: all() hands the array back, keys and all, and values() lists
      * it. On any other class the method is its own, so the receiver's type says nothing about what it returns.
      *
+     * A list a method declares under `string` keys keeps the record its declaration reads, as a declared type is
+     * trusted.
+     *
      * @return ValueExpressionResult|null
      */
     private function peeledValuesOrAll(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
@@ -232,7 +235,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
         $type = match (true) {
             $method === 'values' => ArrayArms::valuesList($receiverResult['type']),
-            $receiver?->keyed === true => $this->keyedAll($receiverResult['type']),
+            $receiver?->keyed === true && ! $receiver->stringKeyed => $this->keyedAll($receiverResult['type']),
             default => $receiverResult['type'],
         };
 

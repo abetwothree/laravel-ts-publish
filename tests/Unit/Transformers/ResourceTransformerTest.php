@@ -4730,6 +4730,11 @@ it('carries the guard into a parameter bound from a guarded collection or a decl
         'branched' => 'unknown',
         'held_typed_ids' => 'number[]',
         'helper_copy_id' => 'number',
+        'collected_listed' => 'unknown',
+        'collected_twice' => 'unknown',
+        'collected_ids' => 'number[]',
+        'paged' => 'unknown',
+        'simple_paged' => 'unknown',
     ])
         ->and($plain['forwarded'])->toBe(['in3', 'in4'])
         ->and($plain['built'])->toBe(['in3', 'in4'])
@@ -4748,10 +4753,16 @@ it('carries the guard into a parameter bound from a guarded collection or a decl
         ->and($plain['branched'])->toBeIn(['c3', 'c4'])
         ->and($plain['held_typed_ids'])->toBe([3000, 4000])
         ->and($plain['helper_copy_id'])->toBe(3000)
+        ->and($plain['collected_listed'])->toBe(['in3', 'in4'])
+        ->and($plain['collected_twice'])->toBe(['in3', 'in4'])
+        ->and($plain['collected_ids'])->toBe([3, 4])
+        ->and($plain['paged'])->toMatchArray(['current_page' => 1, 'data' => []])->not->toHaveKey('onEachSide')
+        ->and($plain['simple_paged'])->toMatchArray(['current_page' => 1, 'data' => []])->not->toHaveKey('onEachSide')
         ->and($sent(Request::create('/', 'GET', ['again' => 1]))['branched'])->toBeIn(['c3', 'c4']);
 });
 
-// PHP turns a numeric string key into an int, so keys a list declares as strings may still send a list, as `[]` does.
+// A list declared under string keys is trusted for its all(), as any declared type is. Under keys '0' and '1' PHP makes
+// ints, so the declaration lies about its keys and all() sends a list: the one documented exception the record misses.
 it('reads a list a method declares under string keys as keyed, so a step keeping them sends an object', function () {
     $sent = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack)->resolve()), true);
     $numbered = json_decode((string) json_encode(KeyedRackReadsResource::make(new CommentRack(['0', '1']))->resolve()), true);
@@ -4760,7 +4771,12 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
     expect(resourceProps(KeyedRackReadsResource::class))->toBe([
         'ids' => 'number[] | Record<string, number>',
         'ids_all' => 'number[] | Record<string, number>',
-        'all' => 'Comment[] | Record<string, Comment>',
+        'all' => 'Record<string, Comment>',
+        'held_all' => 'Record<string, Comment>',
+        'either_all' => 'Record<string, Comment>',
+        'built_all' => 'Record<string, Comment>',
+        'eloquent_all' => 'Record<string, Comment>',
+        'any_all' => 'Comment[] | Record<string, Comment>',
         'arrays' => 'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
         'eloquent_arrays' => 'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
         'model_keys' => 'number[] | Record<string, number>',
@@ -4775,6 +4791,11 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($sent['ids'])->toBe(['a' => 3, 'b' => 4])
         ->and($sent['ids_all'])->toBe(['a' => 3, 'b' => 4])
         ->and($sent['all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['held_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['either_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['built_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['eloquent_all'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
+        ->and($sent['any_all'])->toBe(['a' => $comment(3)])
         ->and($sent['arrays'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($sent['eloquent_arrays'])->toBe(['a' => $comment(3), 'b' => $comment(4)])
         ->and($sent['model_keys'])->toBe(['a' => 3, 'b' => 4])

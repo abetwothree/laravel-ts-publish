@@ -260,7 +260,7 @@ final class ReceiverMethodReturnResolver
             );
             $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? match (true) {
                 $held !== null => $this->resolveEach($held, $methodName, $scope, false, $call, $site, true),
-                $armsOnly => $this->withoutConditionalGuess($owner, $methodName, $read()),
+                $armsOnly => $this->handsBackPaginator($owner, $methodName) ? null : $this->withoutConditionalGuess($owner, $methodName, $read()),
                 default => $read(),
             };
 
@@ -328,9 +328,10 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $this->listOrKeyed(ValueResult::arrayWrapType($keyType), $receiver)];
         }
 
-        // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them.
+        // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them, or the
+        // record a list declared under string keys reads.
         if ($methodName === 'all' && $receiver->elementModel !== null) {
-            return $this->listedModels($receiver->elementModel, $receiver->keyed);
+            return $this->listedModels($receiver->elementModel, $receiver->keyed, $receiver->stringKeyed);
         }
 
         // It writes what each model's own toArray() does, under the same keys.
@@ -827,6 +828,16 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * Whether a paginator's method hands the paginator itself back, as `through()` does: Laravel sends its toArray(),
+     * which the shape its properties read never spells, so a guarded receiver publishes no reading of it.
+     */
+    private function handsBackPaginator(string $class, string $methodName): bool
+    {
+        return array_any(PaginatorSteps::KINDS, fn (string $kind): bool => is_a($class, $kind, true))
+            && DeclaredClasses::returnClasses($class, $methodName) === [$class];
+    }
+
+    /**
      * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token of a
      * conditional naming more than strings, which may spell a type, as `($number is null ? …)` does. A body's stands.
      *
@@ -928,16 +939,21 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1; null where
-     * the model has no published file.
+     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1, or only that
+     * object where $record says a declaration names the keys strings; null where the model has no published file.
      *
      * @param  class-string<Model>  $model
      * @return ValueExpressionResult|null
      */
-    private function listedModels(string $model, bool $keyed): ?array
+    private function listedModels(string $model, bool $keyed, bool $record = false): ?array
     {
         $list = ValueResult::arrayWrapType(class_basename($model));
-        $models = [...ValueResult::unknown(), 'type' => $keyed ? ArrayArms::keyedList($list) : $list, 'modelFqcn' => $model];
+        $type = match (true) {
+            $record => 'Record<string, '.class_basename($model).'>',
+            $keyed => ArrayArms::keyedList($list),
+            default => $list,
+        };
+        $models = [...ValueResult::unknown(), 'type' => $type, 'modelFqcn' => $model];
 
         return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
     }

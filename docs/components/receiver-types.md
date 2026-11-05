@@ -18,7 +18,7 @@ These classes carry receiver inference:
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
 | [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not; `stringKeyed` where that list names its keys `string`, so its `all()` keeps the declared record |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
@@ -98,7 +98,8 @@ first write that replaces a parameter, step 4's `localVarBindings` answers.
 A parameter `ParameterBinder` bound from a guarded receiver, a callback's from its element or a helper's from its
 argument, keeps that guard through `AnalysisScope::$guardedParameters`: whole, or only its element's for a declared
 list. A callback parameter's declared model stays unguarded where the declaration alone would read the callback, and
-`array_map()` and `collect()->map()` take the guard where `readsGuarded()` finds the array read off a guarded receiver.
+`array_map()` and `collect()->map()` take the guard where `readsGuarded()` finds the array read off a guarded receiver,
+through `collect()` too.
 
 Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
@@ -389,7 +390,8 @@ Two more read the call's own arguments:
   (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that token's type is withdrawn, so
   `$this->collection->random()` with no element, and `$this->collection->pluck('title')->random()`, publish `unknown`,
   never a word of the condition. A rule's answer, a body's and a bracketed type that is no conditional, such as
-  `(int|string)[]`, stand.
+  `(int|string)[]`, stand. A guarded paginator's step that hands the paginator back, such as `through()`, publishes
+  nothing, since its properties never spell the `toArray()` Laravel sends.
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,

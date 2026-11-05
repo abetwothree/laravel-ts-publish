@@ -585,17 +585,23 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether a value, such as the array a callback maps, is read off a guarded receiver: the nearest object its calls
-     * and reads hold, or that of the one write a variable holding no object sees.
+     * Whether a value, such as the array a callback maps, is read off a guarded receiver: any object its calls, reads
+     * and `collect()` wrappings hold, or those of the one write a variable sees, since `collect()` names no guard.
      */
     public function readsGuarded(Expr $expr, AnalysisScope $scope): bool
     {
         // The bound keeps a variable that reads its own write from walking without end.
-        for ($step = 0; $step < 8; $step++) {
-            $receiver = $this->resolve($expr, $scope);
+        for ($step = 0; $step < 16; $step++) {
+            $collected = CallArguments::collectArgument($expr);
 
-            if ($receiver !== null) {
-                return $receiver->guarded;
+            if ($collected !== null) {
+                $expr = $collected;
+
+                continue;
+            }
+
+            if ($this->resolve($expr, $scope)?->guarded === true) {
+                return true;
             }
 
             $next = match (true) {
@@ -2029,7 +2035,13 @@ final class ReceiverClassResolver
 
             return $listed === null
                 ? ReceiverType::declared($returned)
-                : new ReceiverType($classes, elementModel: $listed['model'], keyed: $listed['keyed'], guardsElement: true);
+                : new ReceiverType(
+                    $classes,
+                    elementModel: $listed['model'],
+                    keyed: $listed['key'] !== null,
+                    guardsElement: true,
+                    stringKeyed: $listed['key'] === 'string',
+                );
         }
 
         $declared = $classes === null ? null : $this->declaredReturn($class, $method);
@@ -2045,11 +2057,11 @@ final class ReceiverClassResolver
 
     /**
      * The model a method's `@return` lists in a collection, as `EloquentCollection<int, Comment>` does, where the
-     * method's value names it too: a concrete model the run publishes, keyed where the list's keys may be strings, as
-     * `Collection<string, Comment>` spells; null otherwise.
+     * method's value names it too: a concrete model the run publishes, with the `string` or `array-key` key the list
+     * spells, as `Collection<string, Comment>` does; null otherwise.
      *
      * @param  non-empty-list<class-string>  $classes  the classes the method returns
-     * @return array{model: class-string<Model>, keyed: bool}|null
+     * @return array{model: class-string<Model>, key: 'string'|'array-key'|null}|null
      */
     private function listedReturnModel(string $class, string $method, array $classes): ?array
     {
@@ -2066,7 +2078,10 @@ final class ReceiverClassResolver
 
         return ReceiverType::isConcreteModel($element)
             && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $element])
-            ? ['model' => $element, 'keyed' => in_array($match[1], ['string', 'array-key'], true)]
+            ? ['model' => $element, 'key' => match ($match[1]) {
+                'string', 'array-key' => $match[1],
+                default => null,
+            }]
             : null;
     }
 
@@ -2377,9 +2392,9 @@ final class ReceiverClassResolver
     /**
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
-     * An element or related model, a resource collection's items, and an intersection survive only when every part
-     * agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read by declarations or
-     * guarded, when any part is, and a surviving element guarded where any part's is.
+     * An element or related model, a resource collection's items, an intersection and keys declared strings survive
+     * only when every part agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read
+     * by declarations or guarded, when any part is, and a surviving element guarded where any part's is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -2398,6 +2413,7 @@ final class ReceiverClassResolver
         $declaredOnly = false;
         $guarded = false;
         $guardsElement = false;
+        $stringKeyed = true;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -2416,6 +2432,7 @@ final class ReceiverClassResolver
             $declaredOnly = $declaredOnly || $type->declaredOnly;
             $guarded = $guarded || $type->guarded;
             $guardsElement = $guardsElement || $type->guardsElement;
+            $stringKeyed = $stringKeyed && $type->stringKeyed;
             if ($type->attributeless) {
                 // Each part with no attributes holds only the columns written into all of them.
                 $filled = $filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled));
@@ -2443,6 +2460,7 @@ final class ReceiverClassResolver
             intersections: ReceiverType::agreedIntersections($parts),
             guarded: $guarded,
             guardsElement: $elementModel !== null && $guardsElement,
+            stringKeyed: $stringKeyed,
         );
     }
 

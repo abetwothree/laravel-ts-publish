@@ -19,11 +19,17 @@ class KeyedRackReadsResource extends JsonResource
     public function toArray(Request $request): array
     {
         $rack = CommentRackResource::make($this->resource);
+        $held = $this->resource->keyedComments();
 
         return [
             'ids' => $this->resource->keyedComments()->map(fn ($comment) => $comment->id),
             'ids_all' => $this->resource->keyedComments()->map(fn ($comment) => $comment->id)->all(),
             'all' => $this->resource->keyedComments()->all(),
+            'held_all' => $held->all(),
+            'either_all' => ($request->boolean('again') ? $this->resource->keyedComments() : $held)->all(),
+            'built_all' => $rack->keyedComments()->all(),
+            'eloquent_all' => $this->resource->keyedEloquent()->all(),
+            'any_all' => $this->resource->anyKeyed()->all(),
             'arrays' => $this->resource->keyedComments()->toArray(),
             'eloquent_arrays' => $this->resource->keyedEloquent()->toArray(),
             'model_keys' => $this->resource->keyedEloquent()->modelKeys(),

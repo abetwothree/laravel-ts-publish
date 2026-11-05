@@ -48,6 +48,11 @@ class GuardedCallbacksResource extends JsonResource
             'branched' => $branched->pluck('content')->random(),
             'held_typed_ids' => $held->map(fn (Comment $comment) => $comment->post->comments->pluck('id')->random()),
             'helper_copy_id' => $this->copiedId($post->comments->first()->replicate()),
+            'collected_listed' => array_map(fn ($comment) => $comment->post->comments->pluck('content')->random(), collect($post->comments)->values()->all()),
+            'collected_twice' => collect(collect($post->comments)->all())->map(fn ($comment) => $comment->post->comments->pluck('content')->random()),
+            'collected_ids' => array_map(fn ($comment) => $comment->id, collect($post->comments)->all()),
+            'paged' => $post->comments()->paginate()->through(fn ($comment) => $comment->id),
+            'simple_paged' => $post->comments()->simplePaginate()->through(fn ($comment) => $comment->id),
         ];
     }
 
