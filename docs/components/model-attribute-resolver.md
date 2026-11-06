@@ -91,8 +91,9 @@ numbers.
 Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
 `@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
 import. A caster with a `serialize()` method publishes what it declares instead, since `Model::toArray()` writes that
-wherever the method exists, with or without `SerializesCastableAttributes`. One that declares nothing, or `mixed`,
-leaves `get()` to type it, as does a vague one, such as `array`, on a caster without the interface.
+wherever the method exists, with or without `SerializesCastableAttributes`. One that declares nothing leaves `get()`
+to type it. Without the interface, so does one declaring only `mixed`, and one declaring only `array`, `object` or
+both over a `get()` that reads no scalar; over a scalar `get()` they stand, since `serialize()` sends something else.
 
 ### Step 2: an override, resolved and composed
 

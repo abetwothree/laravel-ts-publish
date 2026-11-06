@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -2027,9 +2028,16 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a serialize() method declaring nothing, without the interface' => [SerializeMethodWarehouse::class, 'phone', 'string | null'],
         'a serialize() method declaring a string, without the interface' => [SerializeMethodWarehouse::class, 'coordinate_data', 'string'],
         'a mixed serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'status', '{ x: number; y: number } | null'],
-        'a mixed serialize(), with the interface' => [SerializeMethodWarehouse::class, 'color', '{ x: number; y: number } | null'],
+        'a mixed serialize(), with the interface' => [SerializeMethodWarehouse::class, 'color', 'unknown | null'],
         'an array serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'priority', '{ x: number; y: number }'],
         'an array serialize() method over a shape, without the interface' => [SerializeMethodWarehouse::class, 'manager_id', '{ a: number }'],
+        'a mixed serialize() over a number, with the interface' => [VagueSerializeWarehouse::class, 'phone', 'unknown | null'],
+        'an object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'coordinate_data', '{ x: number; y: number }'],
+        'a ?object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'status', '{ x: number; y: number } | null'],
+        'an array|object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'color', '{ x: number; y: number }'],
+        'an object serialize() method over a number' => [VagueSerializeWarehouse::class, 'priority', 'object'],
+        'an array serialize() method over a string' => [VagueSerializeWarehouse::class, 'manager_id', 'unknown[]'],
+        'a Castable whose caster\'s serialize() declares mixed' => [VagueSerializeWarehouse::class, 'primary_contact_id', 'unknown | null'],
     ]);
 });
 

@@ -65,6 +65,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
@@ -930,20 +931,38 @@ test('a nullable column cast to a class whose get() does not decide what toArray
 
 // Laravel calls a caster's serialize() method whether or not the caster implements SerializesCastableAttributes.
 // A serialize() declaring only `mixed`, or `array` without the interface, leaves get() to type the value.
-test('a nullable column cast to a class with a serialize() method publishes what serialize() sends', function (string $column, string $type, mixed $sent) {
+test('a nullable column cast to a class with a serialize() method publishes what serialize() sends', function (string $column, string $type, string $sent) {
     $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
-    $row = sentAsJson((new SerializeMethodWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
+    $row = (new SerializeMethodWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
 
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializeMethodWarehouse::class, $column)['type'])->toBe($type)
-        ->and($row->{$column})->toEqual($sent);
+        ->and(json_encode($row[$column]))->toBe($sent);
 })->with([
-    'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', null],
-    'a serialize() declaring a non-null string over a get() returning a number' => ['coordinate_data', 'string', 'n0'],
-    'a serialize() declaring mixed, without the interface' => ['status', '{ x: number; y: number } | null', (object) ['x' => 1, 'y' => 2]],
-    'a serialize() declaring mixed, with the interface' => ['color', '{ x: number; y: number } | null', (object) ['x' => 1, 'y' => 2]],
-    'a serialize() declaring array over a get() returning a value object, without the interface' => ['priority', '{ x: number; y: number }', (object) ['x' => 1, 'y' => 2]],
-    'a serialize() declaring array over a get() declaring a shape, without the interface' => ['manager_id', '{ a: number }', (object) ['a' => 1]],
-    'a serialize() declaring array, with the interface, as published before' => ['primary_contact_id', 'unknown[]', (object) ['x' => 1, 'y' => 2]],
+    'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', 'null'],
+    'a serialize() declaring a non-null string over a get() returning a number' => ['coordinate_data', 'string', '"n0"'],
+    'a serialize() declaring mixed, without the interface' => ['status', '{ x: number; y: number } | null', '{"x":1,"y":2}'],
+    'a serialize() declaring mixed, with the interface, as published before' => ['color', 'unknown | null', '{"x":1,"y":2}'],
+    'a serialize() declaring array over a get() returning a value object, without the interface' => ['priority', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'a serialize() declaring array over a get() declaring a shape, without the interface' => ['manager_id', '{ a: number }', '{"a":1}'],
+    'a serialize() declaring array, with the interface, as published before' => ['primary_contact_id', 'unknown[]', '{"x":1,"y":2}'],
+]);
+
+// A vague serialize() without the interface leaves an object get() to type the value, but not a scalar one, which
+// serialize() evidently turns into something else. The interface keeps what its serialize() declares.
+test('a vague serialize() leaves the type to get() only without the interface and over a get() returning no scalar', function (string $column, string $type, string $sent) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
+    $row = (new VagueSerializeWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(VagueSerializeWarehouse::class, $column)['type'])->toBe($type)
+        ->and(json_encode($row[$column]))->toBe($sent);
+})->with([
+    'a mixed serialize() writing a string over a get() returning a number, with the interface' => ['phone', 'unknown | null', '"n0"'],
+    'an object serialize() over a get() returning a value object' => ['coordinate_data', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'a ?object serialize() over a get() returning a value object' => ['status', '{ x: number; y: number } | null', '{"x":1,"y":2}'],
+    'an array|object serialize() over a get() returning a value object' => ['color', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'an object serialize() over a get() returning a number' => ['priority', 'object', '{"v":0}'],
+    'an array serialize() over a get() returning a string, read as a list as an array cast is' => ['manager_id', 'unknown[]', '{"v":""}'],
+    'a Castable whose caster\'s serialize() declares mixed, with the interface' => ['primary_contact_id', 'unknown | null', '{"x":1,"y":2}'],
 ]);
 
 test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {

@@ -1730,8 +1730,8 @@ class LaravelTsPublish
 
     /**
      * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
-     * not. Null for a caster without one, or whose serialize() declares nothing, `mixed` included, which leaves get()
-     * to type it, as it does a vague one on a caster without the interface, which was always typed by get().
+     * not. Null leaves get() to type the value: for a caster without one or whose serialize() declares nothing, and,
+     * without the interface, for a serialize() declaring only `mixed`, or `array` or `object` over a non-scalar get().
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
@@ -1743,11 +1743,20 @@ class LaravelTsPublish
         }
 
         $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
-        $vague = is_a($caster, SerializesCastableAttributes::class, true)
-            ? TsTypeString::isUnknownOnly($serialized['type'])
-            : TsTypeString::isVagueOnly($serialized['type']);
 
-        return $vague ? null : $serialized;
+        if (is_a($caster, SerializesCastableAttributes::class, true)) {
+            return $serialized['type'] === 'unknown' ? null : $serialized;
+        }
+
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($serialized['type']), ['null']);
+        $vague = $arms !== []
+            && array_all($arms, static fn (string $arm): bool => $arm === 'object' || TsTypeString::isVagueOnly($arm));
+
+        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || ! $this->getReadsScalar($caster))) {
+            return null;
+        }
+
+        return $serialized;
     }
 
     /**
@@ -3460,6 +3469,20 @@ class LaravelTsPublish
             : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType()];
 
         return [...$info, 'type' => $info['type'].($date['nullable'] ? ' | null' : '')];
+    }
+
+    /**
+     * Whether a caster's get() reads only JSON scalars besides null, which an `array` or `object` serialize() changes.
+     *
+     * @param  class-string  $caster
+     */
+    private function getReadsScalar(string $caster): bool
+    {
+        $get = $this->serializedDateReturnTypes(new ReflectionMethod($caster, 'get'))
+            ?? $this->castGetReturnTypes(new ReflectionClass($caster));
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($get['type']), ['null']);
+
+        return $arms !== [] && array_all($arms, TsTypeShape::isScalar(...));
     }
 
     /**
