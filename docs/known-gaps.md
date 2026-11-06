@@ -717,6 +717,12 @@ read.
 resource's own model declares `label()`, since the related model could be any. Name the targets in
 `@return MorphTo<A|B, $this>`, or declare the inverse `morphMany`/`morphOne` on each target, which types it too.
 
+### A `whenLoaded()` callback whose parameter declares a scalar type publishes the relation, not the string it gets
+
+`$this->whenLoaded('comments', fn (string $c) => $c)` publishes `Comment[]`, but Laravel calls the callback in coercive
+mode, which converts the loaded collection, or a loaded model, to its JSON string. Leave the parameter untyped, or type
+it as the relation's class, and convert inside the callback where a string is what you want sent.
+
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
 [`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) publishes `unknown` for
@@ -987,10 +993,10 @@ in both places, so declare one, or type the key with `#[TsCasts]`.
 
 A class cast whose caster has a `serialize()` method publishes, on the model, the type `Model::toArray()` writes:
 what `serialize()` declares, or, where it declares nothing or only `mixed`, what its returns prove. An API resource
-that reads the attribute directly sends the `get()` value instead, and publishes `get()`'s type. Where `get()` declares
-nothing or only `mixed`, as Laravel's `make:cast` stub does, a caster implementing `SerializesCastableAttributes` still
-publishes `serialize()`'s type there, as it always has. Declare `get()`'s return type, or type the key with
-`#[TsCasts]`.
+that reads the attribute off the model, directly or through `only()` or `except()`, sends the `get()` value instead,
+and publishes `get()`'s type. Where `get()` declares nothing or only `mixed`, as Laravel's `make:cast` stub does, a
+caster implementing `SerializesCastableAttributes` still publishes `serialize()`'s type there, as it always has.
+Declare `get()`'s return type, or type the key with `#[TsCasts]`.
 
 Laravel sends a null `get()` value without calling `serialize()`, but a declared `serialize()` type gains `| null` only
 where `get()` declares one or returns a literal `null` itself. A null that `get()` passes on from another member or

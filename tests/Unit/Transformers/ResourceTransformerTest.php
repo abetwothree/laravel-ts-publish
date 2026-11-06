@@ -4445,7 +4445,7 @@ it('reads a member only an intersection arm gives as no member of a subclass a b
         ->and($sent(new CodedPost))->toBe(['code' => 'C4', 'proxy_code' => 'C4', 'title' => 'T']);
 });
 
-// First() and last() hand back one collected item, an API resource whose members Laravel's __get() and __call()
+// `first()` and `last()` hand back one collected item, an API resource whose members Laravel's __get() and __call()
 // forward to its model, or a raw model.
 it('reads a member of the API resource or model a resource collection first() or last() returns', function () {
     $post = fn (): Post => (new Post)->forceFill(['id' => 1, 'title' => 'T']);
@@ -4579,7 +4579,7 @@ it('types the Support\Collection calls on a resource collection\'s $this->collec
         ->and($sent(Request::create('/', 'GET', ['count' => 1]))['random_maybe'])->toEqualCanonicalizing([$item(1), $item(2)]);
 });
 
-// Random() hands back one item, or a list for a count, never the condition's first word, where the item is known.
+// `random()` hands back one item, or a list for a count, never the condition's first word, where the item is known.
 it('types random() as the item or a list of them by its argument, and another conditional return as its arms', function () {
     $post = (new Post)->forceFill(['id' => 1, 'title' => 'T'])->setRelation('comments', new EloquentCollection([
         (new Comment)->forceFill(['id' => 3, 'content' => 'C']),
