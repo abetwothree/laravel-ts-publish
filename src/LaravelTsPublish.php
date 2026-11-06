@@ -10,9 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
@@ -1700,9 +1700,7 @@ class LaravelTsPublish
             return null;
         }
 
-        $receivers = resolve(ReceiverClassResolver::class);
-        $infos = $this->serializedCastersTypes(DeclaredClasses::returnClasses($castable, 'castUsing'))
-            ?? $this->serializedCastersTypes($receivers->bodyReturnClasses($castable, 'castUsing'));
+        $infos = $this->serializedCastersTypes(CastCasters::casters($castable));
 
         return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
     }

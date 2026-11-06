@@ -365,6 +365,14 @@ class TsTypeString
     }
 
     /**
+     * A type with a `null` arm when another type has a top-level one, as withNullArm() appends it.
+     */
+    public function withNullArmOf(string $from, string $to): string
+    {
+        return $this->hasNullArm($from) ? $this->withNullArm($to) : $to;
+    }
+
+    /**
      * The type with a `null` arm appended unless it has a top-level one, `unknown` too, as a nullable PHP type prints.
      */
     public function orNull(string $type): string

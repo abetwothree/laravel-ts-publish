@@ -7,9 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -170,6 +170,17 @@ class ModelAttributeResolver
         return $cast === 'attribute' || $cast === 'accessor' || self::getDeclaresNonNull($cast)
             ? str_contains($type, 'null')
             : TsTypeString::hasNullArm($type);
+    }
+
+    /**
+     * A column's type with ` | null` appended when the column is nullable and the type does not hold its null yet,
+     * as typeHoldsNull() decides.
+     *
+     * @internal
+     */
+    public static function withColumnNull(string $type, ?bool $nullable, ?string $cast): string
+    {
+        return $nullable && ! self::typeHoldsNull($type, $cast) ? $type.' | null' : $type;
     }
 
     /**
@@ -1294,10 +1305,7 @@ class ModelAttributeResolver
      */
     protected function castableValueClass(string $castable): ?string
     {
-        $receivers = resolve(ReceiverClassResolver::class);
-
-        return $this->castersValueClass(DeclaredClasses::returnClasses($castable, 'castUsing'))
-            ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
+        return $this->castersValueClass(CastCasters::casters($castable));
     }
 
     /**
@@ -1836,9 +1844,7 @@ class ModelAttributeResolver
      */
     protected function appendNullable(array $tsInfo, ?bool $nullable, ?string $cast): array
     {
-        if ($nullable && ! self::typeHoldsNull($tsInfo['type'], $cast)) {
-            $tsInfo['type'] .= ' | null';
-        }
+        $tsInfo['type'] = self::withColumnNull($tsInfo['type'], $nullable, $cast);
 
         return $tsInfo;
     }
@@ -1911,15 +1917,8 @@ class ModelAttributeResolver
      */
     private static function getDeclaresNonNull(?string $cast): bool
     {
-        $class = Str::before((string) $cast, ':');
-
-        if (! is_a($class, CastsAttributes::class, true)) {
-            return false;
-        }
-
-        $return = new ReflectionMethod($class, 'get')->getReturnType();
-
-        return $return !== null && ! $return->allowsNull();
+        return is_a(Str::before((string) $cast, ':'), CastsAttributes::class, true)
+            && CastCasters::getDeclaresNonNull((string) $cast);
     }
 
     /**

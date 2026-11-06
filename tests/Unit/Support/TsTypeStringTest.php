@@ -1253,6 +1253,18 @@ describe('withNullArm', function () {
     ]);
 });
 
+describe('withNullArmOf', function () {
+    test('gives a type the null arm another type has at its top level', function (string $from, string $to, string $expected) {
+        expect($this->service->withNullArmOf($from, $to))->toBe($expected);
+    })->with([
+        'a top-level null arm' => ['string | null', 'number', 'number | null'],
+        'none' => ['string', 'number', 'number'],
+        'a null only inside a shape' => ['{ a: string | null }', 'number', 'number'],
+        'onto unknown, which already admits null' => ['string | null', 'unknown', 'unknown'],
+        'onto an arrow function' => ['string | null', '() => void', '(() => void) | null'],
+    ]);
+});
+
 describe('orNull', function () {
     test('appends a null arm only when the type has no top-level one, unknown included', function (string $type, string $expected) {
         expect($this->service->orNull($type))->toBe($expected);

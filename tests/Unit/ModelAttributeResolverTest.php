@@ -861,6 +861,16 @@ test('a cast sends a NULL column as null only when it is a database type, a prim
     'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
 ]);
 
+test('a column adds its null only when it is nullable and its type does not hold one yet', function (string $type, ?bool $nullable, ?string $cast, string $expected) {
+    expect(ModelAttributeResolver::withColumnNull($type, $nullable, $cast))->toBe($expected);
+})->with([
+    'a nullable column' => ['string', true, null, 'string | null'],
+    'a column that is not nullable' => ['string', false, null, 'string'],
+    'a column of unknown nullability' => ['string', null, null, 'string'],
+    'a type already holding the null' => ['string | null', true, null, 'string | null'],
+    'a nested null under an accessor' => ['{ a: number | null }', true, 'accessor', '{ a: number | null }'],
+]);
+
 test('a type holds a nullable column\'s null by a top-level arm, or by any null under an accessor or a non-null get()', function (?string $cast, bool $nestedHolds) {
     expect(ModelAttributeResolver::typeHoldsNull('{ a: number | null }', $cast))->toBe($nestedHolds)
         ->and(ModelAttributeResolver::typeHoldsNull('{ a: number } | null', $cast))->toBeTrue()

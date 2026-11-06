@@ -208,7 +208,7 @@ final readonly class ResponseExtras
             ? self::merged($mine, $theirs)
             : self::intersected($held, $theirs, $bodyKey);
 
-        $result = [...$type, 'type' => TsTypeString::hasNullArm($type['type']) ? TsTypeString::withNullArm($joined) : $joined];
+        $result = [...$type, 'type' => TsTypeString::withNullArmOf($type['type'], $joined)];
 
         foreach (self::QUEUES as $queue => $single) {
             if (($object[$queue] ?? []) === []) {

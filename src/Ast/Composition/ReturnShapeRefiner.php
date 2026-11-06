@@ -53,9 +53,7 @@ final class ReturnShapeRefiner
                 $resolved = $this->resolvedType($doc, $property['type'] === 'unknown', $method, $keepsUnresolvedNames);
 
                 if ($resolved !== null) {
-                    $property['type'] = TsTypeString::hasNullArm($property['type'])
-                        ? TsTypeString::withNullArm($resolved['type'])
-                        : $resolved['type'];
+                    $property['type'] = TsTypeString::withNullArmOf($property['type'], $resolved['type']);
                 }
             } elseif ($property['type'] === $untypedSignature && $isSignature && ! isset($property['fillType'])) {
                 $resolved = $this->resolvedType($doc, true, $method, $keepsUnresolvedNames);

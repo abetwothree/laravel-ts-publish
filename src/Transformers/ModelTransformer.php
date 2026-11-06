@@ -426,11 +426,7 @@ class ModelTransformer extends CoreTransformer
             }
 
             $typings = $this->exportedTypeInfo($typings);
-            $type = $typings['type'];
-
-            if ($attribute['nullable'] && ! ModelAttributeResolver::typeHoldsNull($type, $cast)) {
-                $type .= ' | null';
-            }
+            $type = ModelAttributeResolver::withColumnNull($typings['type'], $attribute['nullable'], $cast);
 
             $this->columns[$name] = ['type' => $type, 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
 

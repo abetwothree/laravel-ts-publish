@@ -212,7 +212,7 @@ trait ResolvesEnumPropertyArgTypes
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
-            'type' => TsTypeString::hasNullArm($resolved['type']) ? TsTypeString::withNullArm($type) : $type,
+            'type' => TsTypeString::withNullArmOf($resolved['type'], $type),
             'optional' => $resolved['optional'],
             'enumFqcn' => $enum,
         ];
@@ -282,7 +282,7 @@ trait ResolvesEnumPropertyArgTypes
 
         return [
             ...ValueResult::unknown(),
-            'type' => TsTypeString::hasNullArm($info['type']) ? TsTypeString::withNullArm($type) : $type,
+            'type' => TsTypeString::withNullArmOf($info['type'], $type),
             'enumFqcn' => $enum,
         ];
     }
