@@ -91,10 +91,20 @@ class Runner extends BaseRunner
         $this->forgetRetainedGenerators();
     }
 
+    /**
+     * Publish every enabled feature, rendering each template from its source as it is on disk.
+     */
     public function run(): void
     {
         $this->resetRunState();
+        $this->renderingViewsFromSource($this->publish(...));
+    }
 
+    /**
+     * Generate and write every enabled feature, then save the generation cache.
+     */
+    protected function publish(): void
+    {
         /** @var BarrelWriter $barrelWriter */
         $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
         $this->barrelWriter = $barrelWriter;

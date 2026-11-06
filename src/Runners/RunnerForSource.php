@@ -64,14 +64,21 @@ class RunnerForSource extends BaseRunner
     }
 
     /**
-     * Resolve the configured source to a class and generate the matching TypeScript output.
+     * Publish the configured source, rendering each template from its source as it is on disk.
      *
      * Starts from a clean slate, so an earlier run in the same process leaks nothing into this one.
      */
     public function run(): void
     {
         $this->resetRunState();
+        $this->renderingViewsFromSource($this->publish(...));
+    }
 
+    /**
+     * Resolve the configured source to a class and generate the matching TypeScript output.
+     */
+    protected function publish(): void
+    {
         $fqcn = $this->resolveSourceToFqcn();
 
         // An interface can compose, and a trait's or interface's override can decide a composed class's module.
