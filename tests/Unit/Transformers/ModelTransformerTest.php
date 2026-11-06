@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
@@ -2031,7 +2032,7 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a mixed serialize(), with the interface' => [SerializeMethodWarehouse::class, 'color', 'unknown | null'],
         'an array serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'priority', '{ x: number; y: number }'],
         'an array serialize() method over a shape, without the interface' => [SerializeMethodWarehouse::class, 'manager_id', '{ a: number }'],
-        'a mixed serialize() over a number, with the interface' => [VagueSerializeWarehouse::class, 'phone', 'unknown | null'],
+        'a mixed serialize() over a number, typed by its returns' => [VagueSerializeWarehouse::class, 'phone', 'string | null'],
         'an object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'coordinate_data', '{ x: number; y: number }'],
         'a ?object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'status', '{ x: number; y: number } | null'],
         'an array|object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'color', '{ x: number; y: number }'],
@@ -2039,6 +2040,9 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'an array serialize() method writing an object over a string' => [VagueSerializeWarehouse::class, 'manager_id', 'unknown[] | Record<string, unknown>'],
         'an array serialize() method writing a list over a string' => [VagueSerializeWarehouse::class, 'secondary_contact_id', 'unknown[] | Record<string, unknown>'],
         'a Castable whose caster\'s serialize() declares mixed' => [VagueSerializeWarehouse::class, 'primary_contact_id', 'unknown | null'],
+        'a typed serialize() over a get() that may return null, on a not-null column' => [SerializeBodyWarehouse::class, 'name', 'string | null'],
+        'an undeclared serialize() typed by its returns' => [SerializeBodyWarehouse::class, 'phone', 'string | null'],
+        'an undeclared serialize() typed by its returns over a get() that may return null' => [SerializeBodyWarehouse::class, 'coordinate_data', 'string | null'],
     ]);
 });
 

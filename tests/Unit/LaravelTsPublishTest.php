@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -15,16 +16,22 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeInterfaceCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeInterfaceCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetReturnTypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NumberObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\PrefixedMixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ReturnTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ShapeArraySerializeCast;
@@ -33,6 +40,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownMemberSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\MappedLevel;
@@ -553,7 +562,7 @@ describe('custom cast get() docblock', function () {
 });
 
 // Model::toArray() writes what a caster's serialize() returns, never the get() value, whether or not the caster
-// implements SerializesCastableAttributes: Laravel checks for the method.
+// implements SerializesCastableAttributes: Laravel checks for the method. A null get() value it sends unserialized.
 describe('a cast whose caster serializes', function () {
     test('publishes the type serialize() declares', function (string $cast, string $type) {
         expect($this->service->castToTsType($cast)['type'])->toBe($type);
@@ -561,10 +570,17 @@ describe('a cast whose caster serializes', function () {
         'a string serialize() over a __toString() value object' => [SerializedLabelCast::class, 'string'],
         'a ?string serialize()' => [NullableSerializedLabelCast::class, 'string | null'],
         'a Castable whose castUsing() names a serializing caster' => [SerializedLabelCastable::class, 'string'],
-        'an untyped serialize(), which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
+        'an untyped serialize() returning its value, which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
+        'an undeclared serialize() typed by its returns' => [ReturnTypedSerializeCast::class, 'string'],
+        'an undeclared serialize() typed by its returns over a get() that may return null' => [NullableGetReturnTypedSerializeCast::class, 'string | null'],
+        'a typed serialize() over a get() that may return null' => [NullableGetSerializedLabelCast::class, 'string | null'],
+        'a typed serialize() over a get() that declares no type' => [UntypedGetSerializeCast::class, 'string | null'],
+        'an undeclared serialize() one of whose returns cannot be typed, which leaves the type to get()' => [DroppedArmSerializeCast::class, 'number'],
+        'an undeclared serialize() whose returns hold an unknown member, which leaves the type to get()' => [UnknownMemberSerializeCast::class, 'string'],
+        'an undeclared serialize() returning a class a cast type cannot import, which leaves the type to get()' => [ModelSerializeCast::class, 'string'],
         'a serialize() method without the interface' => [NoInterfaceTypedSerializeCast::class, 'string'],
-        'a mixed serialize(), as published before' => [MixedSerializeInterfaceCast::class, 'unknown | null'],
-        'a mixed serialize() over a get() returning a number' => [PrefixedMixedSerializeCast::class, 'unknown | null'],
+        'a mixed serialize() whose returns read only vaguely, as published before' => [MixedSerializeInterfaceCast::class, 'unknown | null'],
+        'a mixed serialize() over a get() returning a number, typed by its returns' => [PrefixedMixedSerializeCast::class, 'string'],
         'a Castable whose caster\'s serialize() declares mixed' => [LooselySerializedTally::class, 'unknown | null'],
         'a mixed serialize() without the interface' => [MixedSerializeCast::class, '{ x: number; y: number }'],
         'an array serialize() without the interface, which leaves a value object to get()' => [ArraySerializeCast::class, '{ x: number; y: number }'],
@@ -577,6 +593,13 @@ describe('a cast whose caster serializes', function () {
         'an array serialize() writing a list, without the interface, over a get() returning a string' => [StringListSerializeCast::class, 'unknown[] | Record<string, unknown>'],
         'an array serialize() with the interface' => [ArraySerializeInterfaceCast::class, 'unknown[]'],
     ]);
+
+    test('leaves no warning from a serialize() body it declines', function () {
+        $this->service->castToTsType(DroppedArmSerializeCast::class);
+        $this->service->castToTsType(NoInterfaceSerializeCast::class);
+
+        expect(AnalysisWarnings::all())->toBe([]);
+    });
 
     test('keeps the value type of a Castable, which a resource can send as itself', function () {
         expect($this->service->toTsType(SerializedLabelCastable::class)['type'])->toBe(class_basename(SerializedLabelCastable::class));

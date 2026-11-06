@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
@@ -11,8 +14,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
@@ -1729,9 +1734,9 @@ class LaravelTsPublish
     }
 
     /**
-     * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
-     * not. Null leaves get() to type it where none is declared, or without the interface `mixed`, or `array` or
-     * `object` over a non-scalar get(); over a scalar get(), a vague `array` reads as a list or a record.
+     * What Model::toArray() writes for a caster with a serialize() method: the type it declares, or where it declares
+     * nothing or `mixed` the type its returns prove, with `null` where get() may return it, which Laravel sends
+     * unserialized. Null leaves get() to type the value.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
@@ -1743,20 +1748,47 @@ class LaravelTsPublish
         }
 
         $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
+        $body = TsTypeString::isUnknownOnly($serialized['type']) ? $this->serializeBodyTypes($caster) : null;
 
-        if (is_a($caster, SerializesCastableAttributes::class, true)) {
-            return $serialized['type'] === 'unknown' ? null : $serialized;
+        if ($body !== null) {
+            return $body;
         }
 
-        $arms = array_diff(TsTypeString::splitTopLevelUnion($serialized['type']), ['null']);
-        $vague = $arms !== []
-            && array_all($arms, static fn (string $arm): bool => $arm === 'object' || TsTypeString::isVagueOnly($arm));
+        $declared = $this->declaredSerializeTypes($caster, $serialized);
 
-        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || ! $this->getReadsScalar($caster))) {
-            return null;
-        }
+        return $declared === null ? null : $this->withGetNull($caster, $declared);
+    }
 
-        return $vague ? [...$serialized, 'type' => $this->listOrRecordArms($serialized['type'])] : $serialized;
+    /**
+     * The type serialize()'s own returns prove, with `null` where get() may return it; null where they prove nothing
+     * but a vague type, as `return $value;` does, or name a class a cast type cannot import.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function serializeBodyTypes(string $caster): ?array
+    {
+        $key = 'serialize-body:'.$caster;
+        $memo = resolve(AnalysisMemo::class);
+
+        $body = $memo->remember($key, function () use ($caster, $key, $memo): ?array {
+            // A dependency's body is never read, as no value read follows one, and a read already under way stops.
+            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, 'serialize')->getFileName())
+                || ! $memo->enter($key)) {
+                return null;
+            }
+
+            try {
+                return DroppedUnionArms::provisional(
+                    fn (): ?array => $this->provenSerializeBody($caster),
+                    fn (?array $info): bool => $info !== null,
+                );
+            } finally {
+                $memo->leave($key);
+            }
+        });
+
+        return $body === null ? null : $this->withGetNull($caster, $body);
     }
 
     /**
@@ -3469,6 +3501,91 @@ class LaravelTsPublish
             : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType()];
 
         return [...$info, 'type' => $info['type'].($date['nullable'] ? ' | null' : '')];
+    }
+
+    /**
+     * The type a caster's serialize() declares, or null to leave get() to type it: where none is declared, and without
+     * the interface where it declares only `mixed`, or `array` or `object` over a non-scalar get(). Over a scalar
+     * get(), a vague `array` reads as a list or a record.
+     *
+     * @param  class-string  $caster
+     * @param  TypeScriptTypeInfo  $serialized
+     * @return TypeScriptTypeInfo|null
+     */
+    private function declaredSerializeTypes(string $caster, array $serialized): ?array
+    {
+        if (is_a($caster, SerializesCastableAttributes::class, true)) {
+            return $serialized['type'] === 'unknown' ? null : $serialized;
+        }
+
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($serialized['type']), ['null']);
+        $vague = $arms !== [] && array_all($arms, $this->isVagueArm(...));
+
+        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || ! $this->getReadsScalar($caster))) {
+            return null;
+        }
+
+        return $vague ? [...$serialized, 'type' => $this->listOrRecordArms($serialized['type'])] : $serialized;
+    }
+
+    /**
+     * What serialize()'s returns prove, read with no union arm left out; null where they prove nothing but a vague
+     * type, or name a model, a resource or another class whose import a cast type cannot carry.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    private function provenSerializeBody(string $caster): ?array
+    {
+        $dropped = DroppedUnionArms::dropped();
+        $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'serialize');
+
+        if ($result === null || DroppedUnionArms::dropped() !== $dropped || ! $this->provesType($result['type'])) {
+            return null;
+        }
+
+        $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
+        $importable = [...$info['enumTypes'], ...ImportMaps::localNames($info['customImports'])];
+
+        return TsTypeString::shapeValueHasUnimportableToken($info['type'], $importable) ? null : $info;
+    }
+
+    /**
+     * Whether a body's reading says what it sends: an arm besides `null`, none of them `object` or vague, and no
+     * `unknown` inside one, which would read less than get()'s type.
+     */
+    private function provesType(string $type): bool
+    {
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($type), ['null']);
+
+        return $arms !== []
+            && ! str_contains($type, 'unknown')
+            && ! array_any($arms, $this->isVagueArm(...));
+    }
+
+    /**
+     * Whether a union arm says nothing of its value but its kind: `object`, or an arm TsTypeString reads as vague.
+     */
+    private function isVagueArm(string $arm): bool
+    {
+        return $arm === 'object' || TsTypeString::isVagueOnly($arm);
+    }
+
+    /**
+     * A serialize() reading with a `null` arm where get() may return null, which Model::toArray() sends without
+     * calling serialize(): a get() with no native type or one allowing null.
+     *
+     * @param  class-string  $caster
+     * @param  TypeScriptTypeInfo  $types
+     * @return TypeScriptTypeInfo
+     */
+    private function withGetNull(string $caster, array $types): array
+    {
+        $get = new ReflectionMethod($caster, 'get')->getReturnType();
+
+        return $get === null || $get->allowsNull()
+            ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
+            : $types;
     }
 
     /**

@@ -90,11 +90,21 @@ numbers.
 
 Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
 `@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
-import. A caster with a `serialize()` method publishes what it declares instead, since `Model::toArray()` writes that
-wherever the method exists, with or without `SerializesCastableAttributes`. One that declares nothing leaves `get()`
-to type it. Without the interface, so does one declaring only `mixed`, and one declaring only `array`, `object` or
-both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since `serialize()` sends something else,
-and a vague `array` reads as a list or a record, as `json_encode()` writes it by its keys.
+import. A caster with a `serialize()` method publishes its value instead, since `Model::toArray()` writes that
+wherever the method exists, with or without `SerializesCastableAttributes`. `serializedCastTypes()` reads it in order:
+
+1. A type `serialize()` declares wins where it is not vague.
+2. Then, for one declaring nothing or only `mixed`, what its returns prove, read by `serializeBodyTypes()`. A reading
+   with an `unknown`, a vague or `object` arm, or an arm the engine left out proves nothing, as `return $value;` does,
+   and so does one naming a class a cast type cannot import. A dependency's caster is not read.
+3. Otherwise, with the interface, one declaring nothing leaves `get()` to type it, and any declared type stands:
+   `mixed` reads `unknown | null` and `array` `unknown[]`. Without it, nothing or `mixed` leaves `get()` to type it,
+   as does `array`, `object` or both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since
+   `serialize()` sends something else, and a vague `array` reads as a list or a record, as `json_encode()` writes it.
+
+The reading that stands gains `| null` where `get()` declares no native type or one allowing null, since
+`Model::toArray()` sends a null value without calling `serialize()`. `typeHoldsNull()` sees that arm, so a nullable
+column adds no second one.
 
 ### Step 2: an override, resolved and composed
 
