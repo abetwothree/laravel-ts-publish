@@ -162,8 +162,8 @@ trait ResolvesFilteredRelationTypes
      */
     protected function literalKeyFilterResult(string $modelFqcn, array $keys, bool $include, bool $carriesImports = true): ?array
     {
-        // Every filter key is a plain DB column: reference the emitted model interface directly so its
-        // #[TsCasts]/@property refinements stay authoritative instead of being re-derived and lost.
+        // Pick<> keeps the model interface's #[TsCasts]/@property refinements where each key reads as it types it; a
+        // serializing cast's column reads get()'s value instead, so the reference declines to an inline shape.
         $modelReference = $carriesImports ? $this->relationFilterModelReference($modelFqcn, $keys, $include) : null;
 
         if ($modelReference !== null) {
