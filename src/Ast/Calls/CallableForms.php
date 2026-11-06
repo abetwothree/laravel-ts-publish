@@ -171,9 +171,12 @@ final class CallableForms
             return [$value];
         }
 
+        if ($value instanceof Coalesce) {
+            return self::coalescedValues($value, $scope, $followed);
+        }
+
         $parts = match (true) {
             $value instanceof Ternary => [$value->if ?? $value->cond, $value->else],
-            $value instanceof Coalesce => [$value->left, $value->right],
             $value instanceof Match_ => array_map(static fn (MatchArm $arm): Expr => $arm->body, $value->arms),
             $value instanceof Variable => self::localValues($value, $scope, $followed),
             $value instanceof ArrayDimFetch => self::keyedValues($value, $scope, $followed),
@@ -201,6 +204,35 @@ final class CallableForms
         }
 
         return $held;
+    }
+
+    /**
+     * The callable values a `??` may yield: its left's alone where that is a call, a constant or a literal holding no
+     * `null`, as the right runs only for a null or undefined left; else the left's but `null`, and the right's.
+     *
+     * @param  array<string, true>  $followed
+     * @return non-empty-list<Expr>|null
+     */
+    private static function coalescedValues(Coalesce $coalesce, AnalysisScope $scope, array $followed): ?array
+    {
+        $left = $coalesce->left;
+        $held = self::heldValues($left, $scope, $followed);
+
+        if ($held === null) {
+            return null;
+        }
+
+        $filled = array_values(array_filter($held, static fn (Expr $one): bool => ! self::isNull($one)));
+        $defined = $left instanceof MethodCall || $left instanceof StaticCall || $left instanceof ClassConstFetch
+            || $left instanceof ConstFetch || $left instanceof String_ || $left instanceof Array_;
+
+        if ($defined && $filled === $held) {
+            return $held;
+        }
+
+        $right = self::heldValues($coalesce->right, $scope, $followed);
+
+        return $right === null ? null : [...$filled, ...$right];
     }
 
     /**
@@ -314,8 +346,12 @@ final class CallableForms
 
         $reader = resolve(ReturnLiteralReader::class);
         $literal = $reader->stringLiteral($class->getName(), $method) ?? $reader->strings($class->getName(), $method);
+        $spelled = $literal === null ? null : self::spelledValue($literal, $call->getAttributes());
 
-        return $literal === null ? null : self::spelledValue($literal, $call->getAttributes());
+        // A body that can end without a return, or return bare, hands back null beside its literal.
+        return $spelled === null || ! $reader->returnsNull($class->getName(), $method)
+            ? $spelled
+            : [...$spelled, new ConstFetch(new Name('null'), $call->getAttributes())];
     }
 
     /**

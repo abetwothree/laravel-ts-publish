@@ -74,8 +74,8 @@ it('types a transform() callback spelled as a function name or a pair as the cal
         ->toBe(['Hello', 1, 2]);
 });
 
-// A constant or a method's literal return names the call transform() makes; a callable no literal names, as a
-// parameter, a config() value or a rewritten key holds, keeps the reading of it as the value it is.
+// A constant or a method's literal return names the call transform() makes, and `??` runs its right arm only where the
+// left may be null; a callable no literal names, as a parameter or a config() value holds, reads as the value it is.
 it('types a transform() callback a constant or a literal return names as that call, and keeps any other as before', function (string $resource, array $types, array $sent) {
     $post = (new Post)->forceFill(['id' => 7, 'title' => 'Hello']);
 
@@ -85,7 +85,8 @@ it('types a transform() callback a constant or a literal return names as that ca
     'the resource' => [TransformCallableSourcesResource::class, [
         'class_const?' => 'number',
         'method_string?' => 'number',
-        'coalesce_method?' => 'string | number',
+        'coalesce_method?' => 'string',
+        'coalesce_fall_off?' => 'string | number',
         'string_param?' => 'string',
         'config_string?' => 'string',
         'dim_rewritten?' => 'string',
@@ -94,6 +95,7 @@ it('types a transform() callback a constant or a literal return names as that ca
         'class_const' => 5,
         'method_string' => 5,
         'coalesce_method' => 'Hello',
+        'coalesce_fall_off' => 5,
         'string_param' => 5,
         'config_string' => 5,
         'dim_rewritten' => 'Hello',
@@ -102,7 +104,8 @@ it('types a transform() callback a constant or a literal return names as that ca
     'a subclass redeclaring its property' => [TransformCallableSourcesChildResource::class, [
         'class_const?' => 'number',
         'method_string?' => 'number',
-        'coalesce_method?' => 'string | number',
+        'coalesce_method?' => 'string',
+        'coalesce_fall_off?' => 'string | number',
         'string_param?' => 'string',
         'config_string?' => 'string',
         'dim_rewritten?' => 'string',
@@ -111,6 +114,7 @@ it('types a transform() callback a constant or a literal return names as that ca
         'class_const' => 5,
         'method_string' => 5,
         'coalesce_method' => 'Hello',
+        'coalesce_fall_off' => 5,
         'string_param' => 5,
         'config_string' => 5,
         'dim_rewritten' => 'Hello',

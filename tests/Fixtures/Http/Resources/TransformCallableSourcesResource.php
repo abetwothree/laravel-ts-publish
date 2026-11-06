@@ -31,6 +31,7 @@ class TransformCallableSourcesResource extends JsonResource
             'class_const' => $this->transform($this->resource->title, self::LENGTH),
             'method_string' => $this->transform($this->resource->title, $this->lengthName()),
             'coalesce_method' => $this->transform($this->resource->title, $this->maybeName() ?? 'strlen'),
+            'coalesce_fall_off' => $this->transform($this->resource->title, $this->nameOrNothing() ?? 'strlen'),
             'string_param' => $this->viaString('strlen'),
             'config_string' => $this->transform($this->resource->title, config('app.transform_callable', 'strlen')),
             'dim_rewritten' => $this->transform($this->resource->title, $map['a']),
@@ -48,6 +49,18 @@ class TransformCallableSourcesResource extends JsonResource
     private function maybeName(): ?string
     {
         return 'ucfirst';
+    }
+
+    /**
+     * A function's name for a large id, else nothing, as the body ends without a return.
+     *
+     * @return string|null
+     */
+    private function nameOrNothing()
+    {
+        if ($this->resource->id > 100) {
+            return 'ucfirst';
+        }
     }
 
     /** The title transformed by a callable a parameter holds. */
