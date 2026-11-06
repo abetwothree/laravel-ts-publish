@@ -571,7 +571,7 @@ class LaravelTsPublish
         };
 
         return $type === null
-            ? $this->castableSerializedTypes($cast) ?? $this->toTsType($cast)
+            ? $this->castableSerializedTypes($cast) ?? $this->castableValueTypes($cast) ?? $this->toTsType($cast)
             : [...$this->emptyTypeScriptInfo(), 'type' => $type];
     }
 
@@ -3532,6 +3532,51 @@ class LaravelTsPublish
             : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType()];
 
         return [...$info, 'type' => $info['type'].($date['nullable'] ? ' | null' : '')];
+    }
+
+    /**
+     * The type a read of a `Castable` cast's value off its model sends under castValueToTsType(): what the get() of
+     * each caster its `castUsing()` names returns, declared first, then returned. Null outside such a read, or where a
+     * caster's get() reads nothing, which leaves the Castable to type the value it may also be.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    private function castableValueTypes(string $cast): ?array
+    {
+        $castable = Str::before($cast, ':');
+
+        if (! $this->readsCastValue || ! is_a($castable, Castable::class, true)) {
+            return null;
+        }
+
+        $infos = $this->castersValueTypes(CastCasters::declared($castable))
+            ?? $this->castersValueTypes(CastCasters::returned($castable));
+
+        return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
+    }
+
+    /**
+     * What each caster's get() returns, as toTsType() reads a caster under castValueToTsType(); null when there is
+     * none, or one is no caster or reads nothing.
+     *
+     * @param  list<class-string>|null  $casters
+     * @return non-empty-list<TypeScriptTypeInfo>|null
+     */
+    private function castersValueTypes(?array $casters): ?array
+    {
+        $infos = [];
+
+        foreach ($casters ?? [] as $caster) {
+            $info = is_a($caster, CastsAttributes::class, true) ? $this->toTsType($caster) : null;
+
+            if ($info === null || TsTypeString::isUnknownOnly($info['type'])) {
+                return null;
+            }
+
+            $infos[] = $info;
+        }
+
+        return $infos === [] ? null : $infos;
     }
 
     /**

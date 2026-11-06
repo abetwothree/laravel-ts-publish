@@ -16,7 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SelfStoppingChildGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastableValueReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeDelegatingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeFilterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
@@ -58,6 +61,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HelperCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializeComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralNullCycleProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
@@ -2008,8 +2012,59 @@ test('a resource sending its model\'s toArray() publishes serialize()\'s type, a
         ->toBe(['title' => 'string', 'content' => 'string', 'user_id' => 'string'])
         ->and(json_encode(array_intersect_key(LabelSerializeDelegatingResource::make($post)->resolve(), array_flip(['title', 'content', 'user_id']))))
         ->toBe('{"title":"a","content":"b","user_id":"n7"}')
-        ->and(resourceProps(LabelSerializeOnlyResource::class))
-        ->toBe(['title' => '{ text: string }', 'content' => '{ text: string }', 'user_id' => 'number'])
+        ->and(resourceProps(LabelSerializeOnlyResource::class))->toBe([
+            'title' => '{ text: string }',
+            'content' => '{ text: string }',
+            'user_id' => 'number',
+            'nested' => '{ title: { text: string }; user_id: number }',
+        ])
         ->and(json_encode(LabelSerializeOnlyResource::make($post)->resolve()))
-        ->toBe('{"title":{"text":"a"},"content":{"text":"b"},"user_id":7}');
+        ->toBe('{"title":{"text":"a"},"content":{"text":"b"},"user_id":7,"nested":{"title":{"text":"a"},"user_id":7}}');
+});
+
+// A relation's only() and except() read each attribute through getAttribute() too, so the model interface, which
+// holds serialize()'s type, cannot stand for them; a filter of plain columns keeps its Pick<>.
+test('a relation\'s only() and except() over serializing casts publish get()\'s type', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['id' => 1, 'title' => 'a', 'user_id' => '7']);
+    $comment = (new LabelSerializeComment)->setRawAttributes(['id' => 3, 'post_id' => 1])->setRelation('labelPost', $post);
+
+    expect(resourceProps(LabelSerializeFilterResource::class))->toBe([
+        'rel_only' => '{ title: { text: string }; user_id: number }',
+        'rel_except' => '{ title: { text: string }; user_id: number }',
+        'rel_plain_only' => "Pick<LabelSerializePost, 'id'>",
+    ])->and(json_encode(LabelSerializeFilterResource::make($comment)->resolve()))
+        ->toBe('{"rel_only":{"title":{"text":"a"},"user_id":7},"rel_except":{"title":{"text":"a"},"user_id":7},"rel_plain_only":{"id":1}}');
+});
+
+// A Castable that is not the value hands the model the caster castUsing() builds, so a read off the model sends what
+// that caster's get() returns, never the Castable's own shape.
+test('a read of a column cast to a Castable that is not the value publishes its caster\'s get() type', function () {
+    $post = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a', 'content' => 'c']);
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttributeValue(BaseDeclaringCastablePost::class, 'title')['type'])->toBe('{ text: string }')
+        ->and(resourceProps(CastableValueReadResource::class))->toBe([
+            'declared_base' => '{ text: string }',
+            'declared_base_whole' => '{ text: string }',
+            'propertied' => '{ text: string }',
+        ])
+        ->and(json_encode(CastableValueReadResource::make($post)->resolve()))
+        ->toBe('{"declared_base":{"text":"a"},"declared_base_whole":{"text":"a"},"propertied":{"text":"c"}}')
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"c"');
+});
+
+// self:: runs the parent's own stop(), which returns, so a NULL falls off get()'s end and is sent unserialized.
+test('a get() ending in self:: a child redeclares as never still adds the null it may send', function () {
+    $model = new class extends Model
+    {
+        protected $table = 'posts';
+
+        /** @return array<string, string> */
+        protected function casts(): array
+        {
+            return ['title' => SelfStoppingChildGetCast::class];
+        }
+    };
+
+    expect(LaravelTsPublish::castToTsType(SelfStoppingChildGetCast::class)['type'])->toBe('string | null')
+        ->and(json_encode($model->setRawAttributes(['title' => null])->toArray()['title']))->toBe('null');
 });

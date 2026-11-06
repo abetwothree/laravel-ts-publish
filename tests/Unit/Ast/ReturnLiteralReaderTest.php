@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralNullReturns;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnLiteralProbe;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StoppingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SubjectProps;
 use Workbench\App\Events\ServerCreated;
 
@@ -139,3 +140,15 @@ it('records the class whose method it reads for a literal null, on a warm read t
 
     expect($paths)->toContain((string) new ReflectionClass(LiteralNullReturns::class)->getFileName());
 });
+
+// self:: and a private method run the class whose body is read; static:: runs the class the method is read on.
+it('reads a stop a child redeclares as never by the class the call resolves to', function (string $method, bool $literal) {
+    $run = fn (): mixed => (new StoppingChild)->{$method}(1);
+
+    expect(resolve(ReturnLiteralReader::class)->returnsNull(StoppingChild::class, $method))->toBe($literal);
+    $literal ? expect($run())->toBeNull() : expect($run)->toThrow(LogicException::class);
+})->with([
+    'self::stop(), the parent\'s, which returns' => ['endsInSelfStop', true],
+    'static::stop(), the child\'s, which never returns' => ['endsInStaticStop', false],
+    'a private halt(), the parent\'s, which returns' => ['endsInPrivateHalt', true],
+]);

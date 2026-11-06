@@ -18,6 +18,6 @@ final class LabelSerializeOnlyResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        return $this->only(['title', 'content', 'user_id']);
+        return [...$this->only(['title', 'content', 'user_id']), 'nested' => $this->resource->only(['title', 'user_id'])];
     }
 }

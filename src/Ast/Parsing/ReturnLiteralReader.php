@@ -102,10 +102,12 @@ final class ReturnLiteralReader
         }
 
         $bare = fn (Node $node): bool => $node instanceof Return_ && $node->expr === null;
+        // `self::` and a private method resolve against the class whose body this is, a parent's or a trait user's.
+        $declaring = new ReflectionMethod($class, $method)->getDeclaringClass()->getName();
 
         // A declared return type throws where the body would end without a value.
         if ($function->returnType === null
-            && ($this->canFinish($function->stmts, $class) || $this->bodyHas($function->stmts, $bare))
+            && ($this->canFinish($function->stmts, $class, $declaring) || $this->bodyHas($function->stmts, $bare))
         ) {
             return true;
         }
@@ -186,34 +188,34 @@ final class ReturnLiteralReader
      *
      * @param  array<Stmt>  $stmts
      */
-    private function canFinish(array $stmts, string $class): bool
+    private function canFinish(array $stmts, string $class, string $declaring): bool
     {
-        return array_all($stmts, fn (Stmt $stmt): bool => $this->completes($stmt, $class));
+        return array_all($stmts, fn (Stmt $stmt): bool => $this->completes($stmt, $class, $declaring));
     }
 
     /**
      * Whether running a statement can carry on past it: not a return, nor an expression that never returns, nor an
      * if, a switch or a try whose every branch ends in one, nor an endless loop no `break` leaves.
      */
-    private function completes(Stmt $stmt, string $class): bool
+    private function completes(Stmt $stmt, string $class, string $declaring): bool
     {
         return match (true) {
             $stmt instanceof Return_ => false,
-            $stmt instanceof Expression => ! $this->neverReturns($stmt->expr, $class),
-            $stmt instanceof Block => $this->canFinish($stmt->stmts, $class),
+            $stmt instanceof Expression => ! $this->neverReturns($stmt->expr, $class, $declaring),
+            $stmt instanceof Block => $this->canFinish($stmt->stmts, $class, $declaring),
             $stmt instanceof If_ => $stmt->else === null
-                || $this->canFinish($stmt->stmts, $class)
-                || array_any($stmt->elseifs, fn (ElseIf_ $elseif): bool => $this->canFinish($elseif->stmts, $class))
-                || $this->canFinish($stmt->else->stmts, $class),
-            $stmt instanceof Switch_ => $this->switchCompletes($stmt, $class),
-            $stmt instanceof TryCatch => $this->tryCompletes($stmt, $class),
+                || $this->canFinish($stmt->stmts, $class, $declaring)
+                || array_any($stmt->elseifs, fn (ElseIf_ $elseif): bool => $this->canFinish($elseif->stmts, $class, $declaring))
+                || $this->canFinish($stmt->else->stmts, $class, $declaring),
+            $stmt instanceof Switch_ => $this->switchCompletes($stmt, $class, $declaring),
+            $stmt instanceof TryCatch => $this->tryCompletes($stmt, $class, $declaring),
             $stmt instanceof While_ => ! $this->isTrue($stmt->cond) || $this->breaksOut($stmt->stmts, loop: true),
             $stmt instanceof For_ => ! ($stmt->cond === [] || $this->isTrue(end($stmt->cond)))
                 || $this->breaksOut($stmt->stmts, loop: true),
             // A `continue` runs the condition too, so it counts as reaching the end unless the condition is `true`.
             $stmt instanceof Do_ => $this->isTrue($stmt->cond)
                 ? $this->breaksOut($stmt->stmts, loop: true)
-                : $this->canFinish($stmt->stmts, $class) || $this->breaksOut($stmt->stmts),
+                : $this->canFinish($stmt->stmts, $class, $declaring) || $this->breaksOut($stmt->stmts),
             default => true,
         };
     }
@@ -222,7 +224,7 @@ final class ReturnLiteralReader
      * Whether an expression run as a statement never returns: a throw, an exit, a match whose every arm never returns,
      * or a call to a function or to the class's own method that declares `never`, natively or in its `@return`.
      */
-    private function neverReturns(Expr $expr, string $class): bool
+    private function neverReturns(Expr $expr, string $class, string $declaring): bool
     {
         if ($expr instanceof Throw_ || $expr instanceof Exit_) {
             return true;
@@ -230,15 +232,15 @@ final class ReturnLiteralReader
 
         if ($expr instanceof Match_) {
             return $expr->arms !== []
-                && array_all($expr->arms, fn (MatchArm $arm): bool => $this->neverReturns($arm->body, $class));
+                && array_all($expr->arms, fn (MatchArm $arm): bool => $this->neverReturns($arm->body, $class, $declaring));
         }
 
         $callee = match (true) {
             $expr instanceof FuncCall && $expr->name instanceof Name => $this->namedFunction($expr->name),
             $expr instanceof MethodCall && $expr->var instanceof Variable && $expr->var->name === 'this'
-                && $expr->name instanceof Identifier => $this->ownMethod($class, $expr->name->name),
+                && $expr->name instanceof Identifier => $this->thisMethod($class, $declaring, $expr->name->name),
             $expr instanceof StaticCall && $expr->class instanceof Name && $expr->name instanceof Identifier
-                && in_array($expr->class->toLowerString(), ['self', 'static'], true) => $this->ownMethod($class, $expr->name->name),
+                && in_array($expr->class->toLowerString(), ['self', 'static'], true) => $this->ownMethod($expr->class->toLowerString() === 'self' ? $declaring : $class, $expr->name->name),
             default => null,
         };
 
@@ -270,6 +272,19 @@ final class ReturnLiteralReader
     }
 
     /**
+     * The method `$this->m()` runs: the declaring class's own private one, which no subclass overrides, else the one
+     * the class the body is read on has.
+     */
+    private function thisMethod(string $class, string $declaring, string $method): ?ReflectionMethod
+    {
+        $own = $this->ownMethod($declaring, $method);
+
+        return $own !== null && $own->isPrivate() && $own->getDeclaringClass()->getName() === $declaring
+            ? $own
+            : $this->ownMethod($class, $method);
+    }
+
+    /**
      * Whether a function or method declares `never`, natively or, with no native return type, in its `@return`.
      */
     private function declaresNever(ReflectionFunctionAbstract $callee): bool
@@ -297,27 +312,27 @@ final class ReturnLiteralReader
      * Whether a switch can carry on past itself: it has no default, its last case runs to its end, or a `break` or
      * `continue` leaves it.
      */
-    private function switchCompletes(Switch_ $switch, string $class): bool
+    private function switchCompletes(Switch_ $switch, string $class, string $declaring): bool
     {
         $last = end($switch->cases);
 
         return $last === false
             || ! array_any($switch->cases, fn (Case_ $case): bool => $case->cond === null)
-            || $this->canFinish($last->stmts, $class)
+            || $this->canFinish($last->stmts, $class, $declaring)
             || $this->breaksOut($switch->cases);
     }
 
     /**
      * Whether a try can carry on past itself: its finally runs to its end, and its body or one of its catches does.
      */
-    private function tryCompletes(TryCatch $try, string $class): bool
+    private function tryCompletes(TryCatch $try, string $class, string $declaring): bool
     {
-        if ($try->finally !== null && ! $this->canFinish($try->finally->stmts, $class)) {
+        if ($try->finally !== null && ! $this->canFinish($try->finally->stmts, $class, $declaring)) {
             return false;
         }
 
-        return $this->canFinish($try->stmts, $class)
-            || array_any($try->catches, fn (Catch_ $catch): bool => $this->canFinish($catch->stmts, $class));
+        return $this->canFinish($try->stmts, $class, $declaring)
+            || array_any($try->catches, fn (Catch_ $catch): bool => $this->canFinish($catch->stmts, $class, $declaring));
     }
 
     /**

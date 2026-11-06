@@ -85,7 +85,8 @@ trait ResolvesFilteredRelationTypes
             $attr = $relatedAttributes->firstWhere('name', $key);
 
             if ($attr !== null) {
-                $tsInfo = $resolver->resolveAttribute($relatedModelClass, $key, carriesImports: ! $tokenMembersUnknown);
+                // only() and except() read through getAttribute(), so a serializing cast sends get()'s value.
+                $tsInfo = $resolver->resolveAttributeValue($relatedModelClass, $key, carriesImports: ! $tokenMembersUnknown);
 
                 // The except branch yields columns now, so in practice this gate is only()'s: a write-only
                 // mutator with no getter and no docblock Get has no shape to emit, unlike a getter-backed one.
@@ -195,7 +196,7 @@ trait ResolvesFilteredRelationTypes
     }
 
     /**
-     * Build a Pick<Model, …> reference when every filter key is a declared model column.
+     * Build a Pick<Model, …> reference when every filter key is a declared model column a read types as the interface.
      *
      * Targets the bare model interface: except() iterates only $this->getAttributes(), so relations and
      * accessors never surface. Picks the complement, not Omit<>, to stay independent of the active template.
@@ -219,6 +220,12 @@ trait ResolvesFilteredRelationTypes
         }
 
         $picked = $include ? $keys : array_values(array_diff($columns, $keys));
+
+        // The interface holds what Model::toArray() writes, so a column a read types apart needs the inline shape.
+        if (array_any($picked, fn (string $key): bool => $resolver->resolveAttributeValue($modelFqcn, $key)['type']
+            !== $resolver->resolveAttribute($modelFqcn, $key)['type'])) {
+            return null;
+        }
 
         if ($picked === []) {
             return 'Pick<'.class_basename($modelFqcn).', never>';
