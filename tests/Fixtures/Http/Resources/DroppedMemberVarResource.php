@@ -51,6 +51,20 @@ final class DroppedMemberVarResource extends JsonResource
         $sameName = ['a' => $this->id > 0 ? Opaque::value(null) : null, 'b' => $this->grade()];
         /** @var array{a: list<string>, b: int} $defaulted */
         $defaulted = ['a' => ($this->id > 0 ? Opaque::value('s') : null) ?? 'x', 'b' => 1];
+        /** @var array{a: string|null, b: int}|array{a: int|null, b: int} $unionTag */
+        $unionTag = ['a' => $this->id > 0 ? Opaque::value(1) : null, 'b' => 1];
+        /** @var array{a: int|null, b: int}|array{a: string|null, b: int} $unionTagReversed */
+        $unionTagReversed = ['a' => $this->id > 0 ? Opaque::value(1) : null, 'b' => 1];
+        /** @var array<string, string|null>|array{a: int|null, b: string} $unionRecord */
+        $unionRecord = ['a' => $this->id > 0 ? Opaque::value(1) : null, 'b' => 'x'];
+        /** @var array{a: list<string>, b: int}|array{a: list<int>, b: int} $unionList */
+        $unionList = ['a' => $this->id > 0 ? Opaque::value([1]) : [], 'b' => 1];
+        /** @var array{a: string|null, b: int}|array{b: int} $unionLacking */
+        $unionLacking = ['a' => $this->id > 0 ? Opaque::value('s') : null, 'b' => 1];
+        /** @var array{a: string|null, b: int}|null $nullableTag */
+        $nullableTag = ['a' => $this->id > 0 ? Opaque::value('s') : null, 'b' => 1];
+        /** @var array{a: FixtureGrade|null, b: int}|array{a: Grade|null, b: int} $unionSameName */
+        $unionSameName = ['a' => $this->id > 0 ? Opaque::value(null) : null, 'b' => 1];
 
         return [
             'filled' => $filled,
@@ -67,6 +81,13 @@ final class DroppedMemberVarResource extends JsonResource
             'unspelled' => $unspelled,
             'same_name' => $sameName,
             'defaulted' => $defaulted,
+            'union_tag' => $unionTag,
+            'union_tag_reversed' => $unionTagReversed,
+            'union_record' => $unionRecord,
+            'union_list' => $unionList,
+            'union_lacking' => $unionLacking,
+            'nullable_tag' => $nullableTag,
+            'union_same_name' => $unionSameName,
         ];
     }
 

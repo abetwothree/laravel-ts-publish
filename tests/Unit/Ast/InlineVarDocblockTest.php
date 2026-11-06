@@ -857,6 +857,8 @@ describe('an inline @var on a local assignment', function () {
                 "45 Opaque::value(['fn' => 'strlen'])",
                 '51 Opaque::value(null)',
                 "53 Opaque::value('s')",
+                "63 Opaque::value('s')",
+                '67 Opaque::value(null)',
             ])
             ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['unadmitted', 'both', 'callable', 'same_name', 'defaulted'])))->toBe([
                 'unadmitted' => ['a' => null, 'b' => 1],
@@ -866,6 +868,38 @@ describe('an inline @var on a local assignment', function () {
                 'defaulted' => ['a' => 'x', 'b' => 1],
             ])
             ->and(droppedMemberVarSent(1)['both'])->toBe(['a' => 's', 'b' => 1]);
+    });
+
+    // The literal may match any arm of the tag, so the order its arms are written in is no order of the member's.
+    test('fills a member from every arm of a union @var tag, in one order, and only where every arm answers', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'union_tag' => '{ a: string | number | null; b: number }',
+            'union_tag_reversed' => '{ a: string | number | null; b: number }',
+            'union_record' => '{ a: string | number | null; b: string }',
+            'union_list' => '{ a: string[] | number[]; b: number }',
+            'union_lacking' => '{ a: null; b: number }',
+            'nullable_tag' => '{ a: string | null; b: number }',
+            'union_same_name' => '{ a: null; b: number }',
+        ])
+            ->and(array_values(array_intersect($warned, [
+                '55 Opaque::value(1)',
+                '57 Opaque::value(1)',
+                '59 Opaque::value(1)',
+                '61 Opaque::value([1])',
+                "65 Opaque::value('s')",
+            ])))->toBe([])
+            ->and($warned)->toContain("63 Opaque::value('s')", '67 Opaque::value(null)')
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['union_tag', 'union_record', 'union_list', 'union_lacking'])))
+            ->toBe([
+                'union_tag' => ['a' => 1, 'b' => 1],
+                'union_record' => ['a' => 1, 'b' => 'x'],
+                'union_list' => ['a' => [1], 'b' => 1],
+                'union_lacking' => ['a' => 's', 'b' => 1],
+            ])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['union_tag', 'union_list', 'nullable_tag'])))
+            ->toBe(['union_tag' => ['a' => null, 'b' => 1], 'union_list' => ['a' => [], 'b' => 1], 'nullable_tag' => ['a' => null, 'b' => 1]]);
     });
 
     test('fills a never[] a dropped arm left from a tag listing it, whole or as a member, and only that', function () {

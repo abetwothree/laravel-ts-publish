@@ -66,6 +66,8 @@ use ReflectionMethod;
  * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @phpstan-type DeclaredReplacement array{ValueExpressionResult|null, list<Expr>|null}
+ * @phpstan-type LeftMembers array<string, non-empty-list<Expr>>
+ * @phpstan-type FilledReading array{ValueExpressionResult, list<Expr>}
  *
  * @internal
  */
@@ -573,7 +575,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * by its printed key, with the arms whose placeholder warnings the read under way holds there.
      *
      * @param  ValueExpressionResult  $reading
-     * @return array<string, non-empty-list<Expr>>
+     * @return LeftMembers
      */
     private function leftMembers(array $reading, Expr $assigned): array
     {
@@ -609,8 +611,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      *
      * @param  ValueExpressionResult  $reading
      * @param  ValueExpressionResult  $declared
-     * @param  array<string, non-empty-list<Expr>>  $left  see leftMembers()
-     * @return array{ValueExpressionResult, list<Expr>}|null
+     * @param  LeftMembers  $left  see leftMembers()
+     * @return FilledReading|null
      */
     private function filledMembers(array $reading, array $declared, array $left): ?array
     {
@@ -619,7 +621,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $arms = [];
 
         foreach ($members as $index => [$printed, $type]) {
-            $tagged = isset($left[$printed]) ? TsTypeShape::memberType($declared['type'], (string) PrintedKey::decode($printed)) : null;
+            $tagged = isset($left[$printed]) ? $this->taggedMember($declared['type'], (string) PrintedKey::decode($printed)) : null;
 
             if ($tagged !== null && $this->admitsPlaceholder($tagged, $type)) {
                 $members[$index][1] = $filled[] = $tagged;
@@ -631,6 +633,29 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $result = $filled === [] ? null : $this->withTaggedImports([...$reading, 'type' => $type], $declared, implode(' | ', $filled));
 
         return $result === null ? null : [$result, $arms];
+    }
+
+    /**
+     * The type a `@var` gives a member: the union of what each of its arms but `null` gives it, which the literal never
+     * is, in one order whatever order the arms are written in; null where an arm lacks the key.
+     */
+    private function taggedMember(string $declared, string $key): ?string
+    {
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']);
+        $members = array_values(array_map(fn (string $arm): ?string => TsTypeShape::memberType($arm, $key), $arms));
+
+        if ($members === [] || in_array(null, $members, true)) {
+            return null;
+        }
+
+        if (count($members) === 1) {
+            return $members[0];
+        }
+
+        $union = array_values(array_unique(array_merge(...array_map(fn (string $member): array => TsTypeString::splitTopLevelUnion($member), $members))));
+        rsort($union, SORT_STRING);
+
+        return TsTypeString::hoistNull($union);
     }
 
     /**
@@ -689,7 +714,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
     /**
      * Each of the tag's classes whose name the filled members spell, once; null where one shares a name with another
-     * class the reading holds.
+     * class the reading holds, or with another the filled members spell.
      *
      * @param  list<class-string>  $tagged
      * @param  list<class-string>  $held
@@ -707,7 +732,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
                 continue;
             }
 
-            if (array_any($held, fn (string $other): bool => $other !== $fqcn && array_intersect($namesOf($other), $names) !== [])) {
+            if (array_any([...$held, ...$classes], fn (string $other): bool => $other !== $fqcn && array_intersect($namesOf($other), $names) !== [])) {
                 return null;
             }
 
