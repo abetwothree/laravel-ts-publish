@@ -1004,9 +1004,9 @@ test('a not-null column cast to a class whose get() declares no type publishes n
 
 // Reading the body reads the cast again, which stops at get()'s type there instead of reading the body forever.
 test('a cast whose serialize() reads the attribute it casts publishes what that read gives', function () {
-    $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['phone' => null])->toArray()['phone'];
+    $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['name' => null])->toArray()['name'];
 
-    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'phone')['type'])->toBe('string | null')
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'name')['type'])->toBe('string')
         ->and(json_encode($sent))->toBe('""');
 });
 

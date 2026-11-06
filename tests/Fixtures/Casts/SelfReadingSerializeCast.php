@@ -38,13 +38,13 @@ final class SelfReadingSerializeCast implements CastsAttributes, SerializesCasta
     }
 
     /**
-     * Another warehouse's phone, as Model::toArray() writes it.
+     * Another warehouse's name, as Model::toArray() writes it.
      *
      * @param  array<string, mixed>  $attributes
      */
     public function serialize(Model $model, string $key, mixed $value, array $attributes)
     {
-        return $this->warehouse()->phone;
+        return $this->warehouse()->name;
     }
 
     /**
