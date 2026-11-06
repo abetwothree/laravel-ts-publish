@@ -1730,9 +1730,8 @@ class LaravelTsPublish
 
     /**
      * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
-     * not. Null leaves get() to type the value: for a caster without one or whose serialize() declares nothing, and,
-     * without the interface, for a serialize() declaring only `mixed`, or `array` or `object` over a non-scalar get().
-     * Over a scalar get(), a vague `array` reads as a list or a record.
+     * not. Null leaves get() to type it where none is declared, or without the interface `mixed`, or `array` or
+     * `object` over a non-scalar get(); over a scalar get(), a vague `array` reads as a list or a record.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
