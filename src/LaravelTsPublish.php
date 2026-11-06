@@ -149,6 +149,9 @@ class LaravelTsPublish
     /** What stands in for a nullable type's `?`, as in `?string`, while a conditional is split at its test's `?`. */
     private const string NULLABLE_MARK = "\x01";
 
+    /** The guard key prefix of a caster method's body read, whose cut is the only one that shapes a get() reading. */
+    private const string CASTER_BODY_GUARD = 'caster-body:';
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -1756,7 +1759,7 @@ class LaravelTsPublish
 
         $declared = $this->declaredSerializeTypes($caster, $serialized);
 
-        return $declared === null ? null : $this->withGetNull($caster, $declared);
+        return $declared === null ? null : $this->withGetNull($caster, $declared, false);
     }
 
     /**
@@ -1775,7 +1778,8 @@ class LaravelTsPublish
             fn (?array $info): bool => $info !== null,
         );
 
-        return $body === null ? null : $this->withGetNull($caster, $body);
+        // BASE published no type here, so a null get() cannot rule out stays admitted.
+        return $body === null ? null : $this->withGetNull($caster, $body, true);
     }
 
     /**
@@ -3559,28 +3563,28 @@ class LaravelTsPublish
     }
 
     /**
-     * A serialize() reading with a `null` arm where get() may return null, which Model::toArray() sends without
-     * calling serialize().
+     * A serialize() reading with a `null` arm where get() returns null, which Model::toArray() sends without calling
+     * serialize(): where get() provably does, or, when its reading proves neither, as $unproven says.
      *
      * @param  class-string  $caster
      * @param  TypeScriptTypeInfo  $types
      * @return TypeScriptTypeInfo
      */
-    private function withGetNull(string $caster, array $types): array
+    private function withGetNull(string $caster, array $types, bool $unproven): array
     {
-        return $this->getMayReturnNull($caster)
+        return $this->getReturnsNull($caster) ?? $unproven
             ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
             : $types;
     }
 
     /**
-     * Whether a caster's get() provably returns null: its native type, else its `@return`, else its body's reading,
-     * holds a `null` arm. A `mixed` type says nothing, and a body the engine cannot read or reads through a cycle
-     * proves nothing, so neither adds one.
+     * Whether a caster's get() returns null, as its native type, else its `@return`, else its body's reading, proves
+     * by a `null` arm or its absence; null where none proves either: a `mixed` type, a body the engine cannot read or
+     * leaves an arm out of, or one read through a caster cycle.
      *
      * @param  class-string  $caster
      */
-    private function getMayReturnNull(string $caster): bool
+    private function getReturnsNull(string $caster): ?bool
     {
         $get = new ReflectionMethod($caster, 'get');
         $native = $get->getReturnType();
@@ -3599,14 +3603,17 @@ class LaravelTsPublish
         }
 
         // The body's reading only decides the null, so whatever it reads publishes nothing and leaves no trace.
-        return $this->readCasterBody($caster, 'get', function () use ($caster): bool {
-            $cuts = resolve(AnalysisMemo::class)->cuts();
+        return $this->readCasterBody($caster, 'get', function () use ($caster): ?bool {
+            $memo = resolve(AnalysisMemo::class);
+            [$cuts, $dropped] = [$memo->cuts(self::CASTER_BODY_GUARD), DroppedUnionArms::dropped()];
             $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'get');
 
-            return $result !== null
-                && resolve(AnalysisMemo::class)->cuts() === $cuts
-                && TsTypeString::hasNullArm($result['type']);
-        }, static fn (): bool => false) ?? false;
+            if ($result === null || $memo->cuts(self::CASTER_BODY_GUARD) !== $cuts) {
+                return null;
+            }
+
+            return TsTypeString::hasNullArm($result['type']) ?: (DroppedUnionArms::dropped() === $dropped ? false : null);
+        }, static fn (): bool => false);
     }
 
     /**
@@ -3622,7 +3629,7 @@ class LaravelTsPublish
      */
     private function readCasterBody(string $caster, string $method, Closure $read, Closure $kept): mixed
     {
-        $key = 'caster-body:'.$caster.'@'.$method;
+        $key = self::CASTER_BODY_GUARD.$caster.'@'.$method;
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($caster, $method, $key, $memo, $read, $kept): mixed {

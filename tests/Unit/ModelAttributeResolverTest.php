@@ -72,6 +72,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
@@ -1047,19 +1048,40 @@ test('a cast whose reading meets itself publishes the same type whichever model 
         'CycleSerializeWarehouse.name' => 'string | null',
         'CycleWarehouse.name' => 'string',
         'LiteralNullCycleProduct.name' => 'string',
+        'UnprovenNullProduct.name' => 'string | null',
     ])
         ->and([$sent(CycleReadingGetProduct::class, null), $sent(CycleReadingGetProduct::class, '7')])->toBe(['"sy"', '"s7"'])
         ->and([$sent(CycleSerializeWarehouse::class, null), $sent(CycleWarehouse::class, null)])->toBe(['"z"', '"cc"'])
         ->and([$sent(LiteralNullCycleProduct::class, null), $sent(LiteralNullCycleProduct::class, '7')])->toBe(['null', '"l7"']);
 })->with([
     'the models whose get() reads a cycle first' => [[
-        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'],
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'], [UnprovenNullProduct::class, 'name'],
         [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
     ]],
     'the models whose serialize() closes a cycle first' => [[
         [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
-        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'],
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'], [UnprovenNullProduct::class, 'name'],
     ]],
+]);
+
+// A type serialize()'s body proves keeps a get() null it cannot rule out, as BASE's `unknown` admitted it; a typed
+// serialize() adds only a proven one. A helper's or a property's own guard is no caster cycle, so it hides no null.
+test('a not-null column cast to a class whose get() returns a literal null its reading cannot prove publishes it from a body-read serialize()', function (string $column, string $type, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active', 'is_featured'];
+    $nulls = (new UnprovenNullProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new UnprovenNullProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UnprovenNullProduct::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe('null')
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a caster cycle, under an undeclared serialize()' => ['name', 'string | null', '"l7"'],
+    'a recursive helper, under an undeclared serialize()' => ['slug', 'string | null', '"r7"'],
+    'a recursive helper, under a typed serialize()' => ['sku', 'string | null', '"t7"'],
+    'two helpers calling each other, under an undeclared serialize()' => ['price', 'string | null', '"m7"'],
+    'a property fallback, under an undeclared serialize()' => ['quantity', 'string | null', '"v7"'],
+    'a body the engine cannot read, under an undeclared serialize()' => ['is_active', 'string | null', '"w7"'],
+    'a body the engine cannot read, under a typed serialize(), which adds no null' => ['is_featured', 'string', '"x7"'],
 ]);
 
 test('a not-null column cast to a class whose get() provably returns null publishes the null it sends', function (string $column, string $sentForValue) {

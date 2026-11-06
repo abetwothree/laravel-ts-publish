@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
@@ -2062,6 +2063,13 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a typed serialize() over a get() documenting int|null' => [NullReturningGetProduct::class, 'price', 'string | null'],
         'a typed serialize() over a get() documenting mixed with a null ternary arm' => [NullReturningGetProduct::class, 'quantity', 'string | null'],
         'a typed serialize() over a get() declaring mixed with a null ternary arm' => [NullReturningGetProduct::class, 'is_active', 'string | null'],
+        'an undeclared serialize() over a get() with a literal null read through a caster cycle' => [UnprovenNullProduct::class, 'name', 'string | null'],
+        'an undeclared serialize() over a get() with a literal null and a recursive helper' => [UnprovenNullProduct::class, 'slug', 'string | null'],
+        'a typed serialize() over a get() with a literal null and a recursive helper' => [UnprovenNullProduct::class, 'sku', 'string | null'],
+        'an undeclared serialize() over a get() with a literal null and two helpers calling each other' => [UnprovenNullProduct::class, 'price', 'string | null'],
+        'an undeclared serialize() over a get() with a literal null and a property fallback' => [UnprovenNullProduct::class, 'quantity', 'string | null'],
+        'an undeclared serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_active', 'string | null'],
+        'a typed serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_featured', 'string'],
     ]);
 });
 

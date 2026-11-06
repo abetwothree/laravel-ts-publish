@@ -102,11 +102,14 @@ wherever the method exists, with or without `SerializesCastableAttributes`. `ser
    as does `array`, `object` or both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since
    `serialize()` sends something else, and a vague `array` reads as a list or a record, as `json_encode()` writes it.
 
-The reading that stands gains `| null` only where `get()` provably returns null, since `Model::toArray()` sends a null
-value without calling `serialize()`: where its native type, else its `@return`, else its body as the engine reads it,
-holds a `null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm. A `mixed`
-type says nothing and falls through; an arm the engine left out, a body it cannot read and a cycle add nothing.
-`typeHoldsNull()` sees the arm, so a nullable column adds no second.
+The reading that stands gains `| null` where `get()` returns null, since `Model::toArray()` sends a null value without
+calling `serialize()`. `get()`'s native type, else its `@return`, else its body as the engine reads it, proves that by
+a `null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm, or proves its
+absence. A `mixed` type says nothing and falls through. Where nothing proves either, as for a body the engine cannot
+read, one it leaves an arm out of, or one read through a caster cycle, a type read from `serialize()`'s body keeps the
+null, as BASE's `unknown` admitted it, and a declared `serialize()` type adds none. Only a `caster-body:` guard's cut
+counts as such a cycle (`AnalysisMemo::cuts()` by prefix): a helper's or a property's own guard carries no fallback into
+the reading. `typeHoldsNull()` sees the arm, so a nullable column adds no second.
 
 ### Step 2: an override, resolved and composed
 
