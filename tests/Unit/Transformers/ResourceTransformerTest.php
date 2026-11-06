@@ -4868,6 +4868,8 @@ it('publishes no first-token guess inside a callback no reading reaches without 
 // parameter, or what it reads off it, stays guarded, as the callback is.
 it('reads a declaration under the guard as it reads one without it', function () {
     $sent = json_decode((string) json_encode(GuardedDeclarationsResource::make(new CommentRack)->resolve()), true);
+    // Enumerable::random() declares a conditional `@return` from Laravel 13.18.0; the union before it reads no type.
+    $picked = version_compare(app()->version(), '13.18.0', '>=') ? 'number' : 'unknown';
 
     expect(resourceProps(GuardedDeclarationsResource::class))->toBe([
         'array_typed' => 'number[]',
@@ -4876,8 +4878,8 @@ it('reads a declaration under the guard as it reads one without it', function ()
         'declared_array' => 'number[]',
         'declared_array_local' => 'number[]',
         'declared_collected' => 'number[]',
-        'helper_interface' => 'number',
-        'helper_interface_built' => 'number',
+        'helper_interface' => $picked,
+        'helper_interface_built' => $picked,
         'helper_interface_first' => 'unknown',
         'declared_forward_map' => 'number[]',
         'declared_forward_array' => 'number[]',
@@ -4948,9 +4950,11 @@ it('reads a helper\'s declared interface over $this->collection, and the paginat
         (new Post)->forceFill(['id' => 2, 'title' => 'T2']),
     ], 2, 15, 1));
     $sent = json_decode((string) json_encode($collection->resolve()), true);
+    // Enumerable::random() declares a conditional `@return` from Laravel 13.18.0; the union before it reads no type.
+    $picked = version_compare(app()->version(), '13.18.0', '>=') ? 'number' : 'unknown';
 
     expect(resourceProps(PagedHelpersPostCollection::class))->toBe([
-        'helper_ids' => 'number',
+        'helper_ids' => $picked,
         'side' => '{ onEachSide: number }',
     ])
         ->and($sent['helper_ids'])->toBeIn([1, 2])
