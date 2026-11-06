@@ -964,6 +964,13 @@ A class cast whose caster implements `SerializesCastableAttributes` publishes th
 because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
 instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 
+### An `array`, `collection` or `AsCollection` cast publishes a list, though an object payload is sent as an object
+
+`'settings' => 'array'` publishes `unknown[]`, as do `collection`, `AsCollection` and their encrypted forms, but a
+column holding `{"theme":"dark"}` is sent as that object. A `json` cast, which Laravel reads the same way, publishes
+`object`. State the shape with a `@property` tag, such as `@property array{theme: string} $settings`, or with
+`#[TsCasts]`.
+
 ### A closure nothing calls, and a first-class callable Inertia calls through a property, publish the wrong type
 
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such

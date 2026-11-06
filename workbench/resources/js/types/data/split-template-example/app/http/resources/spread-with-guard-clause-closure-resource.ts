@@ -29,7 +29,7 @@ export interface SpreadWithGuardClauseClosureResource
     total: string;
     shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
     billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-    notes: string | null;
+    notes: string;
     placed_at: string | null;
     paid_at: string | null;
     shipped_at: string | null;

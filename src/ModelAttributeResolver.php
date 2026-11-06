@@ -134,6 +134,13 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
+     * Per model-and-attribute cache of getterNativeReturn(), which calls the accessor method.
+     *
+     * @var array<string, ReflectionType|null>
+     */
+    private array $getterReturns = [];
+
+    /**
      * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast,
      * `AsCollection` or `AsEnumCollection`. An enum cast passes null through, since getEnumCastableAttributeValue()
      * returns null for null, and both collection casts return null before they map an element, which may hold one.
@@ -161,26 +168,28 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a type already holds the column's `null`: a top-level arm, since a `NULL` column reaches the value as
-     * null or as what a class cast's `get()` returns, whatever null its members hold. An accessor, and a cast whose
-     * `get()` declares a native non-null type, keep the looser test, which counts any `null`.
+     * Whether a type already holds the column's `null`. Laravel calls a class cast's `get()` for a NULL column too, so
+     * one whose every caster declares a native non-null return never sends it. Otherwise a top-level arm holds it,
+     * whatever null the value's members hold; an accessor whose getter declares no native type counts any `null`.
      */
     public static function typeHoldsNull(string $type, ?string $cast): bool
     {
-        return $cast === 'attribute' || $cast === 'accessor' || self::getDeclaresNonNull($cast)
-            ? str_contains($type, 'null')
-            : TsTypeString::hasNullArm($type);
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return str_contains($type, 'null');
+        }
+
+        return CastCasters::getDeclaresNonNull((string) $cast) || TsTypeString::hasNullArm($type);
     }
 
     /**
-     * A column's type with ` | null` appended when the column is nullable and the type does not hold its null yet,
-     * as typeHoldsNull() decides.
+     * A column's type with a `null` arm when the column is nullable and the type does not hold its null yet, as
+     * typeHoldsNull() decides.
      *
      * @internal
      */
     public static function withColumnNull(string $type, ?bool $nullable, ?string $cast): string
     {
-        return $nullable && ! self::typeHoldsNull($type, $cast) ? $type.' | null' : $type;
+        return $nullable && ! self::typeHoldsNull($type, $cast) ? TsTypeString::orNull($type) : $type;
     }
 
     /**
@@ -196,6 +205,7 @@ class ModelAttributeResolver
         $this->dbColumnNamesCache = [];
         $this->attributeClassCache = [];
         $this->attributeClassPaths = [];
+        $this->getterReturns = [];
     }
 
     /**
@@ -248,7 +258,7 @@ class ModelAttributeResolver
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
 
-                    return $this->appendNullable($accessorInfo, $attr['nullable'], 'accessor');
+                    return $this->withAccessorNull($ctx, $attributeName, $accessorInfo, $attr['nullable']);
                 }
             } catch (Throwable) { // @codeCoverageIgnore
                 // Fall through to cast/DB type
@@ -1913,15 +1923,6 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a cast is a `CastsAttributes` class whose `get()` declares a native type that excludes null.
-     */
-    private static function getDeclaresNonNull(?string $cast): bool
-    {
-        return is_a(Str::before((string) $cast, ':'), CastsAttributes::class, true)
-            && CastCasters::getDeclaresNonNull((string) $cast);
-    }
-
-    /**
      * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
      *
      * @param  list<class-string>  $modelFqcns
@@ -2000,5 +2001,48 @@ class ModelAttributeResolver
     private function contextFor(string $modelFqcn, bool $withoutTables): ?array
     {
         return $withoutTables ? $this->resolveRelationContext($modelFqcn) : $this->resolveContext($modelFqcn);
+    }
+
+    /**
+     * An accessor's type with its column's null. Laravel runs the getter for a NULL column too, so a native return
+     * decides: no null when it excludes one, a top-level arm when it allows one. An untyped getter counts any null.
+     *
+     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @param  TypeScriptTypeInfo  $accessorInfo
+     * @return TypeScriptTypeInfo
+     */
+    private function withAccessorNull(array $ctx, string $attributeName, array $accessorInfo, ?bool $nullable): array
+    {
+        $return = $this->getterNativeReturn($ctx['reflection'], $ctx['instance'], $attributeName);
+
+        return $return === null
+            ? $this->appendNullable($accessorInfo, $nullable, 'accessor')
+            : $this->appendNullable($accessorInfo, $nullable && $return->allowsNull(), null);
+    }
+
+    /**
+     * The native return type an accessor's getter declares: its closure's, or an old-style `getXAttribute()`'s; null
+     * when it declares none.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     */
+    private function getterNativeReturn(ReflectionClass $reflection, Model $instance, string $attributeName): ?ReflectionType
+    {
+        $key = $reflection->getName().'@'.$attributeName;
+
+        if (array_key_exists($key, $this->getterReturns)) {
+            return $this->getterReturns[$key];
+        }
+
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($attributeName);
+        $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
+
+        return $this->getterReturns[$key] = match (true) {
+            $attribute instanceof Attribute => $attribute->get instanceof Closure
+                ? new ReflectionFunction($attribute->get)->getReturnType()
+                : null,
+            $reflection->hasMethod($oldStyle) => $reflection->getMethod($oldStyle)->getReturnType(),
+            default => null,
+        };
     }
 }

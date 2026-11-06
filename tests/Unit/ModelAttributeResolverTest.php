@@ -9,7 +9,10 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AnonymousCasterCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
@@ -26,8 +29,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUlidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueKeyListedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
@@ -59,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttribut
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCardCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PlotPoint;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
@@ -75,6 +81,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Workbench\App\Casts\ConsignmentLegsCast;
+use Workbench\App\Casts\CoordinateCast;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Enums\Status;
@@ -871,26 +878,75 @@ test('a column adds its null only when it is nullable and its type does not hold
     'a nested null under an accessor' => ['{ a: number | null }', true, 'accessor', '{ a: number | null }'],
 ]);
 
-test('a type holds a nullable column\'s null by a top-level arm, or by any null under an accessor or a non-null get()', function (?string $cast, bool $nestedHolds) {
+// Laravel calls a caster's get() for a NULL column too, so a native non-null get() return never sends null.
+test('a type holds a nullable column\'s null by a top-level arm, by any null under an accessor, and always under a non-null get()', function (?string $cast, bool $nestedHolds, bool $bareHolds) {
     expect(ModelAttributeResolver::typeHoldsNull('{ a: number | null }', $cast))->toBe($nestedHolds)
         ->and(ModelAttributeResolver::typeHoldsNull('{ a: number } | null', $cast))->toBeTrue()
-        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number }', $cast))->toBeFalse();
+        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number }', $cast))->toBe($bareHolds);
 })->with([
-    'no cast' => [null, false],
-    'an empty cast' => ['', false],
-    'array' => ['array', false],
-    'collection' => ['collection', false],
-    'a dated cast' => ['date:Y-m-d', false],
-    'a decimal cast' => ['decimal:2', false],
-    'an enum' => [Status::class, false],
-    'an attribute accessor' => ['attribute', true],
-    'a plain accessor' => ['accessor', true],
-    'AsCollection' => [AsCollection::class, false],
-    'AsCollection::of() a class' => [AsCollection::of(MaybeNode::class), false],
-    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false],
-    'a CastsAttributes class whose get() declares a non-null type' => [ConsignmentLegsCast::class, true],
-    'a CastsAttributes class whose get() may return null' => [GaugeCardCast::class, false],
-    'a Castable class' => [GaugeCard::class, false],
+    'no cast' => [null, false, false],
+    'an empty cast' => ['', false, false],
+    'array' => ['array', false, false],
+    'collection' => ['collection', false, false],
+    'a dated cast' => ['date:Y-m-d', false, false],
+    'a decimal cast' => ['decimal:2', false, false],
+    'an enum' => [Status::class, false, false],
+    'an attribute accessor' => ['attribute', true, false],
+    'a plain accessor' => ['accessor', true, false],
+    'AsCollection' => [AsCollection::class, false, false],
+    'AsCollection::of() a class' => [AsCollection::of(MaybeNode::class), false, false],
+    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false, false],
+    'a CastsAttributes class whose get() declares a non-null type' => [ConsignmentLegsCast::class, true, true],
+    'a CastsAttributes class with arguments whose get() declares a non-null type' => [CoordinateCast::class.':a', true, true],
+    'a CastsAttributes class whose get() may return null' => [GaugeCardCast::class, false, false],
+    'a CastsAttributes class whose get() declares mixed' => [MixedGetCast::class, false, false],
+    'a CastsInboundAttributes class, which passes a NULL through' => [LowercaseInboundCast::class, false, false],
+    'a Castable whose caster may return null' => [GaugeCard::class, false, false],
+    'a Castable whose caster\'s get() declares a non-null type' => [PlotPoint::class, true, true],
+    'a Castable whose caster is anonymous' => [AnonymousCasterCastable::class, false, false],
+]);
+
+test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'primary_contact_id', 'secondary_contact_id'];
+    $sent = sentAsJson((new CastNullWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a Castable whose caster\'s get() declares a non-null type' => ['color', '{ x: number; y: number }', false],
+    'a caster with arguments' => ['primary_contact_id', '{ lat: number; lng: number }', false],
+    'a caster declared in $casts' => ['secondary_contact_id', '{ lat: number; lng: number }', false],
+    'a CastsInboundAttributes class' => ['phone', 'LowercaseInboundCast | null', true],
+    'a get() declaring mixed' => ['coordinate_data', 'string | null', true],
+    'a Castable whose caster is anonymous, which only a call could read' => ['status', '{ label: string } | null', false],
+]);
+
+test('a NOT NULL column cast to a class adds no null', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, 'name')['type'])
+        ->toBe('{ lat: number; lng: number }');
+});
+
+test('a nullable column cast to an arrow-typed override adds its null beside the arrow, not to its return', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, 'priority')['type'])
+        ->toBe('(() => string) | null');
+});
+
+// Laravel runs an accessor's getter for a NULL column too, so the getter's native return decides the null.
+test('an accessor on a nullable column takes its null from its getter\'s native return', function (string $column, string $type, bool $sendsNull) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id', 'secondary_contact_id'];
+    $sent = sentAsJson((new AccessorNullWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AccessorNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a getter declaring ?array{a: ?int}' => ['phone', '{ a: number | null } | null', true],
+    'a getter declaring a non-null array{a: ?int}' => ['coordinate_data', '{ a: number | null }', false],
+    'a getter declaring a non-null array{a: int}' => ['status', '{ a: number }', false],
+    'a getter declaring ?array natively, its docblock leaving the null out' => ['color', '{ a: number | null } | null', true],
+    'an old-style getter declaring a non-null string' => ['priority', 'string', false],
+    'an old-style getter declaring ?int' => ['primary_contact_id', 'number | null', true],
+    'an untyped getter whose docblock declares a nested null only' => ['manager_id', '{ a: number | null }', false],
+    'an untyped getter returning the column' => ['secondary_contact_id', 'number | null', true],
 ]);
 
 test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on a class cast whose get() declares a non-null type', function (string $column, string $type) {

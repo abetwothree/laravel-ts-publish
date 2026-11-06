@@ -12,7 +12,7 @@ export interface OrderOnlyResource
     id: number;
     status: OrderStatusType;
     total: string;
-    notes: string | null;
+    notes: string;
     item_count: number;
     search_index: unknown;
     items: OrderItem[];

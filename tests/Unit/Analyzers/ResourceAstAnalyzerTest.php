@@ -2355,12 +2355,14 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         expect($this->analysis->directEnumFqcns)->toHaveKey('status');
     });
 
-    test('resolves nullable accessor column (notes) with null union', function () {
+    // Laravel runs the getter, which declares a non-null string, for a NULL column too.
+    test('resolves the accessor on a nullable column (notes) by its getter\'s non-null return', function () {
         $notes = collect($this->analysis->properties)->firstWhere('name', 'notes');
 
         expect($notes)->not->toBeNull()
-            ->and($notes['type'])->toBe('string | null')
-            ->and($notes['optional'])->toBeFalse();
+            ->and($notes['type'])->toBe('string')
+            ->and($notes['optional'])->toBeFalse()
+            ->and((new Order)->setRawAttributes(['notes' => null])->notes)->toBe('');
     });
 
     test('resolves write-only mutator (search_index) to unknown', function () {
@@ -2776,7 +2778,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
         $notesClosure = collect($this->analysis->properties)->firstWhere('name', 'notes_closure');
 
         expect($notesClosure)->not->toBeNull()
-            ->and($notesClosure['type'])->toBe('string | null')
+            ->and($notesClosure['type'])->toBe('string')
             ->and($notesClosure['optional'])->toBeTrue();
     });
 
@@ -5644,7 +5646,7 @@ describe('local variable bindings', function () {
         $order = new Order;
         $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
 
-        expect($this->props['shadowed']['type'])->toBe('string | null')
+        expect($this->props['shadowed']['type'])->toBe('string')
             ->and(new LocalVarResource($order)->resolve(Request::create('/'))['shadowed'])->toBe('top-level default')
             ->and(new LocalVarResource($order)->resolve(Request::create('/', 'GET', ['flag' => 1]))['shadowed'])->toBe('Ring twice');
     });
@@ -5750,7 +5752,7 @@ describe('local variable bindings — review follow-up regressions', function ()
         $order = new Order;
         $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
 
-        expect($props['early']['type'])->toBe('string | null')
+        expect($props['early']['type'])->toBe('string')
             ->and($props['late']['type'])->toBe('number')
             ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/', 'GET', ['early' => 1])))->toBe(['early' => 'Ring twice'])
             ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/')))->toBe(['late' => 3]);

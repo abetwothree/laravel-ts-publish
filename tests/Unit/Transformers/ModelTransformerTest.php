@@ -6,8 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
@@ -928,9 +930,12 @@ describe('ModelTransformer with Warehouse model', function () {
     test('column cast to CastsAttributes returning a plain class inlines its shape', function () {
         $data = (new ModelTransformer(Warehouse::class))->data();
 
-        // CoordinateCast::get() returns Coordinate, a plain class this package publishes no file for.
+        // CoordinateCast::get() returns Coordinate, a plain class this package publishes no file for. Laravel calls it
+        // for a NULL column too, so the nullable column sends a Coordinate, never null.
         expect($data->columns)->toHaveKey('coordinate_data')
-            ->and($data->columns['coordinate_data']['type'])->toBe('{ lat: number; lng: number } | null');
+            ->and($data->columns['coordinate_data']['type'])->toBe('{ lat: number; lng: number }')
+            ->and(sentAsJson((new Warehouse)->setRawAttributes(['coordinate_data' => null])->setAppends([])->toArray())->coordinate_data)
+            ->toEqual((object) ['lat' => 0, 'lng' => 0]);
     });
 
     test('appended attribute returning a plain class inlines its shape', function () {
@@ -1984,18 +1989,34 @@ describe('ModelTransformer with accessors that union two models sharing a name',
             ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
     });
 
-    // One relation, `sender`, uses the application model, so the file aliases that model after the relation.
+    // One relation, `sender`, uses the application model, so the file aliases that model after the relation. The
+    // `updated_at` getter declares a native `array`, and Laravel calls it for a NULL column too.
     test('an accessor typed by a docblock union whose arms render alike publishes an array of each model', function () {
         $data = (new ModelTransformer(HandoverCrew::class))->data();
 
         expect($data->mutators['crew']['type'])->toBe('SenderUser[] | CrmUser[]')
             ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
-            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
+            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and(sentAsJson((new HandoverCrew)->setRawAttributes(['updated_at' => null])->toArray())->updated_at)->toBe([])
             ->and($data->typeImports)->toBe([
                 '../../../../../workbench/app/models' => ['User as SenderUser'],
                 '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
     });
+});
+
+describe('a nullable column cast to a class or read through an accessor', function () {
+    test('publishes the null the cast\'s get() or the getter declares, as the resolver does', function (string $model, string $column, string $type) {
+        expect((new ModelTransformer($model))->data()->columns[$column]['type'])->toBe($type)
+            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute($model, $column)['type'])->toBe($type);
+    })->with([
+        'a Castable whose caster\'s get() declares a non-null type' => [CastNullWarehouse::class, 'color', '{ x: number; y: number }'],
+        'an arrow-typed override' => [CastNullWarehouse::class, 'priority', '(() => string) | null'],
+        'a getter declaring a non-null array{a: int}' => [AccessorNullWarehouse::class, 'status', '{ a: number }'],
+        'a getter declaring ?array natively, its docblock leaving the null out' => [AccessorNullWarehouse::class, 'color', '{ a: number | null } | null'],
+        'an old-style getter declaring a non-null string' => [AccessorNullWarehouse::class, 'priority', 'string'],
+        'an untyped getter whose docblock declares a nested null only' => [AccessorNullWarehouse::class, 'manager_id', '{ a: number | null }'],
+    ]);
 });
 
 describe('a nullable column whose declared type holds a nested null', function () {

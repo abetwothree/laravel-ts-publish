@@ -1019,7 +1019,7 @@ declare global {
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -1925,7 +1925,7 @@ declare global {
             name: string;
             /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
             phone: string | null;
-            coordinate_data: { lat: number; lng: number } | null;
+            coordinate_data: { lat: number; lng: number };
             status: workbench.app.enums.StatusType | null;
             color: workbench.app.enums.ColorType | null;
             priority: workbench.app.enums.PriorityType | null;
@@ -3949,7 +3949,7 @@ declare global {
          * that reaches it: `early` the notes and `late` the key, never the one recorded last.
          */
         export interface LocalVarGuardClauseResource {
-            early?: string | null;
+            early?: string;
             late?: number;
         }
         /**
@@ -3992,7 +3992,7 @@ declare global {
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: string | null;
+            shadowed: string;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for
@@ -4128,7 +4128,7 @@ declare global {
             total?: string;
             shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes?: string | null;
+            notes?: string;
             placed_at?: string | null;
             paid_at?: string | null;
             shipped_at?: string | null;
@@ -4381,9 +4381,9 @@ declare global {
             status_arrow?: workbench.app.enums.OrderStatusType;
             user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
-            notes_closure?: string | null;
+            notes_closure?: string;
             shipped_at?: string | null;
-            tracking?: string | null;
+            tracking?: string;
             currency_label: workbench.app.enums.CurrencyType;
             total_display: string;
         }
@@ -4428,7 +4428,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -4484,7 +4484,7 @@ declare global {
             id: number;
             status: workbench.app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             item_count: number;
             search_index: unknown;
             items: workbench.app.models.OrderItem[];
@@ -4514,7 +4514,7 @@ declare global {
             user: workbench.app.models.User;
             status: workbench.app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             search_index: unknown;
         }
         /**
@@ -5410,7 +5410,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -5438,7 +5438,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;

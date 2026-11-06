@@ -129,6 +129,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MetaComment;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SchedulePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpecialPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
@@ -3452,7 +3453,7 @@ describe('a member typed by a docblock union whose arms render alike for two mod
     })->with([
         '$this->attr, a mutator' => [HandoverCrewResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
         '$this->attr, an append' => [HandoverCrewResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
-        '$this->attr, on a column' => [HandoverCrewResource::class, 'updated_at', 'WorkbenchUser[] | CrmUser[] | null'],
+        '$this->attr, on a column' => [HandoverCrewResource::class, 'updated_at', 'WorkbenchUser[] | CrmUser[]'],
         '$this->only(), a mutator' => [HandoverCrewOnlyResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
         '$this->only(), an append' => [HandoverCrewOnlyResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
         'a relation\'s only()' => [HandoverCrewResource::class, 'twin_crew', '{ crew: WorkbenchUser[] | CrmUser[] }'],
@@ -4063,19 +4064,25 @@ it('keeps the numeric keys of a value object\'s own JSON wherever a key holds th
         'schedule' => '{ 1: string; 2: string }',
         'schedule_new' => '{ 1: string; 2: string }',
         'schedule_property' => '{ 1: string; 2: string } | null',
-        'schedule_cast' => '{ 1: string; 2: string } | null',
+        'schedule_cast' => '{ 1: string; 2: string }',
         'schedule_default' => '{ 1: string; 2: string }',
         'listed' => 'string[]',
         'by_week' => '{ week: { 1: string; 2: string } }',
         'weeks' => '{ week: { 1: string; 2: string }[] }',
     ]);
 
+    // Both casts' get() declare a non-null return, which Laravel calls for a NULL column too.
     foreach ([SchedulePostResource::class, SchedulePostSpreadResource::class] as $resource) {
         expect(array_intersect_key($types($resource), array_flip(['metadata', 'options'])))->toBe([
-            'metadata' => '{ 1: string; 2: string } | null',
-            'options' => 'string[] | null',
+            'metadata' => '{ 1: string; 2: string }',
+            'options' => 'string[]',
         ]);
     }
+
+    $sent = sentAsJson((new SchedulePost)->setRawAttributes(['metadata' => null, 'options' => null])->toArray());
+
+    expect($sent->metadata)->not->toBeNull()
+        ->and($sent->options)->not->toBeNull();
 });
 
 // docs/known-gaps.md: one key's flag cannot keep an object's keys beside a sibling array or a union arm the resource

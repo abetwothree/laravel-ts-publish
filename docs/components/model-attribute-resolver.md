@@ -30,6 +30,8 @@ The attribute waterfall spans these classes:
 - [`TsTypeString`](../../src/Support/TsTypeString.php): `isVagueTsType()`, the one definition of "vague".
 - [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute list, and reads the
   relation list itself. See [Relation discovery](#relation-discovery).
+- [`CastCasters`](../../src/Ast/Members/CastCasters.php): the casters a cast runs, a `Castable`'s read from its
+  `castUsing()` without calling it, and whether every one's `get()` declares a native non-null return.
 
 ## A vague signature defers to the docblock
 
@@ -323,11 +325,19 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
-A nullable column adds `| null` unless the declared type already has a top-level `null`: the column reaches the value as
-`null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
-whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. A native non-null `get()`
-never returns null, so the looser test only leaves out a null PHP never sends. `ModelAttributeResolver::sendsNullAsIs()`
-no longer decides the test, and is deprecated.
+A nullable column adds `| null` through `withColumnNull()` unless the type already holds it, as `typeHoldsNull()`
+decides. Laravel calls a class cast's `get()` and an accessor's getter for a NULL column too, so their declared return
+decides:
+
+- A cast whose every caster's `get()` declares a native non-null return adds none. A `CastsInboundAttributes` cast, a
+  `Castable` whose caster cannot be read without calling `castUsing()`, and a `mixed` or untyped `get()` keep it.
+- An accessor whose getter declares a native return adds none when it excludes null, and needs a top-level `null` when
+  it allows one. An untyped getter keeps the looser test, which counts any `null` in its type.
+- Any other column needs a top-level `null`, whatever `null` the value's members hold.
+
+`resolveAttribute()` returns the type with the column's null decided, so `ModelTransformer` adds it only to a fallback
+type of its own; an override of `resolveAttribute()` decides it alone. `ModelAttributeResolver::sendsNullAsIs()` no
+longer decides the test, and is deprecated.
 
 ## Relation discovery
 

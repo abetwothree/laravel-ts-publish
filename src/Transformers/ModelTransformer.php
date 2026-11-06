@@ -414,19 +414,17 @@ class ModelTransformer extends CoreTransformer
 
             $cast = $attribute['cast'];
 
-            // Resolves through the accessor → cast → DB type waterfall.
-            $typings = $resolver->resolveAttribute($this->findable, $name);
+            // Resolves through the accessor → cast → DB type waterfall, which adds the column's null.
+            $resolved = $resolver->resolveAttribute($this->findable, $name);
 
             // Fall back to the raw cast so enum and class metadata still propagates.
-            if ($typings['type'] === 'unknown') {
-                $typings = match ($cast) {
-                    'attribute', 'accessor', null => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
-                    default => LaravelTsPublish::castToTsType($cast),
-                };
-            }
-
-            $typings = $this->exportedTypeInfo($typings);
-            $type = ModelAttributeResolver::withColumnNull($typings['type'], $attribute['nullable'], $cast);
+            $typings = $this->exportedTypeInfo($resolved['type'] !== 'unknown' ? $resolved : match ($cast) {
+                'attribute', 'accessor', null => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
+                default => LaravelTsPublish::castToTsType($cast),
+            });
+            $type = $typings['type'] !== 'unknown' && $typings === $resolved
+                ? $typings['type']
+                : ModelAttributeResolver::withColumnNull($typings['type'], $attribute['nullable'], $cast);
 
             $this->columns[$name] = ['type' => $type, 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
 

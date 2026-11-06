@@ -7196,7 +7196,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "placed_at",
@@ -9711,7 +9711,7 @@
                 },
                 {
                     "name": "coordinate_data",
-                    "type": "{ lat: number; lng: number } | null"
+                    "type": "{ lat: number; lng: number }"
                 },
                 {
                     "name": "status",
@@ -15490,7 +15490,7 @@
             "properties": [
                 {
                     "name": "early",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -15555,7 +15555,7 @@
                 },
                 {
                     "name": "shadowed",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 }
             ]
@@ -15965,7 +15965,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16675,7 +16675,7 @@
                 },
                 {
                     "name": "notes_closure",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16685,7 +16685,7 @@
                 },
                 {
                     "name": "tracking",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16840,7 +16840,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17054,7 +17054,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17174,7 +17174,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -20065,7 +20065,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -20200,7 +20200,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
