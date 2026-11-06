@@ -47,18 +47,29 @@ it('types a scalar callback parameter as the type PHP converts the passed value 
         ->and([$sent['when_has_string'], $sent['transform_string'], $sent['exists_loaded_string']])->toBe(['7', '7', '1']);
 });
 
-// transform() calls any callable, so a function's name or a pair is the call it names; a callable a property or a
-// ternary holds says no one call, so it stays unknown.
+// transform() calls any callable, so a function's name or a pair is the call it names, and a callable a property, a
+// ternary or a join holds is the union of the calls its branches name.
 it('types a transform() callback spelled as a function name or a pair as the call it names', function () {
     $sent = callbackCoercionSent();
+    $unsized = json_decode((string) json_encode(CallbackCoercionResource::make(
+        (new Post)->forceFill(['id' => 0, 'title' => 'hello', 'comments_exists' => true])
+            ->setRelation('comments', new EloquentCollection([CommentRack::comment(11)])),
+    )->resolve()), true);
 
     expect(publishedResourceKeyTypes(CallbackCoercionResource::class, Post::class))->toMatchArray([
         'transform_function?' => 'number',
         'transform_pair?' => 'number',
-        'transform_property?' => 'unknown',
-        'transform_ternary?' => 'unknown',
+        'transform_property?' => 'number',
+        'transform_ternary?' => 'number | string',
+        'transform_written_property?' => 'string | number',
+        'transform_two_writes?' => 'number',
+        'transform_closure_ternary?' => 'number',
     ])->and([$sent['transform_function'], $sent['transform_pair'], $sent['transform_property'], $sent['transform_ternary']])
-        ->toBe([5, 5, 5, 5]);
+        ->toBe([5, 5, 5, 5])
+        ->and([$sent['transform_written_property'], $sent['transform_two_writes'], $sent['transform_closure_ternary']])
+        ->toBe(['HELLO', 2, 1])
+        ->and([$unsized['transform_ternary'], $unsized['transform_two_writes'], $unsized['transform_closure_ternary']])
+        ->toBe(['Hello', 1, 2]);
 });
 
 // A join that left a write out still holds the collection it read, as the run output warns; a value nothing types

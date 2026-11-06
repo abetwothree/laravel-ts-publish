@@ -488,9 +488,10 @@ Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a
 `Conditionable`, which returns `$callback($this, $value) ?? $this`, else `$default($this, $value) ?? $this`, else
 `$this`. [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) types it, required, as
 the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
-of a `null` either returns and of a default not passed. It calls any callable, so a callable string or pair, held in a
-local or not, reads as the call it names (`CallableForms::calledCallable()`), as `transform()` does. Each callable is
-passed the object, with the receiver it holds, and the condition as the caller reads them
+of a `null` either returns and of a default not passed. It calls any callable, so a callable string or pair reads as the
+call it names, as `transform()` does, and one a ternary, `??`, `match`, a local's writes, a literal key or a `$this`
+property may hold as the union of those calls (`CallableForms::calledCallables()`); one a call or a parameter holds, or
+a branch naming no call, reads `unknown`. Each callable is passed the object, with the receiver it holds, and the condition as the caller reads them
 (`ParameterBinder::bindReadArguments()`), so neither a parameter named like a variable either reads nor a write in its
 body changes them. It declines with fewer than two arguments, which return a `HigherOrderWhenProxy`; on a model, a query
 or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class declaring its own `when()`; and where a call's

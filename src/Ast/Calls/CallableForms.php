@@ -5,21 +5,31 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\PropertyWriteSites;
 use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Param;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 
 /**
@@ -98,27 +108,37 @@ final class CallableForms
     }
 
     /**
-     * The callable a caller that calls any callable value runs, as Conditionable and transform() do: a closure, a
-     * `null` it skips, or a first-class callable, callable string or pair written there or as a local's one write,
-     * the last two as the closure asOneValueClosure() makes of them for $arity values. Null for any other spelling.
+     * The callables a caller that calls any callable runs, as Conditionable and transform() do: a value that may hold
+     * only closures, first-class callables or `null` as heldCallable() reads it, else one closure per callable string,
+     * pair or closure it may hold, for $arity values. Null where a value it may hold names no call.
+     *
+     * @return non-empty-list<Expr>|null
      */
-    public static function calledCallable(Expr $value, AnalysisScope $scope, int $arity = 1): ?Expr
+    public static function calledCallables(Expr $value, AnalysisScope $scope, int $arity = 1): ?array
     {
-        $span = $value instanceof Variable ? $scope->declaredAt($value) : null;
-        $held = match (true) {
-            ! $value instanceof Variable => $value,
-            $span === null => $scope->soleWriteSeenBy($value),
-            default => $span['expr'],
-        };
+        $held = self::heldValues($value, $scope, []);
 
-        // A callable a property, a key, a ternary, a call or a parameter holds names no one call, so none is read.
-        return match (true) {
-            $held instanceof String_, $held instanceof Array_ => self::asOneValueClosure($held, $arity),
-            $held instanceof ArrowFunction, $held instanceof ClosureExpr,
-            $held instanceof ConstFetch && $held->name->toLowerString() === 'null' => $value,
-            $held !== null && self::isFirstClassCallable($held) => $held,
-            default => null,
-        };
+        if ($held === null) {
+            return null;
+        }
+
+        if (! array_any($held, static fn (Expr $one): bool => $one instanceof String_ || $one instanceof Array_)) {
+            return [self::heldCallable($value, $scope)];
+        }
+
+        $called = [];
+
+        foreach ($held as $one) {
+            $closure = $one instanceof String_ || $one instanceof Array_ ? self::asOneValueClosure($one, $arity) : $one;
+
+            if ($closure === null) {
+                return null;
+            }
+
+            $called[] = $closure;
+        }
+
+        return $called;
     }
 
     /**
@@ -130,6 +150,188 @@ final class CallableForms
     {
         return ($expr instanceof FuncCall || $expr instanceof MethodCall || $expr instanceof StaticCall)
             && $expr->isFirstClassCallable();
+    }
+
+    /**
+     * The callable values an expression may hold, each a closure, a first-class callable, `null`, a string or an array
+     * literal: through a ternary, `??` or `match`, a local's writes, a literal key of a local's array literal and a
+     * `$this` property's default and writes. Null where one may hold anything else, or a cycle of locals.
+     *
+     * @param  array<string, true>  $followed  the locals already followed
+     * @return non-empty-list<Expr>|null
+     */
+    private static function heldValues(Expr $value, AnalysisScope $scope, array $followed): ?array
+    {
+        if ($value instanceof ArrowFunction || $value instanceof ClosureExpr || $value instanceof String_
+            || $value instanceof Array_ || self::isFirstClassCallable($value) || self::isNull($value)
+        ) {
+            return [$value];
+        }
+
+        $parts = match (true) {
+            $value instanceof Ternary => [$value->if ?? $value->cond, $value->else],
+            $value instanceof Coalesce => [$value->left, $value->right],
+            $value instanceof Match_ => array_map(static fn (MatchArm $arm): Expr => $arm->body, $value->arms),
+            $value instanceof Variable => self::localValues($value, $scope, $followed),
+            $value instanceof ArrayDimFetch => self::keyedValues($value, $scope, $followed),
+            $value instanceof PropertyFetch => self::propertyValues($value, $scope),
+            default => null,
+        };
+
+        if ($parts === null || $parts === []) {
+            return null;
+        }
+
+        $held = [];
+
+        foreach ($parts as $part) {
+            $values = self::heldValues($part, $scope, $value instanceof Variable && is_string($value->name)
+                ? [...$followed, $value->name => true]
+                : $followed);
+
+            if ($values === null) {
+                return null;
+            }
+
+            array_push($held, ...$values);
+        }
+
+        return $held;
+    }
+
+    /**
+     * The writes a read of a local sees, its inline `@var` span's value first; null for a parameter, or one followed.
+     *
+     * @param  array<string, true>  $followed
+     * @return list<Expr>|null
+     */
+    private static function localValues(Variable $read, AnalysisScope $scope, array $followed): ?array
+    {
+        if (! is_string($read->name) || isset($followed[$read->name])) {
+            return null;
+        }
+
+        $span = $scope->declaredAt($read);
+
+        return $span === null ? $scope->writesSeenBy($read) : [$span['expr']];
+    }
+
+    /**
+     * The values a literal key names in each array literal a local may hold; null where one holds no such item.
+     *
+     * @param  array<string, true>  $followed
+     * @return list<Expr>|null
+     */
+    private static function keyedValues(ArrayDimFetch $fetch, AnalysisScope $scope, array $followed): ?array
+    {
+        $key = $fetch->dim instanceof String_ || $fetch->dim instanceof Int_ ? $fetch->dim->value : null;
+        $arrays = $key === null ? null : self::heldValues($fetch->var, $scope, $followed);
+        $items = [];
+
+        foreach ($arrays ?? [] as $array) {
+            $item = $array instanceof Array_ ? array_find(
+                $array->items,
+                static fn (ArrayItem $item): bool => ($item->key instanceof String_ || $item->key instanceof Int_)
+                    && $item->key->value === $key,
+            ) : null;
+
+            if ($item === null) {
+                return null;
+            }
+
+            $items[] = $item->value;
+        }
+
+        return $arrays === null ? null : $items;
+    }
+
+    /**
+     * A `$this` property's default and every value the class assigns it; null where a write is no plain assignment of
+     * a callable that reads no other scope's local, or the property is promoted, magic or holds a default no callable
+     * spells.
+     *
+     * @return list<Expr>|null
+     */
+    private static function propertyValues(PropertyFetch $fetch, AnalysisScope $scope): ?array
+    {
+        if (! $fetch->var instanceof Variable || $fetch->var->name !== 'this' || ! $fetch->name instanceof Identifier) {
+            return null;
+        }
+
+        $name = $fetch->name->toString();
+        $class = $scope->thisMemberClass($name, false);
+        $property = $class->hasProperty($name) ? $class->getProperty($name) : null;
+        $writes = $property === null || $property->isPromoted() ? null : resolve(PropertyWriteSites::class)->of($class, $name);
+
+        if ($property === null || $writes === null) {
+            return null;
+        }
+
+        $values = [];
+
+        foreach ($writes as [$node]) {
+            if (! $node instanceof Assign || ! self::readsNoLocal($node->expr)) {
+                return null;
+            }
+
+            $values[] = $node->expr;
+        }
+
+        $default = $property->hasDefaultValue() || ! $property->hasType() ? $property->getDefaultValue() : false;
+        $spelled = $default === false ? [] : self::spelledDefault($default, $fetch->getAttributes());
+
+        return $spelled === null ? null : [...$spelled, ...$values];
+    }
+
+    /**
+     * A property default that spells a callable or `null`, as the expression a source would write; null for any other.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return list<Expr>|null
+     */
+    private static function spelledDefault(mixed $default, array $attributes): ?array
+    {
+        if (is_array($default) && array_is_list($default) && count($default) === 2
+            && is_string($default[0]) && is_string($default[1])
+        ) {
+            return [new Array_([
+                new ArrayItem(new String_($default[0], $attributes)),
+                new ArrayItem(new String_($default[1], $attributes)),
+            ], $attributes)];
+        }
+
+        return match (true) {
+            $default === null => [new ConstFetch(new Name('null'), $attributes)],
+            is_string($default) => [new String_($default, $attributes)],
+            default => null,
+        };
+    }
+
+    /**
+     * Whether a callable another method writes reads the same wherever it is read: a string, `null`, a pair of a class
+     * name or `$this` and a method name, a first-class callable on `$this` or a class, or a closure importing nothing.
+     */
+    private static function readsNoLocal(Expr $value): bool
+    {
+        $isThis = static fn (?Expr $expr): bool => $expr instanceof Variable && $expr->name === 'this';
+        $isNamed = static fn (?Expr $expr): bool => $expr instanceof String_ || $expr instanceof ClassConstFetch || $isThis($expr);
+
+        return match (true) {
+            $value instanceof String_, self::isNull($value) => true,
+            $value instanceof ClosureExpr => $value->uses === [],
+            $value instanceof Array_ => $value->items !== []
+                && array_all($value->items, static fn (ArrayItem $item): bool => $item->key === null && $isNamed($item->value)),
+            $value instanceof MethodCall => $value->isFirstClassCallable() && $isThis($value->var),
+            default => $value instanceof StaticCall && $value->isFirstClassCallable(),
+        };
+    }
+
+    /**
+     * Whether an expression is the literal `null`.
+     */
+    private static function isNull(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && $expr->name->toLowerString() === 'null';
     }
 
     /**

@@ -519,19 +519,47 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $value = $valueArg->value;
-        // transform() calls any callable: a callable string or pair is the call it names, any other spelling none.
-        $called = CallableForms::calledCallable($callbackArg->value, $scope);
+        $resolvedValue = null;
+        $outer = AnalysisScope::NO_NAME_BINDINGS;
+        $inners = [];
 
-        if ($called === null) {
-            return [...ValueResult::unknown(), 'optional' => true];
+        foreach (CallableForms::calledCallables($callbackArg->value, $scope) ?? [] as $called) {
+            $inners[] = $this->transformedValue($called, $value, $resolvedValue, $outer, $scope, $engine);
         }
 
-        $callback = CallableForms::passingOneValue($called);
-        $resolvedValue = null;
-        $model = null;
-        $outer = AnalysisScope::NO_NAME_BINDINGS;
+        $inner = ValueResult::unionOfCalls($inners);
 
-        $inner = $scope->readClaimedClosure(
+        if ($inner['type'] === 'unknown' && count($inners) !== 1) {
+            return [...$inner, 'optional' => true];
+        }
+
+        // transform()'s default runs through the global transform() helper's $default($value) — one
+        // argument — unlike the rest of the family's zero-argument value($default).
+        $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $outer];
+
+        return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
+    }
+
+    /**
+     * What a callable transform() may call returns for the value it passes, with that value's type and the bindings
+     * the caller held before the claim.
+     *
+     * @param  ValueExpressionResult|null  $resolvedValue
+     * @param  NameBindingsSnapshot  $outer
+     * @return ValueExpressionResult
+     */
+    private function transformedValue(
+        Expr $called,
+        Expr $value,
+        ?array &$resolvedValue,
+        array &$outer,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): array {
+        $callback = CallableForms::passingOneValue($called);
+        $model = null;
+
+        return $scope->readClaimedClosure(
             $callback,
             1,
             $engine,
@@ -551,12 +579,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 $outer = $scope->nameBindings();
             },
         );
-
-        // transform()'s default runs through the global transform() helper's $default($value) — one
-        // argument — unlike the rest of the family's zero-argument value($default).
-        $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $outer];
-
-        return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
     }
 
     /**

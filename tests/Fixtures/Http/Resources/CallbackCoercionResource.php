@@ -22,10 +22,22 @@ final class CallbackCoercionResource extends JsonResource
     /** A function's name, held by a property. */
     public string $lengthOf = 'strlen';
 
+    /**
+     * A function's name, or a pair a method writes.
+     *
+     * @var string|array{self, string}
+     */
+    public string|array $measure = 'strtoupper';
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
         $comments = $this->resource->comments;
+        $twice = fn ($v) => 1;
+
+        if ($this->resource->id > 5) {
+            $twice = fn ($v) => 2;
+        }
 
         if ($this->resource->id > 0) {
             $comments = $this->opaque($this->resource->comments);
@@ -50,6 +62,9 @@ final class CallbackCoercionResource extends JsonResource
             'alias_transformed' => $this->transform(new AliasedToken('a'), fn (string $v) => $v),
             'transform_property' => $this->transform($this->resource->title, $this->lengthOf),
             'transform_ternary' => $this->transform($this->resource->title, $this->resource->id > 0 ? 'strlen' : 'ucfirst'),
+            'transform_written_property' => $this->transform($this->resource->title, $this->measure),
+            'transform_two_writes' => $this->transform($this->resource->title, $twice),
+            'transform_closure_ternary' => $this->transform($this->resource->title, $this->resource->id > 0 ? fn ($v) => 1 : fn ($v) => 2),
         ];
     }
 
@@ -57,6 +72,12 @@ final class CallbackCoercionResource extends JsonResource
     public function length(string $value): int
     {
         return strlen($value);
+    }
+
+    /** Measure by length. */
+    public function measureLength(): void
+    {
+        $this->measure = [$this, 'length'];
     }
 
     /** A value nothing types, as it comes back from serialization. */

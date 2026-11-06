@@ -48,30 +48,30 @@ trait ResolvesCallbackValues
     }
 
     /**
-     * The value a callback returns where its caller calls any callable, a string or pair as the call it names, and read
-     * each value it passes in its own scope, so a write in the callback's body to a name that value reads changes
-     * nothing (ParameterBinder::bindReadArguments()).
+     * The value a callback returns where its caller calls any callable, the union over each callable it may hold, a
+     * string or pair as the call it names, and read each value it passes in its own scope, so a write in the callback's
+     * body to a name that value reads changes nothing (ParameterBinder::bindReadArguments()).
      *
      * @param  list<ReadArgument>  $passed
      * @return ValueExpressionResult
      */
     protected function callbackValueOfRead(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $called = CallableForms::calledCallable($callback, $scope, count($passed));
+        $values = [];
 
-        if ($called === null) {
-            return ValueResult::unknown();
+        foreach (CallableForms::calledCallables($callback, $scope, count($passed)) ?? [] as $called) {
+            $values[] = $this->calledCallbackValue(
+                $called,
+                count($passed),
+                $scope,
+                $engine,
+                static function (ArrowFunction|ClosureExpr $closure) use ($passed, $scope, $engine): void {
+                    ParameterBinder::bindReadArguments($closure, $passed, $scope, $engine);
+                },
+            );
         }
 
-        return $this->calledCallbackValue(
-            $called,
-            count($passed),
-            $scope,
-            $engine,
-            static function (ArrowFunction|ClosureExpr $closure) use ($passed, $scope, $engine): void {
-                ParameterBinder::bindReadArguments($closure, $passed, $scope, $engine);
-            },
-        );
+        return ValueResult::unionOfCalls($values);
     }
 
     /**

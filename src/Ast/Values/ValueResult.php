@@ -279,6 +279,22 @@ final class ValueResult
     }
 
     /**
+     * The value one of several callables a caller may run returns: one's own value, else their union; `unknown` where
+     * none is read or any one reads `unknown`, as unionResults() would drop that call's arm.
+     *
+     * @param  list<ValueExpressionResult>  $values
+     * @return ValueExpressionResult
+     */
+    public static function unionOfCalls(array $values): array
+    {
+        return match (true) {
+            count($values) === 1 => $values[0],
+            $values === [] || array_any($values, static fn (array $value): bool => $value['type'] === 'unknown') => self::unknown(),
+            default => self::unionResults($values),
+        };
+    }
+
+    /**
      * Where PHP may hold the value as an object and which arms may be null.
      *
      * Null where no arm is such an object.

@@ -157,22 +157,31 @@ it('types a callable string or pair as the call it names', function () {
         ->and($unpinned['this_pair']['post']['id'])->toBe(7);
 });
 
-// Only a literal callable, or a local's one write of one, says which call runs; any other spelling would read the
-// callable itself as the value, so the key stays unknown.
-it('leaves a callable no literal or one write spells unknown', function () {
-    $sent = json_decode((string) json_encode(new ConditionableCallableSpellingsEvent(
-        (new Post)->forceFill(['id' => 7, 'is_pinned' => true]),
+// A callable a join, a ternary, a literal key or a property holds runs one of the calls its branches name, so the key
+// is their union; one a helper returns or a parameter holds names no call, so it stays unknown.
+it('types a callable each branch names as the union of those calls, and one no branch names as unknown', function () {
+    $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableCallableSpellingsEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
     )->broadcastWith()), true);
+    $box = ['name' => 'box'];
 
-    expect(conditionableCallKeys(ConditionableCallableSpellingsEvent::class))->each->toBe('unknown')
-        ->and($sent)->toBe([
-            'two_write_pair' => 3,
-            'ternary_pair' => 3,
-            'offset_pair' => 3,
-            'property_string' => 'L',
-            'helper_pair' => 3,
-            'param_string' => 'L',
-        ]);
+    expect(conditionableCallKeys(ConditionableCallableSpellingsEvent::class))->toBe([
+        'two_write_pair' => 'number | { name: string }',
+        'ternary_pair' => 'number | string | { name: string }',
+        'offset_pair' => 'number | { name: string }',
+        'property_string' => 'string | { name: string }',
+        'written_property' => 'string | number | { name: string }',
+        'helper_pair' => 'unknown',
+        'param_string' => 'unknown',
+    ])->and($sent(true))->toBe([
+        'two_write_pair' => 3,
+        'ternary_pair' => 3,
+        'offset_pair' => 3,
+        'property_string' => 'L',
+        'written_property' => 'L',
+        'helper_pair' => 3,
+        'param_string' => 'L',
+    ])->and($sent(false))->toBe(array_fill_keys(array_keys($sent(true)), $box));
 });
 
 // No generated file exports an enum the config leaves out, so the object's own JSON leaves its member unknown.
