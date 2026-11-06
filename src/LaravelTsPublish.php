@@ -206,6 +206,9 @@ class LaravelTsPublish
      */
     protected array $useStatementsCache = [];
 
+    /** How often a caster body read was cut short by the same read under way; a caller compares two counts. */
+    private static int $casterBodyCuts = 0;
+
     /**
      * Whether a shape, a docblock's or a value object's, keeps a member its own custom imports bring in. Off under a
      * reader that returns a type string alone, whose caller has nowhere to put an import; see withoutShapeImports().
@@ -3539,14 +3542,14 @@ class LaravelTsPublish
 
     /**
      * Whether a body's reading says what it sends: an arm besides `null`, none of them `object` or vague, and no
-     * `unknown` inside one, which would read less than get()'s type.
+     * `unknown` inside one, as a word outside literals, which would read less than get()'s type.
      */
     private function provesType(string $type): bool
     {
         $arms = array_diff(TsTypeString::splitTopLevelUnion($type), ['null']);
 
         return $arms !== []
-            && ! str_contains($type, 'unknown')
+            && preg_match('/\bunknown\b/', TypeScanner::maskLiterals($type)) !== 1
             && ! array_any($arms, $this->isVagueArm(...));
     }
 
@@ -3574,8 +3577,9 @@ class LaravelTsPublish
     }
 
     /**
-     * Whether a caster's get() may return null: its native type allows null, or without one its `@return`, else its
-     * body, holds null or says nothing.
+     * Whether a caster's get() provably returns null: its native type, else its `@return`, else its body's reading,
+     * holds a `null` arm. A `mixed` type says nothing, and a body the engine cannot read or reads through a cycle
+     * proves nothing, so neither adds one.
      *
      * @param  class-string  $caster
      */
@@ -3584,36 +3588,32 @@ class LaravelTsPublish
         $get = new ReflectionMethod($caster, 'get');
         $native = $get->getReturnType();
 
-        if ($native !== null) {
+        if ($native !== null && ! ($native instanceof ReflectionNamedType && $native->getName() === 'mixed')) {
             return $native->allowsNull();
         }
 
         $docComment = $get->getDocComment();
+        $documented = $docComment === false || $this->extractReturnTypeFromDocblock($docComment) === null
+            ? null
+            : $this->docblockReturnTypes($get)['type'];
 
-        if ($docComment !== false && $this->extractReturnTypeFromDocblock($docComment) !== null) {
-            return $this->mayHoldNull($this->docblockReturnTypes($get)['type']);
+        if ($documented !== null && ! TsTypeString::isUnknownOnly($documented)) {
+            return TsTypeString::hasNullArm($documented);
         }
 
         // The body's reading only decides the null, so whatever it reads publishes nothing and leaves no trace.
         return $this->readCasterBody($caster, 'get', function () use ($caster): bool {
-            $dropped = DroppedUnionArms::dropped();
+            $cuts = self::$casterBodyCuts;
             $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'get');
 
-            return $result === null || DroppedUnionArms::dropped() !== $dropped || $this->mayHoldNull($result['type']);
-        }, static fn (): bool => false) ?? true;
-    }
-
-    /**
-     * Whether a type may hold null: a top-level `null` arm, or nothing known of it but that.
-     */
-    private function mayHoldNull(string $type): bool
-    {
-        return TsTypeString::hasNullArm($type) || TsTypeString::isUnknownOnly($type);
+            return $result !== null && self::$casterBodyCuts === $cuts && TsTypeString::hasNullArm($result['type']);
+        }, static fn (): bool => false) ?? false;
     }
 
     /**
      * A caster method's body read once per run; null for a dependency's method, which no value read follows, or one
-     * already under read. Its warnings, drop count and audit entries outlive it only where $kept says it stands.
+     * already under read, which counts a cut. Its warnings, drop count and audit entries outlive it only where $kept
+     * says it stands.
      *
      * @template TRead
      *
@@ -3628,8 +3628,13 @@ class LaravelTsPublish
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($caster, $method, $key, $memo, $read, $kept): mixed {
-            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, $method)->getFileName())
-                || ! $memo->enter($key)) {
+            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, $method)->getFileName())) {
+                return null;
+            }
+
+            if (! $memo->enter($key)) {
+                self::$casterBodyCuts++;
+
                 return null;
             }
 

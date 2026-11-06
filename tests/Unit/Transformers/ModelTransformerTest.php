@@ -19,6 +19,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
@@ -2046,7 +2048,20 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'an undeclared serialize() typed by its returns over a get() that may return null' => [SerializeBodyWarehouse::class, 'coordinate_data', 'string | null'],
         'a typed serialize() over an untyped get() whose body proves a string, on a not-null column' => [UntypedGetSerializePost::class, 'title', 'string'],
         'a typed serialize() over an untyped get() whose @return documents a number' => [UntypedGetSerializePost::class, 'content', 'object'],
-        'a typed serialize() over an untyped get() whose body proves nothing' => [UntypedGetSerializePost::class, 'category', 'string | null'],
+        'a typed serialize() over an untyped get() whose body proves nothing, which adds no null' => [UntypedGetSerializePost::class, 'category', 'string'],
+        'a typed serialize() over a get() declaring mixed' => [NullProofProduct::class, 'name', 'string'],
+        'a typed serialize() over a get() documenting mixed' => [NullProofProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() replacing a NULL through ??' => [NullProofProduct::class, 'sku', 'string'],
+        'a typed serialize() over a get() replacing an empty value through ?:' => [NullProofProduct::class, 'price', 'string'],
+        'a typed serialize() over a get() reading the raw attribute with a default' => [NullProofProduct::class, 'quantity', 'string'],
+        'a typed serialize() over a get() reading its own cast on another model' => [NullProofProduct::class, 'is_active', 'string'],
+        'a typed serialize() over a get() the engine cannot read' => [NullProofProduct::class, 'is_featured', 'string'],
+        'a typed serialize() over a get() with a null ternary arm' => [NullReturningGetProduct::class, 'name', 'string | null'],
+        'a typed serialize() over a get() with a bare return' => [NullReturningGetProduct::class, 'slug', 'string | null'],
+        'a typed serialize() over a get() that may fall off its end' => [NullReturningGetProduct::class, 'sku', 'string | null'],
+        'a typed serialize() over a get() documenting int|null' => [NullReturningGetProduct::class, 'price', 'string | null'],
+        'a typed serialize() over a get() documenting mixed with a null ternary arm' => [NullReturningGetProduct::class, 'quantity', 'string | null'],
+        'a typed serialize() over a get() declaring mixed with a null ternary arm' => [NullReturningGetProduct::class, 'is_active', 'string | null'],
     ]);
 });
 

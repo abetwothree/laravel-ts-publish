@@ -51,6 +51,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphTo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
@@ -69,6 +71,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DepthLimitedLaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
@@ -90,6 +93,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Facade;
 use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\CoordinateCast;
 use Workbench\App\Enums\Priority;
@@ -999,14 +1003,56 @@ test('a not-null column cast to a class whose get() declares no type publishes n
 })->with([
     'a get() whose body proves a string' => ['title', 'string', '"s"', '"s7"'],
     'a get() whose @return documents a number' => ['content', 'object', '{"v":0}', '{"v":7}'],
-    'a get() whose body proves nothing' => ['category', 'string | null', 'null', '"o7"'],
+    'a get() whose body proves nothing, which adds no null' => ['category', 'string', 'null', '"o7"'],
 ]);
 
-// Reading the body reads the cast again, which stops at get()'s type there instead of reading the body forever.
+// A get() adds a null only where its reading provably holds one. A `mixed` type, a NULL replaced, a cycle or a body the
+// engine cannot read proves none, so the type stays as get() leaves it.
+test('a not-null column cast to a class whose get() never provably returns null publishes no null', function (string $column, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active', 'is_featured'];
+    $nulls = (new NullProofProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new NullProofProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NullProofProduct::class, $column)['type'])->toBe('string')
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a get() declaring mixed, as the make:cast stub does' => ['name', '"p0"', '"p7"'],
+    'a get() documenting mixed' => ['slug', '"m"', '"m7"'],
+    'a get() replacing a NULL through ??' => ['sku', '"cd"', '"c7"'],
+    'a get() replacing an empty value through ?:' => ['price', '"ke"', '"k7"'],
+    'a get() reading the raw attribute with a default' => ['quantity', '"k0"', '"k7"'],
+    'a get() reading its own cast on another model' => ['is_active', '"gz"', '"g7"'],
+    'a get() the engine cannot read, which may send a null as before' => ['is_featured', 'null', '"o7"'],
+]);
+
+test('a not-null column cast to a class whose get() provably returns null publishes the null it sends', function (string $column, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active'];
+    $nulls = (new NullReturningGetProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new NullReturningGetProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NullReturningGetProduct::class, $column)['type'])->toBe('string | null')
+        ->and(json_encode($nulls[$column]))->toBe('null')
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a null ternary arm' => ['name', '"t7"'],
+    'a bare return' => ['slug', '"r7"'],
+    'a fall-off' => ['sku', '"f7"'],
+    'a documented int|null' => ['price', '"d7"'],
+    'a null ternary arm under a documented mixed' => ['quantity', '"n7"'],
+    'a null ternary arm under a native mixed' => ['is_active', '"q7"'],
+]);
+
+// Reading the body reads the cast again, which stops at get()'s type there; the service throws past two nested reads,
+// so a missing guard fails here at once instead of reading the body until the stack runs out.
 test('a cast whose serialize() reads the attribute it casts publishes what that read gives', function () {
+    $service = new DepthLimitedLaravelTsPublish;
+    $this->app->instance(LaravelTsPublishService::class, $service);
+    Facade::clearResolvedInstance(LaravelTsPublishService::class);
     $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['name' => null])->toArray()['name'];
 
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'name')['type'])->toBe('string')
+        ->and($service->deepest)->toBe(2)
         ->and(json_encode($sent))->toBe('""');
 });
 

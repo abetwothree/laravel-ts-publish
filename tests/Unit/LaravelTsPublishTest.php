@@ -14,16 +14,26 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArrayOrObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeInterfaceCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AttributeDefaultGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\BareReturnGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CoalesceGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockGetObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ElvisGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\FallOffGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedDocGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedDocNullGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedNullGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeInterfaceCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedStubGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableDocGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetReturnTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableObjectSerializeCast;
@@ -34,6 +44,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\OpaqueGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\PrefixedMixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ReturnTypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SelfReadingGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ShapeArraySerializeCast;
@@ -41,7 +52,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TernaryNullGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownCountSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownMemberSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
@@ -580,7 +593,20 @@ describe('a cast whose caster serializes', function () {
         'a typed serialize() over a get() that may return null' => [NullableGetSerializedLabelCast::class, 'string | null'],
         'a typed serialize() over an untyped get() whose body proves a string' => [UntypedGetSerializeCast::class, 'string'],
         'a typed serialize() over an untyped get() whose @return documents a number' => [DocblockGetObjectSerializeCast::class, 'object'],
-        'a typed serialize() over an untyped get() whose body proves nothing' => [OpaqueGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over an untyped get() whose body proves nothing, which adds no null' => [OpaqueGetSerializeCast::class, 'string'],
+        'a typed serialize() over a get() declaring mixed, as the make:cast stub does' => [MixedStubGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() documenting mixed' => [MixedDocGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() replacing a NULL through ??' => [CoalesceGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() replacing an empty value through ?:' => [ElvisGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() reading the raw attribute with a default' => [AttributeDefaultGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() reading its own cast on another model' => [SelfReadingGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() with a null ternary arm' => [TernaryNullGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over an untyped get() with a bare return' => [BareReturnGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over an untyped get() that may fall off its end' => [FallOffGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over an untyped get() documenting int|null' => [NullableDocGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over a get() documenting mixed with a null ternary arm' => [MixedDocNullGetSerializeCast::class, 'string | null'],
+        'a typed serialize() over a get() declaring mixed with a null ternary arm' => [MixedNullGetSerializeCast::class, 'string | null'],
+        'an undeclared serialize() returning a key whose name holds unknown' => [UnknownCountSerializeCast::class, '{ unknown_count: number }'],
         'an undeclared serialize() one of whose returns cannot be typed, which leaves the type to get()' => [DroppedArmSerializeCast::class, 'number'],
         'an undeclared serialize() whose returns hold an unknown member, which leaves the type to get()' => [UnknownMemberSerializeCast::class, 'string'],
         'an undeclared serialize() returning a class a cast type cannot import, which leaves the type to get()' => [ModelSerializeCast::class, 'string'],
