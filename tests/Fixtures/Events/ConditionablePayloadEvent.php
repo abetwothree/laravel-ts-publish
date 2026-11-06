@@ -30,6 +30,18 @@ final class ConditionablePayloadEvent implements ShouldBroadcast
     }
 
     /**
+     * A label, or nothing for an unsaved post.
+     *
+     * @return string|void
+     */
+    public function labelOrNothing()
+    {
+        if ($this->post->id === 0) {
+            return 'unsaved';
+        }
+    }
+
+    /**
      * The payload: each key the callback's value, the default's, or the event itself where either gives null.
      *
      * @return array<string, mixed>
@@ -58,6 +70,7 @@ final class ConditionablePayloadEvent implements ShouldBroadcast
             'box' => (new ConditionableBox)->when(true, fn () => 'boxed'),
             'box_param' => (new ConditionableBox)->when($pinned, fn (ConditionableBox $box) => $box->name),
             'box_itself' => (new ConditionableBox)->when($pinned, fn ($box) => $box),
+            'void_or_default' => $this->when($pinned, fn () => $this->labelOrNothing(), fn () => 'b'),
         ];
     }
 }

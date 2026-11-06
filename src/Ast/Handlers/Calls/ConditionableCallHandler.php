@@ -8,10 +8,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -22,11 +24,10 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Param;
 use PhpParser\NodeFinder;
 use ReflectionMethod;
 
@@ -39,8 +40,9 @@ use ReflectionMethod;
  * the call returns a HigherOrderWhenProxy, and a query's is ReceiverClassResolver::conditionalQuery()'s.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ReadArgument from ParameterBinder
  *
- * @phpstan-type ConditionableReceiver = array{classes: non-empty-list<class-string>, shortCircuits: bool}
+ * @phpstan-type ConditionableReceiver = array{type: ReceiverType, shortCircuits: bool}
  *
  * @internal
  */
@@ -75,15 +77,17 @@ final class ConditionableCallHandler implements ExpressionHandler
             return null;
         }
 
-        $passed = [$this->passedObject($expr->var, $receiver), $this->passedValue($arguments->named('value')?->value)];
+        $object = $expr->var;
+        $condition = $arguments->named('value')?->value;
+        $passedAsWritten = array_filter([$this->isThis($object) ? null : $object, $this->calledFirst($condition) ? null : $condition]);
 
-        if ($this->shadowsPassed($callables, $passed)) {
+        if ($this->shadowsPassed($callables, array_values($passedAsWritten))) {
             return null;
         }
 
-        // A declined read leaves neither the warnings nor the dropped arms it raised, as the call was never read.
+        // A declined read leaves neither the dropped arms it raised nor their warnings, as the call was never read.
         return DroppedUnionArms::provisional(
-            fn (): ?array => $this->conditionalValue($callables, $passed, $receiver, $scope, $engine),
+            fn (): ?array => $this->conditionalValue($callables, $object, $condition, $receiver, $scope, $engine),
             static fn (?array $value): bool => $value !== null,
         );
     }
@@ -111,15 +115,21 @@ final class ConditionableCallHandler implements ExpressionHandler
      * not passed; null where a call or the object reads less than Laravel sends.
      *
      * @param  non-empty-list<Expr>  $callables
-     * @param  list<Expr|ValueExpressionResult>  $passed
      * @param  ConditionableReceiver  $receiver
      * @return ValueExpressionResult|null
      */
-    private function conditionalValue(array $callables, array $passed, array $receiver, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
+    private function conditionalValue(
+        array $callables,
+        Expr $object,
+        ?Expr $condition,
+        array $receiver,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
         $dropped = DroppedUnionArms::dropped();
+        $passed = $this->passedArguments($callables, $object, $condition, $receiver, $scope, $engine);
         $arms = array_map(
-            fn (Expr $callable): array => ValueResult::calledValue($this->callbackValue($callable, $passed, $scope, $engine)),
+            fn (Expr $callable): array => ValueResult::calledValue($this->callbackValueOfRead($callable, $passed, $scope, $engine)),
             $callables,
         );
 
@@ -129,7 +139,7 @@ final class ConditionableCallHandler implements ExpressionHandler
         }
 
         $sendsItself = count($callables) === 1 || array_any($arms, fn (array $arm): bool => $this->mayBeNull($arm['type']));
-        $itself = $sendsItself ? $this->ownJson($receiver['classes']) : null;
+        $itself = $sendsItself ? $this->ownJson($receiver['type']->classes) : null;
 
         if ($sendsItself && $itself === null) {
             return null;
@@ -141,18 +151,48 @@ final class ConditionableCallHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a callable names a parameter after a variable the object or the value it is passed reads: the binder
-     * reads what it is passed in the callable's own scope, where that parameter hides the variable.
+     * What Laravel passes each callable, read in the caller's scope: the object with the receiver it holds, then the
+     * condition, unless a Closure, which Laravel calls first. A position no callable takes reads nothing.
      *
      * @param  non-empty-list<Expr>  $callables
-     * @param  list<Expr|ValueExpressionResult>  $passed
+     * @param  ConditionableReceiver  $receiver
+     * @return list<ReadArgument>
+     */
+    private function passedArguments(
+        array $callables,
+        Expr $object,
+        ?Expr $condition,
+        array $receiver,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): array {
+        $unread = ['value' => ValueResult::unknown(), 'receiver' => null];
+        // The object a when() runs on is never null, as a `?->` that meets null runs no call.
+        $value = $this->isThis($object) ? $this->ownJson($receiver['type']->classes) ?? ValueResult::unknown() : $engine->resolve($object);
+
+        return [
+            $this->takesPosition($callables, 0)
+                ? ['value' => [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])], 'receiver' => $receiver['type']->withShortCircuit(false)]
+                : $unread,
+            $condition !== null && ! $this->calledFirst($condition) && $this->takesPosition($callables, 1)
+                ? ['value' => $engine->resolve($condition), 'receiver' => resolve(ReceiverClassResolver::class)->resolve($condition, $scope)]
+                : $unread,
+        ];
+    }
+
+    /**
+     * Whether a callable names a parameter after a variable read by the object or the condition the call is written
+     * with, as passed: a reading the call keeps conservative, though both are read in the caller's scope.
+     *
+     * @param  non-empty-list<Expr>  $callables
+     * @param  list<Expr>  $passed
      */
     private function shadowsPassed(array $callables, array $passed): bool
     {
         $read = [];
 
         foreach ($passed as $value) {
-            foreach ($value instanceof Expr ? new NodeFinder()->findInstanceOf($value, Variable::class) : [] as $variable) {
+            foreach (new NodeFinder()->findInstanceOf($value, Variable::class) as $variable) {
                 $read[] = $variable->name;
             }
         }
@@ -178,7 +218,7 @@ final class ConditionableCallHandler implements ExpressionHandler
     {
         if ($call->var instanceof Variable && $call->var->name === 'this') {
             return $this->runsConditionable($scope->thisMemberClass($method, true)->getName(), $method)
-                ? ['classes' => [$scope->runtime->class->getName()], 'shortCircuits' => false]
+                ? ['type' => ReceiverType::of($scope->runtime->class->getName())->asRuntimeInstance(), 'shortCircuits' => false]
                 : null;
         }
 
@@ -191,7 +231,7 @@ final class ConditionableCallHandler implements ExpressionHandler
             return null;
         }
 
-        return ['classes' => $receiver->classes, 'shortCircuits' => $receiver->shortCircuits || $call instanceof NullsafeMethodCall];
+        return ['type' => $receiver, 'shortCircuits' => $receiver->shortCircuits || $call instanceof NullsafeMethodCall];
     }
 
     /**
@@ -211,31 +251,32 @@ final class ConditionableCallHandler implements ExpressionHandler
     }
 
     /**
-     * What a callback receives as its first argument: the object the call is made on, which for `$this` reads as an
-     * instance of the runtime class, since no receiver reader takes `$this` alone.
+     * Whether a callable's position can take a value: a closure declaring a parameter there or a variadic one, or any
+     * other callable, which is passed every value.
      *
-     * @param  ConditionableReceiver  $receiver
+     * @param  non-empty-list<Expr>  $callables
      */
-    private function passedObject(Expr $object, array $receiver): Expr
+    private function takesPosition(array $callables, int $position): bool
     {
-        return $object instanceof Variable && $object->name === 'this'
-            ? new New_(new FullyQualified($receiver['classes'][0]))
-            : $object;
+        return array_any($callables, static fn (Expr $callable): bool => ! ($callable instanceof ArrowFunction || $callable instanceof ClosureExpr)
+            || count($callable->params) > $position
+            || array_any($callable->params, static fn (Param $param): bool => $param->variadic));
     }
 
     /**
-     * What a callback receives as its second argument: the condition, unless a Closure, which Laravel calls first.
-     *
-     * @return Expr|ValueExpressionResult
+     * Whether the expression is `$this`.
      */
-    private function passedValue(?Expr $condition): Expr|array
+    private function isThis(Expr $expr): bool
     {
-        return $condition === null
-            || $condition instanceof ArrowFunction
-            || $condition instanceof ClosureExpr
-            || CallableForms::isFirstClassCallable($condition)
-                ? ValueResult::unknown()
-                : $condition;
+        return $expr instanceof Variable && $expr->name === 'this';
+    }
+
+    /**
+     * Whether a condition is a Closure, which Laravel calls with the object before it tests the result.
+     */
+    private function calledFirst(?Expr $condition): bool
+    {
+        return $condition instanceof ArrowFunction || $condition instanceof ClosureExpr || ($condition !== null && CallableForms::isFirstClassCallable($condition));
     }
 
     /**
@@ -294,10 +335,10 @@ final class ConditionableCallHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a callable's value may be null, which Laravel replaces with the object: a `null` arm, or `void`.
+     * Whether a callable's value may be null, which Laravel replaces with the object: a `null` or `void` member.
      */
     private function mayBeNull(string $type): bool
     {
-        return $type === 'void' || TsTypeString::hasNullArm($type);
+        return array_intersect(TsTypeString::splitTopLevelUnion($type), ['null', 'void']) !== [];
     }
 }

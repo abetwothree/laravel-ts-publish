@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use Closure;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -18,6 +19,7 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
  * transform() helpers call theirs.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ReadArgument from ParameterBinder
  *
  * @internal
  */
@@ -33,22 +35,60 @@ trait ResolvesCallbackValues
      */
     protected function callbackValue(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
+        return $this->calledCallbackValue(
+            $callback,
+            count($passed),
+            $scope,
+            $engine,
+            static function (ArrowFunction|ClosureExpr $closure) use ($passed, $scope, $engine): void {
+                ParameterBinder::bindCallbackArguments($closure, $passed, $scope, $engine);
+            },
+        );
+    }
+
+    /**
+     * The value a callback returns, as callbackValue() reads it, where its caller read each value it passes in its own
+     * scope, so a write in the callback's body to a name that value reads changes nothing
+     * (ParameterBinder::bindReadArguments()).
+     *
+     * @param  list<ReadArgument>  $passed
+     * @return ValueExpressionResult
+     */
+    protected function callbackValueOfRead(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        return $this->calledCallbackValue(
+            $callback,
+            count($passed),
+            $scope,
+            $engine,
+            static function (ArrowFunction|ClosureExpr $closure) use ($passed, $scope, $engine): void {
+                ParameterBinder::bindReadArguments($closure, $passed, $scope, $engine);
+            },
+        );
+    }
+
+    /**
+     * The value a callback returns called with $passed values, its parameters bound by $bind.
+     *
+     * @param  Closure(ArrowFunction|ClosureExpr): void  $bind
+     * @return ValueExpressionResult
+     */
+    private function calledCallbackValue(Expr $callback, int $passed, AnalysisScope $scope, ExpressionEngine $engine, Closure $bind): array
+    {
         $callback = CallableForms::heldCallable($callback, $scope);
-        $callback = $passed !== [] && CallableForms::isFirstClassCallable($callback)
-            ? CallableForms::asOneValueClosure($callback, count($passed)) ?? $callback
+        $callback = $passed !== 0 && CallableForms::isFirstClassCallable($callback)
+            ? CallableForms::asOneValueClosure($callback, $passed) ?? $callback
             : $callback;
 
         return $scope->readClaimedClosure(
             $callback,
-            count($passed),
+            $passed,
             $engine,
             fn (): array => $engine->resolve(CallableForms::invokedCall($callback)),
-            $passed === [] ? null : function () use ($callback, $passed, $scope, $engine): void {
-                if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
-                    return;
+            $passed === 0 ? null : function () use ($callback, $bind): void {
+                if ($callback instanceof ArrowFunction || $callback instanceof ClosureExpr) {
+                    $bind($callback);
                 }
-
-                ParameterBinder::bindCallbackArguments($callback, $passed, $scope, $engine);
             },
         );
     }

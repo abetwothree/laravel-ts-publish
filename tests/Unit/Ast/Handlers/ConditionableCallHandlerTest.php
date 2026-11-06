@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableDeclinedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionablePayloadEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableRebindingEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionableBoxResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -67,6 +68,7 @@ it('types Conditionable::when() and unless() as the callback, the default or the
         'box' => 'string | { name: string }',
         'box_param' => 'string | { name: string }',
         'box_itself' => '{ name: string }',
+        'void_or_default' => 'string | '.$event,
     ])->and(AnalysisWarnings::all())->toBe([]);
 
     $pinned = conditionablePayloadSent(true);
@@ -88,7 +90,27 @@ it('types Conditionable::when() and unless() as the callback, the default or the
         ->and([$pinned['mapped'][0]['post']['id'], $pinned['mapped'][1]])->toBe([7, 'big'])
         ->and([$pinned['box'], $unpinned['box']])->toBe(['boxed', 'boxed'])
         ->and([$pinned['box_param'], $unpinned['box_param']])->toBe(['box', ['name' => 'box']])
-        ->and([$pinned['box_itself'], $unpinned['box_itself']])->toBe([['name' => 'box'], ['name' => 'box']]);
+        ->and([$pinned['box_itself'], $unpinned['box_itself']])->toBe([['name' => 'box'], ['name' => 'box']])
+        ->and([$pinned['void_or_default']['post']['id'], $unpinned['void_or_default']])->toBe([7, 'b']);
+});
+
+// Laravel calls a callable with the object and the value the call holds, so a write in the callable's body to a name
+// either reads changes neither: each is read as the caller reads it. A variable a closure captures by reference reads
+// `unknown` wherever the closure may have written it, so that key declines.
+it('passes a callable the object and the value as the caller reads them', function () {
+    $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableRebindingEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
+    )->broadcastWith()), true);
+    [$pinned, $unpinned] = [$sent(true), $sent(false)];
+
+    expect(conditionableCallKeys(ConditionableRebindingEvent::class))->toBe([
+        'assigned' => 'boolean | { post: Post }',
+        'looped' => 'boolean | { post: Post }',
+        'receiver_assigned' => 'string | { id: string }',
+        'referenced' => 'unknown',
+    ])->and([$pinned['assigned'], $pinned['looped'], $pinned['referenced']])->toBe([true, true, true])
+        ->and([$unpinned['assigned']['post']['id'], $unpinned['looped']['post']['id'], $unpinned['referenced']['post']['id']])->toBe([7, 7, 7])
+        ->and([$pinned['receiver_assigned'], $unpinned['receiver_assigned']])->toBe(['n', 'n']);
 });
 
 // The event's own JSON names the post, so the key that sends it imports the model.

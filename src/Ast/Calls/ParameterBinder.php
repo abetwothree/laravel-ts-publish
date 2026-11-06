@@ -51,8 +51,8 @@ use ReflectionParameter;
  * parameters are bound.
  *
  * A callback's parameters bind to what its caller passes them: a collection's element (elementBinding()), the value
- * at their position (bindCallbackArgument()), each position in turn (bindCallbackArguments()), or the relation
- * whenLoaded() passes (loadedBinding()).
+ * at their position (bindCallbackArgument()), each position in turn (bindCallbackArguments()), what its caller read in
+ * its own scope (bindReadArguments()), or the relation whenLoaded() passes (loadedBinding()).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
@@ -62,6 +62,7 @@ use ReflectionParameter;
  * @phpstan-import-type KeyKind from ReceiverType
  * @phpstan-import-type LeftOutWrite from ReceiverType
  *
+ * @phpstan-type ReadArgument = array{value: ValueExpressionResult, receiver: ReceiverType|null}
  * @phpstan-type PassedBinding = array{model: class-string<Model>|null, classes: non-empty-list<class-string>|null,
  *     elementModel: class-string<Model>|null, value: ValueExpressionResult|null, unsaved: bool, refines: bool,
  *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true, key?: KeyKind,
@@ -294,6 +295,39 @@ final class ParameterBinder
 
             if ($binding !== null) {
                 resolve(self::class)->bindPassed([$param->var->name => $binding], $scope);
+            }
+        }
+    }
+
+    /**
+     * Bind a callback's parameters by position to what its caller read in its own scope, each as a method's parameter
+     * binds the argument passed it (passedBinding()), so nothing the callback's own body writes changes them. A
+     * variadic one collects the rest of the values, as bindCallbackArgument() does.
+     *
+     * @param  list<ReadArgument>  $passed
+     */
+    public static function bindReadArguments(ArrowFunction|ClosureExpr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): void
+    {
+        $binder = resolve(self::class);
+
+        foreach ($passed as $position => $argument) {
+            $param = $callback->params[$position] ?? null;
+
+            if ($param === null || ! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                return;
+            }
+
+            if ($param->variadic) {
+                $values = array_column(array_slice($passed, $position), 'value');
+                self::bindCallbackArgument($callback, $position, self::collectedValue($values, $engine), $scope, $engine);
+
+                return;
+            }
+
+            $binding = $binder->passedBinding($argument['value'], $argument['receiver']);
+
+            if ($binding !== null) {
+                $binder->bindPassed([$param->var->name => $binding], $scope);
             }
         }
     }
