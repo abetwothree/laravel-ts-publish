@@ -7790,14 +7790,14 @@ test('a helper read as a value publishes what its returns hold, and a finder ins
 ]);
 
 // A group that did not take part is dropped from the end of the matches, or kept as null under PREG_UNMATCHED_AS_NULL,
-// and a named group keys the matches as an object; a pattern the call computes stays unread. PHP writes a mark's MARK
-// key again over a group named MARK, which JSON.parse() reads as the last.
+// and a named group keys the matches as an object; a pattern the call computes stays unread. A mark's MARK key replaces
+// a group named MARK's on PHP 8.4 and is sent beside it on 8.5, so the JSON is compared as JSON.parse() reads it.
 it('types preg_match()\'s matches from the pattern\'s groups and its flags', function () {
     AnalysisWarnings::reset();
     $post = fn (string $title): Post => (new Post)->forceFill(['title' => $title]);
-    $sent = fn (string $title, array $query = []): string => (string) json_encode(
+    $sent = fn (string $title, array $query = []): string => (string) json_encode(sentAsJson(
         new PregMatchFlagsResource($post($title))->resolve(Request::create('/', 'GET', $query)),
-    );
+    ));
 
     expect(publishedResourceKeyTypes(PregMatchFlagsResource::class, Post::class))->toBe([
         'plain' => 'string[]',
@@ -7827,7 +7827,7 @@ it('types preg_match()\'s matches from the pattern\'s groups and its flags', fun
             .'"named_direct":{"0":"B","first":"B","1":"B"},"named_first":"B","first_matched":"B","offset":[["B",1],["B",1]],'
             .'"unmatched":["B","B",null],"named_unmatched":{"0":"B","first":"B","1":"B","second":null,"2":null},'
             .'"named_offset":{"0":["B",1],"first":["B",1],"1":["B",1]},"zero_flags":["B","B"],"all":[["B"],["B"]],'
-            .'"all_direct":[["B"],["B"]],"marked":{"0":["B",1],"1":["B",1],"MARK":"mk"},"failing":["B","B"],"mark_group":{"0":"B","MARK":"B","1":"B","MARK":"m"},'
+            .'"all_direct":[["B"],["B"]],"marked":{"0":["B",1],"1":["B",1],"MARK":"mk"},"failing":["B","B"],"mark_group":{"0":"B","MARK":"m","1":"B"},'
             .'"mark_text":["B","B"],"computed":[]}')
         ->and($sent('zzz', ['pattern' => 1]))->toBe('{"plain":[],"plain_direct":[],"named":[],"named_direct":[],"named_first":null,'
             .'"first_matched":"none","offset":[],"unmatched":[],"named_unmatched":[],"named_offset":[],"zero_flags":[],"all":[[],[]],'
