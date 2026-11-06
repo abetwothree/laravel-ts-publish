@@ -816,9 +816,10 @@ throws if a call would: `cut()` holds the lifted guards again for a property typ
 each, so an answer it shaped is reused only where the same guards are lifted. A lifted guard counts as not held, so an
 answer computed under the lift is never reused where that guard is held. `reentries()` counts each entry into a lifted
 guard, and each reuse of an answer that entered one, so a caller can tell a read that went through an analysis under way
-whatever was read first. `seeding()` marks a guard that answers a seed in place of its cut: no answer that met it
-outside the check is reused there, and one computed there is reused only until the check ends. `computations()` counts
-the answers a run computes, which a test bounds.
+whatever was read first. `cuts()` counts, the same way, each read that met a guard already on the stack, which
+`LaravelTsPublish` compares around a caster's `get()` read; `reset()` keeps both counts. `seeding()` marks a guard that
+answers a seed in place of its cut: no answer that met it outside the check is reused there, and one computed there is
+reused only until the check ends. `computations()` counts the answers a run computes, which a test bounds.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
 `ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard

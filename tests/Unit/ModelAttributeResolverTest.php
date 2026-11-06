@@ -39,12 +39,16 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleReadingGetProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralNullCycleProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
@@ -1024,6 +1028,38 @@ test('a not-null column cast to a class whose get() never provably returns null 
     'a get() reading the raw attribute with a default' => ['quantity', '"k0"', '"k7"'],
     'a get() reading its own cast on another model' => ['is_active', '"gz"', '"g7"'],
     'a get() the engine cannot read, which may send a null as before' => ['is_featured', 'null', '"o7"'],
+]);
+
+// A read that meets a cast already under way proves nothing, and a reused answer counts that cut again, so a cast's
+// type is the same whichever model is published first. A serialize() reading a nullable column keeps its null.
+test('a cast whose reading meets itself publishes the same type whichever model is published first', function (array $models) {
+    $types = [];
+
+    foreach ($models as [$model, $column]) {
+        $types[class_basename($model).'.'.$column] = (new ModelTransformer($model))->data()->columns[$column]['type'];
+    }
+
+    ksort($types);
+    $sent = fn (string $model, mixed $value): string => json_encode((new $model)->setRawAttributes(['name' => $value])->toArray()['name']);
+
+    expect($types)->toBe([
+        'CycleReadingGetProduct.name' => 'string',
+        'CycleSerializeWarehouse.name' => 'string | null',
+        'CycleWarehouse.name' => 'string',
+        'LiteralNullCycleProduct.name' => 'string',
+    ])
+        ->and([$sent(CycleReadingGetProduct::class, null), $sent(CycleReadingGetProduct::class, '7')])->toBe(['"sy"', '"s7"'])
+        ->and([$sent(CycleSerializeWarehouse::class, null), $sent(CycleWarehouse::class, null)])->toBe(['"z"', '"cc"'])
+        ->and([$sent(LiteralNullCycleProduct::class, null), $sent(LiteralNullCycleProduct::class, '7')])->toBe(['null', '"l7"']);
+})->with([
+    'the models whose get() reads a cycle first' => [[
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'],
+        [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
+    ]],
+    'the models whose serialize() closes a cycle first' => [[
+        [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'],
+    ]],
 ]);
 
 test('a not-null column cast to a class whose get() provably returns null publishes the null it sends', function (string $column, string $sentForValue) {

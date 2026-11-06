@@ -26,6 +26,7 @@ use LogicException;
  *     dropped: int,
  *     unreadSpreads: int,
  *     reentries: int,
+ *     cuts: int,
  *     resources: int,
  *     models: int,
  *     enums: int,
@@ -39,6 +40,7 @@ use LogicException;
  *     dropped: int,
  *     unreadSpreads: int,
  *     reentries: int|null,
+ *     cuts: int,
  *     resources: int,
  *     models: int,
  *     enums: int,
@@ -63,6 +65,9 @@ final class AnalysisMemo
 
     /** How often a read entered a guard a re-entry under way lifted, or reused an answer that entered one. */
     private int $reentries = 0;
+
+    /** How often a read met a guard already on the stack and was cut short there, or reused an answer that was. */
+    private int $cuts = 0;
 
     /** How many answers this run computed rather than reused. */
     private int $computations = 0;
@@ -99,6 +104,8 @@ final class AnalysisMemo
         }
 
         if (isset($this->active[$key])) {
+            $this->cuts++;
+
             return false;
         }
 
@@ -187,6 +194,15 @@ final class AnalysisMemo
     public function reentries(): int
     {
         return $this->reentries;
+    }
+
+    /**
+     * How often a read has met a guard already on the stack, or reused an answer that did; a caller compares two
+     * readings to tell whether a read went through a cycle. reset() keeps it, as a caller may compare across one.
+     */
+    public function cuts(): int
+    {
+        return $this->cuts;
     }
 
     /**
@@ -303,6 +319,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped(),
             'unreadSpreads' => UnreadSpreads::count(),
             'reentries' => $this->reentries,
+            'cuts' => $this->cuts,
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
             'enums' => $enums,
@@ -393,6 +410,7 @@ final class AnalysisMemo
         DroppedUnionArms::replay($entry['dropped']);
         UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
+        $this->cuts += $entry['cuts'];
 
         $innermost = array_key_last($this->frames);
 
@@ -440,6 +458,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],
             'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
+            'cuts' => $this->cuts - $frame['cuts'],
             'resources' => $frame['resources'],
             'models' => $frame['models'],
             'enums' => $frame['enums'],
