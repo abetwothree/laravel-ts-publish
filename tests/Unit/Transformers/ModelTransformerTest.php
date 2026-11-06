@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\StatusLegsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
@@ -796,6 +797,16 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
 
         expect($data->mutators['either_status']['type'])->toBe('EnumsStatusType | CrmStatusType')
             ->and($data->enumMutators)->toBeEmpty();
+    });
+
+    test('a cast\'s list<Dto> keeps the DTO\'s enum members with their imports', function () {
+        $data = (new ModelTransformer(StatusLegsPost::class))->data();
+        $post = (new StatusLegsPost)->setRawAttributes(['content' => '[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]']);
+
+        expect($data->columns['content']['type'])->toBe('{ code: string; status: StatusType; priority: PriorityType | null }[]')
+            ->and(array_merge(...array_values($data->typeImports)))->toContain('StatusType', 'PriorityType')
+            ->and(json_encode($post->toArray()['content']))
+            ->toBe('[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]');
     });
 
     test('uses aliased const names for Deal model enum columns', function () {

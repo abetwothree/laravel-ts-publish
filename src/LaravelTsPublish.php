@@ -217,8 +217,8 @@ class LaravelTsPublish
     private bool $shapesCarryImports = true;
 
     /**
-     * Whether a docblock shape keeps a member naming a class, by the class behind each of its tokens. Off where the
-     * result has no class channel to carry it, as a value object's shape has none; see withoutShapeClasses().
+     * Whether a shape keeps a member naming a class, by the class behind each of its tokens. Off where the result has
+     * no class channel to carry it, as a value object's own docblock shape has none; see withoutShapeClasses().
      */
     private bool $shapesCarryClasses = true;
 
@@ -414,7 +414,7 @@ class LaravelTsPublish
             && ! is_a($phpType, Model::class, true)
             && is_a($phpType, Arrayable::class, true)
         ) {
-            $shape = $this->arrayableShapeType($phpType, 'toArray');
+            $shape = $this->shapeChannels(fn (): ?array => $this->arrayableShapeType($phpType, 'toArray'), enumsInTurn: true);
 
             return [...$result, ...($shape ?? ['type' => 'unknown[]']), 'keepsKeys' => true];
         }
@@ -463,7 +463,7 @@ class LaravelTsPublish
             && ! is_a($phpType, JsonSerializable::class, true)
             && $this->hasFullyTypedPublicProperties($phpType)
         ) {
-            $shape = $this->publicPropertyShapeType($phpType);
+            $shape = $this->shapeChannels(fn (): ?array => $this->publicPropertyShapeType($phpType), enumsInTurn: true);
 
             if ($shape !== null) {
                 return [...$result, ...$shape, 'keepsKeys' => true];
@@ -473,7 +473,9 @@ class LaravelTsPublish
         // 5d. A __toString() class json_encode() writes as its public properties, `{}` for none, or any keys where an
         //     instance can gain some. Any other class keeps its token, since the same rule would type a sentinel such
         //     as MissingValue, which a resource strips before it encodes.
-        $stringableObject = class_exists($phpType) ? $this->stringableObjectType($phpType) : null;
+        $stringableObject = class_exists($phpType)
+            ? $this->shapeChannels(fn (): ?array => $this->stringableObjectType($phpType), enumsInTurn: true)
+            : null;
 
         if ($stringableObject !== null) {
             return [...$result, ...$stringableObject, 'keepsKeys' => true];
@@ -1951,7 +1953,7 @@ class LaravelTsPublish
         $this->shapeExpansionStack[$key] = true;
 
         try {
-            // A value object's shape has no class channel, so a member naming a class stays `unknown`.
+            // A value object's own docblock shape has no class channel, so a member naming a class stays `unknown`.
             [$tuple, $shape] = $this->withoutShapeClasses(function () use ($fqcn, $method): array {
                 $reflection = new ReflectionMethod($fqcn, $method);
                 $tuple = $this->docblockReturnTupleType($reflection);
@@ -1986,7 +1988,8 @@ class LaravelTsPublish
 
     /**
      * Build an inline TS object shape from a class's public, non-static properties — the fallback for
-     * an Arrayable/JsonSerializable DTO with no `@return array{...}` shape.
+     * an Arrayable/JsonSerializable DTO with no `@return array{...}` shape — with the class behind each token its
+     * members and keys spell, as a docblock shape carries them.
      *
      * Reuses $shapeExpansionStack under a `::__properties` key to guard against infinite recursion.
      *
@@ -2006,36 +2009,35 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionClass($fqcn);
             $parts = [];
-            $imports = [];
+            $pieces = [];
 
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
                 if ($property->isStatic()) {
                     continue;
                 }
 
-                $member = $this->withoutShapeClasses(fn (): array => $this->shapeMemberTypes($reflection, $property));
-                $imports[] = $member['customImports'];
+                $member = $this->shapeMemberTypes($reflection, $property);
 
                 // json_encode() omits a typed property that was never assigned; a promoted or defaulted
                 // one is always present.
                 $optional = ! $property->hasDefaultValue() && ! $property->isPromoted();
+                $key = $property->getName().($optional ? '?' : '');
+                $parts[] = $key.': '.$member['type'];
 
-                $parts[] = $property->getName().($optional ? '?' : '').': '.$member['type'];
+                // A key spelled like a class's name is a token too.
+                array_push($pieces, ['type' => $key, 'customImports' => []], $member);
             }
         } finally {
             unset($this->shapeExpansionStack[$guard]);
         }
 
-        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
+        return $parts === [] ? null : $this->shapeOfPieces('{ '.implode('; ', $parts).' }', $pieces);
     }
 
     /**
      * The type one public property of a value object publishes in its shape: its docblock's, as
      * PropertyDocblockTypeReader::tag() finds it, where that says more than its declaration, else the declaration, each
-     * kept only where its custom imports bring in every name it spells.
-     *
-     * Only an override brings custom imports, so a member spelling a model's, an enum's or another class's own name
-     * stays `unknown`.
+     * kept as keptShapeMember() keeps a docblock shape's member, with the class behind each token of a class's name.
      *
      * @param  ReflectionClass<object>  $class
      * @return ShapeTypeInfo
@@ -2050,15 +2052,9 @@ class LaravelTsPublish
         );
 
         // A docblock type the shape cannot import yields to the declaration, as in PropertyDocblockTypeReader::read().
-        foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
-            $shape = $this->shapeTypeInfo($info);
+        $members = array_map($this->docblockTypeInfo(...), $read === $declared ? [$declared] : [$read, $declared]);
 
-            if ($this->shapeKeeps($shape)) {
-                return $shape;
-            }
-        }
-
-        return ['type' => 'unknown', 'customImports' => []];
+        return $this->keptShapeMember(array_find($members, $this->shapeKeeps(...)) ?? $members[0]);
     }
 
     /**
@@ -2730,7 +2726,7 @@ class LaravelTsPublish
      */
     protected function docblockTypeInfo(array $info): array
     {
-        // A reader that keeps only the type string, or a value object's shape, has no use for the classes behind it.
+        // A reader that keeps only the type string, or a value object's own docblock shape, has no use for the classes.
         $tokens = $this->shapesCarryClasses ? $this->exportedTokenFqcns($info) : [];
 
         // Only an override's token, whose class is null, says that an import of a class's name binds that token alone.
@@ -3204,15 +3200,19 @@ class LaravelTsPublish
      * A resolved type's readers carry a model's or an enum's class and no token's null, so a shape naming any other
      * class, such as an API resource, or an override spelled like a class beside it, is read with no class instead.
      *
+     * With `$enumsInTurn`, so is one whose same-named enums alternate, since this lists each enum once.
+     *
      * @param  Closure(): (ShapeTypeInfo|null)  $read
      * @return TypeScriptTypeInfo|null
      */
-    private function shapeChannels(Closure $read): ?array
+    private function shapeChannels(Closure $read, bool $enumsInTurn = false): ?array
     {
         $shape = $read();
         $carried = fn (?string $fqcn): bool => $fqcn !== null && (enum_exists($fqcn) || is_a($fqcn, Model::class, true));
 
-        if ($shape !== null && ! array_all($shape['tokenFqcns'] ?? [], $carried)) {
+        if ($shape !== null
+            && (! array_all($shape['tokenFqcns'] ?? [], $carried)
+                || ($enumsInTurn && ! TokenSlots::enumsTakeTurns($shape['type'], $shape['tokenFqcns'] ?? [])))) {
             $shape = $this->withoutShapeClasses($read);
         }
 
@@ -3268,9 +3268,10 @@ class LaravelTsPublish
         $classTokens = $info['classTokenFqcns'] ?? [];
 
         if (! in_array(null, $classTokens, true)) {
-            $fqcns = array_values(array_filter([...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']], $exported));
+            $queued = [...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']];
+            $fqcns = array_values(array_filter($queued, $exported));
 
-            return $fqcns === []
+            return $fqcns === [] || ($classTokens !== [] && count($fqcns) < count($queued))
                 ? []
                 : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
         }
@@ -3328,8 +3329,8 @@ class LaravelTsPublish
     }
 
     /**
-     * Run a docblock read whose result has no class channel, such as a value object's shape, so a shape keeps no member
-     * naming a class and the reader answers as it did before shapes carried classes.
+     * Run a docblock read whose result has no class channel, such as a value object's own docblock shape, so a shape
+     * keeps no member naming a class and the reader answers as it did before shapes carried classes.
      *
      * @template T
      *

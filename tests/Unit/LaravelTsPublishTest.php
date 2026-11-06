@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -101,12 +102,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeToneHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeHolder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\OwnedBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Person;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AlternatingStatuses;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooselySerializedTally;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NoteBoard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableCallback;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StatusLeg;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithModelDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOverriddenUnionDocblock;
@@ -142,6 +145,7 @@ use Illuminate\Support\Str;
 use NamespacedUseFixture\First;
 use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
@@ -168,6 +172,7 @@ use Workbench\App\Packages\Ui\Panel as UiPanel;
 use Workbench\App\Packages\Ui\Pennies as UiPennies;
 use Workbench\App\Packages\Ui\Plain as UiPlain;
 use Workbench\App\Packages\Ui\Spark as UiSpark;
+use Workbench\App\Services\HandoverRoster;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\CapabilitiesDto;
 use Workbench\App\ValueObjects\Coordinate;
@@ -940,11 +945,13 @@ describe('Arrayable property-shape inference', function () {
         expect($result['type'])->toBe('{ visible: string }');
     });
 
-    test('a property typed as an unimportable class degrades that property to unknown', function () {
-        // No import channel exists for a bare model class token inside an inline object shape.
+    test('a property typed as a published model keeps the model, with its class on the channel', function () {
         $result = $this->service->toTsType(ArrayableWithClassPropertyDto::class);
+        $sent = sentAsJson(new ArrayableWithClassPropertyDto('a', new User()->forceFill(['name' => 'Ada']))->toArray());
 
-        expect($result['type'])->toBe('{ label: string; owner: unknown }');
+        expect($result)->toMatchArray(['type' => '{ label: string; owner: User | null }', 'classFqcns' => [User::class]])
+            ->and($sent->owner)->name->toBe('Ada')
+            ->and(sentAsJson(new ArrayableWithClassPropertyDto()->toArray())->owner)->toBeNull();
     });
 
     test('a property typed as the class itself terminates instead of exhausting memory', function () {
@@ -1035,10 +1042,11 @@ describe("an overridden member of a value object's shape", function () {
         ],
     ]);
 
-    test('keeps today\'s answer for a member no override answers, and a documented list', function () {
+    test('keeps a published model member and a documented list of it beside the overridden members', function () {
         expect($this->service->toTsType(OwnedBoard::class))->toMatchArray([
-            'type' => '{ owner: unknown; owners: unknown[]; node: UiNode; board: { panel: UiNode; chart: ChartType; '
+            'type' => '{ owner: User; owners: User[]; node: UiNode; board: { panel: UiNode; chart: ChartType; '
                 .'gauge: UiGauge | null; total: UiAmount; charts: ChartType[] }; tags: string[] }',
+            'classFqcns' => [User::class],
             'customImports' => [
                 '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
                 ComposedClassTypes::marker(UiChart::class) => ['ChartType'],
@@ -1093,6 +1101,35 @@ describe("an overridden member of a value object's shape", function () {
         expect($this->service->toTsType($holder::class))->toMatchArray([
             'type' => '{ either: unknown; kind: unknown; chart: ChartType }',
             'customImports' => [ComposedClassTypes::marker(UiChart::class) => ['ChartType']],
+        ]);
+    });
+
+    test('keeps a model and an enum member with their classes, nested and nullable', function () {
+        expect($this->service->toTsType(StatusLeg::class))->toMatchArray([
+            'type' => '{ code: string; status: StatusType; priority: PriorityType | null }',
+            'enumFqcns' => [Status::class, Priority::class],
+        ])->and(sentAsJson(new StatusLeg('A', Status::Published)))->status->toBe(1)->priority->toBeNull();
+    });
+
+    // A resolved type lists each enum once, so it cannot say that the third token is the first enum's again.
+    test('keeps unknown for each member where two same-named enums alternate', function () {
+        expect($this->service->toTsType(AlternatingStatuses::class))->toMatchArray([
+            'type' => '{ first: unknown; crm: unknown; last: unknown }',
+            'enumFqcns' => [],
+        ])->and(json_encode(new AlternatingStatuses))->toBe('{"first":0,"crm":"lead","last":null}');
+    });
+
+    // Dropping the unpublished model from the queue would hand its token to the published one spelled alike.
+    test('keeps unknown for a list of either of two same-named models when one is not published', function () {
+        PublishedModelRegistry::register([User::class]);
+
+        expect($this->service->toTsType(HandoverRoster::class))->toMatchArray(['type' => '{ members: unknown[] }', 'classFqcns' => []]);
+
+        PublishedModelRegistry::reset();
+
+        expect($this->service->toTsType(HandoverRoster::class))->toMatchArray([
+            'type' => '{ members: User[] | User[] }',
+            'classTokenFqcns' => [User::class, CrmUser::class],
         ]);
     });
 

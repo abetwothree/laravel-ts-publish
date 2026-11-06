@@ -195,9 +195,8 @@ public non-static property with every one of them typed, it publishes its proper
 Know these five points before you change it:
 
 - **Publication**: 5c never checks whether the class has a published file. Its motivating classes have none, so a
-  bare class token would have no file to import from. A published class, such as a broadcast event, would inline too
-  if `toTsType()` met it. `BroadcastEventTransformer` calls `toTsType()` for enums only, so no published class reaches
-  5c, and no test would catch one that did.
+  bare class token would have no file to import from. A published class, such as a broadcast event, inlines too where
+  `toTsType()` meets it, as a payload's `new PostPublishedEvent(...)` does (`PostOwnJsonEvent`).
 - **Every property typed**: load-bearing. It keeps `Illuminate\Database\Eloquent\Casts\Attribute`, whose public
   properties are untyped, on step 5. `attributeDocblockReturnTypes()` recognizes a bare `@return Attribute` by
   `classFqcns === [Attribute::class]`, which an inlined shape would break.
@@ -227,17 +226,18 @@ read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeSc
 
 ## A shape keeps a member only where its own imports cover it
 
-A shape carries custom imports but no FQCN channel, so a member keeps its type only where the custom imports it brought
-itself bind every name it spells (`TsTypeString::importsCover()`), and no model, enum or other class in it publishes
-under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an import's local name through
-`ImportMaps::localNames()`, so `X as Y` binds `Y`. An override keeps its type and its import, a composed class's marker
-included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
-test stops an enum spelled like a composed class beside it from taking that class's import.
+A member keeps its type only where the custom imports it brought itself bind every name it spells
+(`TsTypeString::importsCover()`) but the tokens a class stands behind, and no model, enum or other class in it publishes
+under one of those names. Both read an import's local name through `ImportMaps::localNames()`, so `X as Y` binds `Y`.
+An override keeps its type and its import, a composed class's marker included. The collision test stops an enum
+spelled like a composed class beside it from taking that class's import.
 
-A docblock shape is the exception: each member names the class behind each token of a class's name (`tokenFqcns`, one
-slot per token in print order, null for an override's), so a member naming a model, an enum or a published API resource
-keeps it at any depth, nested or in a container (`keptShapeMember()`). A value object's shape and a reader that keeps
-only the type string read with no class (`withoutShapeClasses()`).
+A docblock shape and a value object's public-property shape (`shapeMemberTypes()`) name the class behind each token of a
+class's name (`tokenFqcns`, one slot per token in print order, null for an override's), so a member naming a published
+model, an enum or a published API resource keeps it at any depth, nested or in a container (`keptShapeMember()`). A
+value object's own `toArray()` or `jsonSerialize()` docblock shape and a reader that keeps only the type string read
+with no class (`withoutShapeClasses()`), so a model or an enum there is `unknown` and its siblings keep their types.
+Where a class two tokens spell alike is not published, the member keeps neither (`exportedTokenFqcns()`).
 
 A union keeps its arms' merged imports unless an arm its own imports and classes do not cover spells a name a sibling
 arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override spelled `User`, keeps both, its slots
@@ -246,8 +246,10 @@ arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override s
 
 A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
 other class, or holds a null, a literal's or a key's spelled like a class's name included, is read there with no class
-(`shapeChannels()`). Shared data, a metadata companion and an API resource's `@return` fill read `tokenFqcns` from
-`docblockReturnShapeInfos()` ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
+(`shapeChannels()`). Its enum channel lists each enum once, so a value object's shape whose two same-named enums
+alternate, as `AlternatingStatuses` does, is read with no class too (`TokenSlots::enumsTakeTurns()`). Shared data, a
+metadata companion and an API resource's `@return` fill read `tokenFqcns` from `docblockReturnShapeInfos()`
+([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
 
 `resolveDocblockTypePart()` alone reads an intersection of sealed keyed shapes with no key in common, such as
 `array{a: int}&array{owner: User}`, as the one object it sends, `{ a: number; owner: User }` (`intersectedShape()`). A
@@ -255,7 +257,7 @@ nested one, and one in `share()`'s or a metadata provider's `@return`, read as b
 
 These readers apply it, each with the scope and the fallback its page gives:
 
-- a value object's shape, steps 5a and 5c ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
+- a value object's shape, steps 5a, 5c and 5d ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
 - a docblock `array{…}` shape, nested in a container too ([Generic containers](#generic-containers));
 - the `@return` an API resource's method fills from
   ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
@@ -124,6 +125,22 @@ final class TokenSlots
         }
 
         return $slots;
+    }
+
+    /**
+     * Whether a channel listing each enum once replays a declaration's enum slots as aliasing walks it: each token of a
+     * name takes the next enum spelled so, the last covering the rest. Two that share a name and alternate do not.
+     *
+     * @param  Slots  $slots
+     */
+    public static function enumsTakeTurns(string $type, array $slots): bool
+    {
+        $enumSlots = array_values(array_filter($slots, static fn (?string $fqcn): bool => $fqcn !== null && enum_exists($fqcn)));
+        $enums = array_values(array_unique($enumSlots));
+        $names = array_map(self::typeName(...), $enums);
+
+        return count(array_unique($names)) === count($names)
+            || new ClassTokenQueue($enums, self::typeName(...), ValueResult::enumSiblingNames(...))->take($type) === $enumSlots;
     }
 
     /**

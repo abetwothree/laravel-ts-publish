@@ -5,9 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 test('declaredTokens() gives each own name\'s token the next slot, an unread one\'s too, and another name\'s none', function () {
     $tokens = TokenSlots::declaredTokens("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']);
@@ -67,6 +70,20 @@ test('joinedSlots() of a declaration\'s arms gives back its slots', function (st
     'a template literal holding a pipe before the model' => ['`a|User` | User', [null, User::class]],
     'a class in a template placeholder beside a pipe in its text' => ['`${User}|x` | Post | User', [User::class, Post::class, null]],
     'no class' => ['string | number', []],
+]);
+
+// Aliasing walks one queue per name, the last entry covering every later token, and the channel lists each enum once.
+test('enumsTakeTurns() says whether a channel listing each enum once replays the enum slots', function (string $type, array $slots, bool $replays) {
+    expect(TokenSlots::enumsTakeTurns($type, $slots))->toBe($replays);
+})->with([
+    'no enum' => ['{ u: User }', [User::class], true],
+    'one enum, twice' => ['{ a: StatusType; b: StatusType }', [Status::class, Status::class], true],
+    'two enums, apart by name' => ['{ a: StatusType; p: PriorityType }', [Status::class, Priority::class], true],
+    'two same-named enums, each once' => ['{ a: StatusType; b: StatusType }', [Status::class, CrmStatus::class], true],
+    'the second one again, last' => ['{ a: StatusType; b: StatusType; c: StatusType }', [Status::class, CrmStatus::class, CrmStatus::class], true],
+    'the first one again, last' => ['{ a: StatusType; b: StatusType; c: StatusType }', [Status::class, CrmStatus::class, Status::class], false],
+    'the first one twice, then the second' => ['StatusType | StatusType | StatusType', [Status::class, Status::class, CrmStatus::class], false],
+    'a model between them' => ['{ a: StatusType; u: User; b: StatusType }', [Status::class, User::class, CrmStatus::class], true],
 ]);
 
 test('typeLeftToImports() blanks each read token a class stands behind, leaving an override\'s and a literal\'s', function () {

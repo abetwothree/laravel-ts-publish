@@ -548,13 +548,19 @@ resource with no backing model for two or more models still publishes `null` for
 
 ### A shape whose values name a class can lose some of them
 
-A value object's own shape carries an override's import, but no model's or enum's. It keeps a member naming a class or
-an enum with an override, such as `chart: Chart`, or a value object whose shape keeps one, with its imports, and
-degrades one leaf naming any other class, such as a model: a `toArray()` documented `@return array{owner: User}`
-publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` → `[unknown, number]`, while `Record<string, User>`
-has nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method
-a native return type that names the class. A member whose union spells a model or enum beside an override, such as
-`Person|User`, is `unknown` too.
+A value object's own `toArray()` or `jsonSerialize()` docblock shape carries an override's import, but no model's or
+enum's. It keeps a member naming a class or an enum with an override, such as `chart: Chart`, or a value object whose
+shape keeps one, with its imports, and degrades one leaf naming any other class, such as a model: a `toArray()`
+documented `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
+`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property with
+an import-aware `#[TsCasts]`, or give the method a native return type that names the class. A member whose union spells
+a model or enum beside an override, such as `Person|User`, is `unknown` too.
+
+A value object's public properties keep a published model or an enum with its import, but read as that docblock shape
+does where a member names an API resource or spells an override like the model or enum beside it, or where two enums
+sharing a name alternate: `public Status $first; public CrmStatus $crm; public ?Status $last` publishes each `unknown`,
+since a resolved type lists each enum once. A member spelling two same-named models, one of them unpublished, is
+`unknown` too.
 
 A helper read as a value publishes what the same literal publishes in place, but for a member whose class publishes
 under a name another member's override imports, such as an enum typed `ChartType` beside a composed `Chart`: the key
@@ -565,8 +571,8 @@ Put the two under different keys.
 
 A docblock shape keeps a model or an enum at any depth, with its import. Read by an API resource's helper, a property's
 `@var` or a model's accessor, though, a shape that also names any other class, such as an API resource, or spells an
-override like the model or enum beside it, such as `either: Person|User`, is read as a value object's shape is, each
-leaf naming a class `unknown`. So is one where a literal or a key spells the class's name:
+override like the model or enum beside it, such as `either: Person|User`, is read with no class, each leaf naming a
+class `unknown`. So is one where a literal or a key spells the class's name:
 `array{kind: 'User', r: User}` publishes `{ kind: 'User'; r: unknown }`, and `array{User: int, owner: User}` publishes
 `{ User: number; owner: unknown }`. `share()`'s `@return` keeps them all, as does an API resource's `toArray()` or
 spread helper where its `@return` fills a key the body left vague, and a metadata provider's fails the publish on any
@@ -594,8 +600,8 @@ the key with an import-aware `#[TsCasts]`.
 
 A key a spread helper's or props helper's `@return array{…}` fills keeps the class behind each token only where the
 helper is spread at the top level of `toArray()` or of an Inertia page's props. Spread inside a nested literal, a local
-or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads as a value object's shape does:
-each leaf naming a model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a
+or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads with no class: each leaf naming a
+model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a
 literal's text stays. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, and `array{k: User}` to
 `{ k: unknown }`, as before fills carried classes. An enum-only or API-resource-only fill folds the same way,
 `array{s: Status}` to `{ s: unknown }`, as does each arm of a ternary of spreads,
