@@ -561,22 +561,24 @@ A `$x = …;` nested in a block binds `$x` past its statement, to the end of tha
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), as a
 top-level `@var` types its write's value in a join past its span, a bound name's block-final write's included; where the
-value names no class, the tag's classes join as `tagOnly`, so a read they cannot answer keeps the binding's reading and
-warns ([Receiver types § Property access on a receiver](receiver-types.md#property-access-on-a-receiver)). A block may
-not run and a loop runs it again, so a read before the write or past the block stays unbound, as does a name a reference
-can write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on
-every path, the join below binds it. A name a parameter or a seeded binding holds takes its gaps from the join below
-instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own `$x` never reads
-its enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up to the closure's
-own first `$x = …` of it.
+value names no class, the tag's classes join as `tagOnly`, a `static`, `self` or `parent` tag's included, so a read they
+cannot answer keeps the binding's reading and warns; a tag over `$this` only spells the subject's class, so its reading
+by declaration stands
+([Receiver types § Property access on a receiver](receiver-types.md#property-access-on-a-receiver)). A block may not run
+and a loop runs it again, so a read before the write or past the block stays unbound, as does a name a reference can
+write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on every
+path, the join below binds it. A name a parameter or a seeded binding holds takes its gaps from the join below instead.
+A body drops the outer gaps of each name it writes that holds no binding, so a closure's own `$x` never reads its
+enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up to the closure's own
+first `$x = …` of it.
 `AnalysisScope::copyBindings()` passes a closure parameter the value of the gap one write opened, a block local's or a
 parameter's, and in a gap the old binding may still hold past, that binding joined with the gap's writes.
 
 A name with no binding that the body writes more than once is joined statement by statement (`bindJoinedLocals()`), each
-span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all nested `$x
-= …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. Past an `if`
-whose every branch, `else` included, ends with its own `$x = …;` or such an `if`, or always leaves the function, a read
-takes only those branches' values, a local written once there included (`branchValues()`); a value that may be a
+span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all nested
+`$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. Past an
+`if` whose every branch, `else` included, ends with its own `$x = …;` or such an `if`, or always leaves the function, a
+read takes only those branches' values, a local written once there included (`branchValues()`); a value that may be a
 callable (`HeldCallables::mayHold()`, a variable it cannot follow counted) leaves it unbound, since a returned Closure
 object reads apart. A member read leaves out a joined `null`, as it does a ternary's `null` arm, and a write naming no
 class beside a value that names one (`ReceiverClassResolver::fromGap()`), which warns where it publishes a type and no
@@ -596,8 +598,8 @@ binding's or its own `$x = …;`'s, still reaches the read, and an old value it 
 closure parameter nothing binds, as `transform($this->opaque(), …)` leaves its callback's, walks from the value its call
 passed, which has no type, once a nested write needs the join; `AnalysisScope::$passedValues` keeps that argument, which
 no reader binds from, for the join to name. `VariableWrites` classifies each write once, as its scan records it. The
-cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s .
-'x'` reads the value `$s` held before.
+cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so
+`$s = $s . 'x'` reads the value `$s` held before.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
@@ -905,11 +907,14 @@ Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Wher
 and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
 when nothing was dropped. The three join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
 the read, so beside a typed arm it warns that the published type may not admit every value the read sends. A receiver's
-join publishes no type of its own, so `ReceiverPropertyFetchHandler`, `ReceiverMethodCallHandler` and
-`VariableHandler`'s read of a bound parameter's attribute warn through `ReceiverClassResolver::warnOfLeftOut()` once
-their read publishes one: of a left-out write no rule types, and through `warnOfUnnamedObject()` of one typed as an
-object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could answer,
-and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither warns.
+join publishes no type of its own, so a read through it warns through `ReceiverClassResolver::warnOfLeftOut()` once it
+publishes one: `ReceiverPropertyFetchHandler`'s and `ReceiverMethodCallHandler`'s read of any receiver holding
+`leftOut`, and `VariableHandler`'s read of a bound parameter's attribute only where the parameter is in
+`AnalysisScope::$leftOutParameters`, bound from a joined collection's element by a receiver's `map()` or a `collect()`
+pipeline's callback. Each warns of a left-out write no rule types, and through `warnOfUnnamedObject()` of one typed as
+an object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could
+answer, and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither
+warns.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
 `provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the

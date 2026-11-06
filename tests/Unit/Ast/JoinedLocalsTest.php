@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedCollectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementClassVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementPostVarResource;
@@ -14,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedMapResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedOpenModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedRelativeTagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedTopLevelVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GetterTitleUser;
@@ -331,6 +333,34 @@ test('a callback mapping a joined collection warns of the write the join left ou
         ->toBe(['contents' => 'string[]', 'sorted_contents' => 'string[]'])
         ->and(joinedDropWarnings())->toBe(['27 $this->opaque($this->comments)'])
         ->and(joinedSends(JoinedMapResource::class, true))->toBe(['contents' => ['hi'], 'sorted_contents' => ['hi']]);
+});
+
+// A `static`, `self` or `parent` tag gives way like any other where the resource it names cannot answer the member.
+test('a parameter\'s last-statement relative @var that declines the member keeps the old model\'s member', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedRelativeTagResource::class, Post::class))->toBe([
+        'static_name?' => 'string',
+        'self_name?' => 'string',
+        'parent_name?' => 'string',
+        'static_key?' => 'number',
+        'static_title?' => 'string | null',
+    ])
+        ->and(joinedDropWarnings())->toBe(['29 $this->opaque($a)', '37 $this->opaque($a)', '45 $this->opaque($a)'])
+        ->and(joinedSends(JoinedRelativeTagResource::class, true))
+        ->toBe(['static_name' => 'Ann', 'self_name' => 'Ann', 'parent_name' => 'Ann', 'static_key' => 3, 'static_title' => null]);
+});
+
+// collect() wraps the joined collection, so its callback's parameter takes the element with what the join left out.
+test('a collect() pipeline over a joined collection warns of the write the join left out', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedCollectResource::class, Post::class))->toBe([
+        'contents' => 'string[] | Record<string, string>',
+        'items' => '{ c: string }[] | Record<string, { c: string }>',
+    ])
+        ->and(joinedDropWarnings())->toBe(['27 $this->opaque($this->comments)'])
+        ->and(joinedSends(JoinedCollectResource::class, true))->toBe(['contents' => ['hi'], 'items' => [['c' => 'hi']]]);
 });
 
 // Each of these models may answer the member through an override or a subclass, so the read stays unknown.

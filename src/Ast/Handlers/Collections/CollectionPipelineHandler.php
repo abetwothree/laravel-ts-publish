@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,7 @@ use ReflectionMethod;
  * callable maps any array `$arg` holds, keeping its keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @internal
  */
@@ -88,6 +90,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         $listed = $this->isList($rootResult['type']);
         $keys = $walk['keys'] ? $rootResult : null;
         $map = $walk['map'];
+        $element = $walk['keys'] ? null : $this->elementReceiver($items, $scope);
         $mapped = fn (bool $arrayedItems): ?array => $map === null ? $rootResult : $this->mappedItems(
             $map,
             $rootResult,
@@ -98,7 +101,8 @@ final class CollectionPipelineHandler implements ExpressionHandler
                 return $keys === null && $listsValues ? $this->valuesListed($reread) : $reread;
             },
             $arrayedItems,
-            $walk['keys'] ? null : $this->elementModel($items, $scope),
+            $element?->elementModel,
+            $element->leftOut ?? [],
             resolve(ReceiverClassResolver::class)->readsGuarded($items, $scope),
             $scope,
             $engine,
@@ -146,6 +150,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
      * @param  ValueExpressionResult  $items
      * @param  Closure(): (ValueExpressionResult|null)  $read
      * @param  class-string<Model>|null  $elementModel
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the items left out
      * @return ValueExpressionResult|null
      */
     private function mappedItems(
@@ -154,6 +159,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         Closure $read,
         bool $arrayed,
         ?string $elementModel,
+        array $leftOut,
         bool $guarded,
         AnalysisScope $scope,
         ExpressionEngine $engine,
@@ -163,7 +169,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         return $callback === null ? null : $this->mappedReadingCases(
             $items,
             $read,
-            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel, $guarded),
+            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel, $guarded, $leftOut),
             $scope,
         );
     }
@@ -177,12 +183,11 @@ final class CollectionPipelineHandler implements ExpressionHandler
     }
 
     /**
-     * The model each element of a `collect($items)` root holds, as the receiver resolver names it for `$items`.
-     *
-     * @return class-string<Model>|null
+     * What the receiver resolver names `$items` of a `collect($items)` root, whose element model each item holds and
+     * whose left-out writes a callback reading the item warns of.
      */
-    private function elementModel(Expr $items, AnalysisScope $scope): ?string
+    private function elementReceiver(Expr $items, AnalysisScope $scope): ?ReceiverType
     {
-        return resolve(ReceiverClassResolver::class)->resolve($items, $scope)?->elementModel;
+        return resolve(ReceiverClassResolver::class)->resolve($items, $scope);
     }
 }

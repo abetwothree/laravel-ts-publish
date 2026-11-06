@@ -968,8 +968,8 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a value a gap's write assigned, as the inline `@var` on that write declares where it has one: tagged by
-     * that write where the value names no class, so a read its classes cannot answer gives way to the join's others. A
-     * `self`, `static` or `parent` tag is read by its declarations, which stand.
+     * that write where the value names no class, so a read its classes cannot answer gives way to the join's others.
+     * `$this` is the subject, whose class the tag only spells, so its reading by declaration stands.
      */
     private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
     {
@@ -982,7 +982,8 @@ final class ReceiverClassResolver
         $declared = $this->resolveDeclared($name, $span, $scope);
         $assigned = $this->unguarded($this->fromBoundExpression($name, $value, $scope), $this->expandedAlias($span));
 
-        return isset($span['relative']) || ($assigned !== null && array_any($assigned->classes, $this->isNameable(...)))
+        return ($value instanceof Variable && $value->name === 'this')
+            || ($assigned !== null && array_any($assigned->classes, $this->isNameable(...)))
             ? $declared
             : $declared?->taggedBy(['name' => $name, 'value' => $value]);
     }

@@ -38,6 +38,7 @@ trait BindsMapCallbacks
      *
      * @param  ValueExpressionResult  $input
      * @param  class-string<Model>|null  $elementModel
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the array left out
      * @return ValueExpressionResult|null
      */
     protected function mappedArrayResult(
@@ -48,6 +49,7 @@ trait BindsMapCallbacks
         ExpressionEngine $engine,
         ?string $elementModel = null,
         bool $guarded = false,
+        array $leftOut = [],
     ): ?array {
         $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::elementOf($arm) === null ? null : $arm);
 
@@ -69,7 +71,7 @@ trait BindsMapCallbacks
                 $model = $elementModel ?? ($carried !== null && $element === class_basename($carried) && is_a($carried, Model::class, true)
                     ? $carried
                     : null);
-                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine, guardsElement: $guarded);
+                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine, guardsElement: $guarded, leftOut: $leftOut);
 
                 if ($body === null || $body['type'] === 'unknown') {
                     return null;
