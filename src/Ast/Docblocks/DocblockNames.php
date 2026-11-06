@@ -27,4 +27,25 @@ final class DocblockNames
             $context->getNamespaceName(),
         );
     }
+
+    /**
+     * Whether a name is a loadable class, interface or enum: a type a value can have, so never a trait.
+     *
+     * @phpstan-assert-if-true class-string $name
+     */
+    public static function isValueClass(string $name): bool
+    {
+        return class_exists($name) || interface_exists($name) || enum_exists($name);
+    }
+
+    /**
+     * Whether a name is a loadable class, interface, trait or enum: anything a docblock may name.
+     *
+     * @phpstan-assert-if-true class-string $name
+     */
+    public static function isClassLike(string $name): bool
+    {
+        // An autoloader loads the file a name maps to whatever kind it declares, so one autoload attempt answers all.
+        return class_exists($name) || interface_exists($name, false) || trait_exists($name, false);
+    }
 }

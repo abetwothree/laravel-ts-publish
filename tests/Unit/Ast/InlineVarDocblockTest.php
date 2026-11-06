@@ -523,13 +523,14 @@ describe('an inline @var on a local assignment', function () {
             ->and($sent['renamed'])->toBe(['c' => true, 'd' => [1]]);
     });
 
-    // An alias admits exactly what its definition would spelled directly, in the file that wrote it (R60).
+    // An alias admits exactly what its definition would spelled directly, in the file that wrote it.
     test('holds an alias to what its definition, spelled directly, would bind', function (string $alias, ?string $read) {
         $reader = resolve(PropertyDocblockTypeReader::class);
         $context = new ReflectionClass(AliasedFormsResource::class);
         $tag = $reader->extractVarTag('/** @var '.$alias.' $d */', $context, []);
 
         expect($tag === null ? null : $reader->readDeclared($alias, $context)['type'] ?? null)->toBe($read)
+            ->and($read === null ? $tag : null)->toBeNull()
             ->and($reader->extractParamTag("/**\n * @param  {$alias}  \$d\n */", 'd', $context))->toBe($read === null ? null : $alias);
     })->with([
         'an unimported global class' => ['When', null],
@@ -558,7 +559,7 @@ describe('an inline @var on a local assignment', function () {
         ]);
     });
 
-    // Only a bare `string` key is the record all() sends (R37); keys of either kind may be a list, so both arms stay.
+    // Only a bare `string` key is the record all() sends; keys of either kind may be a list, so both arms stay.
     test('reads a local\'s receiver from each form it binds: a one-parameter collection, keys and an alias', function () {
         $post = (new Post)->forceFill(['id' => 4, 'title' => 'T'])
             ->setRelation('comments', new EloquentCollection([CommentRack::comment(3), CommentRack::comment(4)]));
@@ -805,7 +806,7 @@ describe('an inline @var on a local assignment', function () {
             ->toBe('Comment | null');
     });
 
-    // Only a member its own drop left, under a tag member that admits the kept arm, fills; its warning alone goes (C6).
+    // Only a member its own drop left, under a tag member that admits the kept arm, fills; its warning alone goes.
     test('a @var shape fills a member a dropped arm left null', function () {
         [$types, $imports, $warned] = droppedMemberVarAnalysis();
 

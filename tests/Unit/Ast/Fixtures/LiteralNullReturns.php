@@ -207,6 +207,155 @@ final class LiteralNullReturns
         }
     }
 
+    /** Ends in abort(), which Laravel declares `@return never`. */
+    public function abortsAtEnd($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        abort(500);
+    }
+
+    /** Ends in abort_if(), which returns when its condition is false. */
+    public function abortIfAtEnd($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        abort_if($value === 0, 500);
+    }
+
+    /** Ends in a call to its own method declaring `never`. */
+    public function endsInOwnNeverMethod($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        $this->fail();
+    }
+
+    /** Ends in a static call to its own method documenting `@return never`. */
+    public function endsInDocumentedNeverMethod($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        self::failQuietly();
+    }
+
+    /** Ends in a match whose every arm throws. */
+    public function endsInThrowingMatch($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        match (true) {
+            $value === null => throw new LogicException('A NULL.'),
+            default => throw new LogicException('Not a string.'),
+        };
+    }
+
+    /** Ends in a match one of whose arms returns a value. */
+    public function endsInValueMatch($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        match (true) {
+            $value === null => throw new LogicException('A NULL.'),
+            default => 'y',
+        };
+    }
+
+    /** Loops until it returns. */
+    public function loopsUntilItReturns($value)
+    {
+        while (true) {
+            if (is_string($value)) {
+                return 'x';
+            }
+
+            $value = (string) $value;
+        }
+    }
+
+    /** Loops with no condition until it returns, a `continue` only starting the next turn. */
+    public function loopsForeverUntilItReturns($value)
+    {
+        for (; ;) {
+            if (! is_string($value)) {
+                $value = (string) $value;
+
+                continue;
+            }
+
+            return 'x';
+        }
+    }
+
+    /** Loops until a `break` leaves the loop, so may fall off. */
+    public function loopsUntilItBreaks($value)
+    {
+        while (true) {
+            if (is_string($value)) {
+                break;
+            }
+
+            $value = (string) $value;
+        }
+    }
+
+    /** Loops until a `break 2` in a switch leaves the loop, so may fall off. */
+    public function loopsUntilASwitchBreaksOut($value)
+    {
+        while (true) {
+            switch ($value) {
+                case 'a':
+                    break 2;
+                default:
+                    $value = 'a';
+            }
+        }
+    }
+
+    /** Runs a do-while whose body always returns. */
+    public function doWhileReturns($value)
+    {
+        do {
+            return 'x';
+        } while ($value);
+    }
+
+    /** Runs a do-while whose body may run to its end, so may fall off. */
+    public function doWhileFinishes($value)
+    {
+        do {
+            $value = (string) $value;
+        } while ($value === '');
+    }
+
+    /**
+     * Throws, as its `@return never` says.
+     *
+     * @return never
+     */
+    private static function failQuietly()
+    {
+        throw new LogicException('Failed.');
+    }
+
+    /** Throws, as its native `never` says. */
+    private function fail(): never
+    {
+        throw new LogicException('Failed.');
+    }
+
     /** A helper that returns null. */
     private function helper()
     {

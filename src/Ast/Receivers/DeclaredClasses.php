@@ -363,7 +363,7 @@ final class DeclaredClasses
      */
     public static function isValueClass(string $name): bool
     {
-        return class_exists($name) || interface_exists($name) || enum_exists($name);
+        return DocblockNames::isValueClass($name);
     }
 
     /**
@@ -373,8 +373,7 @@ final class DeclaredClasses
      */
     public static function isClassLike(string $name): bool
     {
-        // An autoloader loads the file a name maps to whatever kind it declares, so one autoload attempt answers all.
-        return class_exists($name) || interface_exists($name, false) || trait_exists($name, false);
+        return DocblockNames::isClassLike($name);
     }
 
     /**

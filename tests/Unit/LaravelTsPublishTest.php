@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AbortingGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorCycleGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorCycleTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorTypedGetCast;
@@ -20,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeInterfaceCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AttributeDefaultGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\BareReturnGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\BaseDeclaringCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CoalesceGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
@@ -27,15 +29,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockGetObjectSerialize
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ElvisGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\EnumGetArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\FallOffGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\IfElseReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LiteralNullCycleBodyCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LoopingGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedDocGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedDocNullGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedNullGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeInterfaceCast;
@@ -45,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MutualHelperGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NonNullBaseDeclaringCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableDocGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetReturnTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableGetSerializedLabelCast;
@@ -70,8 +76,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SwitchReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TernaryNullGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ThrowingMatchGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TryReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnionGetArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownCountSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownMemberSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedGetSerializeCast;
@@ -122,6 +130,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Carbon\CarbonInterface;
 use Composer\Autoload\ClassLoader;
+use Exception;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -663,6 +672,14 @@ describe('a cast whose caster serializes', function () {
         'an array serialize() without the interface over a get() returning a string' => [StringArraySerializeCast::class, 'unknown[] | Record<string, unknown>'],
         'an array serialize() writing a list, without the interface, over a get() returning a string' => [StringListSerializeCast::class, 'unknown[] | Record<string, unknown>'],
         'an array serialize() with the interface' => [ArraySerializeInterfaceCast::class, 'unknown[]'],
+        'an array serialize() without the interface over a get() returning an enum' => [EnumGetArraySerializeCast::class, 'Record<string, unknown>'],
+        'an array serialize() without the interface over a get() declaring mixed' => [MixedGetArraySerializeCast::class, 'unknown[] | Record<string, unknown>'],
+        'an array serialize() without the interface over a get() returning a string or a label' => [UnionGetArraySerializeCast::class, 'Record<string, unknown>'],
+        'a typed serialize() over an untyped get() ending in abort()' => [AbortingGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() a while (true) only a return leaves' => [LoopingGetSerializeCast::class, 'string'],
+        'a typed serialize() over an untyped get() ending in a match whose every arm throws' => [ThrowingMatchGetSerializeCast::class, 'string'],
+        'a Castable declaring a base caster with no serialize(), returning a serializing subclass' => [BaseDeclaringCastable::class, 'string'],
+        'a Castable declaring a non-null base caster, returning a subclass whose serialize() may write null' => [NonNullBaseDeclaringCastable::class, 'string | null'],
     ]);
 
     test('reads no serialize() body in a dependency\'s caster, which leaves the type to get()', function () {
@@ -1112,6 +1129,19 @@ describe("an overridden member of a value object's shape", function () {
     });
 
     // A resolved type lists each enum once, so it cannot say that the third token is the first enum's again.
+    // No generated file exports an enum the config leaves out, so its member stays unknown and imports nothing.
+    test('keeps unknown for an enum member the enums config does not publish', function (array $config, string $type, array $enums) {
+        foreach ($config as $key => $value) {
+            config()->set('ts-publish.enums.'.$key, $value);
+        }
+
+        expect($this->service->toTsType(StatusLeg::class))->toMatchArray(['type' => $type, 'enumFqcns' => $enums])
+            ->and(json_encode(new StatusLeg('A', Status::Published)))->toBe('{"code":"A","status":1,"priority":null}');
+    })->with([
+        'an excluded enum' => [['excluded' => [Status::class]], '{ code: string; status: unknown; priority: PriorityType | null }', [Priority::class]],
+        'enums turned off' => [['enabled' => false], '{ code: string; status: unknown; priority: unknown }', []],
+    ]);
+
     test('keeps unknown for each member where two same-named enums alternate', function () {
         expect($this->service->toTsType(AlternatingStatuses::class))->toMatchArray([
             'type' => '{ first: unknown; crm: unknown; last: unknown }',
@@ -1381,12 +1411,14 @@ describe('methodReturnedTypes', function () {
         'getTimestamp()' => ['getTimestamp', 'number'],
     ]);
 
-    test('an internal method\'s tentative bare array reads as a list or a record, a user method\'s native one as a list', function () {
+    test('an internal method\'s tentative bare array reads as a list or a record, a native one as a list', function () {
         expect($this->service->methodReturnedTypes(new ReflectionClass(DateTimeZone::class), 'getLocation')['type'])
             ->toBe('unknown[] | Record<string, unknown> | false')
             ->and($this->service->methodOrDocblockReturnTypes(new ReflectionClass(ArrayObject::class), 'getArrayCopy')['type'])
             ->toBe('unknown[] | Record<string, unknown>')
-            ->and($this->service->methodReturnedTypes(new ReflectionClass(Money::class), 'toArray')['type'])->toBe('unknown[]');
+            ->and($this->service->methodReturnedTypes(new ReflectionClass(Money::class), 'toArray')['type'])->toBe('unknown[]')
+            ->and($this->service->methodReturnedTypes(new ReflectionClass(Exception::class), 'getTrace')['type'])->toBe('unknown[]')
+            ->and(array_is_list((new Exception('x'))->getTrace()))->toBeTrue();
     });
 });
 

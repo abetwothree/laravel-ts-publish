@@ -153,7 +153,7 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         $lastStep = $chain[$count - 1];
-        $tsInfo = $resolver->resolveAttribute($currentModel, $lastStep['name'], $scope->carriesImports, $scope->casesAsLiterals);
+        $tsInfo = $resolver->resolveAttributeValue($currentModel, $lastStep['name'], $scope->carriesImports, $scope->casesAsLiterals);
 
         if ($tsInfo['type'] === 'unknown') {
             // The final step may itself be a relation (e.g. $this->user?->profile).

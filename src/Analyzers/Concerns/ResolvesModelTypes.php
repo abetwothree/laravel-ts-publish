@@ -75,7 +75,7 @@ trait ResolvesModelTypes
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)
-            ->resolveAttribute($this->scope->modelClass, $attributeName, $this->scope->carriesImports);
+            ->resolveAttributeValue($this->scope->modelClass, $attributeName, $this->scope->carriesImports);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;

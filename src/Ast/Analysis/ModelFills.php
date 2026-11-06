@@ -333,7 +333,7 @@ final class ModelFills
 
         return $value !== null && $models !== [] && array_all($models, fn (string $model): bool => in_array(
             $value,
-            TsTypeString::splitTopLevelUnion($attributes->resolveAttribute($model, $member)['type']),
+            TsTypeString::splitTopLevelUnion($attributes->resolveAttributeValue($model, $member)['type']),
             true,
         ));
     }

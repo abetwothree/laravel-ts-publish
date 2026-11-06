@@ -238,7 +238,7 @@ trait ResolvesEnumPropertyArgTypes
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)
-            ->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports, $casesAsLiterals);
+            ->resolveAttributeValue($scope->modelClass, $attributeName, $scope->carriesImports, $casesAsLiterals);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;

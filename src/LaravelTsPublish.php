@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -223,6 +224,12 @@ class LaravelTsPublish
     private bool $shapesCarryClasses = true;
 
     /**
+     * Whether a cast is read as the value get() returns, which a read off the model sends, rather than as what
+     * Model::toArray() writes; see castValueToTsType().
+     */
+    private bool $readsCastValue = false;
+
+    /**
      * Set something to do when the publish command runs, using a callback Closure
      */
     public static function callCommandUsing(Closure $resolver): void
@@ -368,7 +375,7 @@ class LaravelTsPublish
         //    Model::toArray() writes a serializing caster's serialize() value instead, and runs serializeDate() on a
         //    date a class cast returns, so a declared date is the date type.
         if (class_exists($phpType) && is_a($phpType, CastsAttributes::class, true)) {
-            $castReturnType = $this->serializedCastTypes($phpType)
+            $castReturnType = ($this->readsCastValue ? null : $this->serializedCastTypes($phpType))
                 ?? $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
                 ?? $this->castGetReturnTypes(new ReflectionClass($phpType));
 
@@ -566,6 +573,24 @@ class LaravelTsPublish
         return $type === null
             ? $this->castableSerializedTypes($cast) ?? $this->toTsType($cast)
             : [...$this->emptyTypeScriptInfo(), 'type' => $type];
+    }
+
+    /**
+     * Resolve the type a read of an Eloquent cast's value off its model sends: castToTsType()'s, but a caster with a
+     * serialize() method publishes the value its get() returns, which json_encode() writes as it is.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function castValueToTsType(string $cast): array
+    {
+        $reads = $this->readsCastValue;
+        $this->readsCastValue = true;
+
+        try {
+            return $this->castToTsType($cast);
+        } finally {
+            $this->readsCastValue = $reads;
+        }
     }
 
     /**
@@ -1707,11 +1732,13 @@ class LaravelTsPublish
     {
         $castable = Str::before($cast, ':');
 
-        if (! is_a($castable, Castable::class, true)) {
+        if ($this->readsCastValue || ! is_a($castable, Castable::class, true)) {
             return null;
         }
 
-        $infos = $this->serializedCastersTypes(CastCasters::casters($castable));
+        // Laravel builds the casters castUsing() returns, so where the class it declares answers nothing, they do.
+        $infos = $this->serializedCastersTypes(CastCasters::declared($castable))
+            ?? $this->serializedCastersTypes(CastCasters::returned($castable));
 
         return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
     }
@@ -2051,8 +2078,18 @@ class LaravelTsPublish
             fn (): array => $this->resolveDocblockTypeStringAgainst($tag['type'], $tag['context']),
         );
 
+        // No generated file exports an enum the config leaves out, so a reading naming one imports nothing.
+        $readings = array_values(array_filter(
+            $read === $declared ? [$declared] : [$read, $declared],
+            static fn (array $info): bool => array_all($info['enumFqcns'], PublishedEnums::includes(...)),
+        ));
+
+        if ($readings === []) {
+            return ['type' => 'unknown', 'customImports' => []];
+        }
+
         // A docblock type the shape cannot import yields to the declaration, as in PropertyDocblockTypeReader::read().
-        $members = array_map($this->docblockTypeInfo(...), $read === $declared ? [$declared] : [$read, $declared]);
+        $members = array_map($this->docblockTypeInfo(...), $readings);
 
         return $this->keptShapeMember(array_find($members, $this->shapeKeeps(...)) ?? $members[0]);
     }
@@ -2158,12 +2195,11 @@ class LaravelTsPublish
     }
 
     /**
-     * The bracket depth a PHPDoc type leaves open at its end, quoted literals skipped, as the type scanner reads it.
+     * {@see TypeAliases::depth()}
      */
     protected function braceAngleDepth(string $s): int
     {
-        // A PHPDoc literal never runs past its line, so a space after the type is always read, at the depth left open.
-        return TypeScanner::depths($s.' ', ScanDialect::PhpDoc)[strlen($s)] ?? 0;
+        return TypeAliases::depth($s);
     }
 
     /**
@@ -2707,6 +2743,8 @@ class LaravelTsPublish
      * A resolved type as a shape carries it: with its custom imports, unless one brings a name a model, enum or other
      * class in it publishes as, since a shape carries no FQCN channel and that class would bind to the import instead.
      *
+     * The package no longer calls it; it stays for subclasses that do.
+     *
      * @param  TypeScriptTypeInfo  $info
      * @return ShapeTypeInfo
      */
@@ -3194,8 +3232,8 @@ class LaravelTsPublish
     }
 
     /**
-     * A docblock shape as a resolved type: each class and enum behind its tokens on its channel, with the class behind
-     * each class token where two classes share a name. Null for no shape.
+     * A docblock or value-object shape as a resolved type: each class and enum behind its tokens on its channel, with
+     * the class behind each class token where two classes share a name. Null for no shape.
      *
      * A resolved type's readers carry a model's or an enum's class and no token's null, so a shape naming any other
      * class, such as an API resource, or an override spelled like a class beside it, is read with no class instead.
@@ -3498,8 +3536,8 @@ class LaravelTsPublish
 
     /**
      * The type a caster's serialize() declares, or null to leave get() to type it: where none is declared, and without
-     * the interface where it declares only `mixed`, or `array` or `object` over a non-scalar get(). Over a scalar
-     * get(), a vague `array` reads as a list or a record.
+     * the interface where it declares only `mixed`, or `array` or `object` over a get() returning an object or array.
+     * Over any other get(), a vague `array` reads as a list or a record.
      *
      * @param  class-string  $caster
      * @param  TypeScriptTypeInfo  $serialized
@@ -3514,7 +3552,7 @@ class LaravelTsPublish
         $arms = array_diff(TsTypeString::splitTopLevelUnion($serialized['type']), ['null']);
         $vague = $arms !== [] && array_all($arms, $this->isVagueArm(...));
 
-        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || ! $this->getReadsScalar($caster))) {
+        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || $this->getReadsObject($caster))) {
             return null;
         }
 
@@ -3655,17 +3693,23 @@ class LaravelTsPublish
     }
 
     /**
-     * Whether a caster's get() reads only JSON scalars besides null, which an `array` or `object` serialize() changes.
+     * Whether every arm a caster's get() reads besides null is an object or an array, as a vague `array` or `object`
+     * serialize() may leave it; an enum, a scalar or `unknown` arm says serialize() writes something else.
      *
      * @param  class-string  $caster
      */
-    private function getReadsScalar(string $caster): bool
+    private function getReadsObject(string $caster): bool
     {
         $get = $this->serializedDateReturnTypes(new ReflectionMethod($caster, 'get'))
             ?? $this->castGetReturnTypes(new ReflectionClass($caster));
         $arms = array_diff(TsTypeString::splitTopLevelUnion($get['type']), ['null']);
 
-        return $arms !== [] && array_all($arms, TsTypeShape::isScalar(...));
+        return $arms !== [] && array_all($arms, fn (string $arm): bool => $arm === 'object'
+            || str_starts_with($arm, '{')
+            || str_starts_with($arm, '[')
+            || str_ends_with($arm, '[]')
+            || str_starts_with($arm, 'Record<')
+            || in_array($arm, $get['classes'], true));
     }
 
     /**
@@ -3817,8 +3861,9 @@ class LaravelTsPublish
         $types = $this->resolveReflectionType($type, $method->getDeclaringClass());
         $arms = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
 
-        if ($method->hasReturnType()
-            || ! array_any($arms, fn (?ReflectionType $arm): bool => $arm instanceof ReflectionNamedType && $arm->getName() === 'array')) {
+        $array = fn (?ReflectionType $arm): bool => $arm instanceof ReflectionNamedType && $arm->getName() === 'array';
+
+        if ($method->hasReturnType() || ! array_any($arms, $array)) {
             return $types;
         }
 

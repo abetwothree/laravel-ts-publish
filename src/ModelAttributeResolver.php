@@ -24,6 +24,7 @@ use Exception;
 use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
@@ -286,6 +287,42 @@ class ModelAttributeResolver
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
         return $this->appendNullable($tsInfo, $attr['nullable'], null);
+    }
+
+    /**
+     * Resolve the type a read of a model attribute off the model sends: resolveAttribute()'s, except that a cast with
+     * a serialize() method publishes the value its get() returns, which json_encode() writes, where Model::toArray()
+     * writes serialize()'s.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    public function resolveAttributeValue(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+    ): array {
+        $ctx = $this->resolveContext($modelFqcn);
+        $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
+        $casters = $attr === null ? null : CastCasters::casters((string) $attr['cast']);
+
+        if ($ctx === null || $attr === null || ! array_any($casters ?? [], self::serializes(...))) {
+            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+        }
+
+        $tsInfo = LaravelTsPublish::castValueToTsType((string) $attr['cast']);
+
+        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type.
+        if (TsTypeString::isUnknownOnly($tsInfo['type'])
+            && array_all($casters ?? [], static fn (string $caster): bool => is_a($caster, SerializesCastableAttributes::class, true))
+        ) {
+            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+        }
+
+        $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
+
+        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
     }
 
     /**
@@ -1315,7 +1352,8 @@ class ModelAttributeResolver
      */
     protected function castableValueClass(string $castable): ?string
     {
-        return $this->castersValueClass(CastCasters::casters($castable));
+        return $this->castersValueClass(CastCasters::declared($castable))
+            ?? $this->castersValueClass(CastCasters::returned($castable));
     }
 
     /**
@@ -1933,6 +1971,14 @@ class ModelAttributeResolver
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether Model::toArray() writes a caster's serialize() for the value, which Laravel decides by the method alone.
+     */
+    private static function serializes(string $caster): bool
+    {
+        return method_exists($caster, 'serialize');
     }
 
     /**

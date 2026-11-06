@@ -464,8 +464,8 @@ A bound `LaravelTsPublish` subclass still changes what the class owns, such as `
 and `relationStrategy()`. The helpers that moved to `Support\JsEmitter`, `Support\TsTypeString` and `Support\TsNaming`
 keep their `LaravelTsPublish::` signatures, as `tests/Unit/LaravelTsPublishDelegationTest.php` pins, but the package
 calls them through their own facades. Overriding one on the subclass changes only the consumer's direct calls, with no
-error, and no test subclasses `LaravelTsPublish`. Bind a replacement helper class instead, from an application
-provider, whose binding wins because Laravel registers package providers first:
+error. Bind a replacement helper class instead, from an application provider, whose binding wins because Laravel
+registers package providers first:
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Support\TsNaming;
@@ -482,12 +482,14 @@ of `methodDeclaringFileClass()` still applies, for methods only; the file declar
 An override of `resolveAccessorType()` or `resolveAccessorBodyType()` is not consulted where a helper read as a value
 reads an accessor whole, whose getter's plain enum cases keep their literals there.
 
-Overriding `resolvePhpstanTypeAlias()` or `balanceTypeDefinition()` no longer changes what the package emits either,
-since every docblock reader looks an alias up through [`TypeAliases`](../src/Ast/Docblocks/TypeAliases.php), which has
-no replacement point. `$phpstanTypeAliasCache` and `$phpstanTypeAliasPaths` read its answers and take no write.
+Overriding `resolvePhpstanTypeAlias()`, `balanceTypeDefinition()` or `braceAngleDepth()` no longer changes what the
+package emits either, since every docblock reader looks an alias up through
+[`TypeAliases`](../src/Ast/Docblocks/TypeAliases.php), which has no replacement point. `$phpstanTypeAliasCache` and
+`$phpstanTypeAliasPaths` read its answers and take no write: a subclass that writes either throws.
 
 Overriding `shapeTypeInfo()` no longer changes a value object's shape, since `shapeMemberTypes()` reads each member
-through `docblockTypeInfo()`, which carries the class behind each token. Override `shapeMemberTypes()` instead.
+through `docblockTypeInfo()`, which carries the class behind each token. Override `shapeMemberTypes()` instead, and
+return `tokenFqcns` for each member naming an enum or a model, or that member publishes `unknown`.
 
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
@@ -964,11 +966,13 @@ date object instead, yet publishes the same type. The reverse holds for a new-st
 body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
 in both places, so declare one, or type the key with `#[TsCasts]`.
 
-### A serializing class cast publishes what `serialize()` returns, in every context
+### A serializing class cast whose `get()` declares nothing publishes `serialize()`'s type wherever it is read
 
-A class cast whose caster has a `serialize()` method publishes the type that method declares, or, where it declares
-nothing or only `mixed`, the type its returns prove, because `Model::toArray()` writes that value. An API resource that
-reads the attribute directly sends the `get()` value instead, yet publishes the same type. Type such a key with
+A class cast whose caster has a `serialize()` method publishes, on the model, the type `Model::toArray()` writes:
+what `serialize()` declares, or, where it declares nothing or only `mixed`, what its returns prove. An API resource
+that reads the attribute directly sends the `get()` value instead, and publishes `get()`'s type. Where `get()` declares
+nothing or only `mixed`, as Laravel's `make:cast` stub does, a caster implementing `SerializesCastableAttributes` still
+publishes `serialize()`'s type there, as it always has. Declare `get()`'s return type, or type the key with
 `#[TsCasts]`.
 
 Laravel sends a null `get()` value without calling `serialize()`, but a declared `serialize()` type gains `| null` only

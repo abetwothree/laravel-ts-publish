@@ -21,25 +21,58 @@ use ReflectionMethod;
 final class CastCasters
 {
     /**
-     * The classes a cast runs: a caster class itself, or the casters a `Castable`'s `castUsing()` declares, else the
-     * ones its returns name; null when it names none, as Laravel's own anonymous casters do.
+     * The classes a cast runs: a caster class itself, or the casters a `Castable`'s `castUsing()` returns, which are
+     * what Laravel builds, else the ones it declares; null when it names none, as Laravel's own anonymous casters do.
      *
      * @return non-empty-list<class-string>|null
      */
     public static function casters(string $cast): ?array
     {
+        if (! is_a(Str::before($cast, ':'), Castable::class, true)) {
+            return self::declared($cast);
+        }
+
+        $returned = self::returned($cast);
+
+        if ($returned !== null && array_all($returned, self::isCaster(...))) {
+            return $returned;
+        }
+
+        $declared = self::declared($cast);
+
+        // A declared `CastsAttributes` interface names no caster, so the returns stand.
+        return $declared !== null && array_all($declared, self::isCaster(...)) ? $declared : $returned;
+    }
+
+    /**
+     * The classes a cast names without reading a body: a caster class itself, or what a `Castable`'s `castUsing()`
+     * declares it returns, which may be a base class the caster it builds extends.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public static function declared(string $cast): ?array
+    {
         $class = Str::before($cast, ':');
 
         if (is_a($class, Castable::class, true)) {
-            $declared = DeclaredClasses::returnClasses($class, 'castUsing');
-
-            // A declared `CastsAttributes` interface names no caster, so the returns are read instead.
-            return $declared !== null && array_all($declared, self::isCaster(...))
-                ? $declared
-                : resolve(ReceiverClassResolver::class)->bodyReturnClasses($class, 'castUsing');
+            return DeclaredClasses::returnClasses($class, 'castUsing');
         }
 
         return self::isCaster($class) ? [$class] : null;
+    }
+
+    /**
+     * The classes a `Castable`'s `castUsing()` returns, read from its body; null for any other cast.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public static function returned(string $cast): ?array
+    {
+        $class = Str::before($cast, ':');
+
+        return is_a($class, Castable::class, true)
+            ? resolve(ReceiverClassResolver::class)->bodyReturnClasses($class, 'castUsing')
+            : null;
     }
 
     /**

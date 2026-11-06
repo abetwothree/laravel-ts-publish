@@ -809,6 +809,15 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toBe('[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]');
     });
 
+    test('a cast\'s list<Dto> leaves an enum member the config excludes unknown, with no import', function () {
+        config()->set('ts-publish.enums.excluded', [Status::class]);
+
+        $data = (new ModelTransformer(StatusLegsPost::class))->data();
+
+        expect($data->columns['content']['type'])->toBe('{ code: string; status: unknown; priority: PriorityType | null }[]')
+            ->and(array_merge(...array_values($data->typeImports)))->not->toContain('StatusType')->toContain('PriorityType');
+    });
+
     test('uses aliased const names for Deal model enum columns', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 

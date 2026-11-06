@@ -233,7 +233,7 @@ final class ReceiverMemberReader
     {
         $resolver = resolve(ModelAttributeResolver::class);
         $attribute = resolve(ReflectedTypeAcceptor::class)
-            ->accept($resolver->resolveAttribute($modelFqcn, $name, $scope->carriesImports, $scope->casesAsLiterals));
+            ->accept($resolver->resolveAttributeValue($modelFqcn, $name, $scope->carriesImports, $scope->casesAsLiterals));
 
         if ($attribute !== null) {
             return $filled !== null && ! in_array($name, $filled, true) && self::readsNullWithoutAttributes($resolver, $modelFqcn, $name)

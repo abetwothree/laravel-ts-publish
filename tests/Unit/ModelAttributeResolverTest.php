@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
@@ -38,6 +39,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArraySerializePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BaseDeclaringCastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
@@ -53,12 +56,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HelperCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralNullCycleProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NeverEndingGetPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
@@ -88,6 +93,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCardCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PlotPoint;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrappedLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
@@ -1037,7 +1043,8 @@ test('a not-null column cast to a class whose get() never provably returns null 
 ]);
 
 // A read that meets a cast already under way proves nothing, and a reused answer counts that cut again, so a cast's
-// type is the same whichever model is published first. A serialize() reading a nullable column keeps its null.
+// type is the same whichever model is published first. A serialize() reading a nullable column keeps its null, and a
+// get() reading another model's cast reads its get(), so its own literal null stands.
 test('a cast whose reading meets itself publishes the same type whichever model is published first', function (array $models) {
     $types = [];
 
@@ -1052,7 +1059,7 @@ test('a cast whose reading meets itself publishes the same type whichever model 
         'CycleReadingGetProduct.name' => 'string',
         'CycleSerializeWarehouse.name' => 'string | null',
         'CycleWarehouse.name' => 'string',
-        'LiteralNullCycleProduct.name' => 'string',
+        'LiteralNullCycleProduct.name' => 'string | null',
         'UnprovenNullProduct.name' => 'string | null',
     ])
         ->and([$sent(CycleReadingGetProduct::class, null), $sent(CycleReadingGetProduct::class, '7')])->toBe(['"sy"', '"s7"'])
@@ -1177,8 +1184,8 @@ test('a not-null column cast to a class whose get() provably returns null publis
     'a null ternary arm under a native mixed' => ['is_active', '"q7"'],
 ]);
 
-// Reading the body reads the cast again, which stops at get()'s type there; the service throws past two nested reads,
-// so a missing guard fails here at once instead of reading the body until the stack runs out.
+// A read of the attribute off another model sends get()'s value, so the body is read once, never through itself; the
+// service throws past two nested reads, so a read that came back to serialize() would fail here at once.
 test('a cast whose serialize() reads the attribute it casts publishes what that read gives', function () {
     $service = new DepthLimitedLaravelTsPublish;
     $this->app->instance(LaravelTsPublishService::class, $service);
@@ -1186,7 +1193,7 @@ test('a cast whose serialize() reads the attribute it casts publishes what that 
     $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['name' => null])->toArray()['name'];
 
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'name')['type'])->toBe('string')
-        ->and($service->deepest)->toBe(2)
+        ->and($service->deepest)->toBe(1)
         ->and(json_encode($sent))->toBe('""');
 });
 
@@ -1912,4 +1919,79 @@ describe('ModelAttributeResolver::inspect()', function () {
 
         expect($inspector->reads)->toBe(2);
     });
+});
+
+// Laravel builds the casters castUsing() returns, so where the class it declares answers nothing, its returns do.
+test('a Castable declaring a base caster that answers nothing publishes the serializing subclass it returns', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $sent = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a', 'options' => ''])->toArray();
+    $read = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a']);
+
+    expect($resolver->resolveAttribute(BaseDeclaringCastablePost::class, 'title')['type'])->toBe('string')
+        ->and($resolver->resolveAttribute(BaseDeclaringCastablePost::class, 'options')['type'])->toBe('string | null')
+        ->and($resolver->resolveAttributeClass(BaseDeclaringCastablePost::class, 'title'))->toBe(WrappedLabel::class)
+        ->and(json_encode($sent['title']))->toBe('"a"')
+        ->and(json_encode($sent['options']))->toBe('null')
+        ->and($read->title)->toBeInstanceOf(WrappedLabel::class);
+});
+
+// abort() and a method declaring `never` throw, a match whose every arm throws cannot finish, and a while (true) only
+// a return leaves, so none of these get()s ends without a value.
+test('a get() whose body cannot run to its end adds no null under a typed serialize()', function (string $column, string $sent) {
+    $values = (new NeverEndingGetPost)->setRawAttributes(['title' => 'a', 'content' => 'a', 'category' => 'a'])->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NeverEndingGetPost::class, $column)['type'])->toBe('string')
+        ->and(json_encode($values[$column]))->toBe($sent);
+})->with([
+    'a get() ending in abort()' => ['title', '"saa"'],
+    'a get() a while (true) only a return leaves' => ['content', '"sla"'],
+    'a get() ending in a match whose every arm throws' => ['category', '"sma"'],
+]);
+
+// Model::toArray() writes serialize()'s array always, so a get() returning an enum, `mixed` or a scalar beside a class
+// does not decide the type; only a get() returning an object or array leaves it to get().
+test('an array serialize() without the interface publishes its own type over a get() returning no object or array', function (string $column, string $type, string $raw, string $sent) {
+    $row = (new ArraySerializePost)->setRawAttributes([$column => $raw])->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(ArraySerializePost::class, $column)['type'])
+        ->toBe($type)
+        ->and(json_encode($row[$column]))->toBe($sent);
+})->with([
+    'a get() returning an enum' => ['title', 'Record<string, unknown>', '1', '{"v":1}'],
+    'a get() declaring mixed, under a bare array' => ['content', 'unknown[] | Record<string, unknown>', 'x', '{"v":"x"}'],
+    'a get() returning a string or a label' => ['category', 'Record<string, unknown>', 'x', '{"v":"x"}'],
+]);
+
+// Model::toArray() calls serialize() whenever the caster has the method, but a read off the model gets get()'s value,
+// which json_encode() writes as it is; a get() declaring only `mixed` leaves the reading as it was.
+test('a cast with a serialize() method publishes serialize()\'s type for the model and get()\'s for a read off it', function (string $column, string $columnType, string $readType, string $raw, string $sent, string $read) {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $post = (new LabelSerializePost)->setRawAttributes([$column => $raw]);
+
+    expect($resolver->resolveAttribute(LabelSerializePost::class, $column)['type'])->toBe($columnType)
+        ->and($resolver->resolveAttributeValue(LabelSerializePost::class, $column)['type'])->toBe($readType)
+        ->and(json_encode($post->toArray()[$column]))->toBe($sent)
+        ->and(json_encode($post->getAttribute($column)))->toBe($read);
+})->with([
+    'a label get() without the interface' => ['title', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
+    'a label get() with the interface' => ['content', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
+    'a number get() without the interface' => ['user_id', 'string', 'number', '7', '"n7"', '7'],
+    'a get() declaring mixed with the interface, as published before' => ['category', 'string', 'string', '7', '"p7"', '{"x":7,"y":1}'],
+    'a get() declaring mixed without the interface, as published before' => ['status', 'string', 'unknown | null', '7', '"7"', '"7"'],
+]);
+
+test('a resource reading a serializing cast off its model publishes get()\'s type, and the model serialize()\'s', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'category' => '7', 'user_id' => '7', 'status' => '1']);
+
+    expect(resourceProps(LabelSerializeReadResource::class))->toBe([
+        'method_label' => '{ text: string }',
+        'method_label_whole' => '{ text: string }',
+        'interface_label' => '{ text: string }',
+        'interface_label_whole' => '{ text: string }',
+        'mixed_interface' => 'string',
+        'number' => 'number',
+        'mixed_method' => 'unknown | null',
+    ])->and(json_encode(LabelSerializeReadResource::make($post)->resolve()))
+        ->toBe('{"method_label":{"text":"a"},"method_label_whole":{"text":"a"},"interface_label":{"text":"b"},"interface_label_whole":{"text":"b"},"mixed_interface":{"x":7,"y":1},"number":7,"mixed_method":"1"}')
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"b"', '"user_id":"n7"');
 });

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Docblocks;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
@@ -152,6 +151,15 @@ final class TypeAliases
     }
 
     /**
+     * The bracket depth a PHPDoc type leaves open at its end, quoted literals skipped, as the type scanner reads it.
+     */
+    public static function depth(string $s): int
+    {
+        // A PHPDoc literal never runs past its line, so a space after the type is always read, at the depth left open.
+        return TypeScanner::depths($s.' ', ScanDialect::PhpDoc)[strlen($s)] ?? 0;
+    }
+
+    /**
      * The alias a class's own `@phpstan-type` or `@psalm-type` defines under a name, or null.
      *
      * @param  ReflectionClass<object>  $context
@@ -196,20 +204,11 @@ final class TypeAliases
 
             $sourceClass = DocblockNames::resolve($import[2], $context);
 
-            return DeclaredClasses::isClassLike($sourceClass)
+            return DocblockNames::isClassLike($sourceClass)
                 ? self::lookup($import[1], new ReflectionClass($sourceClass), $seen)
                 : null;
         }
 
         return null;
-    }
-
-    /**
-     * The bracket depth a PHPDoc type leaves open at its end, quoted literals skipped, as the type scanner reads it.
-     */
-    private static function depth(string $s): int
-    {
-        // A PHPDoc literal never runs past its line, so a space after the type is always read, at the depth left open.
-        return TypeScanner::depths($s.' ', ScanDialect::PhpDoc)[strlen($s)] ?? 0;
     }
 }

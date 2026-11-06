@@ -78,7 +78,14 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
 3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
 4. A `Castable` whose `castUsing()` casters, read without calling it, all serialize publishes their `serialize()`
    type, as step 4 below does for a caster. `toTsType()` never does, since a Castable is also a value a resource sends.
+   The casters it declares are read first, then the ones it returns
+   ([`CastCasters`](../../src/Ast/Members/CastCasters.php)), as a declared base may answer nothing for its subclass.
 5. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+
+A read of the attribute off the model, as a resource's `$this->title` or a getter body's is, gets the value `get()`
+returns, which `json_encode()` writes as it is. The engine's readers ask `resolveAttributeValue()`, which reads such a
+cast through `castValueToTsType()`: `castToTsType()` with no `serialize()` reading. A `get()` that says nothing keeps
+the reading `resolveAttribute()` gives, so an interface caster keeps its `serialize()` type there, as before.
 
 `isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
 where the call throws.
@@ -99,15 +106,17 @@ wherever the method exists, with or without `SerializesCastableAttributes`. `ser
    and so does one naming a class a cast type cannot import. A dependency's caster is not read.
 3. Otherwise, with the interface, one declaring nothing leaves `get()` to type it, and any declared type stands:
    `mixed` reads `unknown | null` and `array` `unknown[]`. Without it, nothing or `mixed` leaves `get()` to type it,
-   as does `array`, `object` or both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since
-   `serialize()` sends something else, and a vague `array` reads as a list or a record, as `json_encode()` writes it.
+   as does `array`, `object` or both over a `get()` whose every arm is an object or an array. Over any other `get()`,
+   a scalar, an enum or `unknown`, they stand, since `serialize()` sends something else, and a vague `array` reads as
+   a list or a record, as `json_encode()` writes it.
 
 The reading that stands gains `| null` where `get()` returns null, since `Model::toArray()` sends a null value without
 calling `serialize()`. `get()`'s native type, else its `@return`, else its body as the engine reads it, proves that by a
 `null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm, or proves its
 absence. A `mixed` type says nothing and falls through. A body's `null` arm proves only where the body returns a literal
 `null` itself, or can run to its end (`ReturnLiteralReader::returnsNull()`, which follows each branch of an if, a switch
-and a try), never one a value it reads carries in, such as another model's accessor. Where nothing proves either, as for
+and a try, and knows a `never` call, a `match` whose every arm throws and a `while (true)` no `break` leaves never get
+there), never one a value it reads carries in, such as another model's accessor. Where nothing proves either, as for
 a body the engine cannot read, one it leaves an arm out of, one read through a caster cycle, or a carried-in null, a
 type read from `serialize()`'s body keeps the null, since `get()` cannot rule it out, and a declared `serialize()` type
 adds none. Only a `caster-body:` guard's cut counts as such a cycle (`AnalysisMemo::cuts()` by prefix). A helper's or a
@@ -299,12 +308,11 @@ braces and angle brackets balance. A `$seen` set guards the import chain, so two
 give `unknown`. It caches each class's answers for the run; `LaravelTsPublish::resolvePhpstanTypeAlias()` delegates to
 it.
 
-The alias resolves against its defining class's imports and namespace, not the referencing class's.
-An alias also resolves inside a container, a shape, a group or another alias, on a property's or a promoted
-property's `@var`, and on a local's inline `@var` or a method's `@param`, against the class whose docblock is read; one already being expanded, as in
-`@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
-appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
-`filters?:`.
+The alias resolves against its defining class's imports and namespace, not the referencing class's. An alias also
+resolves inside a container, a shape, a group or another alias, on a property's or a promoted property's `@var`, and on
+a local's inline `@var` or a method's `@param`, against the class whose docblock is read; one already being expanded,
+as in `@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then appends
+`| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes `filters?:`.
 
 ### Trait-declared methods read the trait's file
 

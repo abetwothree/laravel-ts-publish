@@ -116,6 +116,18 @@ it('tells a method\'s own literal null return from a null only a value it reads 
     'a switch with no default' => ['switchWithoutDefault', true],
     'a switch a break leaves' => ['switchBreaks', true],
     'a catch that ends without a value' => ['catchFallsOff', true],
+    'an end past abort(), which never returns' => ['abortsAtEnd', false],
+    'an end past abort_if(), which may return' => ['abortIfAtEnd', true],
+    'an end past its own method declaring never' => ['endsInOwnNeverMethod', false],
+    'an end past its own static method documenting never' => ['endsInDocumentedNeverMethod', false],
+    'an end past a match whose every arm throws' => ['endsInThrowingMatch', false],
+    'an end past a match one of whose arms is a value' => ['endsInValueMatch', true],
+    'a while (true) only a return leaves' => ['loopsUntilItReturns', false],
+    'a for (;;) only a return leaves, past a continue' => ['loopsForeverUntilItReturns', false],
+    'a while (true) a break leaves' => ['loopsUntilItBreaks', true],
+    'a while (true) a break 2 in a switch leaves' => ['loopsUntilASwitchBreaksOut', true],
+    'a do-while whose body always returns' => ['doWhileReturns', false],
+    'a do-while whose body may run to its end' => ['doWhileFinishes', true],
 ]);
 
 it('records the class whose method it reads for a literal null, on a warm read too', function () {
