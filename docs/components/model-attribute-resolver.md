@@ -82,10 +82,11 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
    ([`CastCasters`](../../src/Ast/Members/CastCasters.php)), as a declared base may answer nothing for its subclass.
 5. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
 
-A read of the attribute off the model, as a resource's `$this->title` or a getter body's is, gets the value `get()`
-returns, which `json_encode()` writes as it is. The engine's readers ask `resolveAttributeValue()`, which reads such a
-cast through `castValueToTsType()`: `castToTsType()` with no `serialize()` reading. A `get()` that says nothing keeps
-the reading `resolveAttribute()` gives, so an interface caster keeps its `serialize()` type there, as before.
+A read of the attribute off the model, as a resource's `$this->title`, `only()`, `except()` or a getter body's is, gets
+the value `get()` returns, which `json_encode()` writes as it is. Those readers ask `resolveAttributeValue()`, which
+reads such a cast through `castValueToTsType()`: `castToTsType()` with no `serialize()` reading. A `get()` that says
+nothing keeps the reading `resolveAttribute()` gives, so an interface caster keeps its `serialize()` type there, as
+before. A resource that sends the model's own `toArray()` reads it as `resolveAttribute()` does.
 
 `isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
 where the call throws.
