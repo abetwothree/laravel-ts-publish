@@ -86,8 +86,9 @@ A read of the attribute off the model, as a resource's `$this->title`, `only()`,
 relation's) or a getter body's is, gets the value `get()` returns, which `json_encode()` writes as it is. Those readers
 ask `resolveAttributeValue()`, which reads such a cast through `castValueToTsType()`: `castToTsType()` with no
 `serialize()` reading, and a `Castable` as the `get()` of the casters its `castUsing()` names. A `get()` declaring
-nothing or only `mixed` publishes what its returns prove, as `getBodyTypes()` reads them. Where they prove nothing,
-the read keeps the column's reading: an interface caster its `serialize()` type, and a `Castable` its column type. A filter whose picked column reads apart from the model interface publishes an inline shape, not `Pick<>`
+nothing or only `mixed` publishes what its returns prove, as `getBodyTypes()` reads them. Where they prove nothing, the
+read keeps the column's reading: an interface caster its `serialize()` type, and a `Castable` its column type. A filter
+whose picked column reads apart from the model interface publishes an inline shape, not `Pick<>`
 (`ResolvesFilteredRelationTypes`). A resource that sends the model's own `toArray()` reads it as `resolveAttribute()`
 does.
 
