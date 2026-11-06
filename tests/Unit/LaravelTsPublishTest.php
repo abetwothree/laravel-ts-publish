@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ElvisGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\FallOffGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleTypedGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\IfElseReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LiteralNullCycleBodyCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingTypedGetCast;
@@ -66,7 +67,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SwitchReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TernaryNullGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TryReturnsGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownCountSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UnknownMemberSerializeCast;
@@ -635,6 +638,9 @@ describe('a cast whose caster serializes', function () {
         'an undeclared serialize() over a get() reading another model\'s accessor, which keeps its null' => [AccessorCycleGetCast::class, 'string | null'],
         'an undeclared serialize() over a get() calling a helper that reads a model, which keeps its null' => [HelperCycleGetCast::class, 'string | null'],
         'an undeclared serialize() over a get() returning the raw value, which keeps an unproven null' => [OpaqueGetCast::class, 'string | null'],
+        'a typed serialize() over a get() returning on both arms of an if/else, which cannot fall off' => [IfElseReturnsGetSerializeCast::class, 'string'],
+        'a typed serialize() over a get() returning from every case of a switch with a default' => [SwitchReturnsGetSerializeCast::class, 'string'],
+        'a typed serialize() over a get() returning from its try and its catch' => [TryReturnsGetSerializeCast::class, 'string'],
         'an undeclared serialize() one of whose returns cannot be typed, which leaves the type to get()' => [DroppedArmSerializeCast::class, 'number'],
         'an undeclared serialize() whose returns hold an unknown member, which leaves the type to get()' => [UnknownMemberSerializeCast::class, 'string'],
         'an undeclared serialize() returning a class a cast type cannot import, which leaves the type to get()' => [ModelSerializeCast::class, 'string'],

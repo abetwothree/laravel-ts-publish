@@ -103,16 +103,16 @@ wherever the method exists, with or without `SerializesCastableAttributes`. `ser
    `serialize()` sends something else, and a vague `array` reads as a list or a record, as `json_encode()` writes it.
 
 The reading that stands gains `| null` where `get()` returns null, since `Model::toArray()` sends a null value without
-calling `serialize()`. `get()`'s native type, else its `@return`, else its body as the engine reads it, proves that by
-a `null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm, or proves its
+calling `serialize()`. `get()`'s native type, else its `@return`, else its body as the engine reads it, proves that by a
+`null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm, or proves its
 absence. A `mixed` type says nothing and falls through. A body's `null` arm proves only where the body returns a literal
-`null` itself (`AstEngine::returnsLiteralNull()`), never one a value it reads carries in, such as another model's
-accessor. Where nothing proves either, as for a body the engine cannot read, one it leaves an arm out of, one read
-through a caster cycle, or a carried-in null, a type read from `serialize()`'s body keeps the null, since `get()`
-cannot rule it out, and a declared `serialize()` type adds none. Only a `caster-body:` guard's cut counts as such a
-cycle (`AnalysisMemo::cuts()` by prefix). A helper's or a property's own guard carries no fallback into the reading, and
-an `accessor-body:` cut, which falls back to the model's declared type, is not counted either. `typeHoldsNull()` sees
-the arm, so a nullable column adds no second.
+`null` itself, or can run to its end (`ReturnLiteralReader::returnsNull()`, which follows each branch of an if, a switch
+and a try), never one a value it reads carries in, such as another model's accessor. Where nothing proves either, as for
+a body the engine cannot read, one it leaves an arm out of, one read through a caster cycle, or a carried-in null, a
+type read from `serialize()`'s body keeps the null, since `get()` cannot rule it out, and a declared `serialize()` type
+adds none. Only a `caster-body:` guard's cut counts as such a cycle (`AnalysisMemo::cuts()` by prefix). A helper's or a
+property's own guard carries no fallback into the reading, and an `accessor-body:` cut, which falls back to the model's
+declared type, is not counted either. `typeHoldsNull()` sees the arm, so a nullable column adds no second.
 
 ### Step 2: an override, resolved and composed
 

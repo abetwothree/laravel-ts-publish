@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
@@ -2077,6 +2078,9 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'an undeclared serialize() over a get() calling a helper that reads a model' => [CarriedNullProduct::class, 'price', 'string | null'],
         'a typed serialize() over a get() reading another model\'s accessor' => [CarriedNullProduct::class, 'quantity', 'string'],
         'an undeclared serialize() over a get() returning the raw value' => [CarriedNullProduct::class, 'is_active', 'string | null'],
+        'a typed serialize() over a get() returning on both arms of an if/else' => [AllBranchesReturnProduct::class, 'name', 'string'],
+        'a typed serialize() over a get() returning from every case of a switch with a default' => [AllBranchesReturnProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() returning from its try and its catch' => [AllBranchesReturnProduct::class, 'sku', 'string'],
     ]);
 });
 

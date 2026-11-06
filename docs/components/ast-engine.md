@@ -30,7 +30,7 @@ These are the classes a change to the engine usually touches:
 
 | Class | Owns |
 | --- | --- |
-| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `returnsLiteralNull()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeExpressionValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()`, `analyzeModelClosure()` and `analyzeBoundClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's held-object flags (`heldObject`, `mayHoldObject`, `heldProp`, `returnsCallable`) only from a `KeepsHeldObjects` handler; any other handler reads away from a closure's returned value (`AnalysisScope::$readsCallableReturn`) |
@@ -44,7 +44,7 @@ These are the classes a change to the engine usually touches:
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
-| [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()` |
+| [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()`; and whether a method returns a literal `null` itself, or can run to its end, for a caster's `get()` |
 
 [Receiver types](receiver-types.md) covers `ReceiverClassResolver` and the handlers that type `$x->m()` and `$x->prop`.
 

@@ -20,7 +20,6 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
-use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralNullReturns;
 use Illuminate\Http\Request;
 use Workbench\App\Enums\Role;
 use Workbench\App\Events\OrderShipped;
@@ -192,22 +191,3 @@ it('seeds a scope from a located method: bound models, request parameters and lo
 
     expect($requestScope->requestVarNames)->toBe(['request' => Request::class]);
 });
-
-it('tells a method\'s own literal null return from a null only a value it reads may hold', function (string $method, bool $literal) {
-    expect(resolve(AstEngine::class)->returnsLiteralNull(LiteralNullReturns::class, $method))->toBe($literal);
-})->with([
-    'return null;' => ['returnsNull', true],
-    'a bare return' => ['returnsNothing', true],
-    'a fall-off' => ['fallsOff', true],
-    'a ternary arm' => ['ternaryArm', true],
-    'a short ternary arm' => ['shortTernaryArm', true],
-    'a nested ternary arm' => ['nestedTernaryArm', true],
-    'a match arm' => ['matchArm', true],
-    'the right of ??' => ['coalesceArm', true],
-    'a nullable property' => ['readsProperty', false],
-    'a helper returning null' => ['callsHelper', false],
-    'a closure returning null' => ['closureReturnsNull', false],
-    'a string right of ??' => ['coalesceDefault', false],
-    'a declared mixed that throws' => ['declaredMixed', false],
-    'a method no class declares' => ['missing', false],
-]);

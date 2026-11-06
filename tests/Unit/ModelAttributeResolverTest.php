@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
@@ -1105,6 +1106,21 @@ test('a not-null column cast to a class whose get() reads a value published with
     'a helper reading a model, under an undeclared serialize()' => ['price', 'string | null', '"bk"', '"b7"'],
     'another model\'s accessor, under a typed serialize()' => ['quantity', 'string', '"nq"', '"n7"'],
     'the raw value, under an undeclared serialize()' => ['is_active', 'string | null', 'null', '"r7"'],
+]);
+
+// An if/else, a switch with a default, or a try and its catch that all return leave get() no end to fall off.
+test('a not-null column cast to a class whose get() returns on every branch publishes no null under a typed serialize()', function (string $column, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku'];
+    $nulls = (new AllBranchesReturnProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new AllBranchesReturnProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AllBranchesReturnProduct::class, $column)['type'])->toBe('string')
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'both arms of an if/else' => ['name', '"sz"', '"sa7"'],
+    'every case of a switch with a default' => ['slug', '"sz"', '"sa7"'],
+    'a try and its catch' => ['sku', '"sa"', '"sa7"'],
 ]);
 
 test('a cast whose get() reads a value published with a null publishes the same type whichever model is published first', function (array $models) {

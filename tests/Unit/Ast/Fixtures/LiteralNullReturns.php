@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use LogicException;
 
 /**
- * Untyped methods whose own returns hold a literal null, beside ones where only a value they read may hold one.
+ * Untyped methods whose own returns hold a literal null or may end without a value, beside ones that do neither.
  */
 final class LiteralNullReturns
 {
@@ -109,6 +109,102 @@ final class LiteralNullReturns
         }
 
         throw new LogicException('Not a string.');
+    }
+
+    /** Returns a list an arrow function returning null maps. */
+    public function arrowFunctionNull()
+    {
+        return array_map(fn ($item) => null, ['a']);
+    }
+
+    /** Defaults its parameter to null, and returns a string. */
+    public function nullDefault($value = null)
+    {
+        return 'x';
+    }
+
+    /** Tests for null in a ternary's condition, returning a string on either arm. */
+    public function nullCondition($value)
+    {
+        return $value === null ? 'a' : 'b';
+    }
+
+    /** Returns on every arm of an if/elseif/else. */
+    public function ifElseAllReturn($value)
+    {
+        if (is_string($value)) {
+            return 'a';
+        } elseif (is_int($value)) {
+            return 'b';
+        } else {
+            throw new LogicException('Neither.');
+        }
+    }
+
+    /** Returns from every case of a switch with a default. */
+    public function switchAllReturn($value)
+    {
+        switch ($value) {
+            case 'a':
+            case 'b':
+                return 'x';
+            default:
+                return 'y';
+        }
+    }
+
+    /** Returns from its try and its catch. */
+    public function tryAllReturn($value)
+    {
+        try {
+            return 'a'.$value;
+        } catch (LogicException) {
+            return 'z';
+        }
+    }
+
+    /** Returns from its finally whatever its try does. */
+    public function finallyReturns($value)
+    {
+        try {
+            $value = (string) $value;
+        } finally {
+            return 'f';
+        }
+    }
+
+    /** Returns from a switch with no default, so a value no case matches falls off. */
+    public function switchWithoutDefault($value)
+    {
+        switch ($value) {
+            case 'a':
+                return 'x';
+        }
+    }
+
+    /** Breaks out of a switch whose cases otherwise return, so it may fall off. */
+    public function switchBreaks($value)
+    {
+        switch ($value) {
+            case 'a':
+                if ($value === 'a') {
+                    break;
+                }
+
+                return 'x';
+            default:
+                return 'y';
+        }
+    }
+
+    /** Returns from its try, but its catch ends without a value. */
+    public function catchFallsOff($value)
+    {
+        try {
+            return 'a'.$value;
+        } catch (LogicException) {
+            $value = null;
+        }
     }
 
     /** A helper that returns null. */

@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -3616,7 +3617,7 @@ class LaravelTsPublish
         }, static fn (): bool => false);
 
         // Another member's null may be one its column allows on a path get() never takes, so only a literal one proves.
-        return ($read === true && ! resolve(AstEngine::class)->returnsLiteralNull($caster, 'get')) ? null : $read;
+        return ($read === true && ! resolve(ReturnLiteralReader::class)->returnsNull($caster, 'get')) ? null : $read;
     }
 
     /**
