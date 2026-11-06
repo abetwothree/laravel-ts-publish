@@ -16,6 +16,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeDelegatingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
@@ -1995,4 +1997,19 @@ test('a resource reading a serializing cast off its model publishes get()\'s typ
     ])->and(json_encode(LabelSerializeReadResource::make($post)->resolve()))
         ->toBe('{"method_label":{"text":"a"},"method_label_whole":{"text":"a"},"interface_label":{"text":"b"},"interface_label_whole":{"text":"b"},"mixed_interface":{"x":7,"y":1},"number":7,"mixed_method":"1"}')
         ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"b"', '"user_id":"n7"');
+});
+
+// Model::toArray() writes serialize()'s value, which a resource delegating to it sends; only() reads each attribute
+// through getAttribute(), which gives get()'s value.
+test('a resource sending its model\'s toArray() publishes serialize()\'s type, and one sending only() get()\'s', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'user_id' => '7']);
+
+    expect(array_intersect_key(resourceProps(LabelSerializeDelegatingResource::class), array_flip(['title', 'content', 'user_id'])))
+        ->toBe(['title' => 'string', 'content' => 'string', 'user_id' => 'string'])
+        ->and(json_encode(array_intersect_key(LabelSerializeDelegatingResource::make($post)->resolve(), array_flip(['title', 'content', 'user_id']))))
+        ->toBe('{"title":"a","content":"b","user_id":"n7"}')
+        ->and(resourceProps(LabelSerializeOnlyResource::class))
+        ->toBe(['title' => '{ text: string }', 'content' => '{ text: string }', 'user_id' => 'number'])
+        ->and(json_encode(LabelSerializeOnlyResource::make($post)->resolve()))
+        ->toBe('{"title":{"text":"a"},"content":{"text":"b"},"user_id":7}');
 });
