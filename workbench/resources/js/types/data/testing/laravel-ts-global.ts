@@ -1509,6 +1509,18 @@ declare global {
             /** The day the shift starts. Model::toArray() runs serializeDate() on a new-style getter's date. */
             starts_on: string;
         }
+        /**
+         * When a shift's window opens (a NOT NULL column) and closes (a nullable one), both through one serializing cast
+         * whose `get()` is nullable (GH-154).
+         */
+        export interface ShiftWindow {
+            // Columns
+            id: number;
+            opens_at: string | null;
+            closes_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+        }
         export interface SlugPost {
             // Columns
             id: number;
@@ -3512,6 +3524,15 @@ declare global {
             nested: { inner: string[] };
             loaded_orders?: string[];
             "42": string;
+        }
+        /**
+         * Maps a value object's recipient lists through array_map() under a `toArray()` `@return` docblock (GH-154): an
+         * untyped callback parameter over a promoted and a plain `@var list<MailRecipient>` property, and a typed one.
+         */
+        export interface DocumentedRecipientsResource {
+            recipients: { name: unknown; email: unknown }[];
+            copied: { name: unknown; email: unknown }[];
+            typed: { name: string | null; email: string | null }[];
         }
         /**
          * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
@@ -5777,6 +5798,15 @@ declare global {
             shaped: { chart: workbench.app.packages.ui.ChartType; panel: UiNode; gauges: UiGauge[] };
             untyped: { panel: UiNode; chart: workbench.app.packages.ui.ChartType };
             gauge_attr: UiGauge;
+        }
+        /**
+         * Maps a value object's recipient lists through array_map() with no `toArray()` docblock (GH-154): an untyped callback
+         * parameter over a promoted and a plain `@var list<MailRecipient>` property, and a typed one.
+         */
+        export interface UndocumentedRecipientsResource {
+            recipients: { name: unknown; email: unknown }[];
+            copied: { name: unknown; email: unknown }[];
+            typed: { name: string | null; email: string | null }[];
         }
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.

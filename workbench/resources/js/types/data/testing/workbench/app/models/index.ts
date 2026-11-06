@@ -119,6 +119,8 @@ export * from './roster-slot_meta';
 export * from './service-desk';
 export * from './service-desk_meta';
 export * from './shift';
+export * from './shift-window';
+export * from './shift-window_meta';
 export * from './shift_meta';
 export * from './slug-post';
 export * from './slug-post_meta';

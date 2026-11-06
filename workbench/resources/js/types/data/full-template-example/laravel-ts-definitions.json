@@ -8492,6 +8492,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\ShiftWindow": {
+            "name": "ShiftWindow",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "opens_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "closes_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\SlugPost": {
             "name": "SlugPost",
             "properties": [
@@ -13787,6 +13812,26 @@
                 {
                     "name": "42",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
+            "name": "DocumentedRecipientsResource",
+            "properties": [
+                {
+                    "name": "recipients",
+                    "type": "{ name: unknown; email: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "copied",
+                    "type": "{ name: unknown; email: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "typed",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 }
             ]
@@ -21296,6 +21341,26 @@
                 {
                     "name": "gauge_attr",
                     "type": "UiGauge",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\UndocumentedRecipientsResource": {
+            "name": "UndocumentedRecipientsResource",
+            "properties": [
+                {
+                    "name": "recipients",
+                    "type": "{ name: unknown; email: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "copied",
+                    "type": "{ name: unknown; email: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "typed",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 }
             ]

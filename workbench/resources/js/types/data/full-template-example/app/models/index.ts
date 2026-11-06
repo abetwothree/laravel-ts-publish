@@ -59,6 +59,7 @@ export * from './review';
 export * from './roster-slot';
 export * from './service-desk';
 export * from './shift';
+export * from './shift-window';
 export * from './slug-post';
 export * from './squad';
 export * from './stockroom';
