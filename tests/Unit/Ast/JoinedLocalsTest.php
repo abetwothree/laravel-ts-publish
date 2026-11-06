@@ -427,13 +427,14 @@ test('a model method\'s @var over $this naming a class that cannot answer the me
         ->toBe(['static_name' => 'Ann', 'totals_name' => 'Ann', 'union_name' => 'Ann']);
 });
 
-// collect() wraps the joined collection, so its callback's parameter takes the element with what the join left out.
+// collect() wraps the joined collection, its list of models, so its callback's parameter takes the element with what
+// the join left out.
 test('a collect() pipeline over a joined collection warns of the write the join left out', function () {
     AnalysisWarnings::reset();
 
     expect(publishedResourceKeyTypes(JoinedCollectResource::class, Post::class))->toBe([
-        'contents' => 'string[] | Record<string, string>',
-        'items' => '{ c: string }[] | Record<string, { c: string }>',
+        'contents' => 'string[]',
+        'items' => '{ c: string }[]',
     ])
         ->and(joinedDropWarnings())->toBe(['27 $this->opaque($this->comments)'])
         ->and(joinedSends(JoinedCollectResource::class, true))->toBe(['contents' => ['hi'], 'items' => [['c' => 'hi']]]);

@@ -2727,7 +2727,7 @@ it('reads each paginator kind, and its kind past the paginator\'s own steps', fu
         ->toBe([15, null, 1]);
 });
 
-// A setter keeps the paginator and its items; through() maps them, `unknown` where its callable is not read.
+// A setter keeps the paginator and its items; through() maps them, as the call its callable names.
 it('types a paginator past its own steps as the same paginator', function () {
     paginatedPost();
     $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->steps());

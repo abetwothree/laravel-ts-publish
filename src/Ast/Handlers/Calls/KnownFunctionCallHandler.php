@@ -274,7 +274,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        $this->passesObject('array_filter', $array, $scope);
+        $this->warnOfCollection('array_filter', $array, $scope);
 
         $callback = $args->named('callback')?->value;
         $dropsNull = $callback === null || ($callback instanceof ConstFetch && $callback->name->toLowerString() === 'null');
@@ -295,10 +295,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * `array_values($array)` as the list of its values, arm by arm: a list or tuple as itself, a Record as its values,
-     * an object literal as a list of its member types.
-     *
-     * A `null` arm is left out, as PHP throws a TypeError on null, and a Collection, which it throws on too, keeps its
+     * `array_values($array)` as the list of its values, keyed 0..n-1, arm by arm: a list or tuple as itself, a Record
+     * or an object literal as its values. A `null` arm is left out, as PHP throws on it, and a Collection keeps its
      * items' type beside a warning; null when another arm leaves the array unread.
      *
      * @return ValueExpressionResult|null
@@ -311,7 +309,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        $this->passesObject('array_values', $array, $scope);
+        $this->warnOfCollection('array_values', $array, $scope);
 
         $result = $engine->resolve($array);
         $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
@@ -320,9 +318,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        unset($result['keepsKeys']);
+        unset($result['keepsKeys'], $result['unnamedKeys']);
 
-        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false, 'listKeys' => true];
     }
 
     /**
@@ -336,7 +334,13 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     {
         $array = $arguments->named('array')?->value;
 
-        if ($array === null || $arguments->hasUnpack() || $this->passesObject('array_keys', $array, $scope)) {
+        if ($array === null || $arguments->hasUnpack()) {
+            return null;
+        }
+
+        $this->warnOfCollection('array_keys', $array, $scope);
+
+        if ($this->namesObject($array, $scope)) {
             return null;
         }
 
@@ -403,7 +407,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $inputs = [];
 
         foreach ($arrays as $array) {
-            if ($this->passesObject('array_map', $array, $scope)) {
+            $this->warnOfCollection('array_map', $array, $scope);
+
+            if ($this->namesObject($array, $scope)) {
                 return null;
             }
 
@@ -470,21 +476,28 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * Whether ReceiverClassResolver names an object for an array function's argument, which PHP rejects with a
-     * TypeError; a Collection records a warning naming its line.
+     * TypeError.
      */
-    private function passesObject(string $function, Expr $array, AnalysisScope $scope): bool
+    private function namesObject(Expr $array, AnalysisScope $scope): bool
+    {
+        return resolve(ReceiverClassResolver::class)->resolve($array, $scope) !== null;
+    }
+
+    /**
+     * Record a warning naming the line where an array function is passed a Collection, which PHP rejects with a
+     * TypeError; the Collection's all() is the array each of them takes.
+     */
+    private function warnOfCollection(string $function, Expr $array, AnalysisScope $scope): void
     {
         $receiver = resolve(ReceiverClassResolver::class)->resolve($array, $scope);
 
         if ($receiver !== null && array_any($receiver->classes, static fn (string $class): bool => is_a($class, Enumerable::class, true))) {
             AnalysisWarnings::addOnce($scope->subjectReflection->getName(), sprintf(
-                '%s() on line %d is passed a Collection, which PHP rejects with a TypeError; call ->values()->all().',
+                '%s() on line %d is passed a Collection, which PHP rejects with a TypeError; pass its ->all() instead.',
                 $function,
                 $array->getStartLine(),
             ));
         }
-
-        return $receiver !== null;
     }
 
     /**

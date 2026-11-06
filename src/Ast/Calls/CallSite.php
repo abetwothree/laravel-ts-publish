@@ -236,7 +236,8 @@ final readonly class CallSite
 
     /**
      * Whether a call's classes are only its method's or macro's declared return: true for a class other than its own,
-     * null for `static` or `$this`, which is as exact as the receiver, false for a call nothing declares.
+     * null for a method's `static` or `$this`, which is as exact as the receiver, false for a call nothing declares and
+     * for a macro returning its own class.
      */
     private function callBounds(MethodCall|NullsafeMethodCall|StaticCall $call, string $method): ?bool
     {

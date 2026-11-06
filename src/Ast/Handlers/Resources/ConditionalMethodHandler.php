@@ -519,7 +519,10 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $value = $valueArg->value;
-        $callback = CallableForms::passingOneValue(CallableForms::heldCallable($callbackArg->value, $scope));
+        // transform() calls any callable, so a callable string or pair is the call it names.
+        $callback = CallableForms::passingOneValue(
+            CallableForms::calledCallable($callbackArg->value, $scope) ?? $callbackArg->value,
+        );
         $resolvedValue = null;
         $model = null;
         $outer = AnalysisScope::NO_NAME_BINDINGS;
@@ -954,6 +957,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $name = $firstParam->var->name;
+
+        // A scalar parameter holds what PHP converts the value to, never the model or the binding it came from.
+        if ($resolvedValue !== null && $resolvedValue['type'] !== 'unknown' && ParameterBinder::declaresScalar($firstParam)) {
+            $passed = $keepNull ? $resolvedValue : [...$resolvedValue, 'type' => TsTypeString::withoutNullArm($resolvedValue['type'])];
+            $scope->varValueBindings[$name] = ParameterBinder::coercedValue($firstParam, $passed);
+
+            return;
+        }
 
         // The callback runs only for a filled value, so the parameter holding it is not null; a default's may be.
         if (! $keepNull) {

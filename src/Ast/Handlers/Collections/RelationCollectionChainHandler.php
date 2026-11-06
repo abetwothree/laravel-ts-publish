@@ -190,9 +190,9 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         // keys() lists the relation's numbers, which no model's map(), pluck() or terminal reads.
         if ($walk['keys']) {
-            $keys = (string) ArrayArms::keysList($relationInfo['type'], true);
+            $keys = ArrayArms::keysList($relationInfo['type'], true);
 
-            return $mapNode !== null || $pluckNode !== null || $isTerminal
+            return $keys === null || $mapNode !== null || $pluckNode !== null || $isTerminal
                 ? null
                 : ['type' => $sequentialKeys ? $keys : ArrayArms::keyedList($keys), 'optional' => false, 'listKeys' => true];
         }

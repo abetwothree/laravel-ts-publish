@@ -37,6 +37,7 @@ use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
 use PhpParser\Node\UnionType;
 use ReflectionClass;
+use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
@@ -160,16 +161,9 @@ final class ParameterBinder
     }
 
     /**
-     * How a callback's parameter binds a collection's element: by the element's model, or the concrete model its
-     * non-null declaration names where the element names none, or where its native type names another, which PHP
-     * enforces; else by the element's value; null for neither. A `@param` gives way to any model the element names.
-     *
-     * A model a `self` or `parent` spells may be any subclass; the element model a receiver names stays as it is. The
-     * caller declines a variadic parameter, which collects the element and the key into one list.
-     *
-     * A bound model is guarded, as `unread`, whatever declares it where $unread says no reading reaches the callback
-     * without the guard; else where $guardsElement says the element is guarded and names the model, not a declaration.
-     * The element model a variable's join names keeps the writes that join left out.
+     * How a callback's parameter binds a collection's element: by its model, or the concrete model a non-null native
+     * declaration names where it names none or another, else by its value; null for neither. A bound model is guarded
+     * where $unread or $guardsElement says so, and keeps the writes the join holding it left out.
      *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
@@ -253,6 +247,12 @@ final class ParameterBinder
             $scope->nonNullReads[$name][] = ['read' => $param->var, 'after' => null, 'before' => null];
         }
 
+        // A scalar parameter holds what PHP converts the value to, which only the value's own type says.
+        if ($argument instanceof Expr && self::declaresScalar($param)) {
+            $argument = $engine->resolve($argument);
+            $argument = $filled ? [...$argument, 'type' => TsTypeString::withoutNullArm($argument['type'])] : $argument;
+        }
+
         if ($argument instanceof Expr) {
             $scope->closureParamExprBindings[$name] = $argument;
         } elseif ($argument['type'] !== 'unknown') {
@@ -289,10 +289,21 @@ final class ParameterBinder
                 return;
             }
 
+            $scalar = $param !== null && self::declaresScalar($param);
+
             if (! $elements || $argument instanceof Expr || $param === null
                 || ! $param->var instanceof Variable || ! is_string($param->var->name)
+                || ($scalar && $argument['type'] !== 'unknown')
             ) {
                 self::bindCallbackArgument($callback, $position, $argument, $scope, $engine);
+
+                continue;
+            }
+
+            // A scalar parameter holds what PHP converts an element to, never the model it is.
+            if ($scalar && $position === 0 && $firstElementModel !== null) {
+                $model = ['type' => class_basename($firstElementModel), 'optional' => false];
+                self::bindCallbackArgument($callback, $position, $model, $scope, $engine);
 
                 continue;
             }
@@ -362,15 +373,31 @@ final class ParameterBinder
             return $value;
         }
 
+        $enum = $value['directEnumFqcn'] ?? null;
         $arms = [];
+        $keepsEnum = false;
 
         foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
-            array_push($arms, ...(self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+            $enumArm = $enum !== null && self::enumArmFits($arm, $enum, $scalars);
+            $keepsEnum = $keepsEnum || $enumArm;
+            array_push($arms, ...($enumArm || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
         }
 
         $type = implode(' | ', array_values(array_unique($arms)));
 
-        return $type === $value['type'] ? $value : [...ValueResult::unknown(), 'type' => $type, 'optional' => false];
+        if ($type === $value['type']) {
+            return $value;
+        }
+
+        return [...ValueResult::unknown(), 'type' => $type, ...($keepsEnum && $enum !== null ? ['directEnumFqcn' => $enum] : [])];
+    }
+
+    /**
+     * Whether a parameter declares a native scalar type, so it holds what PHP converts a passed value to.
+     */
+    public static function declaresScalar(Param $param): bool
+    {
+        return self::declaredScalars($param) !== null;
     }
 
     /**
@@ -793,6 +820,29 @@ final class ParameterBinder
             $arm === 'boolean' => isset($scalars['bool']),
             $arm === 'true', $arm === 'false' => isset($scalars['bool']) || isset($scalars[$arm]),
             default => isset($scalars[$arm]) && $arm === 'null',
+        };
+    }
+
+    /**
+     * Whether an arm is an enum's value alias a parameter takes as it is, as its backing scalar fits the parameter, or
+     * its case-name alias, a string.
+     *
+     * @param  array<string, string>  $scalars
+     */
+    private static function enumArmFits(string $arm, string $enum, array $scalars): bool
+    {
+        if ($arm === ValueResult::enumKindName($enum)) {
+            return isset($scalars['string']);
+        }
+
+        $backing = $arm === ValueResult::enumTypeName($enum) && enum_exists($enum)
+            ? new ReflectionEnum($enum)->getBackingType()?->getName()
+            : null;
+
+        return match ($backing) {
+            'int' => isset($scalars['int']) || isset($scalars['float']),
+            'string' => isset($scalars['string']),
+            default => false,
         };
     }
 

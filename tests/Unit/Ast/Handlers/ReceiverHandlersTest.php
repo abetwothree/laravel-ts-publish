@@ -1446,7 +1446,7 @@ describe('narrowing', function () {
     ]);
 
     // A local may hold anything, the chain or a callable that swaps it included, so a call reading one, or a write
-    // through one, ends the proof (R49).
+    // through one, ends the proof.
     test('binds a test on a $this chain unless a call in its span reads a local or a write goes through one', function (string $before, string $body, array $bindings) {
         $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
 
@@ -2496,7 +2496,7 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
-        // Only the tag declares the keys, and a bare `string` one is trusted as the record all() sends (R37).
+        // Only the tag declares the keys, and a bare `string` one is trusted as the record all() sends.
         'a @var collection of plain values keyed by string, over a value that names no class' => [
             '/** @var \Illuminate\Support\Collection<string, int> $m */ '
                 .'$m = \Workbench\App\Support\Opaque::value($this->resource->comments)->pluck(\'id\', \'content\'); return $m->all();',

@@ -316,6 +316,8 @@ it('types array_keys() as the list of its array\'s keys, arm by arm', function (
     'a class-name key' => ['array_keys([\\Workbench\\App\\Enums\\Status::class => 1, "a" => 2])', "('Workbench\\\\App\\\\Enums\\\\Status' | 'a')[]"],
     'a key PHP numbers after a named one' => ['array_keys(["a" => $this->title, $this->id])', "('a' | 0)[]"],
     'an empty list' => ['array_keys([])', 'never[]'],
+    'array_values() of a record, keyed 0..n-1' => ['array_keys(array_values($this->scores))', 'number[]'],
+    'array_values() of a literal spreading a list' => ['array_keys(array_values([1, ...$this->counts()]))', 'number[]'],
 ]);
 
 /**
@@ -419,7 +421,7 @@ it('warns that array functions over a Collection throw a TypeError', function (s
         ->and(AnalysisWarnings::all())->toBe([[
             'subject' => PostResource::class,
             'message' => strstr($php, '(', true).'() on line 1 is passed a Collection, which PHP rejects with a TypeError; '
-                .'call ->values()->all().',
+                .'pass its ->all() instead.',
         ]]);
 })->with([
     'array_values() of a relation' => ['array_values($this->comments)', 'Comment[]'],

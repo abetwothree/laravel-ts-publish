@@ -97,6 +97,22 @@ final class CallableForms
     }
 
     /**
+     * The callable a caller that calls any callable value runs, as Conditionable and transform() do: a callable string
+     * or pair, held in a local or not, as the closure asOneValueClosure() makes of it, called with $arity values, else
+     * heldCallable()'s. Null for a string or array that names no call.
+     */
+    public static function calledCallable(Expr $value, AnalysisScope $scope, int $arity = 1): ?Expr
+    {
+        $held = $value instanceof Variable && $scope->declaredAt($value) === null
+            ? $scope->soleWriteSeenBy($value) ?? $value
+            : $value;
+
+        return $held instanceof String_ || $held instanceof Array_
+            ? self::asOneValueClosure($held, $arity)
+            : self::heldCallable($value, $scope);
+    }
+
+    /**
      * Whether the expression is a first-class callable: PHP allows one only on a function, method or static call.
      *
      * @phpstan-assert-if-true FuncCall|MethodCall|StaticCall $expr

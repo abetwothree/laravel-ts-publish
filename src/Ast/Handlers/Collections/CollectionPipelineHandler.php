@@ -13,10 +13,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -58,12 +60,18 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return null;
         }
 
+        // A join that left a write out holds the collection the receiver resolver names, which warns of that write.
+        if ($rootResult['type'] === 'unknown') {
+            $rootResult = $this->receivedItems($items, $rootResult, $scope);
+        }
+
         $serializer = CollectionSteps::mappedSerializer($steps);
         $arrayed = $serializer !== null || $steps[count($steps) - 1]['name'] === 'all';
 
         if ($serializer !== null) {
             array_pop($steps);
         }
+
         // A leading values() lists a Record's or a shape's values.
         $listsValues = ! $this->isList($rootResult['type']) && $steps[0]['name'] === 'values';
 
@@ -180,6 +188,23 @@ final class CollectionPipelineHandler implements ExpressionHandler
     private function isList(string $type): bool
     {
         return str_ends_with($type, '[]') && ArrayArms::listElement($type) !== null;
+    }
+
+    /**
+     * The list of models a root no rule types holds where the receiver resolver names it a collection of one model with
+     * keys 0..n-1; the root as it is otherwise.
+     *
+     * @param  ValueExpressionResult  $root
+     * @return ValueExpressionResult
+     */
+    private function receivedItems(Expr $items, array $root, AnalysisScope $scope): array
+    {
+        $receiver = $this->elementReceiver($items, $scope);
+        $model = $receiver?->elementModel;
+
+        return $model === null || $receiver->keyed || ! $receiver->within([Enumerable::class])
+            ? $root
+            : [...$root, 'type' => ValueResult::arrayWrapType(class_basename($model)), 'modelFqcn' => $model];
     }
 
     /**

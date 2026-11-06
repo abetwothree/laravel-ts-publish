@@ -816,3 +816,24 @@ test('a member read past a model parameter\'s own typed write reads no member of
         ->and(fn () => new WrittenModelMemberResource($post)->resolve(Request::create('/')))
         ->toThrow(ErrorException::class, 'Attempt to read property "title" on string');
 });
+
+// Laravel's code and PHP's functions call a callback in coercive mode: a value the type takes stays as it is, an
+// int-backed enum's value included, and any other converts to the declared scalar.
+test('reads a value as a scalar parameter receives it in coercive mode', function (string $param, array $value, array $read) {
+    $closure = new AstParser()->parseSource('<?php fn ('.$param.') => $v;')[0]->expr;
+
+    expect(ParameterBinder::coercedValue($closure->params[0], $value))->toBe($read);
+})->with([
+    'a string literal kept by string' => ['string $v', ['type' => "'a'", 'optional' => false], ['type' => "'a'", 'optional' => false]],
+    'a number converted to string' => ['string $v', ['type' => 'number', 'optional' => false], ['type' => 'string', 'optional' => false]],
+    'a string converted to int' => ['int $v', ['type' => 'string', 'optional' => false], ['type' => 'number', 'optional' => false]],
+    'a nullable value kept by a nullable type' => ['?int $v', ['type' => 'number | null', 'optional' => false], ['type' => 'number | null', 'optional' => false]],
+    'a null kept by a null default' => ['int $v = null', ['type' => 'string | null', 'optional' => false], ['type' => 'number | null', 'optional' => false]],
+    'a union converting to each scalar it names' => ['int|string $v', ['type' => 'boolean', 'optional' => false], ['type' => 'number | string', 'optional' => false]],
+    'an int-backed enum value kept by int' => ['int $v', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]],
+    'an int-backed enum value kept beside a converted arm' => ['int $v', ['type' => 'StatusType | string', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusType | number', 'optional' => false, 'directEnumFqcn' => Status::class]],
+    'an int-backed enum value converted by string' => ['string $v', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'string', 'optional' => false]],
+    'an enum case name kept by string' => ['string $v', ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class]],
+    'a class type left as it is' => ['Post $v', ['type' => 'Post', 'optional' => false], ['type' => 'Post', 'optional' => false]],
+    'an unknown value left as it is' => ['int $v', ['type' => 'unknown', 'optional' => false], ['type' => 'unknown', 'optional' => false]],
+]);

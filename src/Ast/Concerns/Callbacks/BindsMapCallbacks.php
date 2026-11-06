@@ -29,12 +29,9 @@ use PhpParser\Node\Expr;
 trait BindsMapCallbacks
 {
     /**
-     * The array a callback maps one array to, each arm keyed as ArrayArms::mapped() keys it. A `null` arm is left out,
-     * as PHP throws on it. Null where an arm is no array, or the callback cannot be read for an element.
-     *
-     * Each element binds as elementOf() reads it, with $elementModel or the model the element names, guarded where
-     * $guarded says the array is read off a guarded receiver and no declaration names the model, which reads the
-     * callback alone. $arrayed says JsonResource::filter() reaches the result as an array.
+     * The array a callback maps one array to, each arm keyed as ArrayArms::mapped() keys it, a `null` one left out, as
+     * PHP throws on it; null where an arm is no array or the callback cannot be read. Each element binds with
+     * $elementModel, guarded where $guarded says so; $arrayed says filter() reaches the result as an array.
      *
      * @param  ValueExpressionResult  $input
      * @param  class-string<Model>|null  $elementModel
@@ -90,12 +87,9 @@ trait BindsMapCallbacks
     }
 
     /**
-     * What a map ending in `toArray()` or `jsonSerialize()` hands filter(), by what its callback returns at the top
-     * level. `toArray()` keeps each resource for filter() but turns a Collection into an array filter() enters, and
-     * `jsonSerialize()` resolves a bare resource at once, as a kept map does, but keeps one in an array for filter().
-     *
-     * Null where the callback may return a list or a Record, an array or a Collection alike, or, for `jsonSerialize()`,
-     * a resource beside an array.
+     * What a map ending in `toArray()` or `jsonSerialize()` hands filter(): `toArray()` keeps each resource but turns a
+     * Collection into an array, and `jsonSerialize()` resolves a bare resource but keeps one in an array. Null where
+     * the callback may return a list or a Record, or, for `jsonSerialize()`, a resource beside an array.
      *
      * @param  'toArray'|'jsonSerialize'  $serializer
      * @param  Closure(bool): (ValueExpressionResult|null)  $map  the map's result, its callback read as arrayed or not

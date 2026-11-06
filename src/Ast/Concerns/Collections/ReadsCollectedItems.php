@@ -56,14 +56,14 @@ trait ReadsCollectedItems
         }
 
         $arms = TsTypeString::splitTopLevelUnion($type);
-        $items = array_values(array_diff($arms, ['null']));
+        $kept = array_values(array_diff($arms, ['null']));
 
-        if (count($items) > 1) {
+        if (count($kept) > 1) {
             return null;
         }
 
         // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
-        $type = $items === [] || $items[0] === '[]' ? 'never[]' : $items[0];
+        $type = $kept === [] || $kept[0] === '[]' ? 'never[]' : $kept[0];
         $listed = str_ends_with($type, '[]');
 
         if (! $listed && ! str_starts_with($type, '{') && TsTypeShape::recordArguments($type) === null) {

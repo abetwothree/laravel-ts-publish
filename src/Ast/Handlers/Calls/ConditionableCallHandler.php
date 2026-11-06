@@ -32,11 +32,8 @@ use ReflectionMethod;
 
 /**
  * `$x->when($value, $callback, $default)` and `unless()` where `$x` runs Laravel's own `Conditionable` method: the
- * callback's value or the default's, with `$x`'s own JSON in place of a null either returns and of a default not
- * passed. The key is always sent.
- *
- * An API resource's own `$this->when()` is JsonResource's, ConditionalMethodHandler's. With fewer than two arguments
- * the call returns a HigherOrderWhenProxy, and a query's is ReceiverClassResolver::conditionalQuery()'s.
+ * callback's value or the default's, with `$x`'s own JSON for a null and a missing default; always sent. A resource's
+ * own when(), a call with fewer than two arguments and a query's when() are other readers'.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ReadArgument from ParameterBinder

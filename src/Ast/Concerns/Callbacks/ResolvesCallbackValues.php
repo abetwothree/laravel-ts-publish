@@ -9,14 +9,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use Closure;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 
 /**
- * The one read of what a callback returns where its caller calls it with given values, as Laravel's value() and
- * transform() helpers call theirs.
+ * Reads what a callback returns where its caller calls it with given values, as Laravel's value() and transform()
+ * helpers call theirs.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ReadArgument from ParameterBinder
@@ -47,17 +48,23 @@ trait ResolvesCallbackValues
     }
 
     /**
-     * The value a callback returns, as callbackValue() reads it, where its caller read each value it passes in its own
-     * scope, so a write in the callback's body to a name that value reads changes nothing
-     * (ParameterBinder::bindReadArguments()).
+     * The value a callback returns where its caller calls any callable, a string or pair as the call it names, and read
+     * each value it passes in its own scope, so a write in the callback's body to a name that value reads changes
+     * nothing (ParameterBinder::bindReadArguments()).
      *
      * @param  list<ReadArgument>  $passed
      * @return ValueExpressionResult
      */
     protected function callbackValueOfRead(Expr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
+        $called = CallableForms::calledCallable($callback, $scope, count($passed));
+
+        if ($called === null) {
+            return ValueResult::unknown();
+        }
+
         return $this->calledCallbackValue(
-            $callback,
+            $called,
             count($passed),
             $scope,
             $engine,

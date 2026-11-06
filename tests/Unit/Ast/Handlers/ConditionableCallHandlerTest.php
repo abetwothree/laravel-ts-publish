@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCallableEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCoercedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableDeclinedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionablePayloadEvent;
@@ -12,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionableBoxR
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
 /**
@@ -125,6 +127,42 @@ it('passes a callable the object and the value as the caller reads them', functi
         ->and([$pinned['value_shadow'], $pinned['rest_shadow'], $pinned['receiver_second_shadow']])->toBe([true, [true], 'n'])
         ->and([$unpinned['assigned']['post']['id'], $unpinned['looped']['post']['id'], $unpinned['referenced']['post']['id']])->toBe([7, 7, 7])
         ->and([$pinned['receiver_assigned'], $unpinned['receiver_assigned']])->toBe(['n', 'n']);
+});
+
+// Conditionable calls any callable it is passed, so a callable string or pair, held in a local or not, is the call it
+// names, never the string or the array it is spelled as.
+it('types a callable string or pair as the call it names', function () {
+    $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableCallableEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
+    )->broadcastWith()), true);
+    [$pinned, $unpinned] = [$sent(true), $sent(false)];
+
+    expect(conditionableCallKeys(ConditionableCallableEvent::class))->toBe([
+        'static_string' => 'string | { name: string }',
+        'class_pair' => 'string | { name: string }',
+        'this_pair' => 'string | { post: Post }',
+        'object_pair' => 'string | { name: string }',
+        'number_pair' => 'number | { name: string }',
+        'unless_pair' => 'string | { name: string }',
+        'held_pair' => 'string | { name: string }',
+        'held_string' => 'string | { name: string }',
+        'named_pair' => 'string | { name: string }',
+        'default_string' => 'string',
+        'unless_default_pair' => 'number | string',
+        'status_box' => 'string | { name: string; status: StatusType }',
+    ])->and(array_values($pinned))->toBe(['L', 'L', 'T', 'S', 3, ['name' => 'box'], 'S', 'L', 'S', 'x', 'S', 'x'])
+        ->and([$unpinned['static_string'], $unpinned['unless_pair'], $unpinned['default_string'], $unpinned['unless_default_pair']])
+        ->toBe([['name' => 'box'], 'S', 'L', 7])
+        ->and($unpinned['this_pair']['post']['id'])->toBe(7);
+});
+
+// No generated file exports an enum the config leaves out, so the object's own JSON leaves its member unknown.
+it('leaves an excluded enum member of the receiver\'s own JSON unknown', function () {
+    config()->set('ts-publish.enums.excluded', [Status::class]);
+    $sent = json_decode((string) json_encode(new ConditionableCallableEvent(new Post)->broadcastWith()), true);
+
+    expect(conditionableCallKeys(ConditionableCallableEvent::class)['status_box'])->toBe('string | { name: string; status: unknown }')
+        ->and($sent['status_box'])->toBe(['name' => 'box', 'status' => 0]);
 });
 
 // Laravel's own code, which declares no strict types, calls each callable, so PHP converts the value to a scalar
