@@ -271,7 +271,13 @@ final class ParameterBinder
         foreach ($passed as $position => $argument) {
             $param = $callback->params[$position] ?? null;
 
-            if (! $elements || $argument instanceof Expr || $param === null || $param->variadic
+            if ($param !== null && $param->variadic) {
+                self::bindCallbackArgument($callback, $position, self::collectedValue(array_slice($passed, $position), $engine), $scope, $engine);
+
+                return;
+            }
+
+            if (! $elements || $argument instanceof Expr || $param === null
                 || ! $param->var instanceof Variable || ! is_string($param->var->name)
             ) {
                 self::bindCallbackArgument($callback, $position, $argument, $scope, $engine);
@@ -645,6 +651,26 @@ final class ParameterBinder
                 (string) $method->getDocComment(),
                 LaravelTsPublish::methodDeclaringFileClass($method),
             ) === null;
+    }
+
+    /**
+     * The value each item of a variadic parameter's list holds: the one value passed, or the union of every value
+     * passed, `unknown` where any value is.
+     *
+     * @param  list<Expr|ValueExpressionResult>  $values
+     * @return Expr|ValueExpressionResult
+     */
+    private static function collectedValue(array $values, ExpressionEngine $engine): Expr|array
+    {
+        if (count($values) === 1) {
+            return $values[0];
+        }
+
+        $resolved = array_map(static fn (Expr|array $value): array => $value instanceof Expr ? $engine->resolve($value) : $value, $values);
+
+        return $resolved === [] || array_any($resolved, static fn (array $value): bool => $value['type'] === 'unknown')
+            ? ValueResult::unknown()
+            : ValueResult::unionResults($resolved);
     }
 
     /**

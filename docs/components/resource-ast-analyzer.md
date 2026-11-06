@@ -26,6 +26,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceExpressionHandlers`](../../src/Ast/Dispatch/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/Collections/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
+| [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) | `Conditionable::when()` and `unless()` on any object but an API resource, a model or a query, in every profile |
 | [`ToResourceHandler`](../../src/Ast/Handlers/Resources/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
@@ -481,6 +482,14 @@ such as `Resource::make($this->parent)`, and publishes `null` alone for a payloa
 and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)). Nor does a wrap
 in a `map()` body, unless a trailing `->all()`, `->toArray()` or `->jsonSerialize()` turns the mapped `Collection`
 into an array: `JsonResource::filter()` recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
+
+Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a body holds, is Laravel's
+`Conditionable`, which returns `$callback($this, $value) ?? $this`, else `$default($this, $value) ?? $this`, else
+`$this`. [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) types it, required, as
+the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
+of a `null` either returns and of a default not passed. It declines with fewer than two arguments, which return a
+`HigherOrderWhenProxy`; on a model, a query or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class
+declaring its own `when()`; and where a callable or the object's JSON reads `unknown`, whose arm Laravel can send.
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing

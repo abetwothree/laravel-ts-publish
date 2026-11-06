@@ -732,15 +732,6 @@ key can claim a type the closure does not return.
 machine that ran the publish. A user constant built from `env()` or config can change type between machines, and one
 defined only at runtime, or only on another OS or extension, leaves the value `unknown`. Built-in constants are stable.
 
-### On a class that is not an API resource, `$this->when()` publishes `unknown`
-
-Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php), as
-[ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
-On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
-every other `when*()` call as that class's own method. So Laravel's `Conditionable::when()` publishes `unknown`,
-required, as `ConditionableBroadcastEvent` pins. Until the package types `Conditionable::when()`, write the key as a
-ternary, or type it with `#[TsCasts]`.
-
 ### An aggregate's type follows the database of the machine that publishes
 
 [`AggregateValueType`](../src/Ast/Values/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the

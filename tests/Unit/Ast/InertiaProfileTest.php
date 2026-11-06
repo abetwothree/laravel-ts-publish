@@ -51,7 +51,7 @@ it('gives a page and a shared-data middleware the one Inertia profile, and only 
         ->toEqual(ResourceExpressionHandlers::forNonResourceSubjects())
         ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, reading: Reading::Inertia))
         ->toEqual(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::make($engine)))
-        ->and($inertia)->toHaveCount(30);
+        ->and($inertia)->toHaveCount(31);
 });
 
 // An Inertia reading's CallSite binds a callable as called, which only the profile the reading builds reads as called.

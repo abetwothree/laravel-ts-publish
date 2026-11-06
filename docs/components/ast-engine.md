@@ -75,13 +75,16 @@ winner changes published types, so treat it as a behavior change, not a refactor
 gives a `JsonResource` subject `make()` and any other subject `forNonResourceSubjects()`, each through `forInertia()`
 where the analysis reads what Inertia sends. `ResourceAstAnalyzer::handlers()` calls it when no profile is injected.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
-`$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
-`RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
-event's `toResource()` into `unknown`, which the payload contradicts.
+`$this->when()` is that class's own method, which `ConditionableCallHandler` types where it is Laravel's
+`Conditionable`. Dropping `ToResourceHandler` and `RelationFilterHandler` too was measured to lose typed keys
+(`Comment::relationSummary()`'s filters) and to turn an event's `toResource()` into `unknown`, which the payload
+contradicts.
 
 `ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` sit last, with only `KnownMethodRuleHandler` after them,
-so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,
-whose op table it shares. See [ResourceAstAnalyzer § Collection pipelines][collection-pipelines].
+so every specific handler answers first. `ConditionableCallHandler` sits right before `ReceiverMethodCallHandler`, so a
+`Conditionable` `when()` or `unless()` reads as Laravel runs it, not as the method's `@return`.
+`CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`, whose op table it shares. See
+[ResourceAstAnalyzer § Collection pipelines][collection-pipelines].
 
 `ModelFinderHandler` sits before `StaticCallHandler`, whose last arm claims every static call on a named class and never
 declines one, so a query chain rooted at a model types alike in every profile, as the paginator, model, list or column
@@ -198,8 +201,8 @@ Every other pair is inert: the two handlers never answer the same expression, or
 
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
-| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims `?->toResource()` and `?->toResourceCollection()`, which the others left `unknown`. `ReceiverMethodCallHandler` answers every other method chain, and leaves `unknown` any chain a step of which holds no single model. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ConditionableCallHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
+| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `ConditionableCallHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims `?->toResource()` and `?->toResourceCollection()`, which the others left `unknown`. `ConditionableCallHandler` claims only a `Conditionable` `?->when()` or `?->unless()`, which the receiver rules leave `unknown`. `ReceiverMethodCallHandler` answers every other method chain, and leaves `unknown` any chain a step of which holds no single model. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |

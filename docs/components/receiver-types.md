@@ -228,7 +228,8 @@ never emitted or imported, so it can accept the classes `morphToDocblockTargets(
 
 ## Following a method's return type
 
-`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`. It asks
+`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`, but a `Conditionable` `when()` or
+`unless()`, which `ConditionableCallHandler` answers before it from the same receiver. It asks
 `ReceiverClassResolver::resolve()` for a call's receiver, or `resolveStaticReceiver()` for the class a static call is
 made on. `ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds and merges
 the answers. When any class declines, the whole call declines. The one exception is a resource collection's items: a

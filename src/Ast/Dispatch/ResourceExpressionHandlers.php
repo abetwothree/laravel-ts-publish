@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ArrayMergeHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ConditionableCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ReceiverMethodCallHandler;
@@ -175,7 +176,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 29 handlers in registration order — the single source every profile above filters.
+     * Construct all 30 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -209,6 +210,7 @@ final class ResourceExpressionHandlers
             new MatchHandler,
             new OffsetReadHandler,
             new ReceiverPropertyFetchHandler,
+            new ConditionableCallHandler,
             new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,
         ];

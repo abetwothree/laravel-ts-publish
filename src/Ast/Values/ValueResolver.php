@@ -304,10 +304,21 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
+     * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known,
+     * as resolveSerializedObject() reads X.
      *
-     * X's override answers first, whoever serializes X, unless X is a model, whose JSON depends on its runtime
-     * attributes, casts and hidden fields, or an API resource, which publishes as itself.
+     * @return ValueExpressionResult|null
+     */
+    public function resolveSerializedNew(New_ $new): ?array
+    {
+        return $new->class instanceof Name ? $this->resolveSerializedObject($new->class->toString()) : null;
+    }
+
+    /**
+     * Type an object of a class that is not a resource as json_encode() writes it, or null where that is not known.
+     *
+     * The class's override answers first, whoever serializes it, unless it is a model, whose JSON depends on its
+     * runtime attributes, casts and hidden fields, or an API resource, which publishes as itself.
      *
      * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
      * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
@@ -315,13 +326,11 @@ final class ValueResolver
      *
      * @return ValueExpressionResult|null
      */
-    public function resolveSerializedNew(New_ $new): ?array
+    public function resolveSerializedObject(string $class): ?array
     {
-        $class = $new->class instanceof Name ? $new->class->toString() : null;
-
-        $result = $class !== null && ClassTypeOverride::appliesToNew($class)
+        $result = ClassTypeOverride::appliesToNew($class)
             ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
-            : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
+            : ($this->resolveStringSerializedObject($class) ?? $this->resolveClassSerializedObject($class));
 
         if ($result === null) {
             return null;
@@ -329,7 +338,7 @@ final class ValueResolver
 
         $result = [...$result, 'keepsKeys' => true];
 
-        return $class !== null && is_a($class, Arrayable::class, true) ? $result : ValueResult::closeToDottedKeys($result);
+        return is_a($class, Arrayable::class, true) ? $result : ValueResult::closeToDottedKeys($result);
     }
 
     /**
@@ -350,18 +359,14 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` by the string json_encode() writes X as, whatever TS name the package publishes X under:
-     * `string`, or `string | null` for a nullable one; null for any other class. A date takes `toTsType()`'s type.
+     * Type an object of a class by the string json_encode() writes it as, whatever TS name the package publishes the
+     * class under: `string`, or `string | null` for a nullable one; null for any other class. A date takes
+     * `toTsType()`'s type.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveStringSerializedNew(New_ $new): ?array
+    private function resolveStringSerializedObject(string $class): ?array
     {
-        if (! $new->class instanceof Name) {
-            return null;
-        }
-
-        $class = $new->class->toString();
         $type = StringSerialization::jsonStringType($class);
 
         if ($type === null) {
@@ -376,18 +381,12 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` as toTsType() reads X, or null for a class resolveSerializedNew() declines.
+     * Type an object of a class as toTsType() reads the class, or null for a class resolveSerializedObject() declines.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveClassSerializedNew(New_ $new): ?array
+    private function resolveClassSerializedObject(string $class): ?array
     {
-        if (! $new->class instanceof Name) {
-            return null;
-        }
-
-        $class = $new->class->toString();
-
         if (! class_exists($class)
             || is_a($class, Model::class, true)
             || is_a($class, Arrayable::class, true)

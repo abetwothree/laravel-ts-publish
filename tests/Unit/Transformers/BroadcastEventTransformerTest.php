@@ -649,7 +649,7 @@ test('an event types toResource() as the resource it builds, and imports it', fu
 });
 
 // Only JsonResource::resolve() drops the MissingValue a resource's when() returns. Conditionable::when() returns the
-// callback's value or the event itself, so the key is always sent, and its value is not the callback's type alone.
+// callback's value or the event itself, so the key is always sent, as the callback's type or the event's own JSON.
 test('a non-resource subject reads $this->when() as its own method, not as a resource conditional', function () {
     $properties = array_column(
         resolve(AstEngine::class)->analyzeMethod(ConditionableBroadcastEvent::class, 'broadcastWith')->properties,
@@ -657,7 +657,7 @@ test('a non-resource subject reads $this->when() as its own method, not as a res
         'name',
     );
 
-    expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
+    expect($properties['label'])->toMatchArray(['type' => 'string | { user: User }', 'optional' => false])
         ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
 });
 

@@ -643,7 +643,7 @@ Key capabilities include:
 
 - **Ready to render**: the properties and both import maps agree, so a module that renders all three compiles.
 - **Any class, any method**: `toArray()` by default, or another method, such as `analyze($event, 'broadcastWith')`.
-- **Resource semantics**: on an API resource, conditional methods, nested resources, and relation filters type as they do in a publish. On any other class, Laravel's `Conditionable::when()` comes back `unknown`.
+- **Resource semantics**: on an API resource, conditional methods, nested resources, and relation filters type as they do in a publish. On any other class, Laravel's `Conditionable::when()` types as the callback's value or the object itself.
 - **Public API**: `analyze()` and `AnalysisResult` are supported, and every other engine class is internal.
 
 For the arguments, the result's fields, and what it can't analyze, see the [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).

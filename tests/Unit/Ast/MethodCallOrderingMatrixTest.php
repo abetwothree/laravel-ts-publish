@@ -31,6 +31,7 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
@@ -195,6 +196,11 @@ function methodCallCorpus(): array
         new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
             new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
         ]), 'filter'), 'values'),
+        // Conditionable::when() on a date: the callback's declared value, or the date itself, which no partner types.
+        new MethodCall(new FuncCall(new Name('now')), 'when', [
+            new Arg(new ConstFetch(new Name('true'))),
+            new Arg(new ArrowFunction(['returnType' => new Identifier('string'), 'expr' => new String_('x')])),
+        ]),
         // Query chains rooted at a model, which every profile reads alike.
         new MethodCall($query(), 'paginate', [new Arg(new Int_(10))]),
         new MethodCall(new StaticCall(new Name(Post::class), 'where', [new Arg(new String_('id')), new Arg(new Int_(1))]), 'first'),
