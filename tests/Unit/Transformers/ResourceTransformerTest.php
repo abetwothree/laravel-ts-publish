@@ -117,6 +117,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnreadCallbackRelaysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractEntry;
@@ -4187,7 +4188,7 @@ test('a template-literal override keeps its text whole beside null, a string and
     ]);
 });
 
-// O9: a declared class other than a model is what `$this->resource` holds, so the proxy reads it as `@var` does.
+// A declared class other than a model is what `$this->resource` holds, so the proxy reads it as `@var` does.
 it('reads a resource over a class other than a model named by @extends, @mixin or @property as a redeclared @var does', function (string $resource) {
     $data = new ResourceTransformer($resource)->data();
     $sent = $resource::make(new HeldStats(3, 'x', 0.5))->response()->getData(true)['data'];
@@ -4253,7 +4254,7 @@ it('keeps the naming-convention model behind a mixin naming nothing loadable, th
     'Model itself' => [ScopedPostResource::class, ScopedPost::class],
 ]);
 
-// R25: the guessed model already is an interface it implements, so naming one stops no guess; an unrelated one does.
+// The guessed model already is an interface it implements, so naming one stops no guess; an unrelated one does.
 it('keeps the naming-convention model behind a declared interface it implements, but not one it does not', function (string $resource, ?string $model, string $title) {
     $data = new ResourceTransformer($resource)->data();
 
@@ -4274,7 +4275,7 @@ it('reads a resource behind an interface mixin its guessed model implements as t
     ]);
 });
 
-// R26: an explicit model outranks a tag naming a class it is not.
+// An explicit model outranks a tag naming a class it is not.
 it('reads #[TsResource(model:)] over a mixin naming a value object the model is not', function () {
     $data = new ResourceTransformer(ExplicitPostOverHeldStatsResource::class)->data();
 
@@ -4318,7 +4319,7 @@ it('reads an inherited body under the subclass\'s model over its parent\'s value
     '@extends Parent<Post>' => [ExtendsPostHeldStatsChildResource::class],
 ]);
 
-// R27: PHP has one `$resource` slot, so a subclass's own `@var` decides what its inherited body holds.
+// PHP has one `$resource` slot, so a subclass's own `@var` decides what its inherited body holds.
 it('reads an inherited body under the subclass\'s own @var over its parent\'s', function () {
     $resource = new PostVarHeldStatsChildResource((new Post)->forceFill(['id' => 7, 'title' => 'T']));
 
@@ -4371,7 +4372,7 @@ it('reads a workbench value object\'s method through a resource over it and a re
         ->toBe(['views' => 1.5, 'shares' => 2, 'summary' => '1.5 views, 2 shares']);
 });
 
-// B2: an intersection's model is its primary member, and a member the model lacks is read off the one declaring it.
+// An intersection's model is its primary member, and a member the model lacks is read off the one declaring it.
 it('types a member of an intersection from whichever member declares it', function (string $resource, string $model, string $title, string $held) {
     $data = new ResourceTransformer($resource)->data();
     $sent = $resource::make((new $held)->forceFill(['id' => 4, 'title' => 'T']))->response()->getData(true)['data'];
@@ -4394,7 +4395,7 @@ it('types a member of an intersection from whichever member declares it', functi
     '@extends JsonResource<Post&HasLabel>' => [PostIntersectionExtendsResource::class, Post::class, 'string', LabelingPost::class],
 ]);
 
-// R25: a guess any member of an intersection names stands, its other members joining it, as one declared class does.
+// A guess any member of an intersection names stands, its other members joining it, as one declared class does.
 it('keeps the naming-convention model behind an intersection it is a member of, or extends the model member of', function (string $resource, ?string $model, array $expected) {
     $data = new ResourceTransformer($resource)->data();
 
@@ -4444,7 +4445,7 @@ it('reads a member only an intersection arm gives as no member of a subclass a b
         ->and($sent(new CodedPost))->toBe(['code' => 'C4', 'proxy_code' => 'C4', 'title' => 'T']);
 });
 
-// B5: first() and last() hand back one collected item, an API resource whose members Laravel's __get() and __call()
+// First() and last() hand back one collected item, an API resource whose members Laravel's __get() and __call()
 // forward to its model, or a raw model.
 it('reads a member of the API resource or model a resource collection first() or last() returns', function () {
     $post = fn (): Post => (new Post)->forceFill(['id' => 1, 'title' => 'T']);
@@ -4578,7 +4579,7 @@ it('types the Support\Collection calls on a resource collection\'s $this->collec
         ->and($sent(Request::create('/', 'GET', ['count' => 1]))['random_maybe'])->toEqualCanonicalizing([$item(1), $item(2)]);
 });
 
-// R29: random() hands back one item, or a list for a count, never the condition's first word, where the item is known.
+// Random() hands back one item, or a list for a count, never the condition's first word, where the item is known.
 it('types random() as the item or a list of them by its argument, and another conditional return as its arms', function () {
     $post = (new Post)->forceFill(['id' => 1, 'title' => 'T'])->setRelation('comments', new EloquentCollection([
         (new Comment)->forceFill(['id' => 3, 'content' => 'C']),
@@ -4626,7 +4627,7 @@ it('types random() on a collection of framework models as the model the relation
         ->and(array_column($sent['built_list'], 'id'))->toBe(['n1', 'n2']);
 });
 
-// R32: only a conditional's first-token guess is withdrawn; a bracketed type, the union of a conditional's arms, and a
+// Only a conditional's first-token guess is withdrawn; a bracketed type, the union of a conditional's arms, and a
 // type the body proves, stand.
 it('reads a bracketed @return through a forward as declared, a conditional one as its arms, and withdraws a guess', function () {
     $sent = json_decode((string) json_encode(BracketedReadsResource::make(new BracketedBag([1, 'a']))->resolve()), true);
@@ -4848,6 +4849,18 @@ it('reads a list a method declares under string keys as keyed, so a step keeping
         ->and($numbered['either_keyed_all'])->toBe([$comment(3), $comment(4)])
         ->and($numbered['ids'])->toBe([3, 4])
         ->and($numbered['model_keys'])->toBe([3, 4]);
+});
+
+// Before the guard, no reading reached a callback over a forward's items, so nothing read inside one publishes a
+// conditional's first-token guess, whatever form hands the item on and whatever the read starts from.
+it('publishes no first-token guess inside a callback no reading reaches without the guard', function () {
+    $sent = json_decode((string) json_encode(UnreadCallbackRelaysResource::make(new CommentRack)->resolve()), true);
+
+    expect(resourceProps(UnreadCallbackRelaysResource::class))->each->toBe('unknown')
+        ->and(array_keys(resourceProps(UnreadCallbackRelaysResource::class)))->toBe(array_keys($sent))
+        ->and($sent['dim_fetch'])->toBe(['in3', 'in4'])
+        ->and($sent['looped'])->toBe(['in3', 'in4'])
+        ->and($sent['apart'])->each->toBeIn(['c3', 'c4']);
 });
 
 // A declaration reads as it would with no guard: a callback's declared model, native or `@param`, where the declaration

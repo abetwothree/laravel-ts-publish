@@ -611,8 +611,10 @@ trait CollectsLocalVarBindings
             $gaps = $gap[0] < $gap[1] ? [...$gaps, $gap] : $gaps;
         }
 
+        // A clipped proof is bounded, so it is no longer one an arm makes.
         foreach ($scope->varGuardBindings[$name] ?? [] as $guard) {
             $guard['before'] = min($guard['before'] ?? $end, $end);
+            unset($guard['arm']);
             $guards = $guard['after'] < $guard['before'] ? [...$guards, $guard] : $guards;
         }
 

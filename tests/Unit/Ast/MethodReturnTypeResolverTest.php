@@ -8,14 +8,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\PostHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixedBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyStampingChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MixedBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
@@ -390,4 +393,19 @@ test('publishes a value-read shape open where a += adds an array the walk cannot
     expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['topped_up'])
         ->toBe('{ x: number; [key: string]: unknown }')
         ->and(json_encode($payload->values()['topped_up']))->toBe('{"x":1,"a":1}');
+});
+
+// A getter left only the null of a value it could not type publishes nothing it knows, while a literal null stands; the
+// run output then names no placeholder.
+it('reads a held method whose body is only the null a dropped arm leaves as unknown', function () {
+    AnalysisWarnings::reset();
+    $sent = json_decode((string) json_encode(MixedBagResource::make(new MixedBag)->resolve()), true);
+
+    expect(analyzedKeyTypes(MixedBagResource::class))->toBe([
+        'proxied' => 'unknown',
+        'held' => 'unknown',
+        'held_mixed' => 'unknown',
+        'literal_null' => 'string | null',
+    ])->and($sent)->toBe(['proxied' => 1, 'held' => 1, 'held_mixed' => 1, 'literal_null' => null])
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

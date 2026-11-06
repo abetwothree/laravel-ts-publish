@@ -97,8 +97,8 @@ final class LoadedRelations
     private const array SERIALIZERS = ['toArray', 'jsonSerialize', 'relationsToArray', 'getArrayableRelations', 'getArrayableItems'];
 
     /**
-     * The columns of its own model a to-one relation finds its row by: the foreign key, and a morphTo's type, or the
-     * local key of a hasOne or morphOne; null for any other relation.
+     * The columns of its own model a relation finds its rows by: the foreign key, and a morphTo's type, or the local
+     * key of a hasOne, hasMany, morphOne or morphMany; null for any other relation.
      *
      * @param  Relation<Model, Model, mixed>  $relation
      * @return non-empty-list<string>|null

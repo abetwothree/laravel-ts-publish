@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
@@ -311,9 +312,19 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $dropped = DroppedUnionArms::dropped();
+
         try {
-            return resolve(AstEngine::class)
-                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
+            // A body left only the null a dropped arm leaves is one it cannot type, so that null is never published.
+            return DroppedUnionArms::replaceable(
+                function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals, $dropped): ?array {
+                    $value = resolve(AstEngine::class)
+                        ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
+
+                    return $value !== null && DroppedUnionArms::leftNullSince($value['type'], $dropped) ? null : $value;
+                },
+                static fn (?array $value): bool => $value !== null,
+            );
         } finally {
             $memo->leave($key);
         }

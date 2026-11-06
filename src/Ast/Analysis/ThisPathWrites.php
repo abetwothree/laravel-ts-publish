@@ -52,7 +52,7 @@ use ReflectionNamedType;
 /**
  * Whether a chain of property reads on `$this` may stop holding what an `instanceof` test proved, between the test
  * and its reads: a write to the chain or one it reads through, a write through a local or to one bound by reference,
- * code no scan sees, or any call but those known not to reach it (safeCall()). Anything else reads as at base.
+ * code no scan sees, or any call but those known not to reach it (safeCall()). Any of these ends the proof.
  *
  * On an API resource a chain the subject does not declare reads through `$this->resource`.
  *
@@ -101,6 +101,8 @@ final class ThisPathWrites
     private ?array $references = null;
 
     /**
+     * Reads a method body's proofs against the writes and calls it holds, in the scope that reads the body.
+     *
      * @param  array<Node\Stmt>  $stmts
      * @param  NamedWrites  $writes  the body's writes, as VariableWrites::of() scans them
      */
@@ -216,6 +218,30 @@ final class ThisPathWrites
     private static function strictPrefix(array $chain, array $path): bool
     {
         return $chain !== $path && self::through($chain, $path) === [];
+    }
+
+    /**
+     * Whether a chain apart from the proven one writes a member the proven chain reads past its first, which may be the
+     * same object's, as two `$this` chains can hold one.
+     *
+     * @param  list<string>  $written
+     * @param  list<string>  $path
+     */
+    private static function mayShareObject(array $written, array $path): bool
+    {
+        return count($written) > 1 && in_array($written[count($written) - 1], array_slice($path, 1), true);
+    }
+
+    /**
+     * Whether a destructuring target binds the variable by reference: `[&$ref] = …`, at any depth.
+     */
+    private static function destructuresByReference(Expr $target, string $name): bool
+    {
+        return ($target instanceof List_ || $target instanceof Array_) && array_any(
+            $target->items,
+            fn (?Node\ArrayItem $item): bool => $item !== null && (($item->byRef && $item->value instanceof Variable
+                && $item->value->name === $name) || self::destructuresByReference($item->value, $name)),
+        );
     }
 
     /**
@@ -391,7 +417,7 @@ final class ThisPathWrites
         $through = self::through($written, $path);
 
         if ($through === null) {
-            return true;
+            return ! self::mayShareObject($written, $path);
         }
 
         // A key written on the chain itself is a member of the value it holds, as `$model['title']` is.
@@ -428,6 +454,11 @@ final class ThisPathWrites
 
             $chain = $this->chainOf($var);
             $through = $chain === null ? [] : self::through($chain, $path);
+
+            if ($through === null && self::mayShareObject($chain, $path)) {
+                return true;
+            }
+
             $member = match (true) {
                 $through !== null && count($through) === 1 => $through[0],
                 $through === [] && $chain === $path && $var instanceof ArrayDimFetch && $var->dim instanceof String_ => $var->dim->value,
@@ -571,6 +602,7 @@ final class ThisPathWrites
 
         return match (true) {
             ! $class instanceof Name || $class->isSpecialClassName() => false,
+            $this->bindsThis($class->toString(), $call->name instanceof Identifier ? $call->name->toString() : null) => false,
             in_array($class->toString(), [Gate::class, 'Gate'], true) && $call->name instanceof Identifier
                 && in_array($call->name->toLowerString(), self::GATE_CHECKS, true) => true,
             default => $this->safeArguments($call, $path, $parameters),
@@ -602,8 +634,10 @@ final class ThisPathWrites
         }
 
         $callable = in_array($name->toLowerString(), self::CALLERS, true) ? $call->getArgs()[0]->value ?? null : null;
+        $named = $callable instanceof String_ && str_contains($callable->value, '::') ? explode('::', $callable->value, 2) : null;
 
         return ($callable === null || $callable instanceof String_ || $callable instanceof ClosureExpr || $callable instanceof ArrowFunction)
+            && ($named === null || ! $this->bindsThis($named[0], $named[1]))
             && $this->safeArguments($call, $path, $parameters);
     }
 
@@ -842,16 +876,30 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether the body binds a local by reference anywhere, so that a write to it may write what it is bound to.
+     * Whether the body binds a local by reference anywhere, so that a write to it may write what it is bound to; any
+     * local may be where extract() or a variable variable binds one by a name no scan reads.
      */
     private function bindsByReference(string $name): bool
     {
-        $this->references ??= array_fill_keys(
-            array_column(array_filter($this->writes, fn (array $write): bool => $write[3]->makesReference()), 0),
-            true,
-        );
+        $this->references ??= self::writesUnseen($this->stmts) ? ['' => true] : array_fill_keys(array_column(array_filter(
+            $this->writes,
+            fn (array $write): bool => $write[3]->makesReference() || self::destructuresByReference($write[2], $write[0]),
+        ), 0), true);
 
-        return isset($this->references[$name]);
+        return isset($this->references['']) || isset($this->references[$name]);
+    }
+
+    /**
+     * Whether a call through a class name runs on `$this`, as PHP binds it for a non-static method of a class the
+     * object is; a dynamic name may be any method.
+     */
+    private function bindsThis(string $class, ?string $method): bool
+    {
+        $class = ltrim($class, '\\');
+        $own = is_a($this->scope->runtime->class->getName(), $class, true)
+            || is_a($this->scope->declaringClass->getName(), $class, true);
+
+        return $own && ($method === null || ! method_exists($class, $method) || ! new ReflectionMethod($class, $method)->isStatic());
     }
 
     /**

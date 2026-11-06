@@ -122,8 +122,8 @@ final readonly class CallSite
      * A `@param` collection generic gives way to the collection the argument holds, naming only an element it leaves
      * unknown.
      *
-     * A guarded argument leaves a declaration to read as it does with nothing passed, but one read off a callback's
-     * `unread` parameter keeps its guard across any declaration, as no reading reaches that callback without it.
+     * A guarded argument leaves a declaration to read as it does with nothing passed, but any argument passed inside a
+     * callback no reading reaches without the guard keeps the guard across any declaration, whatever it is read off.
      *
      * @return PassedBinding|null
      */
@@ -141,7 +141,7 @@ final readonly class CallSite
                 $documented,
                 $this->engine->resolve($argument),
                 $receiver,
-                $this->passesUnreadParameter($argument),
+                $this->scope->readsUnreadCallback(),
                 $this->boundsArgument($argument),
             );
         }
@@ -155,10 +155,12 @@ final readonly class CallSite
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
-        $unread = $this->passesUnreadParameter($argument);
+        $unread = $this->scope->readsUnreadCallback();
 
-        if ($unread && $model !== null && $receiver !== null && $receiver->within([$model])) {
-            $binding = $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: true);
+        // PHP holds the declared model there whatever the argument reads as, so the guard rides on it.
+        if ($unread && $model !== null) {
+            $held = $receiver !== null && $receiver->within([$model]) ? $receiver : ReceiverType::of($model);
+            $binding = $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
 
             return $binding === null ? null : [...$binding, 'guard' => 'unread'];
         }
@@ -316,41 +318,6 @@ final readonly class CallSite
             ?? ($call->class instanceof Name && ! $call->class->isSpecialClassName() ? $call->class->toString() : null);
 
         return $class === null ? null : [$class];
-    }
-
-    /**
-     * Whether an argument is read off a callback's parameter bound where no reading reaches the callback without the
-     * guard: the parameter itself, a member read or call on it, or a local whose one write is such a read.
-     */
-    private function passesUnreadParameter(Expr $argument): bool
-    {
-        if (! in_array('unread', $this->scope->guardedParameters, true)) {
-            return false;
-        }
-
-        // The bound keeps a local that reads its own write from walking without end.
-        for ($step = 0; $step < 16; $step++) {
-            if ($argument instanceof Variable && is_string($argument->name) && $this->scope->holdsBinding($argument)
-                && ($this->scope->guardedParameters[$argument->name] ?? null) === 'unread'
-            ) {
-                return true;
-            }
-
-            $next = match (true) {
-                $argument instanceof MethodCall, $argument instanceof NullsafeMethodCall,
-                $argument instanceof PropertyFetch, $argument instanceof NullsafePropertyFetch => $argument->var,
-                $argument instanceof Variable && $this->scope->declaredAt($argument) === null => $this->scope->soleWriteSeenBy($argument),
-                default => null,
-            };
-
-            if ($next === null) {
-                return false;
-            }
-
-            $argument = $next;
-        }
-
-        return false;
     }
 
     /**

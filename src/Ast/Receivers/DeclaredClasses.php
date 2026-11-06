@@ -99,10 +99,7 @@ final class DeclaredClasses
      */
     public static function returnsStatic(string $class, string $method): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
-            'returns-static:'.$class.'::'.$method,
-            static fn (): bool => self::declaresStaticReturn($class, $method),
-        );
+        return self::declaresOwnReturn($class, $method, false);
     }
 
     /**
@@ -111,18 +108,7 @@ final class DeclaredClasses
      */
     public static function returnsOwnClass(string $class, string $method): bool
     {
-        $reflection = new ReflectionMethod($class, $method);
-        $type = self::reflectedReturnType($reflection);
-
-        if ($type !== null) {
-            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
-        }
-
-        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
-        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
-        $returned = array_values(array_diff($arms, ['null']));
-
-        return $returned !== [] && array_all($returned, fn (string $arm): bool => preg_match('/^(?:static|\$this)(?:<.*>)?$/s', $arm) === 1);
+        return self::declaresOwnReturn($class, $method, true);
     }
 
     /**
@@ -491,21 +477,28 @@ final class DeclaredClasses
     }
 
     /**
-     * Whether a method's native, tentative or `@return` declaration names `static` or `$this`, and else only null.
+     * Whether a method's native, tentative or `@return` declaration names `static` or `$this`, with generic arguments
+     * where $generics allows them, and else only null; read once a run.
      */
-    private static function declaresStaticReturn(string $class, string $method): bool
+    private static function declaresOwnReturn(string $class, string $method, bool $generics): bool
     {
-        $reflection = new ReflectionMethod($class, $method);
-        $type = self::reflectedReturnType($reflection);
+        return resolve(AnalysisMemo::class)->remember(
+            ($generics ? 'returns-own-class:' : 'returns-static:').$class.'::'.$method,
+            static function () use ($class, $method, $generics): bool {
+                $reflection = new ReflectionMethod($class, $method);
+                $type = self::reflectedReturnType($reflection);
 
-        if ($type !== null) {
-            return $type instanceof ReflectionNamedType && $type->getName() === 'static';
-        }
+                if ($type !== null) {
+                    return $type instanceof ReflectionNamedType && $type->getName() === 'static';
+                }
 
-        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
-        $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
-        $returned = array_diff($arms, ['null']);
+                $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment()) ?? '';
+                $arms = array_map(fn (string $arm): string => ltrim($arm, '?'), LaravelTsPublish::splitPhpDocUnionType($docblock));
+                $returned = array_values(array_diff($arms, ['null']));
+                $pattern = $generics ? '/^(?:static|\$this)(?:<.*>)?$/s' : '/^(?:static|\$this)$/';
 
-        return $returned !== [] && array_diff($returned, ['static', '$this']) === [];
+                return $returned !== [] && array_all($returned, fn (string $arm): bool => preg_match($pattern, $arm) === 1);
+            },
+        );
     }
 }

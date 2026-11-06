@@ -115,7 +115,9 @@ final class ReceiverMethodReturnResolver
         MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
         ?CallSite $site = null,
     ): ?array {
-        $result = $this->resolveEach($receiver, $methodName, $scope, $fromInside, $call, $site, $receiver->collectedItems || $receiver->guarded);
+        // Inside a callback no reading reaches without the guard, every receiver reads as a guarded one does.
+        $armsOnly = $receiver->collectedItems || $receiver->guarded || $scope->readsUnreadCallback();
+        $result = $this->resolveEach($receiver, $methodName, $scope, $fromInside, $call, $site, $armsOnly);
 
         if ($result === null) {
             return null;
@@ -855,7 +857,8 @@ final class ReceiverMethodReturnResolver
 
     /**
      * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token, as
-     * `($number`, of a conditional an arm of which reads no type, and the token may spell one. A body's stands.
+     * `($number`, of a conditional an arm of which reads no type, and the token may spell one. A body read where the
+     * token spells no type stands; where it spells one, as `($int`, no body is read and the reading is withdrawn.
      *
      * @param  class-string  $class
      * @param  ValueExpressionResult|null  $result

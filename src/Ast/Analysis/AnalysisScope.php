@@ -632,7 +632,7 @@ final class AnalysisScope
     }
 
     /**
-     * Whether a proof is one armProof() made, which no position bounds, as an `if` block's is.
+     * Whether a proof is one armProof() made, which no position bounds, unlike an `if` block's.
      *
      * @param  VarGuardBinding  $guard
      */
@@ -895,6 +895,15 @@ final class AnalysisScope
     public function declaredWrite(string $name, Expr $value): ?array
     {
         return array_find($this->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $value);
+    }
+
+    /**
+     * Whether the scope reads a callback no reading reaches without the guard, as an `unread` parameter bound in it
+     * says, so nothing read in it may publish a conditional's first-token guess.
+     */
+    public function readsUnreadCallback(): bool
+    {
+        return in_array('unread', $this->guardedParameters, true);
     }
 
     /**

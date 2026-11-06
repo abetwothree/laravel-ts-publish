@@ -28,15 +28,19 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedChainSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DateHolderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DestructuredRefSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalServiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamedCallableSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnNameSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyBranchPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
@@ -1357,6 +1361,13 @@ describe('narrowing', function () {
         'a method the subject declares' => ['$this->toArray($request);', []],
         'a method the subject declares, called through static' => ['static::toArray($request);', []],
         'a method JsonResource declares, called through parent' => ['parent::toArray($request);', []],
+        'a method the subject declares, called through its own class name' => ['\\Workbench\\App\\Http\\Resources\\NarrowedParentResource::toArray();', []],
+        'a method an ancestor declares, called through the ancestor\'s name' => ['\\Illuminate\\Http\\Resources\\Json\\JsonResource::toArray();', []],
+        'a method the subject declares, named as a string to call_user_func()' => ['call_user_func(\'Workbench\\App\\Http\\Resources\\NarrowedParentResource::toArray\');', []],
+        'a static method an ancestor declares, called through its name' => ['\\Illuminate\\Http\\Resources\\Json\\JsonResource::make(1);', ['$this->author' => [[[User::class], '\\Illuminate\\Http\\Resources\\Json\\JsonResource::make(1); $x = 1;']]]],
+        'a member another chain holds, named as one the chain reads through' => ['$this->marker->author = null;', []],
+        'unset() of a member another chain holds, named as one the chain reads through' => ['unset($this->marker->author);', []],
+        'a member another chain holds, named as none the chain reads through' => ['$this->marker->seen = 1;', ['$this->author' => [[[User::class], '$this->marker->seen = 1; $x = 1;']]]],
         'a method JsonResource forwards to the model' => ['$this->refresh();', []],
         'a call on what the chain reads through' => ['$this->resource->refresh();', []],
         'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
@@ -1473,6 +1484,10 @@ describe('narrowing', function () {
         'a local bound to the chain by reference, written' => ['$ref = &$this->author;', '$ref = null;', []],
         'a local bound to the chain by reference, assigned by a foreach' => ['$ref = &$this->author;', 'foreach ([null] as $ref) {}', []],
         'a local bound to the chain by reference, unset' => ['$ref = &$this->author;', 'unset($ref);', ['$this->author' => [[[User::class], 'unset($ref); $x = 1;']]]],
+        'a local bound by reference through destructuring, written' => ['$list = [&$this->author]; [&$ref] = $list;', '$ref = null;', []],
+        'a local bound by reference through a keyed destructuring, written' => ['$list = [\'a\' => &$this->author]; [\'a\' => &$ref] = $list;', '$ref = null;', []],
+        'any local where extract() may bind one by reference, written' => ['extract([\'ref\' => &$this->author], EXTR_REFS);', '$ref = null;', []],
+        'any local where a variable variable may be bound by reference, written' => ['${\'r\'.\'ef\'} = &$this->author;', '$ref = null;', []],
     ]);
 
     test('binds a test on a $this chain past route() only where it runs Laravel\'s helper', function () {
@@ -2795,3 +2810,18 @@ describe('a method PHP declares only a tentative return type for', function () {
             ->and($sent)->toBe(['forwarded_year' => '2020', 'held_year' => '2020', 'forwarded_timestamp' => 1577923200]);
     });
 });
+
+// PHP runs a call naming the subject's own class on `$this`, two chains can hold one object, and a destructuring binds
+// by reference, so each may swap what the test proved: the key is not narrowed, and Laravel sends the swapped value.
+it('ends a $this chain\'s proof at a call, a write or a reference that may swap what it holds', function (string $resource) {
+    $image = (new Image)->forceFill(['id' => 2]);
+    $image->setRelation('imageable', (new Post)->forceFill(['id' => 7])->setRelation('author', (new User)->forceFill(['id' => 3])));
+
+    expect(resourceProps($resource))->toBe(['id' => 'unknown'])
+        ->and(json_encode($resource::make($image)->resolve()))->toBe('{"id":"abc"}');
+})->with([
+    'a call naming its own class' => [OwnNameSwapResource::class],
+    'call_user_func() given its own method\'s name' => [NamedCallableSwapResource::class],
+    'a write through a second chain holding the same post' => [AliasedChainSwapResource::class],
+    'a local a destructuring bound by reference' => [DestructuredRefSwapResource::class],
+]);
