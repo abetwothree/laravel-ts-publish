@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedChainSwapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedKeySwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DateHolderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DestructuredRefSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalMethodResource;
@@ -1368,6 +1369,10 @@ describe('narrowing', function () {
         'a member another chain holds, named as one the chain reads through' => ['$this->marker->author = null;', []],
         'unset() of a member another chain holds, named as one the chain reads through' => ['unset($this->marker->author);', []],
         'a member another chain holds, named as none the chain reads through' => ['$this->marker->seen = 1;', ['$this->author' => [[[User::class], '$this->marker->seen = 1; $x = 1;']]]],
+        'a key another chain holds, named as one the chain reads through' => ['$this->marker[\'author\'] = null;', []],
+        'unset() of a key another chain holds, named as one the chain reads through' => ['unset($this->marker[\'author\']);', []],
+        'a key another chain holds, named at runtime' => ['$this->marker[$name] = null;', []],
+        'a key another chain holds, named as none the chain reads through' => ['$this->marker[\'seen\'] = 1;', ['$this->author' => [[[User::class], '$this->marker[\'seen\'] = 1; $x = 1;']]]],
         'a method JsonResource forwards to the model' => ['$this->refresh();', []],
         'a call on what the chain reads through' => ['$this->resource->refresh();', []],
         'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
@@ -2823,5 +2828,6 @@ it('ends a $this chain\'s proof at a call, a write or a reference that may swap 
     'a call naming its own class' => [OwnNameSwapResource::class],
     'call_user_func() given its own method\'s name' => [NamedCallableSwapResource::class],
     'a write through a second chain holding the same post' => [AliasedChainSwapResource::class],
+    'a key write through a second chain holding the same post' => [AliasedKeySwapResource::class],
     'a local a destructuring bound by reference' => [DestructuredRefSwapResource::class],
 ]);

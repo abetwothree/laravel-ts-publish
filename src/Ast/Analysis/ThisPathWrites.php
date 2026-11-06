@@ -221,15 +221,23 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a chain apart from the proven one writes a member the proven chain reads past its first, which may be the
-     * same object's, as two `$this` chains can hold one.
+     * Whether a write to $target, through a chain apart from the proven one, sets a member the proven chain reads past
+     * its first, which may be the same object's, as two `$this` chains can hold one: the member a property names, or
+     * the key a key write sets through `offsetSet()`, any for a key it reads at runtime.
      *
-     * @param  list<string>  $written
+     * @param  list<string>  $written  the chain chainOf() reads off $target, its keys left out
      * @param  list<string>  $path
      */
-    private static function mayShareObject(array $written, array $path): bool
+    private static function mayShareObject(Expr $target, array $written, array $path): bool
     {
-        return count($written) > 1 && in_array($written[count($written) - 1], array_slice($path, 1), true);
+        $read = array_slice($path, 1);
+
+        if ($target instanceof ArrayDimFetch) {
+            return $read !== [] && ($target->var instanceof ArrayDimFetch || ! $target->dim instanceof String_
+                || in_array($target->dim->value, $read, true));
+        }
+
+        return count($written) > 1 && in_array($written[count($written) - 1], $read, true);
     }
 
     /**
@@ -417,7 +425,7 @@ final class ThisPathWrites
         $through = self::through($written, $path);
 
         if ($through === null) {
-            return ! self::mayShareObject($written, $path);
+            return ! self::mayShareObject($target, $written, $path);
         }
 
         // A key written on the chain itself is a member of the value it holds, as `$model['title']` is.
@@ -455,7 +463,7 @@ final class ThisPathWrites
             $chain = $this->chainOf($var);
             $through = $chain === null ? [] : self::through($chain, $path);
 
-            if ($through === null && self::mayShareObject($chain, $path)) {
+            if ($through === null && self::mayShareObject($var, $chain, $path)) {
                 return true;
             }
 
