@@ -141,6 +141,9 @@ class LaravelTsPublish
     /** The PHPDoc integer subtypes PHPStan names, each holding an int as an `int<min, max>` range does. */
     protected const array INTEGER_SUBTYPES = ['positive-int', 'negative-int', 'non-negative-int', 'non-positive-int', 'non-zero-int'];
 
+    /** What stands in for a nullable type's `?`, as in `?string`, while a conditional is split at its test's `?`. */
+    private const string NULLABLE_MARK = "\x01";
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -1078,9 +1081,12 @@ class LaravelTsPublish
             return null;
         }
 
-        // Any other conditional keeps its first token: whole, toTsType()'s partial match would guess from its arms.
+        // A conditional an arm of which reads no type, as a template's, keeps its first token: whole, toTsType()'s
+        // partial match would guess from its arms.
         if (preg_match('/^\(\s*(\S+)\s+is\s/', $type, $condition) === 1) {
-            return $this->isStringConditional($type) ? 'string' : '('.$condition[1];
+            return $this->isStringConditional($type)
+                ? 'string'
+                : $this->conditionalArmsUnion($this->conditionalArms($type) ?? []) ?? '('.$condition[1];
         }
 
         return $this->normalizeDocblockWhitespace($type);
@@ -2874,18 +2880,56 @@ class LaravelTsPublish
      */
     protected function isStringConditional(string $type): bool
     {
-        // A `?` with no space after it makes a type nullable, as `?string`, which the split below would take for a `?`
-        // ending the test.
-        if (! $this->isParenthesized($type)
-            || preg_match('/\?(?!\s)/', TypeScanner::maskLiterals($type, ScanDialect::PhpDoc)) === 1) {
-            return false;
+        $arms = $this->conditionalArms($type);
+
+        return $arms !== null && array_all($arms, fn (string $arm): bool => array_all(
+            TypeScanner::split($arm, ['|', '&'], ScanDialect::PhpDoc),
+            $this->isPhpDocStringType(...),
+        ));
+    }
+
+    /**
+     * The leaf arms of a conditional return type `($x is T ? A : B)`, each nested conditional's in its place, as
+     * written; null when the type is no conditional, or one of its tests lacks a branch.
+     *
+     * @return list<string>|null
+     */
+    protected function conditionalArms(string $type): ?array
+    {
+        $body = $this->conditionalBody(trim($type));
+
+        if ($body === null) {
+            return null;
         }
 
-        $test = TypeScanner::split(substr($type, 1, -1), ['?'], ScanDialect::PhpDoc);
-        $branches = count($test) === 2 ? TypeScanner::split($test[1], [':'], ScanDialect::PhpDoc) : [];
+        $test = TypeScanner::split($this->maskNullableMarks($body), ['?'], ScanDialect::PhpDoc);
+        $branches = count($test) < 2 ? [] : TypeScanner::split(implode(' ? ', array_slice($test, 1)), [':'], ScanDialect::PhpDoc);
 
-        return count($branches) === 2 && array_all($branches, fn (string $branch): bool => $this->isStringConditional($branch)
-            || array_all(TypeScanner::split($branch, ['|', '&'], ScanDialect::PhpDoc), $this->isPhpDocStringType(...)));
+        if (count($branches) < 2) {
+            return null;
+        }
+
+        $arms = [];
+
+        // Only a conditional may follow a branch's `:` unparenthesized, so the first `:` ends the if branch.
+        foreach ([$branches[0], implode(' : ', array_slice($branches, 1))] as $branch) {
+            $leaf = $this->conditionalBody($branch) === null;
+
+            if ($leaf && count(TypeScanner::split($branch, ['?', ':'], ScanDialect::PhpDoc)) !== 1) {
+                return null;
+            }
+
+            $branch = str_replace(self::NULLABLE_MARK, '?', $branch);
+            $nested = $leaf ? [$branch] : $this->conditionalArms($branch);
+
+            if ($nested === null) {
+                return null;
+            }
+
+            array_push($arms, ...$nested);
+        }
+
+        return $arms;
     }
 
     /**
@@ -3422,6 +3466,125 @@ class LaravelTsPublish
     private function isParenthesized(string $phpType): bool
     {
         return str_ends_with($phpType, ')') && str_starts_with($phpType, '(') && $this->closesAtEnd($phpType);
+    }
+
+    /**
+     * The text inside a conditional type `($x is T ? A : B)`, or the whole of one an else branch spells without
+     * parentheses; null when the type is no conditional.
+     */
+    private function conditionalBody(string $type): ?string
+    {
+        if ($this->isParenthesized($type)) {
+            $inner = trim(substr($type, 1, -1));
+
+            return preg_match('/^[^\s\'"]\S*\s+is\s/', $inner) === 1 ? $inner : null;
+        }
+
+        return preg_match('/^[^\s(\'"]\S*\s+is\s/', $type) === 1 ? $type : null;
+    }
+
+    /**
+     * The type with each `?` written against a name, as `?string` makes it nullable, marked outside its literals, so a
+     * split at `?` cuts only at a conditional's test.
+     */
+    private function maskNullableMarks(string $type): string
+    {
+        preg_match_all('/\?(?=[\\\\A-Za-z_])/', TypeScanner::maskLiterals($type, ScanDialect::PhpDoc), $marks, PREG_OFFSET_CAPTURE);
+
+        foreach ($marks[0] as [, $offset]) {
+            $type[$offset] = self::NULLABLE_MARK;
+        }
+
+        return $type;
+    }
+
+    /**
+     * The union a conditional's arms read as, each arm folded as conditionalArmParts() folds it, and `array{}` beside a
+     * list taken in by the list. Null when no arm is left, or one reads no type, as `mixed`, a template, `static` or
+     * `$this` does.
+     *
+     * @param  list<string>  $arms
+     */
+    private function conditionalArmsUnion(array $arms): ?string
+    {
+        $parts = $this->conditionalArmParts($arms);
+        $readings = array_map($this->readsWithoutContext(...), $parts);
+        $empty = array_search('array{}', $parts, true);
+
+        // json_encode() writes an empty array as `[]`, which a list arm beside it admits.
+        if ($empty !== false && array_any($readings, fn (string $reading): bool => str_ends_with($reading, '[]'))) {
+            unset($parts[$empty], $readings[$empty]);
+        }
+
+        if ($parts === [] || array_any($readings, fn (string $reading): bool => preg_match('/\bunknown\b/', TypeScanner::maskLiterals($reading)) === 1)) {
+            return null;
+        }
+
+        // Lists follow the other members, then booleans and null, as `string|string[]|null` and `int|false` read.
+        $ordered = [[], [], [], []];
+
+        foreach ($parts as $index => $part) {
+            $ordered[match (true) {
+                $part === 'null' => 3,
+                in_array($part, ['bool', 'true', 'false'], true) => 2,
+                str_ends_with($readings[$index], '[]') => 1,
+                default => 0,
+            }][] = $part;
+        }
+
+        return implode('|', array_merge(...$ordered));
+    }
+
+    /**
+     * A conditional's arms split into one list of distinct union members, folded as PHPStan prints them: `?T` is `T`
+     * and `null`, `true` beside `false` is `bool`, a string subtype is `string`, which takes in the string literals,
+     * and a `never` arm, which returns nothing, is left out.
+     *
+     * @param  list<string>  $arms
+     * @return list<string>
+     */
+    private function conditionalArmParts(array $arms): array
+    {
+        $parts = [];
+
+        foreach ($arms as $arm) {
+            foreach ($this->splitPhpDocUnionType($this->normalizeDocblockWhitespace($arm)) as $part) {
+                array_push($parts, ...(str_starts_with($part, '?') ? [ltrim(substr($part, 1)), 'null'] : [$part]));
+            }
+        }
+
+        $parts = array_values(array_unique(array_map(fn (string $part): string => match (true) {
+            in_array(strtolower($part), ['true', 'false', 'null', 'bool', 'never'], true) => strtolower($part),
+            strtolower($part) === 'boolean' => 'bool',
+            preg_match('/^array\s*\{\s*\}$/i', $part) === 1 => 'array{}',
+            in_array($this->phpDocStringLiteral($part), [null, ''], true)
+                && array_all(TypeScanner::split($part, ['&'], ScanDialect::PhpDoc), $this->isPhpDocStringType(...)) => 'string',
+            default => $part,
+        }, $parts)));
+
+        $bool = in_array('bool', $parts, true) || array_diff(['true', 'false'], $parts) === [];
+        $string = in_array('string', $parts, true);
+        $parts = array_values(array_filter($parts, fn (string $part): bool => $part !== 'never'
+            && ! ($bool && in_array($part, ['true', 'false'], true))
+            && ! ($string && $this->phpDocStringLiteral($part) !== null)));
+
+        return $bool && ! in_array('bool', $parts, true) ? [...$parts, 'bool'] : $parts;
+    }
+
+    /**
+     * What one union member of a PHPDoc type reads as, as docblockReturnTypes() reads it, outside every class: a bare
+     * name a class would import or alias reads no type there, as a template's does.
+     */
+    private function readsWithoutContext(string $phpType): string
+    {
+        $stack = $this->aliasContextStack;
+        $this->aliasContextStack = [];
+
+        try {
+            return $this->resolveDocblockTypePart($phpType, [], '')['type'];
+        } finally {
+            $this->aliasContextStack = $stack;
+        }
     }
 
     /**

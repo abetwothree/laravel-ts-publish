@@ -399,8 +399,8 @@ Two more read the call's own arguments:
   reading.
 - **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, a callback or helper
   parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first
-  token of one naming more than strings (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to that
-  token's type is withdrawn, so `$this->collection->random()` with no element, and
+  token of one an arm of which reads no type (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to
+  that token's type is withdrawn, so `$this->collection->random()` with no element, and
   `$this->collection->pluck('title')->random()`, publish `unknown`, never a word of the condition. A rule's answer, a
   body's and a bracketed type that is no conditional, such as `(int|string)[]`, stand. A guarded paginator's step
   that hands the paginator back, such as `through()`, publishes nothing, since its properties never spell the
@@ -429,7 +429,8 @@ step can decline:
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
    signature is vague, then [the body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does), then
    [the value its returns hold](#a-method-read-as-a-value-carries-import-channels). A conditional `@return` whose every
-   branch is a string type, as `Str::upper()` declares, reads `string`.
+   branch is a string type, as `Str::upper()` declares, reads `string`; one whose every arm reads a type reads their
+   union, as `Str::contains()` reads `boolean`. A `mixed`, template, `static` or `$this` arm keeps the first token.
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object. A concrete model keeps the `Record<string, unknown>` of a method it inherits from `Model`, such as
    `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.

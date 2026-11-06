@@ -25,6 +25,7 @@ class BracketedReadsResource extends JsonResource
             'proven' => BracketedBagResource::make($this->resource)->proven(),
             'opaque' => BracketedBagResource::make($this->resource)->opaque(),
             'answer' => BracketedBagResource::make($this->resource)->answer(),
+            'guessed' => BracketedBagResource::make($this->resource)->guessed(),
         ];
     }
 }

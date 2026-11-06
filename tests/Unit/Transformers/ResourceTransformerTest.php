@@ -4572,7 +4572,7 @@ it('types the Support\Collection calls on a resource collection\'s $this->collec
 });
 
 // R29: random() hands back one item, or a list for a count, never the condition's first word, where the item is known.
-it('types random() as the item or a list of them by its argument, and declines a guess at another conditional return', function () {
+it('types random() as the item or a list of them by its argument, and another conditional return as its arms', function () {
     $post = (new Post)->forceFill(['id' => 1, 'title' => 'T'])->setRelation('comments', new EloquentCollection([
         (new Comment)->forceFill(['id' => 3, 'content' => 'C']),
         (new Comment)->forceFill(['id' => 4, 'content' => 'D']),
@@ -4586,7 +4586,7 @@ it('types random() as the item or a list of them by its argument, and declines a
         'built_comment' => 'Comment',
         'unpacked' => 'Comment | Comment[] | Record<string, Comment>',
         'built_unpacked' => 'Comment | Comment[] | Record<string, Comment>',
-        'label' => 'unknown',
+        'label' => 'string | string[]',
         'labels' => 'string[]',
     ])
         ->and($sent['comment']['id'])->toBeIn([3, 4])
@@ -4619,8 +4619,9 @@ it('types random() on a collection of framework models as the model the relation
         ->and(array_column($sent['built_list'], 'id'))->toBe(['n1', 'n2']);
 });
 
-// R32: only a conditional's first-token guess is withdrawn; a bracketed type, and a type the body proves, stand.
-it('reads a bracketed @return through a forward as declared, and a conditional one as its body proves it', function () {
+// R32: only a conditional's first-token guess is withdrawn; a bracketed type, the union of a conditional's arms, and a
+// type the body proves, stand.
+it('reads a bracketed @return through a forward as declared, a conditional one as its arms, and withdraws a guess', function () {
     $sent = json_decode((string) json_encode(BracketedReadsResource::make(new BracketedBag([1, 'a']))->resolve()), true);
 
     expect(resourceProps(BracketedReadsResource::class))->toBe([
@@ -4628,10 +4629,11 @@ it('reads a bracketed @return through a forward as declared, and a conditional o
         'one' => 'number | string | null',
         'maker' => 'null',
         'proven' => 'number | string',
-        'opaque' => 'unknown',
+        'opaque' => 'number | string',
         'answer' => 'string',
+        'guessed' => 'unknown',
     ])
-        ->and($sent)->toBe(['ids' => [1, 'a'], 'one' => 1, 'maker' => null, 'proven' => 1, 'opaque' => 1, 'answer' => 'yes']);
+        ->and($sent)->toBe(['ids' => [1, 'a'], 'one' => 1, 'maker' => null, 'proven' => 1, 'opaque' => 1, 'answer' => 'yes', 'guessed' => 1]);
 });
 
 // A method declared to list a published model hands that model to random(); any other item stays unread on a chain a

@@ -854,8 +854,8 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token of a
-     * conditional naming more than strings, which may spell a type, as `($number is null ? …)` does. A body's stands.
+     * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token, as
+     * `($number`, of a conditional an arm of which reads no type, and the token may spell one. A body's stands.
      *
      * @param  class-string  $class
      * @param  ValueExpressionResult|null  $result
@@ -868,13 +868,9 @@ final class ReceiverMethodReturnResolver
         }
 
         $method = new ReflectionMethod($class, $methodName);
-        $docComment = (string) $method->getDocComment();
-        $declared = resolve(PropertyDocblockTypeReader::class)->extractReturnType($docComment);
+        $reading = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
 
-        if ($declared === null
-            || preg_match('/^\(\s*\S+\s+is\s/', $declared) !== 1
-            || LaravelTsPublish::extractReturnTypeFromDocblock($docComment) === 'string'
-        ) {
+        if ($reading === null || ! str_starts_with($reading, '($')) {
             return $result;
         }
 

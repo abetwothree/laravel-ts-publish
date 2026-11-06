@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
@@ -113,10 +114,14 @@ test('the value read declines a returned closure, a generator, a vendor method a
     'two locals bound to each other' => [NamesakeEdgeResource::class, 'cyclicLocals', null],
     'a generator' => [PostMetaService::class, 'generatedMeta', 'unknown[]'],
     'an iterable, with an iterator return nothing types' => [PostMetaService::class, 'iterableMeta', 'unknown[]'],
-    'a vendor method, whose conditional @return types nothing' => [Str::class, 'contains', null],
+    'a vendor method, whose conditional @return names a template' => [Collection::class, 'sum', null],
     'a method of this package, which an application installs under vendor/' => [CastHandler::class, 'nodeClasses', 'unknown[]'],
     'a return nothing types' => [NamesakeInvoiceResource::class, 'opaque', null],
 ]);
+
+test('a vendor method whose conditional @return\'s every arm resolves publishes their union', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(Str::class, 'contains')['type'] ?? null)->toBe('boolean');
+});
 
 // A parameter is not bound to an argument that may hold a callable, so a helper returning it publishes nothing for it.
 test('a helper passed a callable through a local, a ternary or another helper publishes unknown', function (string $key, string $type) {

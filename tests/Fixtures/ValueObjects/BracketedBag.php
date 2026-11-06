@@ -73,6 +73,16 @@ final class BracketedBag
     }
 
     /**
+     * One item or a list of them, an arm of which names no type, through a call the body cannot type.
+     *
+     * @return ($number is null ? mixed : list<mixed>)
+     */
+    public function guessed(?int $number = null)
+    {
+        return $this->first();
+    }
+
+    /**
      * The first item, untyped.
      */
     public function first()

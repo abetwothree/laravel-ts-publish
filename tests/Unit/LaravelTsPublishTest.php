@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfTypedHelpers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedUseItemsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\AliasCacheLaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\AliasContextLaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Ambient;
@@ -1567,37 +1568,92 @@ describe('extractReturnTypeFromDocblock', function () {
         'a nested conditional' => ["/** @return (\$value is '' ? (\$cap is '' ? '' : non-empty-string) : non-empty-string) */"],
         'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
         'a literal holding a question mark' => ["/** @return (\$value is 'a?b' ? 'c:d' : string) */"],
+        'an else conditional without parentheses' => ["/** @return (\$value is '' ? '' : \$value is null ? '' : string) */"],
+        'a literal reading like a test' => ["/** @return (\$value is '' ? 'a is b' : string) */"],
     ]);
 
-    test('keeps the first-token reading of a conditional return type it cannot read as all strings', function (string $doc, string $reading) {
+    test('reads a conditional return type as the union of its arms', function (string $doc, string $reading) {
         expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
     })->with([
-        'a list branch' => ['/** @return ($value is string ? string : string[]) */', '($value'],
-        'a false branch' => ["/** @return (\$haystack is '' ? false : string) */", '($haystack'],
-        'a union branch' => ["/** @return (\$string is '' ? '' : string|false) */", '($string'],
-        'a nullable string branch' => ["/** @return (\$value is '' ? ?string : string) */", '($value'],
-        'an else conditional without parentheses' => ["/** @return (\$value is '' ? '' : \$value is null ? '' : string) */", '($value'],
+        'a list branch' => ['/** @return ($value is string ? string : string[]) */', 'string|string[]'],
+        'a false branch' => ["/** @return (\$haystack is '' ? false : string) */", 'string|false'],
+        'a union branch' => ["/** @return (\$string is '' ? '' : string|false) */", 'string|false'],
+        'a nullable string branch' => ["/** @return (\$value is '' ? ?string : string) */", 'string|null'],
+        'true or false' => ['/** @return ($array is list ? false : true) */', 'bool'],
+        'bool beside false' => ['/** @return ($needles is array{} ? false : ($haystack is non-empty-string ? bool : false)) */', 'bool'],
+        'an empty array beside a list' => ["/** @return (\$string is '' ? array{} : string[]) */", 'string[]'],
+        'a never arm' => ['/** @return ($x is int ? int : never) */', 'int'],
+        'a nested conditional' => ['/** @return ($a is int ? ($b is int ? int : false) : string) */', 'int|string|false'],
+        'a fully qualified class' => ['/** @return ($id is int ? \Workbench\App\Models\Post : null) */', '\Workbench\App\Models\Post|null'],
+        'a literal beside string, which takes it in' => ["/** @return (\$x is int ? 'a?b' : string|int) */", 'string|int'],
+        'a negated test' => ['/** @return ($x is not null ? int : string) */', 'int|string'],
+        'a conditional over lines' => ["/**\n * @return (\$x is int\n *     ? int\n *     : string)\n */", 'int|string'],
     ]);
 
-    test('reads each conditional return type Laravel declares as string, else by its first token', function (
+    test('keeps the first-token reading of a conditional return type an arm of which does not resolve', function (string $doc, string $reading) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+    })->with([
+        'a template arm' => ['/** @return ($number is null ? TValue : static<int, TValue>) */', '($number'],
+        'a mixed arm' => ['/** @return ($x is int ? mixed : string) */', '($x'],
+        'a static arm' => ['/** @return ($x is int ? static : null) */', '($x'],
+        'a $this arm' => ['/** @return ($callback is null ? \Illuminate\Support\HigherOrderTapProxy<$this> : $this) */', '($callback'],
+        'a short name, which may be a template' => ['/** @return ($id is int ? Post : null) */', '($id'],
+        'an empty array beside no list' => ['/** @return ($x is int ? array{} : null) */', '($x'],
+        'a literal beside no string, which the member reader reads no type of' => ["/** @return (\$x is int ? 'a' : int) */", '($x'],
+        'a literal holding a colon' => ["/** @return (\$x is int ? 'x:y' : int) */", '($x'],
+        'a callable arm' => ['/** @return ($x is int ? callable(): int : string) */', '($x'],
+        'only never arms' => ['/** @return ($x is int ? never : never) */', '($x'],
+        'a test with no else' => ['/** @return ($x is int ? int) */', '($x'],
+        'a branch with a stray colon' => ['/** @return ($x is int ? int : string : int) */', '($x'],
+        'a branch with a stray question mark' => ['/** @return ($x is int ? int : string ? int) */', '($x'],
+        'a malformed nested conditional' => ['/** @return ($x is int ? ($y is int ? int) : string) */', '($x'],
+    ]);
+
+    // The reader has no class, so an outer read's aliases must not make a bare name in an arm read as a type.
+    test('keeps the first-token reading of a conditional whose arm names an alias of a class read around it', function () {
+        $doc = '/** @return ($x is int ? Row : null) */';
+
+        expect((new AliasContextLaravelTsPublish)->extractReturnTypeWithin(new ReflectionClass(TypeAliasShapeModel::class), $doc))
+            ->toBe('($x');
+    });
+
+    test('reads each conditional return type Laravel declares as the union of its arms, else as today', function (
         string $class,
         string $method,
-        string $reading,
+        string $type,
     ) {
-        $doc = (string) (new ReflectionMethod($class, $method))->getDocComment();
+        $reflection = new ReflectionMethod($class, $method);
 
-        if (preg_match('/@return\s+\(/', $doc) !== 1) {
+        if (preg_match('/@return\s+\(/', (string) $reflection->getDocComment()) !== 1) {
             $this->markTestSkipped("The installed Laravel declares no conditional @return on {$method}().");
         }
 
-        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+        expect($this->service->docblockReturnTypes($reflection)['type'])->toBe($type);
     })->with([
         'Str::upper' => [Str::class, 'upper', 'string'],
         'Str::lower' => [Str::class, 'lower', 'string'],
-        'Str::contains' => [Str::class, 'contains', '($needles'],
         'Str::password' => [Str::class, 'password', 'string'],
-        'Arr::random' => [Arr::class, 'random', '($number'],
-        'Collection::sum' => [Collection::class, 'sum', '($callback'],
+        'Str::ucsplit' => [Str::class, 'ucsplit', 'string[]'],
+        'Arr::isAssoc' => [Arr::class, 'isAssoc', 'boolean'],
+        'Arr::isList' => [Arr::class, 'isList', 'boolean'],
+        'Arr::arrayable' => [Arr::class, 'arrayable', 'boolean'],
+        'Str::contains' => [Str::class, 'contains', 'boolean'],
+        'Str::containsAll' => [Str::class, 'containsAll', 'boolean'],
+        'Str::doesntContain' => [Str::class, 'doesntContain', 'boolean'],
+        'Str::endsWith' => [Str::class, 'endsWith', 'boolean'],
+        'Str::doesntEndWith' => [Str::class, 'doesntEndWith', 'boolean'],
+        'Str::startsWith' => [Str::class, 'startsWith', 'boolean'],
+        'Str::doesntStartWith' => [Str::class, 'doesntStartWith', 'boolean'],
+        'Str::isMatch' => [Str::class, 'isMatch', 'boolean'],
+        'Str::position' => [Str::class, 'position', 'number | false'],
+        'Str::numbers' => [Str::class, 'numbers', 'string | string[]'],
+        'Str::replace' => [Str::class, 'replace', 'string | string[]'],
+        'Str::remove' => [Str::class, 'remove', 'string | string[]'],
+        'Str::replaceMatches' => [Str::class, 'replaceMatches', 'string | string[] | null'],
+        'Str::fromBase64' => [Str::class, 'fromBase64', 'string | false'],
+        'Arr::random, a template arm' => [Arr::class, 'random', 'number'],
+        'Collection::random, a template arm' => [Collection::class, 'random', 'number'],
+        'Collection::sum, a template arm' => [Collection::class, 'sum', 'unknown'],
     ]);
 });
 
@@ -1614,6 +1670,12 @@ describe('phpstan-return docblock support', function () {
 
         expect(app(LaravelTsPublish::class)->extractReturnTypeFromDocblock($doc))
             ->toBe('int');
+    });
+
+    test('a conditional @phpstan-return wins over @return as the union of its arms', function () {
+        $doc = "/**\n * @phpstan-return (\$x is int ? int : string)\n * @return mixed\n */";
+
+        expect(app(LaravelTsPublish::class)->extractReturnTypeFromDocblock($doc))->toBe('int|string');
     });
 });
 
