@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
@@ -2070,6 +2071,12 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'an undeclared serialize() over a get() with a literal null and a property fallback' => [UnprovenNullProduct::class, 'quantity', 'string | null'],
         'an undeclared serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_active', 'string | null'],
         'a typed serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_featured', 'string'],
+        'a typed serialize() over a get() reading another model\'s accessor through a cycle' => [CarriedNullProduct::class, 'name', 'string'],
+        'an undeclared serialize() over a get() reading another model\'s accessor through a cycle' => [CarriedNullProduct::class, 'slug', 'string | null'],
+        'a typed serialize() over a get() calling a helper that reads a model' => [CarriedNullProduct::class, 'sku', 'string'],
+        'an undeclared serialize() over a get() calling a helper that reads a model' => [CarriedNullProduct::class, 'price', 'string | null'],
+        'a typed serialize() over a get() reading another model\'s accessor' => [CarriedNullProduct::class, 'quantity', 'string'],
+        'an undeclared serialize() over a get() returning the raw value' => [CarriedNullProduct::class, 'is_active', 'string | null'],
     ]);
 });
 

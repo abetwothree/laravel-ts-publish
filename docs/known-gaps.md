@@ -965,6 +965,11 @@ nothing or only `mixed`, the type its returns prove, because `Model::toArray()` 
 reads the attribute directly sends the `get()` value instead, yet publishes the same type. Type such a key with
 `#[TsCasts]`.
 
+Laravel sends a null `get()` value without calling `serialize()`, but a declared `serialize()` type gains `| null` only
+where `get()` declares one or returns a literal `null` itself. A null that `get()` passes on from another member or
+model is left out, since the type published for that member may hold a null the path `get()` takes never meets, and so
+is one returned from a body the engine cannot read or that reads its cast back through itself.
+
 ### An `array`, `collection` or `AsCollection` cast publishes a list, though an object payload is sent as an object
 
 `'settings' => 'array'` publishes `unknown[]`, as do `collection`, `AsCollection` and their encrypted forms, but a

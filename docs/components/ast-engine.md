@@ -30,7 +30,7 @@ These are the classes a change to the engine usually touches:
 
 | Class | Owns |
 | --- | --- |
-| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `returnsLiteralNull()`, `analyzeEncodedValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order, and keeps a result's held-object flags (`heldObject`, `mayHoldObject`, `heldProp`, `returnsCallable`) only from a `KeepsHeldObjects` handler; any other handler reads away from a closure's returned value (`AnalysisScope::$readsCallableReturn`) |

@@ -11,6 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorCycleGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorCycleTypedGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AccessorTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArrayOrObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeInterfaceCast;
@@ -24,6 +27,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DroppedArmSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ElvisGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\FallOffGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LiteralNullCycleBodyCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingTypedGetCast;
@@ -45,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableObjectSerializeCas
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NumberObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ObjectSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\OpaqueGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\OpaqueGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\PrefixedMixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\PropertyFallbackGetCast;
@@ -623,6 +629,12 @@ describe('a cast whose caster serializes', function () {
         'an undeclared serialize() over a get() the engine cannot read, which keeps an unproven null' => [MemoizingGetCast::class, 'string | null'],
         'a typed serialize() over a get() the engine cannot read, which adds no unproven null' => [MemoizingTypedGetCast::class, 'string'],
         'an undeclared serialize() over a get() whose reading leaves an arm out, which keeps an unproven null' => [DroppedArmGetCast::class, 'string | null'],
+        'a typed serialize() over a get() reading another model\'s accessor, whose carried-in null adds none' => [AccessorCycleTypedGetCast::class, 'string'],
+        'a typed serialize() over a get() reading another model\'s accessor without a cycle, whose carried-in null adds none' => [AccessorTypedGetCast::class, 'string'],
+        'a typed serialize() over a get() calling a helper that reads a model, whose carried-in null adds none' => [HelperCycleTypedGetCast::class, 'string'],
+        'an undeclared serialize() over a get() reading another model\'s accessor, which keeps its null' => [AccessorCycleGetCast::class, 'string | null'],
+        'an undeclared serialize() over a get() calling a helper that reads a model, which keeps its null' => [HelperCycleGetCast::class, 'string | null'],
+        'an undeclared serialize() over a get() returning the raw value, which keeps an unproven null' => [OpaqueGetCast::class, 'string | null'],
         'an undeclared serialize() one of whose returns cannot be typed, which leaves the type to get()' => [DroppedArmSerializeCast::class, 'number'],
         'an undeclared serialize() whose returns hold an unknown member, which leaves the type to get()' => [UnknownMemberSerializeCast::class, 'string'],
         'an undeclared serialize() returning a class a cast type cannot import, which leaves the type to get()' => [ModelSerializeCast::class, 'string'],

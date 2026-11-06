@@ -31,8 +31,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Match_;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\FunctionLike;
+use PhpParser\Node\MatchArm;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -142,6 +147,26 @@ final class AstEngine
         $scope->casesAsLiterals = $casesAsLiterals;
 
         return $this->returnsValue($context->method, $analyzer, $scope);
+    }
+
+    /**
+     * Whether a method's own body returns a literal `null`: `return null;`, a bare `return;`, a fall-off, or a `null`
+     * arm of a returned ternary, match or `??`. A null held only by a value the body reads elsewhere is not one.
+     *
+     * @param  class-string  $class
+     *
+     * @internal
+     */
+    public function returnsLiteralNull(string $class, string $method): bool
+    {
+        $function = resolve(MethodLocator::class)->locate($class, $method)?->method;
+
+        if ($function?->stmts === null) {
+            return false;
+        }
+
+        return $this->canEndWithoutValue($function)
+            || array_any($this->collectReturnExpressions($function->stmts), $this->holdsLiteralNull(...));
     }
 
     /**
@@ -465,6 +490,23 @@ final class AstEngine
         return $this->canEndWithoutValue($function)
             ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
+    }
+
+    /**
+     * Whether a returned expression is the literal `null`, or a ternary, match or `??` holding one as an arm.
+     */
+    private function holdsLiteralNull(Expr $returned): bool
+    {
+        return match (true) {
+            $returned instanceof Ternary => ($returned->if !== null && $this->holdsLiteralNull($returned->if))
+                || $this->holdsLiteralNull($returned->else),
+            $returned instanceof Match_ => array_any(
+                $returned->arms,
+                fn (MatchArm $arm): bool => $this->holdsLiteralNull($arm->body),
+            ),
+            $returned instanceof Coalesce => $this->holdsLiteralNull($returned->right),
+            default => $returned instanceof ConstFetch && $returned->name->toLowerString() === 'null',
+        };
     }
 
     /**

@@ -33,8 +33,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueKeyListedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
@@ -45,6 +48,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HelperCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
@@ -1064,8 +1068,8 @@ test('a cast whose reading meets itself publishes the same type whichever model 
     ]],
 ]);
 
-// A type serialize()'s body proves keeps a get() null it cannot rule out, as BASE's `unknown` admitted it; a typed
-// serialize() adds only a proven one. A helper's or a property's own guard is no caster cycle, so it hides no null.
+// Laravel sends a null value without calling serialize(), so a null get() cannot rule out stays on a type read from
+// serialize()'s body; a typed serialize() adds only a proven one. A helper's or a property's own guard is no cycle.
 test('a not-null column cast to a class whose get() returns a literal null its reading cannot prove publishes it from a body-read serialize()', function (string $column, string $type, string $sentForValue) {
     $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active', 'is_featured'];
     $nulls = (new UnprovenNullProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
@@ -1082,6 +1086,62 @@ test('a not-null column cast to a class whose get() returns a literal null its r
     'a property fallback, under an undeclared serialize()' => ['quantity', 'string | null', '"v7"'],
     'a body the engine cannot read, under an undeclared serialize()' => ['is_active', 'string | null', '"w7"'],
     'a body the engine cannot read, under a typed serialize(), which adds no null' => ['is_featured', 'string', '"x7"'],
+]);
+
+// A typed serialize() takes get()'s null only from get()'s own declaration or literal returns, never from a nullable
+// value it reads elsewhere; a type read from serialize()'s body keeps that null, which get() cannot rule out.
+test('a not-null column cast to a class whose get() reads a value published with a null takes it only under a body-read serialize()', function (string $column, string $type, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active'];
+    $nulls = (new CarriedNullProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new CarriedNullProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CarriedNullProduct::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'another model\'s accessor read through a cycle, under a typed serialize()' => ['name', 'string', '"aq"', '"a7"'],
+    'another model\'s accessor read through a cycle, under an undeclared serialize()' => ['slug', 'string | null', '"aq"', '"a7"'],
+    'a helper reading a model, under a typed serialize()' => ['sku', 'string', '"bk"', '"b7"'],
+    'a helper reading a model, under an undeclared serialize()' => ['price', 'string | null', '"bk"', '"b7"'],
+    'another model\'s accessor, under a typed serialize()' => ['quantity', 'string', '"nq"', '"n7"'],
+    'the raw value, under an undeclared serialize()' => ['is_active', 'string | null', 'null', '"r7"'],
+]);
+
+test('a cast whose get() reads a value published with a null publishes the same type whichever model is published first', function (array $models) {
+    $types = [];
+
+    foreach ($models as [$model, $column]) {
+        $data = (new ModelTransformer($model))->data();
+        $types[class_basename($model).'.'.$column] = ($data->columns[$column] ?? $data->mutators[$column])['type'];
+    }
+
+    ksort($types);
+
+    expect($types)->toBe([
+        'AccessorCycleWarehouse.name' => 'string',
+        'AccessorCycleWarehouse.phone' => 'string | null',
+        'AccessorWarehouse.phone' => 'string | null',
+        'CarriedNullProduct.is_active' => 'string | null',
+        'CarriedNullProduct.name' => 'string',
+        'CarriedNullProduct.price' => 'string | null',
+        'CarriedNullProduct.quantity' => 'string',
+        'CarriedNullProduct.sku' => 'string',
+        'CarriedNullProduct.slug' => 'string | null',
+        'HelperCycleWarehouse.phone' => 'unknown | null',
+    ]);
+})->with([
+    'the product first' => [[
+        [CarriedNullProduct::class, 'name'], [CarriedNullProduct::class, 'slug'], [CarriedNullProduct::class, 'sku'],
+        [CarriedNullProduct::class, 'price'], [CarriedNullProduct::class, 'quantity'], [CarriedNullProduct::class, 'is_active'],
+        [AccessorCycleWarehouse::class, 'name'], [AccessorCycleWarehouse::class, 'phone'],
+        [HelperCycleWarehouse::class, 'phone'], [AccessorWarehouse::class, 'phone'],
+    ]],
+    'the models it reads first' => [[
+        [AccessorCycleWarehouse::class, 'name'], [AccessorCycleWarehouse::class, 'phone'],
+        [HelperCycleWarehouse::class, 'phone'], [AccessorWarehouse::class, 'phone'],
+        [CarriedNullProduct::class, 'is_active'], [CarriedNullProduct::class, 'quantity'], [CarriedNullProduct::class, 'price'],
+        [CarriedNullProduct::class, 'sku'], [CarriedNullProduct::class, 'slug'], [CarriedNullProduct::class, 'name'],
+    ]],
 ]);
 
 test('a not-null column cast to a class whose get() provably returns null publishes the null it sends', function (string $column, string $sentForValue) {

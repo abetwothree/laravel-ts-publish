@@ -1778,7 +1778,7 @@ class LaravelTsPublish
             fn (?array $info): bool => $info !== null,
         );
 
-        // BASE published no type here, so a null get() cannot rule out stays admitted.
+        // Laravel sends a null value without calling serialize(), so a null get() cannot rule out stays.
         return $body === null ? null : $this->withGetNull($caster, $body, true);
     }
 
@@ -3572,15 +3572,15 @@ class LaravelTsPublish
      */
     private function withGetNull(string $caster, array $types, bool $unproven): array
     {
-        return $this->getReturnsNull($caster) ?? $unproven
+        return ($this->getReturnsNull($caster) ?? $unproven)
             ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
             : $types;
     }
 
     /**
-     * Whether a caster's get() returns null, as its native type, else its `@return`, else its body's reading, proves
-     * by a `null` arm or its absence; null where none proves either: a `mixed` type, a body the engine cannot read or
-     * leaves an arm out of, or one read through a caster cycle.
+     * Whether a caster's get() returns null, as its native type, else its `@return`, else its body's reading proves:
+     * by a `null` arm the body returns literally, or by none; null where none proves either: a `mixed` type, a body
+     * the engine cannot read or leaves an arm out of, one read through a caster cycle, or a null a read carries in.
      *
      * @param  class-string  $caster
      */
@@ -3603,7 +3603,7 @@ class LaravelTsPublish
         }
 
         // The body's reading only decides the null, so whatever it reads publishes nothing and leaves no trace.
-        return $this->readCasterBody($caster, 'get', function () use ($caster): ?bool {
+        $read = $this->readCasterBody($caster, 'get', function () use ($caster): ?bool {
             $memo = resolve(AnalysisMemo::class);
             [$cuts, $dropped] = [$memo->cuts(self::CASTER_BODY_GUARD), DroppedUnionArms::dropped()];
             $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'get');
@@ -3614,6 +3614,9 @@ class LaravelTsPublish
 
             return TsTypeString::hasNullArm($result['type']) ?: (DroppedUnionArms::dropped() === $dropped ? false : null);
         }, static fn (): bool => false);
+
+        // Another member's null may be one its column allows on a path get() never takes, so only a literal one proves.
+        return ($read === true && ! resolve(AstEngine::class)->returnsLiteralNull($caster, 'get')) ? null : $read;
     }
 
     /**
