@@ -91,8 +91,8 @@ numbers.
 Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
 `@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
 import. A caster with a `serialize()` method publishes what it declares instead, since `Model::toArray()` writes that
-wherever the method exists, with or without `SerializesCastableAttributes`; one that declares nothing leaves `get()`
-to type it.
+wherever the method exists, with or without `SerializesCastableAttributes`. One that declares nothing, or `mixed`,
+leaves `get()` to type it, as does a vague one, such as `array`, on a caster without the interface.
 
 ### Step 2: an override, resolved and composed
 
@@ -331,9 +331,9 @@ decides. Laravel calls a class cast's `get()` and an accessor's getter for a NUL
 decides:
 
 - A cast whose every caster's `get()` declares a native non-null return adds none, unless the caster has a
-  `serialize()` method, which `Model::toArray()` writes and which must declare one too. A `CastsInboundAttributes` cast, a caster
-  that is inbound too, whose `get()` Laravel never calls, a `Castable` whose caster cannot be read without calling
-  `castUsing()`, and a `mixed` or untyped `get()` keep it.
+  `serialize()` method, which `Model::toArray()` writes and which must declare one too. A `CastsInboundAttributes`
+  cast, a caster that is inbound too, whose `get()` Laravel never calls, a `Castable` whose caster cannot be read
+  without calling `castUsing()`, and a `mixed` or untyped `get()` keep it.
 - An accessor whose getter declares a native return adds none when it excludes null, and needs a top-level `null` when
   it allows one. An untyped getter keeps the looser test, which counts any `null` in its type, as does one declaring
   `mixed` and one on a key Laravel's `isClassCastable()` reads as a class cast, which `toArray()` runs instead of the

@@ -2026,6 +2026,10 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a non-null getter beside a datetime cast' => [AccessorCastNullWarehouse::class, 'status', 'string'],
         'a serialize() method declaring nothing, without the interface' => [SerializeMethodWarehouse::class, 'phone', 'string | null'],
         'a serialize() method declaring a string, without the interface' => [SerializeMethodWarehouse::class, 'coordinate_data', 'string'],
+        'a mixed serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'status', '{ x: number; y: number } | null'],
+        'a mixed serialize(), with the interface' => [SerializeMethodWarehouse::class, 'color', '{ x: number; y: number } | null'],
+        'an array serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'priority', '{ x: number; y: number }'],
+        'an array serialize() method over a shape, without the interface' => [SerializeMethodWarehouse::class, 'manager_id', '{ a: number }'],
     ]);
 });
 

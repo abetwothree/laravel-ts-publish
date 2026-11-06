@@ -40,6 +40,7 @@ use Closure;
 use DateTimeInterface;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
@@ -1729,7 +1730,8 @@ class LaravelTsPublish
 
     /**
      * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
-     * not. Null for a caster without one, or whose serialize() declares nothing, which leaves get() to type it.
+     * not. Null for a caster without one, or whose serialize() declares nothing, `mixed` included, which leaves get()
+     * to type it, as it does a vague one on a caster without the interface, which was always typed by get().
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
@@ -1741,8 +1743,11 @@ class LaravelTsPublish
         }
 
         $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
+        $vague = is_a($caster, SerializesCastableAttributes::class, true)
+            ? TsTypeString::isUnknownOnly($serialized['type'])
+            : TsTypeString::isVagueOnly($serialized['type']);
 
-        return $serialized['type'] === 'unknown' ? null : $serialized;
+        return $vague ? null : $serialized;
     }
 
     /**

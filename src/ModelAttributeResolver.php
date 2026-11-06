@@ -168,9 +168,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a type already holds the column's `null`. A class cast whose every caster declares a native non-null
-     * `get()` and `serialize()`, and is not inbound, never sends it, as Laravel calls both for a NULL column too.
-     * Otherwise a top-level arm holds it, whatever null its members hold; an untyped accessor getter counts any.
+     * Whether a type holds the column's `null`. A class cast whose every caster declares a native non-null `get()`,
+     * and its `serialize()` where it has one, and is not inbound, never sends it, since Laravel calls both for NULL.
+     * Otherwise a top-level arm holds it, whatever null its members hold; an untyped getter counts any.
      */
     public static function typeHoldsNull(string $type, ?string $cast): bool
     {

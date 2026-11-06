@@ -929,14 +929,21 @@ test('a nullable column cast to a class whose get() does not decide what toArray
 ]);
 
 // Laravel calls a caster's serialize() method whether or not the caster implements SerializesCastableAttributes.
-test('a nullable column cast to a class with a serialize() method but not the interface publishes what serialize() sends', function (string $column, string $type, mixed $sent) {
-    $row = sentAsJson((new SerializeMethodWarehouse)->setRawAttributes(['phone' => null, 'coordinate_data' => null])->toArray());
+// A serialize() declaring only `mixed`, or `array` without the interface, leaves get() to type the value.
+test('a nullable column cast to a class with a serialize() method publishes what serialize() sends', function (string $column, string $type, mixed $sent) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
+    $row = sentAsJson((new SerializeMethodWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
 
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializeMethodWarehouse::class, $column)['type'])->toBe($type)
-        ->and($row->{$column})->toBe($sent);
+        ->and($row->{$column})->toEqual($sent);
 })->with([
     'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', null],
     'a serialize() declaring a non-null string over a get() returning a number' => ['coordinate_data', 'string', 'n0'],
+    'a serialize() declaring mixed, without the interface' => ['status', '{ x: number; y: number } | null', (object) ['x' => 1, 'y' => 2]],
+    'a serialize() declaring mixed, with the interface' => ['color', '{ x: number; y: number } | null', (object) ['x' => 1, 'y' => 2]],
+    'a serialize() declaring array over a get() returning a value object, without the interface' => ['priority', '{ x: number; y: number }', (object) ['x' => 1, 'y' => 2]],
+    'a serialize() declaring array over a get() declaring a shape, without the interface' => ['manager_id', '{ a: number }', (object) ['a' => 1]],
+    'a serialize() declaring array, with the interface, as published before' => ['primary_contact_id', 'unknown[]', (object) ['x' => 1, 'y' => 2]],
 ]);
 
 test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {

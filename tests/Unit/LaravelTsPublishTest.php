@@ -10,14 +10,19 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArraySerializeInterfaceCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedSerializeInterfaceCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ShapeArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
@@ -550,6 +555,11 @@ describe('a cast whose caster serializes', function () {
         'a Castable whose castUsing() names a serializing caster' => [SerializedLabelCastable::class, 'string'],
         'an untyped serialize(), which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
         'a serialize() method without the interface' => [NoInterfaceTypedSerializeCast::class, 'string'],
+        'a mixed serialize(), which leaves the type to get()' => [MixedSerializeInterfaceCast::class, '{ x: number; y: number }'],
+        'a mixed serialize() without the interface' => [MixedSerializeCast::class, '{ x: number; y: number }'],
+        'an array serialize() without the interface, which leaves a value object to get()' => [ArraySerializeCast::class, '{ x: number; y: number }'],
+        'an array serialize() without the interface, which leaves a shape to get()' => [ShapeArraySerializeCast::class, '{ a: number }'],
+        'an array serialize() with the interface' => [ArraySerializeInterfaceCast::class, 'unknown[]'],
     ]);
 
     test('keeps the value type of a Castable, which a resource can send as itself', function () {
