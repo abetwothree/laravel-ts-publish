@@ -2005,7 +2005,8 @@ class ModelAttributeResolver
 
     /**
      * An accessor's type with its column's null. Laravel runs the getter for a NULL column too, so a native return
-     * decides: no null when it excludes one, a top-level arm when it allows one. An untyped getter counts any null.
+     * decides: no null when it excludes one, a top-level arm when it allows one. An untyped getter counts any null, as
+     * does one declaring `mixed`, and one on a key with a class cast, which toArray() runs instead of the getter.
      *
      * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
      * @param  TypeScriptTypeInfo  $accessorInfo
@@ -2013,9 +2014,12 @@ class ModelAttributeResolver
      */
     private function withAccessorNull(array $ctx, string $attributeName, array $accessorInfo, ?bool $nullable): array
     {
-        $return = $this->getterNativeReturn($ctx['reflection'], $ctx['instance'], $attributeName);
+        $cast = $ctx['instance']->getCasts()[$attributeName] ?? null;
+        $return = is_string($cast) && class_exists(Str::before($cast, ':'))
+            ? null
+            : $this->getterNativeReturn($ctx['reflection'], $ctx['instance'], $attributeName);
 
-        return $return === null
+        return $return === null || ($return instanceof ReflectionNamedType && $return->getName() === 'mixed')
             ? $this->appendNullable($accessorInfo, $nullable, 'accessor')
             : $this->appendNullable($accessorInfo, $nullable && $return->allowsNull(), null);
     }

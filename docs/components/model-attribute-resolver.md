@@ -329,10 +329,13 @@ A nullable column adds `| null` through `withColumnNull()` unless the type alrea
 decides. Laravel calls a class cast's `get()` and an accessor's getter for a NULL column too, so their declared return
 decides:
 
-- A cast whose every caster's `get()` declares a native non-null return adds none. A `CastsInboundAttributes` cast, a
-  `Castable` whose caster cannot be read without calling `castUsing()`, and a `mixed` or untyped `get()` keep it.
+- A cast whose every caster's `get()` declares a native non-null return adds none, unless the caster serializes, when
+  its `serialize()`, which `Model::toArray()` writes, must declare one too. A `CastsInboundAttributes` cast, a caster
+  that is inbound too, whose `get()` Laravel never calls, a `Castable` whose caster cannot be read without calling
+  `castUsing()`, and a `mixed` or untyped `get()` keep it.
 - An accessor whose getter declares a native return adds none when it excludes null, and needs a top-level `null` when
-  it allows one. An untyped getter keeps the looser test, which counts any `null` in its type.
+  it allows one. An untyped getter keeps the looser test, which counts any `null` in its type, as does one declaring
+  `mixed` and one on a key with a class cast, which `toArray()` runs instead of the getter.
 - Any other column needs a top-level `null`, whatever `null` the value's members hold.
 
 `resolveAttribute()` returns the type with the column's null decided, so `ModelTransformer` adds it only to a fallback

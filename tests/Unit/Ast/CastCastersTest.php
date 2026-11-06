@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ArgumentCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\BlankToNullSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DeclaredCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InstanceCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ReceiverDualCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCardCast;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -37,6 +41,10 @@ test('a cast declares a non-null get() only when every caster\'s native get() re
     'a Castable declaring a non-null caster' => [DeclaredCastable::class, true],
     'a Castable whose caster may return null' => [GaugeCard::class, false],
     'a Castable whose caster only a call could know' => [ArgumentCastable::class, false],
+    'a serializing caster whose serialize() declares a non-null type' => [SerializedLabelCast::class, true],
+    'a serializing caster whose serialize() may return null' => [NullableSerializedLabelCast::class, false],
+    'a serializing caster whose serialize() declares nothing' => [BlankToNullSerializeCast::class, false],
+    'a caster that is inbound too, whose get() Laravel never calls' => [InboundDualCast::class, false],
     'AsCollection' => [AsCollection::class, false],
     'a built-in cast' => ['array', false],
 ]);

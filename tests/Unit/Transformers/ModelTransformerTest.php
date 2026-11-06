@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
@@ -2016,6 +2018,10 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a getter declaring ?array natively, its docblock leaving the null out' => [AccessorNullWarehouse::class, 'color', '{ a: number | null } | null'],
         'an old-style getter declaring a non-null string' => [AccessorNullWarehouse::class, 'priority', 'string'],
         'an untyped getter whose docblock declares a nested null only' => [AccessorNullWarehouse::class, 'manager_id', '{ a: number | null }'],
+        'a serializing caster whose serialize() declares nothing' => [SerializedCastNullWarehouse::class, 'phone', 'string | null'],
+        'a caster that is inbound too' => [SerializedCastNullWarehouse::class, 'coordinate_data', 'string | null'],
+        'a non-null getter beside a class cast' => [AccessorCastNullWarehouse::class, 'phone', 'string | null'],
+        'a getter declaring mixed' => [AccessorCastNullWarehouse::class, 'coordinate_data', '{ a: number | null }'],
     ]);
 });
 
