@@ -1023,6 +1023,14 @@ read as a value or spread, publishes what it returns, as in `$f = fn () => 1; $t
 that closure returns is sent as `{}` too: `'a' => fn () => $f` publishes what `$f` returns, and `fn () => $f ?? 5`
 that less its `null`, beside `5`'s type. Type that key with `#[TsCasts]`.
 
+### A `transform()` callable no literal names publishes the callable's own type
+
+`transform()` calls its callback, so `$this->transform($v, 'strlen')` publishes `number`, as does a callable whose value
+reads as callable strings or pairs through a constant, a method's literal return, a ternary, a local or a `$this`
+property. A callable string or pair a parameter, a `config()` value or another call holds names no call the engine can
+read, so it publishes the type of that value, as `$this->transform($v, $callback)` publishes `string` for a
+`string $callback` though the call's value is sent. Type that key with `#[TsCasts]`.
+
 ### A callable in a docblock publishes `unknown`
 
 `callable(int): string`, alone or as a shape member, publishes `unknown`, because what it sends depends on who

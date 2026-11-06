@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\PropertyWriteSites;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -31,6 +33,7 @@ use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Throwable;
 
 /**
  * The forms a callable value takes where its caller calls it: the call a first-class callable stands for, the closure
@@ -144,7 +147,7 @@ final class CallableForms
     /**
      * Whether the expression is a first-class callable: PHP allows one only on a function, method or static call.
      *
-     * @phpstan-assert-if-true FuncCall|MethodCall|StaticCall $expr
+     * @phpstan-assert-if-true =FuncCall|MethodCall|StaticCall $expr
      */
     public static function isFirstClassCallable(Expr $expr): bool
     {
@@ -153,9 +156,9 @@ final class CallableForms
     }
 
     /**
-     * The callable values an expression may hold, each a closure, a first-class callable, `null`, a string or an array
-     * literal: through a ternary, `??` or `match`, a local's writes, a literal key of a local's array literal and a
-     * `$this` property's default and writes. Null where one may hold anything else, or a cycle of locals.
+     * The callable values an expression may hold, a closure, a first-class callable, `null`, a string or an array: via
+     * `?:`, `??`, `match`, a local's writes or literal key, a `$this` property, a method's literal return, a constant.
+     * Null where one may hold anything else, or a cycle of locals.
      *
      * @param  array<string, true>  $followed  the locals already followed
      * @return non-empty-list<Expr>|null
@@ -175,7 +178,8 @@ final class CallableForms
             $value instanceof Variable => self::localValues($value, $scope, $followed),
             $value instanceof ArrayDimFetch => self::keyedValues($value, $scope, $followed),
             $value instanceof PropertyFetch => self::propertyValues($value, $scope),
-            default => null,
+            $value instanceof MethodCall, $value instanceof StaticCall => self::returnedLiteral($value, $scope),
+            default => self::constantValue($value, $scope),
         };
 
         if ($parts === null || $parts === []) {
@@ -254,7 +258,7 @@ final class CallableForms
      */
     private static function propertyValues(PropertyFetch $fetch, AnalysisScope $scope): ?array
     {
-        if (! $fetch->var instanceof Variable || $fetch->var->name !== 'this' || ! $fetch->name instanceof Identifier) {
+        if (! self::isThis($fetch->var) || ! $fetch->name instanceof Identifier) {
             return null;
         }
 
@@ -278,31 +282,81 @@ final class CallableForms
         }
 
         $default = $property->hasDefaultValue() || ! $property->hasType() ? $property->getDefaultValue() : false;
-        $spelled = $default === false ? [] : self::spelledDefault($default, $fetch->getAttributes());
+        $spelled = $default === false ? [] : self::spelledValue($default, $fetch->getAttributes());
 
         return $spelled === null ? null : [...$spelled, ...$values];
     }
 
     /**
-     * A property default that spells a callable or `null`, as the expression a source would write; null for any other.
+     * The literal every return of a `$this->m()`, `self::m()` or `static::m()` call spells, a string or a list of two;
+     * null for any other call.
+     *
+     * @return list<Expr>|null
+     */
+    private static function returnedLiteral(MethodCall|StaticCall $call, AnalysisScope $scope): ?array
+    {
+        if (! $call->name instanceof Identifier) {
+            return null;
+        }
+
+        $method = $call->name->toString();
+        $class = match (true) {
+            $call instanceof MethodCall => self::isThis($call->var) ? $scope->thisMemberClass($method, true) : null,
+            ! $call->class instanceof Name => null,
+            $call->class->toLowerString() === 'self' => $scope->declaringClass,
+            $call->class->toLowerString() === 'static' => $scope->thisMemberClass($method, true),
+            default => null,
+        };
+
+        if ($class === null || ! $class->hasMethod($method)) {
+            return null;
+        }
+
+        $reader = resolve(ReturnLiteralReader::class);
+        $literal = $reader->stringLiteral($class->getName(), $method) ?? $reader->strings($class->getName(), $method);
+
+        return $literal === null ? null : self::spelledValue($literal, $call->getAttributes());
+    }
+
+    /**
+     * The value a constant expression evaluates to, as a class or global constant or literals PHP folds; null where it
+     * is no constant expression.
+     *
+     * @return list<Expr>|null
+     */
+    private static function constantValue(Expr $value, AnalysisScope $scope): ?array
+    {
+        try {
+            $constant = resolve(ValueResolver::class)->evaluateConstantExpression($value, $scope);
+        } catch (Throwable) {
+            // A constant's initializer runs only as it is read, and may name a constant no class declares.
+            return null;
+        }
+
+        return self::spelledValue($constant, $value->getAttributes());
+    }
+
+    /**
+     * A value that spells a callable string, a pair of strings or `null`, as the expression a source would write; null
+     * for any other.
      *
      * @param  array<string, mixed>  $attributes
      * @return list<Expr>|null
      */
-    private static function spelledDefault(mixed $default, array $attributes): ?array
+    private static function spelledValue(mixed $value, array $attributes): ?array
     {
-        if (is_array($default) && array_is_list($default) && count($default) === 2
-            && is_string($default[0]) && is_string($default[1])
+        if (is_array($value) && array_is_list($value) && count($value) === 2
+            && is_string($value[0]) && is_string($value[1])
         ) {
             return [new Array_([
-                new ArrayItem(new String_($default[0], $attributes)),
-                new ArrayItem(new String_($default[1], $attributes)),
+                new ArrayItem(new String_($value[0], $attributes)),
+                new ArrayItem(new String_($value[1], $attributes)),
             ], $attributes)];
         }
 
         return match (true) {
-            $default === null => [new ConstFetch(new Name('null'), $attributes)],
-            is_string($default) => [new String_($default, $attributes)],
+            $value === null => [new ConstFetch(new Name('null'), $attributes)],
+            is_string($value) => [new String_($value, $attributes)],
             default => null,
         };
     }
@@ -313,17 +367,24 @@ final class CallableForms
      */
     private static function readsNoLocal(Expr $value): bool
     {
-        $isThis = static fn (?Expr $expr): bool => $expr instanceof Variable && $expr->name === 'this';
-        $isNamed = static fn (?Expr $expr): bool => $expr instanceof String_ || $expr instanceof ClassConstFetch || $isThis($expr);
+        $isNamed = static fn (Expr $expr): bool => $expr instanceof String_ || $expr instanceof ClassConstFetch || self::isThis($expr);
 
         return match (true) {
             $value instanceof String_, self::isNull($value) => true,
             $value instanceof ClosureExpr => $value->uses === [],
             $value instanceof Array_ => $value->items !== []
                 && array_all($value->items, static fn (ArrayItem $item): bool => $item->key === null && $isNamed($item->value)),
-            $value instanceof MethodCall => $value->isFirstClassCallable() && $isThis($value->var),
+            $value instanceof MethodCall => $value->isFirstClassCallable() && self::isThis($value->var),
             default => $value instanceof StaticCall && $value->isFirstClassCallable(),
         };
+    }
+
+    /**
+     * Whether an expression is `$this`.
+     */
+    private static function isThis(Expr $expr): bool
+    {
+        return $expr instanceof Variable && $expr->name === 'this';
     }
 
     /**

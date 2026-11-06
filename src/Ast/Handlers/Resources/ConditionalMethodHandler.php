@@ -522,15 +522,18 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $resolvedValue = null;
         $outer = AnalysisScope::NO_NAME_BINDINGS;
         $inners = [];
+        $called = CallableForms::calledCallables($callbackArg->value, $scope);
 
-        foreach (CallableForms::calledCallables($callbackArg->value, $scope) ?? [] as $called) {
-            $inners[] = $this->transformedValue($called, $value, $resolvedValue, $outer, $scope, $engine);
+        foreach ($called ?? [] as $callable) {
+            $inners[] = $this->transformedValue($callable, $value, $resolvedValue, $outer, $scope, $engine);
         }
 
         $inner = ValueResult::unionOfCalls($inners);
+        $held = CallableForms::heldCallable($callbackArg->value, $scope);
 
-        if ($inner['type'] === 'unknown' && count($inners) !== 1) {
-            return [...$inner, 'optional' => true];
+        // A callable no literal names, or whose calls read nothing, keeps the reading it always had.
+        if ($inner['type'] === 'unknown' && $called !== [$held]) {
+            $inner = $this->transformedValue($held, $value, $resolvedValue, $outer, $scope, $engine);
         }
 
         // transform()'s default runs through the global transform() helper's $default($value) — one

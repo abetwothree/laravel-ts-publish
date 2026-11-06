@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CallbackCoercionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TransformCallableSourcesChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TransformCallableSourcesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Workbench\App\Models\Post;
@@ -71,6 +73,50 @@ it('types a transform() callback spelled as a function name or a pair as the cal
         ->and([$unsized['transform_ternary'], $unsized['transform_two_writes'], $unsized['transform_closure_ternary']])
         ->toBe(['Hello', 1, 2]);
 });
+
+// A constant or a method's literal return names the call transform() makes; a callable no literal names, as a
+// parameter, a config() value or a rewritten key holds, keeps the reading of it as the value it is.
+it('types a transform() callback a constant or a literal return names as that call, and keeps any other as before', function (string $resource, array $types, array $sent) {
+    $post = (new Post)->forceFill(['id' => 7, 'title' => 'Hello']);
+
+    expect(publishedResourceKeyTypes($resource, Post::class))->toBe($types)
+        ->and(json_decode((string) json_encode($resource::make($post)->resolve()), true))->toBe($sent);
+})->with([
+    'the resource' => [TransformCallableSourcesResource::class, [
+        'class_const?' => 'number',
+        'method_string?' => 'number',
+        'coalesce_method?' => 'string | number',
+        'string_param?' => 'string',
+        'config_string?' => 'string',
+        'dim_rewritten?' => 'string',
+        'own_property?' => 'number',
+    ], [
+        'class_const' => 5,
+        'method_string' => 5,
+        'coalesce_method' => 'Hello',
+        'string_param' => 5,
+        'config_string' => 5,
+        'dim_rewritten' => 'Hello',
+        'own_property' => 5,
+    ]],
+    'a subclass redeclaring its property' => [TransformCallableSourcesChildResource::class, [
+        'class_const?' => 'number',
+        'method_string?' => 'number',
+        'coalesce_method?' => 'string | number',
+        'string_param?' => 'string',
+        'config_string?' => 'string',
+        'dim_rewritten?' => 'string',
+        'own_property?' => 'string',
+    ], [
+        'class_const' => 5,
+        'method_string' => 5,
+        'coalesce_method' => 'Hello',
+        'string_param' => 5,
+        'config_string' => 5,
+        'dim_rewritten' => 'Hello',
+        'own_property' => 'Hello',
+    ]],
+]);
 
 // A join that left a write out still holds the collection it read, as the run output warns; a value nothing types
 // may be a list or a record, so map() keeps either.

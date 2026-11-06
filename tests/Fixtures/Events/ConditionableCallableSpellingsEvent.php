@@ -15,6 +15,9 @@ final class ConditionableCallableSpellingsEvent implements ShouldBroadcast
 {
     use Conditionable;
 
+    /** A static method's name, held by a constant. */
+    private const string LABEL = 'AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ConditionableBox::label';
+
     /** A static method's name, held by a property. */
     public string $sizer = 'AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ConditionableBox::label';
 
@@ -40,8 +43,8 @@ final class ConditionableCallableSpellingsEvent implements ShouldBroadcast
     }
 
     /**
-     * The payload: each key a callable a property, a key, a ternary, a helper, a parameter or a twice-written local
-     * holds.
+     * The payload: each key a callable a property, a key, a ternary, a constant, a method, a helper, a parameter or a
+     * twice-written local holds.
      *
      * @return array<string, mixed>
      */
@@ -63,6 +66,8 @@ final class ConditionableCallableSpellingsEvent implements ShouldBroadcast
             'offset_pair' => $box->when($pinned, $map['a']),
             'property_string' => $box->when($pinned, $this->sizer),
             'written_property' => $box->when($pinned, $this->measure),
+            'const_string' => $box->when($pinned, self::LABEL),
+            'method_string' => $box->when($pinned, $this->labelName()),
             'helper_pair' => $box->when($pinned, $this->pairFor($box)),
             'param_string' => $this->viaParam($box, $pinned, 'AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ConditionableBox::label'),
         ];
@@ -72,6 +77,12 @@ final class ConditionableCallableSpellingsEvent implements ShouldBroadcast
     public function measureSize(): void
     {
         $this->measure = [self::class, 'sized'];
+    }
+
+    /** A static method's name, as a literal every return spells. */
+    private function labelName(): string
+    {
+        return 'AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ConditionableBox::label';
     }
 
     /**

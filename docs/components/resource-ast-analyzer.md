@@ -469,7 +469,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call
   computes takes no arm.
 - **`transform()` types from the callback**: the helper returns `$callback($value)` for a filled value, with the
-  callback's first parameter bound to the value. Its default receives the value too, `null` arm included:
+  callback's first parameter bound to the value. A callable string or pair, or one whose value reads as such literals as
+  `when()` reads it below, types as the union of the calls it names; any other callable that is no closure types as the
+  value it is. Its default receives the value too, `null` arm included:
   `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | null`.
 - **A first-class callable types as the call it stands for in a `value()` position**: Laravel calls the `Closure`, so
   `when($c, $this->label(...))` types as `$this->label()`. Anywhere else the key holds the `Closure`, which
@@ -489,15 +491,16 @@ Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a
 `$this`. [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) types it, required, as
 the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
 of a `null` either returns and of a default not passed. It calls any callable, so a callable string or pair reads as the
-call it names, as `transform()` does, and one a ternary, `??`, `match`, a local's writes, a literal key or a `$this`
-property may hold as the union of those calls (`CallableForms::calledCallables()`); one a call or a parameter holds, or
-a branch naming no call, reads `unknown`. Each callable is passed the object, with the receiver it holds, and the condition as the caller reads them
-(`ParameterBinder::bindReadArguments()`), so neither a parameter named like a variable either reads nor a write in its
-body changes them. It declines with fewer than two arguments, which return a `HigherOrderWhenProxy`; on a model, a query
-or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class declaring its own `when()`; and where a call's
-value or the object's JSON reads an `unknown` arm, drops an arm, or holds a closure Laravel hands back uncalled. A
-declined read keeps neither the arms it dropped nor their warnings (`DroppedUnionArms::provisional()`); a warning added
-directly, such as a first-class callable's, can remain.
+call it names, as `transform()` does. One whose value reads as such literals (through a ternary, `??`, `match`, a
+local's writes, a literal key, a `$this` property, a constant or a method's literal return) reads as the union of those
+calls (`CallableForms::calledCallables()`); any other reads `unknown`. Each callable is passed the object, with the
+receiver it holds, and the condition as the caller reads them (`ParameterBinder::bindReadArguments()`), so neither a
+parameter named like a variable either reads nor a write in its body changes them. It declines with fewer than two
+arguments, which return a `HigherOrderWhenProxy`; on a model, a query or a relation
+(`ReceiverClassResolver::conditionalQuery()`); on a class declaring its own `when()`; and where a call's value or the
+object's JSON reads an `unknown` arm, drops an arm, or holds a closure Laravel hands back uncalled. A declined read
+keeps neither the arms it dropped nor their warnings (`DroppedUnionArms::provisional()`); a warning added directly, such
+as a first-class callable's, can remain.
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
