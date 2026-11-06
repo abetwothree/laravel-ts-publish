@@ -69,7 +69,8 @@ use ReflectionMethod;
  *      after: int,
  *      before: int|null,
  *      expr: Expr,
- *      relative?: true
+ *      relative?: true,
+ *      boundLast?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>

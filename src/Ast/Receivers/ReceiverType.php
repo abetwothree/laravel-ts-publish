@@ -21,7 +21,7 @@ use ReflectionProperty;
  *
  * @phpstan-type KeyKind 'string'|'array-key'|'int'|null
  * @phpstan-type LeftOutWrite array{
- *     name: string, value: Expr, relative?: true, undeclared?: array{class-string, string},
+ *     name: string, value: Expr, relative?: true, readAs?: array{class-string, string, bool},
  * }
  *
  * @internal
@@ -367,13 +367,21 @@ final readonly class ReceiverType
     }
 
     /**
-     * The same receiver with every class it holds named only by the inline `@var` on a write.
+     * The same receiver with every class it holds named only by the inline `@var` on a write, each of $relative marked
+     * as the `self`, `static` or `parent` of a tag over `$this` names it.
      *
      * @param  LeftOutWrite  $write
+     * @param  list<class-string>  $relative
      */
-    public function taggedBy(array $write): self
+    public function taggedBy(array $write, array $relative = []): self
     {
-        return $this->copy(tagOnly: array_fill_keys($this->classes, $write));
+        $tagOnly = [];
+
+        foreach ($this->classes as $class) {
+            $tagOnly[$class] = in_array($class, $relative, true) ? [...$write, 'relative' => true] : $write;
+        }
+
+        return $this->copy(tagOnly: $tagOnly);
     }
 
     /**

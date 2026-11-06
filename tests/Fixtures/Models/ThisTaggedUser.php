@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooseName;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NumberedName;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\CartTotals;
 
@@ -28,6 +30,19 @@ class ThisTaggedUser extends User
     {
         if ($this->id > 0) {
             /** @var CartTotals $a */
+            $a = $this;
+        }
+
+        return $a->name;
+    }
+
+    /** The name of a value, or of this user, which a tag names beside a value object no declaration types. */
+    public function unionName()
+    {
+        $a = new NumberedName;
+
+        if ($this->id > 0) {
+            /** @var static|LooseName $a */
             $a = $this;
         }
 

@@ -109,7 +109,7 @@ final class ReceiverMemberReader
     /**
      * The write a read of a member one class of a join cannot answer leaves out: the write whose inline `@var` alone
      * names the class; none where no write does, or where a `self`, `static` or `parent` over `$this` names a class
-     * declaring the member, whose reading by declaration stands. `$this` carries the class and member a warning names.
+     * declaring the member, whose reading by declaration stands. `$this` carries what its warning names (readAs).
      *
      * @param  class-string  $class
      * @return LeftOutWrite|null
@@ -123,13 +123,14 @@ final class ReceiverMemberReader
         }
 
         $owner = $held->memberOwner($class, $member, $method);
+        $declares = self::declares($owner, $member, $method);
 
-        if (isset($write['relative']) && self::declares($owner, $member, $method)) {
+        if (isset($write['relative']) && $declares) {
             return null;
         }
 
         return $write['value'] instanceof Variable && $write['value']->name === 'this'
-            ? [...$write, 'undeclared' => [$owner, $method ? $member.'()' : $member]]
+            ? [...$write, 'readAs' => [$owner, $method ? $member.'()' : $member, $declares]]
             : $write;
     }
 

@@ -193,7 +193,7 @@ final class DroppedUnionArms
 
     /**
      * Record and warn in the run output, once each, of the writes a member read left out of a join: `$this` read as a
-     * class that does not declare the member, and any other write as warnOfLeftOut() words it.
+     * class that does not declare the member or cannot type it, and any other write as warnOfLeftOut() words it.
      *
      * @param  list<LeftOutWrite>  $writes
      */
@@ -202,20 +202,23 @@ final class DroppedUnionArms
         foreach ($writes as $write) {
             self::record($write['value'], $scope, 'binding-join');
 
-            if (! isset($write['undeclared'])) {
+            if (! isset($write['readAs'])) {
                 self::warnOfLeftOut([$write['value']], $scope);
 
                 continue;
             }
 
-            [$class, $member] = $write['undeclared'];
+            [$class, $member, $declared] = $write['readAs'];
             self::warn($scope->subjectReflection->getName(), sprintf(
-                'The value on line %d leaves out `%s`, read as `%s`, which does not declare `%s`, so its published '
-                .'type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+                'The value on line %d leaves out `%s`, read as `%s`, %s, so its published type may not admit every '
+                .'value it sends. %s',
                 $write['value']->getStartLine(),
                 new Standard()->prettyPrintExpr($write['value']),
                 $class,
-                $member,
+                $declared ? "whose `{$member}` could not be typed" : "which does not declare `{$member}`",
+                $declared
+                    ? 'Type it, or give the local a `@var` naming a class that types it.'
+                    : 'Give the local a `@var` naming a class that declares it.',
             ));
         }
     }

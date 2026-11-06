@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GetterTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MagicTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ThisTaggedUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooseName;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -98,6 +99,19 @@ function joinedDropWarnings(): array
         fn (array $warning): string => (string) preg_replace('/^The value on line (\d+) leaves out `(.+?)`, .*$/s', '$1 $2', $warning['message']),
         AnalysisWarnings::all(),
     ));
+}
+
+/**
+ * The warning for `$this` a join left out where the class it is read as does not declare the member, or declares it
+ * with no type.
+ */
+function joinedThisDrop(int $line, string $class, string $member, bool $declared): string
+{
+    return $declared
+        ? "The value on line {$line} leaves out `\$this`, read as `{$class}`, whose `{$member}` could not be typed, so its "
+            .'published type may not admit every value it sends. Type it, or give the local a `@var` naming a class that types it.'
+        : "The value on line {$line} leaves out `\$this`, read as `{$class}`, which does not declare `{$member}`, so its "
+            .'published type may not admit every value it sends. Give the local a `@var` naming a class that declares it.';
 }
 
 test('a local written in sequence and inside branches joins the values that can reach the read', function () {
@@ -355,8 +369,9 @@ test('a parameter\'s last-statement relative @var that declines the member keeps
 });
 
 // The resource declares no `name` and forwards it to the post, and the value object declares none of the members, so
-// `$this` gives way to the user, with a warning naming the class it is read as; members the post answers join.
-test('a parameter\'s last-statement @var over $this whose class does not declare the member keeps the old model\'s member', function () {
+// `$this` gives way to the user, with a warning naming the class it is read as; members the post answers join. A class
+// declaring the member untyped gives way too, a parameter's `self` included, with a warning that it could not be typed.
+test('a parameter\'s last-statement @var over $this whose class cannot answer the member keeps the old value\'s member', function () {
     AnalysisWarnings::reset();
 
     expect(publishedResourceKeyTypes(JoinedThisTagResource::class, Post::class))->toBe([
@@ -368,41 +383,48 @@ test('a parameter\'s last-statement @var over $this whose class does not declare
         'static_key?' => 'number',
         'totals_key?' => 'number',
         'totals_year?' => 'string | null',
+        'loose_name?' => 'string',
+        'self_label' => 'string',
     ])
-        ->and(AnalysisWarnings::all())->toBe(array_map(fn (array $drop): array => [
+        ->and(AnalysisWarnings::all())->toBe(array_map(fn (string $message): array => [
             'subject' => JoinedThisTagResource::class,
-            'message' => "The value on line {$drop[0]} leaves out `\$this`, read as `{$drop[1]}`, which does not declare `{$drop[2]}`, "
-                .'so its published type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+            'message' => $message,
         ], [
-            [30, JoinedThisTagResource::class, 'name'],
-            [38, JoinedThisTagResource::class, 'name'],
-            [46, JsonResource::class, 'name'],
-            [54, CartTotals::class, 'name'],
-            [78, CartTotals::class, 'getKey()'],
-            [86, CartTotals::class, 'created_at'],
+            joinedThisDrop(32, JoinedThisTagResource::class, 'name', false),
+            joinedThisDrop(40, JoinedThisTagResource::class, 'name', false),
+            joinedThisDrop(48, JsonResource::class, 'name', false),
+            joinedThisDrop(56, CartTotals::class, 'name', false),
+            joinedThisDrop(80, CartTotals::class, 'getKey()', false),
+            joinedThisDrop(88, CartTotals::class, 'created_at', false),
+            joinedThisDrop(96, LooseName::class, 'name', true),
+            joinedThisDrop(116, JoinedThisTagResource::class, 'label()', true),
         ]))
         ->and(joinedSends(JoinedThisTagResource::class, true))->toBe([
             'static_name' => null, 'self_name' => null, 'parent_name' => null, 'totals_name' => null,
             'static_title' => 'Banana', 'static_key' => 7, 'totals_key' => 7, 'totals_year' => null,
+            'loose_name' => null, 'self_label' => 1,
         ])
         ->and(joinedSends(JoinedThisTagResource::class, false))->toBe([
             'static_name' => 'Ann', 'self_name' => 'Ann', 'parent_name' => 'Ann', 'totals_name' => 'Ann',
             'static_title' => null, 'static_key' => 3, 'totals_key' => 3, 'totals_year' => null,
+            'loose_name' => 'Ann', 'self_label' => 'v',
         ]);
 });
 
 // A model's method reads the same way: the value object the tag names declares no `name`, while the model types it.
-test('a model method\'s @var over $this naming a class that does not declare the member keeps the parameter\'s member', function () {
+// In a union tag only `static` keeps a reading by declaration, so the value object beside it gives way.
+test('a model method\'s @var over $this naming a class that cannot answer the member keeps the other values\' member', function () {
     AnalysisWarnings::reset();
     $user = new ThisTaggedUser()->forceFill(['id' => 3, 'name' => 'Ann']);
 
     expect(publishedResourceKeyTypes(JoinedThisTagUserResource::class, ThisTaggedUser::class))
-        ->toBe(['static_name' => 'string', 'totals_name' => 'string'])
+        ->toBe(['static_name' => 'string', 'totals_name' => 'string', 'union_name' => 'number | string'])
         ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
-            'The value on line 31 leaves out `$this`, read as `'.CartTotals::class.'`, which does not declare `name`, so its published '
-                .'type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+            joinedThisDrop(33, CartTotals::class, 'name', false),
+            joinedThisDrop(46, LooseName::class, 'name', true),
         ])
-        ->and(new JoinedThisTagUserResource($user)->resolve(Request::create('/')))->toBe(['static_name' => 'Ann', 'totals_name' => 'Ann']);
+        ->and(new JoinedThisTagUserResource($user)->resolve(Request::create('/')))
+        ->toBe(['static_name' => 'Ann', 'totals_name' => 'Ann', 'union_name' => 'Ann']);
 });
 
 // collect() wraps the joined collection, so its callback's parameter takes the element with what the join left out.

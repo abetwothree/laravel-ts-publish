@@ -646,7 +646,7 @@ final class ReceiverClassResolver
 
     /**
      * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types, an
-     * object no class names, and `$this` read as a class that does not declare the member. A scalar, an array or `null`
+     * object no class names, and `$this` read as a class that cannot answer the member. A scalar, an array or `null`
      * holds no object a member read could answer, so it is left out quietly.
      *
      * @param  ValueExpressionResult  $read
@@ -659,11 +659,11 @@ final class ReceiverClassResolver
 
         $untyped = [];
         $objects = [];
-        $undeclared = [];
+        $readAs = [];
 
         foreach ($receiver->leftOut as $write) {
-            if (isset($write['undeclared'])) {
-                $undeclared[] = $write;
+            if (isset($write['readAs'])) {
+                $readAs[] = $write;
 
                 continue;
             }
@@ -687,7 +687,7 @@ final class ReceiverClassResolver
 
         DroppedUnionArms::warnOfLeftOut($untyped, $scope);
         DroppedUnionArms::warnOfUnnamedObject($objects, $scope);
-        DroppedUnionArms::warnOfDeclined($undeclared, $scope);
+        DroppedUnionArms::warnOfDeclined($readAs, $scope);
     }
 
     /**
@@ -978,8 +978,8 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a value a gap's write assigned as the inline `@var` on it declares: tagged by that write where the value
-     * names no class, `$this` included, so a read its classes cannot answer gives way to the join's others. A relative
-     * tag over `$this` is marked: the subject runs a member its class declares, or an override, so that reading stands.
+     * names no class, `$this` included, so a read its classes cannot answer gives way to the join's others. Each class
+     * a `self`, `static` or `parent` over `$this` names is marked, but on a parameter's block-final write (boundLast).
      */
     private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
     {
@@ -992,15 +992,17 @@ final class ReceiverClassResolver
         $declared = $this->resolveDeclared($name, $span, $scope);
         $assigned = $this->unguarded($this->fromBoundExpression($name, $value, $scope), $this->expandedAlias($span));
 
-        if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
+        if ($declared === null || ($assigned !== null && array_any($assigned->classes, $this->isNameable(...)))) {
             return $declared;
         }
 
-        $write = ['name' => $name, 'value' => $value];
+        // The subject runs a member such a class declares, or an override. Past a parameter's block-final write, the
+        // parameter's own reading carries a member the class cannot answer.
+        $relative = isset($span['relative']) && ! isset($span['boundLast']) && $value instanceof Variable && $value->name === 'this'
+            ? array_values(array_intersect($declared->classes, $scope->relativeClassNames()))
+            : [];
 
-        return $declared?->taggedBy(isset($span['relative']) && $value instanceof Variable && $value->name === 'this'
-            ? [...$write, 'relative' => true]
-            : $write);
+        return $declared->taggedBy(['name' => $name, 'value' => $value], $relative);
     }
 
     /**

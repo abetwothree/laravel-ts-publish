@@ -562,9 +562,11 @@ statement holding the next write (`bindBlockLocals()`), as a binding gap holding
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), as a
 top-level `@var` types its write's value in a join past its span, a bound name's block-final write's included; where the
 value names no class, `$this` included, the tag's classes join as `tagOnly`, a `static`, `self` or `parent` tag's
-included, so a read they cannot answer keeps the binding's reading and warns. The one exception is a `static`, `self`
-or `parent` tag over `$this` whose class declares the member, typed or not: the subject runs that member or an override,
-which the binding's reading may not admit, so the class's reading by declaration stands
+included, so a read they cannot answer keeps the binding's reading and warns. The one exception is a class a `static`,
+`self` or `parent` over `$this` names, each class of a union tag on its own, where it declares the member, typed or not:
+the subject runs that member or an override, which the binding's reading may not admit, so the class's reading by
+declaration stands. A parameter's write that ends its block (`boundLast`) gets no exception: past it the parameter's own
+reading carries the member
 ([Receiver types § Property access on a receiver](receiver-types.md#property-access-on-a-receiver)). A block may not run
 and a loop runs it again, so a read before the write or past the block stays unbound, as does a name a reference can
 write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on every
@@ -916,7 +918,7 @@ pipeline's callback. Each warns of a left-out write no rule types, and through `
 an object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could
 answer, and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither
 warns. `$this` is typed, so where a read leaves out a `tagOnly` class over it, `warnOfDeclined()` warns instead that
-the class it is read as does not declare the member.
+the class it is read as does not declare the member, or, where it declares it, that the member could not be typed.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
 `provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the

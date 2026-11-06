@@ -24,6 +24,7 @@ final class JoinedThisTagUserResource extends JsonResource
         return [
             'static_name' => $this->resource->staticName($this->resource),
             'totals_name' => $this->resource->totalsName($this->resource),
+            'union_name' => $this->resource->unionName(),
         ];
     }
 }

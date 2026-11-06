@@ -417,6 +417,8 @@ trait CollectsLocalVarBindings
     /**
      * Bind a variable to the type an inline `@var` on its assignment declares, for the reads past $after and, when it
      * is set, before $before.
+     *
+     * @param  bool  $boundLast  the write of a parameter's or a seeded name that ends its block
      */
     private function bindDeclaredSpan(
         ExpressionStmt $assignment,
@@ -425,6 +427,7 @@ trait CollectsLocalVarBindings
         int $after,
         ?int $before,
         AnalysisScope $scope,
+        bool $boundLast = false,
     ): void {
         $tag = $this->varTag($assignment, $name, $scope);
 
@@ -439,7 +442,8 @@ trait CollectsLocalVarBindings
             'before' => $before,
             'expr' => $assign->expr,
         ];
-        $scope->varDocBindings[$name][] = $tag[1] ? [...$binding, 'relative' => true] : $binding;
+        $binding = $tag[1] ? [...$binding, 'relative' => true] : $binding;
+        $scope->varDocBindings[$name][] = $boundLast ? [...$binding, 'boundLast' => true] : $binding;
     }
 
     /**
@@ -509,7 +513,7 @@ trait CollectsLocalVarBindings
             return;
         }
 
-        $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope);
+        $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope, $end <= $after && $scope->bindsName($name));
 
         if ($end > $after && ! $scope->bindsName($name)) {
             $scope->bindingGaps[$name][] = [$after, $end, [$assign->expr], false, false];
