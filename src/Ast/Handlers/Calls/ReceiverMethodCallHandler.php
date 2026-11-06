@@ -92,6 +92,8 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
             return null;
         }
 
+        $receivers->warnOfLeftOut($receiver, $result, $scope, $engine);
+
         // `$this` is never null, so `$this?->m()` short-circuits nothing.
         if (($expr instanceof NullsafeMethodCall && ! $onThis) || $receiver->shortCircuits) {
             $result['type'] = TsTypeString::withNullArm($result['type']);

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use Illuminate\Database\Eloquent\Model;
+use PhpParser\Node\Expr;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -19,6 +20,7 @@ use ReflectionProperty;
  * @phpstan-import-type DeclaredType from DeclaredClasses
  *
  * @phpstan-type KeyKind 'string'|'array-key'|'int'|null
+ * @phpstan-type LeftOutWrite array{name: string, value: Expr}
  *
  * @internal
  */
@@ -49,7 +51,9 @@ final readonly class ReceiverType
      * @param  bool  $stringKeyed  a method's declared list names its keys a bare `string`, so its `all()` is the record
      *                             the declaration reads, trusted as any declared type
      * @param  bool  $joined  a variable's join of the values its writes and its old binding leave, each class one of
-     *                        them, so a model lacking a member another class has reads it as null
+     *                        them, so a plain concrete model lacking a member another class has reads it as null
+     * @param  list<LeftOutWrite>  $leftOut  the writes such a join left out as naming no class, which a read through it
+     *                                       warns of where it publishes a type
      */
     public function __construct(
         public array $classes,
@@ -69,6 +73,7 @@ final readonly class ReceiverType
         public bool $guardsElement = false,
         public bool $stringKeyed = false,
         public bool $joined = false,
+        public array $leftOut = [],
     ) {}
 
     /**
@@ -355,6 +360,24 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver also holding writes a join left out, each once.
+     *
+     * @param  list<LeftOutWrite>  $writes
+     */
+    public function leavingOut(array $writes): self
+    {
+        $leftOut = $this->leftOut;
+
+        foreach ($writes as $write) {
+            if (! array_any($leftOut, fn (array $known): bool => $known['value'] === $write['value'])) {
+                $leftOut[] = $write;
+            }
+        }
+
+        return $leftOut === $this->leftOut ? $this : $this->copy(leftOut: $leftOut);
+    }
+
+    /**
      * Whether an item the receiver's element yields, or a callback's parameter it binds, is guarded.
      */
     public function guardsItems(): bool
@@ -429,6 +452,7 @@ final readonly class ReceiverType
      * @param  non-empty-list<class-string>|null  $classes
      * @param  list<string>|null  $filled
      * @param  Intersections|null  $intersections
+     * @param  list<LeftOutWrite>|null  $leftOut
      */
     private function copy(
         ?array $classes = null,
@@ -444,6 +468,7 @@ final readonly class ReceiverType
         bool $dropsElement = false,
         ?bool $stringKeyed = null,
         ?bool $joined = null,
+        ?array $leftOut = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -463,6 +488,7 @@ final readonly class ReceiverType
             guardsElement: $guardsElement ?? $this->guardsElement,
             stringKeyed: $stringKeyed ?? $this->stringKeyed,
             joined: $joined ?? $this->joined,
+            leftOut: $leftOut ?? $this->leftOut,
         );
     }
 }

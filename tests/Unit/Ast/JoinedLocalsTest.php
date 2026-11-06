@@ -5,9 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementClassVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLeftOutResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedOpenModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedTopLevelVarResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -244,6 +247,52 @@ test('a member read past a parameter\'s last-statement @var reads each class', f
         ->toMatchArray(['param_last_class' => 'hi', 'name_last' => null, 'name_last_untyped' => null])
         ->and(joinedSends(JoinedLastStatementVarResource::class, false))
         ->toMatchArray(['param_last_class' => null, 'name_last' => 'Ann', 'name_last_untyped' => 'Ann']);
+});
+
+// Only a concrete model reads a lacking member as null, so a tag naming another class leaves the old model's reading.
+test('a parameter\'s last-statement @var naming a class other than a concrete model keeps the old model\'s member', function () {
+    expect(publishedResourceKeyTypes(JoinedLastStatementClassVarResource::class, Post::class))->toBe([
+        'auth_name?' => 'string',
+        'model_email?' => 'string',
+        'object_name?' => 'string',
+        'object_name_untyped?' => 'string',
+    ])
+        ->and(joinedSends(JoinedLastStatementClassVarResource::class, false))->toBe([
+            'auth_name' => 'Ann',
+            'model_email' => 'ann@example.com',
+            'object_name' => 'Ann',
+            'object_name_untyped' => 'Ann',
+        ])
+        ->and(fn () => joinedSends(JoinedLastStatementClassVarResource::class, true))
+        ->toThrow(ErrorException::class, 'Undefined property');
+});
+
+// Each of these models may answer the member through an override or a subclass, so the read stays unknown.
+test('a member read past a join declines where an arm\'s model may answer a member it does not list', function () {
+    expect(publishedResourceKeyTypes(JoinedOpenModelResource::class, Post::class))->toBe([
+        'magic_title' => 'unknown',
+        'attribute_title' => 'unknown',
+        'any_content' => 'unknown',
+        'morphed_content' => 'unknown',
+    ])
+        ->and(joinedSends(JoinedOpenModelResource::class, true))
+        ->toBe(['magic_title' => 123, 'attribute_title' => 456, 'any_content' => 'any', 'morphed_content' => 'morphed'])
+        ->and(joinedSends(JoinedOpenModelResource::class, false))
+        ->toBe(['magic_title' => 'Banana', 'attribute_title' => 'Banana', 'any_content' => 'hi', 'morphed_content' => 'hi']);
+});
+
+// A member read of a string throws, so the literal and the column are left out quietly; the untyped value is left out
+// of a read that publishes nothing, so nothing warns.
+test('a join leaves out a typed write naming no class quietly, and warns of an untyped one only where the read is typed', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedLeftOutResource::class, Post::class))
+        ->toBe(['guest_name' => 'string', 'titled_name' => 'string', 'opaque_title' => 'unknown'])
+        ->and(AnalysisWarnings::all())->toBe([])
+        ->and(joinedSends(JoinedLeftOutResource::class, false))
+        ->toBe(['guest_name' => 'Ann', 'titled_name' => 'Ann', 'opaque_title' => null])
+        ->and(fn () => joinedSends(JoinedLeftOutResource::class, true))
+        ->toThrow(ErrorException::class, 'Attempt to read property "name" on string');
 });
 
 // The later write's value no rule types is left out beside the tag's, with a warning naming it.

@@ -18,7 +18,7 @@ These classes carry receiver inference:
 | [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
 | [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not; `stringKeyed` where that list names its keys `string`, so its `all()` keeps the declared record; `joined` for a variable's join of the values a gap holds, which `fromGap()` agrees through `merge()` |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not; `stringKeyed` where that list names its keys `string`, so its `all()` keeps the declared record; `joined` for a variable's join of the values a gap holds, which `fromGap()` agrees through `merge()`, with the writes it left out as naming no class in `leftOut`, which `carried()` and `merge()` hand down and a read publishing a type warns of (`warnOfLeftOut()`) |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
@@ -577,9 +577,10 @@ too: each arm but a `throw` resolves as a ternary's do.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read, but on a `joined`
-receiver a model with no attribute, `@property`, method or property of the name reads `null`, as `Model::__get()` does,
-beside a class that types it (`ReceiverMemberReader::lacks()`). The read gains
-`| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
+receiver a concrete model that runs Model's own `__get()`, `getAttribute()` and `getAttributeValue()`, and has no
+attribute, `@property`, method or property of the name, reads `null` beside a class that types it
+(`ReceiverMemberReader::lacks()`); an abstract model, an unbounded `morphTo`'s included, or an override declines it. The
+read gains `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
 `VariableHandler` claim these node classes earlier. [The inventory][inventory] records where each steps aside, and where
 `VariableHandler` does not.
 

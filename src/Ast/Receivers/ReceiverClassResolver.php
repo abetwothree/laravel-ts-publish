@@ -15,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
@@ -86,6 +88,7 @@ use Throwable;
  * @phpstan-import-type BindingGap from AnalysisScope
  * @phpstan-import-type CollectionGeneric from DeclaredClasses
  * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @internal
  */
@@ -640,6 +643,36 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types. A
+     * typed one, such as a string or an array, holds no object a member read could answer, so it is left out quietly.
+     *
+     * @param  ValueExpressionResult  $read
+     */
+    public function warnOfLeftOut(ReceiverType $receiver, array $read, AnalysisScope $scope, ExpressionEngine $engine): void
+    {
+        if ($receiver->leftOut === [] || $read['type'] === 'unknown') {
+            return;
+        }
+
+        $untyped = [];
+
+        foreach ($receiver->leftOut as ['name' => $name, 'value' => $value]) {
+            // Only the type is wanted: what reading the write drops or warns of belongs to the write, not this read.
+            $type = DroppedUnionArms::provisional(
+                fn (): ?string => $scope->resolvingBinding($name, $value, fn (): array => $engine->resolve($value))['type'] ?? null,
+                fn (): bool => false,
+            );
+
+            if ($type === null || $type === 'unknown') {
+                DroppedUnionArms::record($value, $scope, 'binding-join');
+                $untyped[] = $value;
+            }
+        }
+
+        DroppedUnionArms::warnOfLeftOut($untyped, $scope);
+    }
+
+    /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
      * what the body assigned, narrowed by the `instanceof` proof the read falls within; an unbound variable declines
      * unless a proof names its classes.
@@ -882,8 +915,8 @@ final class ReceiverClassResolver
      * the name came in with where that may still hold, or where the gap keeps it for a write naming no class; null when
      * the old binding names none, or no value does. The values join as merge() joins a union's parts.
      *
-     * A write naming no class beside a value that names one is left out with a warning, as a value's join leaves out an
-     * arm it cannot type.
+     * A write naming no class beside a value that names one is left out, as a value's join leaves out an arm it cannot
+     * type; the join keeps it for a read through it to warn of (warnOfLeftOut()).
      *
      * @param  BindingGap  $gap
      */
@@ -909,19 +942,17 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $dropped = $gap[4] ? [] : array_values(array_filter(
-            $values,
-            fn (int $index): bool => $written[$index] === null,
-            ARRAY_FILTER_USE_KEY,
-        ));
+        $leftOut = [];
 
-        foreach ($dropped as $value) {
-            DroppedUnionArms::record($value, $scope, 'binding-join');
+        foreach ($gap[4] ? [] : $values as $index => $value) {
+            if ($written[$index] === null) {
+                $leftOut[] = ['name' => $name, 'value' => $value];
+            }
         }
 
-        DroppedUnionArms::warnOfLeftOut($dropped, $scope);
+        $joined = count($receivers) === 1 ? $receivers[0] : $this->merge($receivers, false)?->asJoined();
 
-        return count($receivers) === 1 ? $receivers[0] : $this->merge($receivers, false)?->asJoined();
+        return $leftOut === [] ? $joined : $joined?->leavingOut($leftOut);
     }
 
     /**
@@ -2443,6 +2474,8 @@ final class ReceiverClassResolver
      * only when every part agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read
      * by declarations or guarded, when any part is, and a surviving element guarded where any part's is.
      *
+     * Each part's left-out writes stay.
+     *
      * @param  list<ReceiverType|null>  $types
      */
     private function merge(array $types, bool $shortCircuits): ?ReceiverType
@@ -2461,11 +2494,14 @@ final class ReceiverClassResolver
         $guarded = false;
         $guardsElement = false;
         $stringKeyed = true;
+        $leftOut = [];
 
         foreach ($types as $type) {
             if ($type === null) {
                 return null;
             }
+
+            $leftOut = [...$leftOut, ...$type->leftOut];
 
             $parts[] = $type;
             $classes = [...$classes, ...$type->classes];
@@ -2492,7 +2528,7 @@ final class ReceiverClassResolver
 
         $elementModel = count($elementModels) === 1 ? reset($elementModels) : null;
 
-        return new ReceiverType(
+        $merged = new ReceiverType(
             classes: array_values(array_unique($classes)),
             shortCircuits: $shortCircuits,
             elementModel: $elementModel,
@@ -2509,15 +2545,19 @@ final class ReceiverClassResolver
             guardsElement: $elementModel !== null && $guardsElement,
             stringKeyed: $stringKeyed,
         );
+
+        return $merged->leavingOut($leftOut);
     }
 
     /**
      * A member's value read through a receiver spelled `self`, `static` or `parent`, marked as that receiver is: the
-     * class it names may be a subclass's override's too. A guarded receiver's member is guarded as well.
+     * class it names may be a subclass's override's too. A guarded receiver's member is guarded as well, and the writes
+     * a receiver's join left out stay for a read through the member.
      */
     private function carried(ReceiverType $receiver, ?ReceiverType $member): ?ReceiverType
     {
         $member = $receiver->guarded ? $member?->asGuarded() : $member;
+        $member = $receiver->leftOut === [] ? $member : $member?->leavingOut($receiver->leftOut);
 
         return $receiver->declaredOnly ? $member?->asDeclaredOnly() : $member;
     }

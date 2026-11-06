@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasOneOrManyThrough;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
 use Throwable;
 
@@ -36,12 +37,14 @@ use Throwable;
  */
 final class ReceiverMemberReader
 {
+    /** The methods Model::__get() reads an attribute through, any of which a subclass may override to answer more. */
+    private const array ATTRIBUTE_READERS = ['__get', 'getAttribute', 'getAttributeValue'];
+
     /**
      * The value `<receiver>->name` sends, unioned over every class the receiver holds; null when any class cannot type
      * it. The caller adds the `| null` of a `?->` or of the receiver's short circuit.
      *
-     * On a variable's join, a model lacking the member reads it as null, as Model::__get() does, where another class
-     * types it.
+     * On a variable's join, a plain concrete model lacking the member reads it as null where another class types it.
      *
      * @param  bool  $relations  a model's relation answers a name no attribute does, as for `->name`, not for
      *                           getAttributeValue()
@@ -66,7 +69,7 @@ final class ReceiverMemberReader
                     ?? self::propertyValue($class, $name, $held->declaredOnly),
             };
 
-            if ($result === null && $held->joined && is_a($class, Model::class, true) && self::lacks($class, $name)) {
+            if ($result === null && $held->joined && self::lacks($class, $name)) {
                 $readsNull = true;
 
                 continue;
@@ -330,17 +333,22 @@ final class ReceiverMemberReader
     }
 
     /**
-     * Whether a model has nothing Model::__get() reads under a name, so the read is null: no attribute or `@property`
-     * it lists, and no method or property of the name, a relation's included.
+     * Whether a class is a concrete model that reads a name as null: it runs Model's own attribute readers, and has no
+     * attribute or `@property` it lists, and no method or property of the name, a relation's included.
      *
-     * @param  class-string<Model>  $model
+     * An abstract model, `Model` itself included, may be any subclass, and an override may answer any name.
      */
-    private static function lacks(string $model, string $name): bool
+    private static function lacks(string $class, string $name): bool
     {
-        return self::listedAttributeName($model, $name) === null
-            && ! method_exists($model, $name)
-            && ! property_exists($model, $name)
-            && resolve(ModelAttributeResolver::class)->resolveAttribute($model, $name)['type'] === 'unknown';
+        return ReceiverType::isConcreteModel($class)
+            && array_all(
+                self::ATTRIBUTE_READERS,
+                fn (string $method): bool => new ReflectionMethod($class, $method)->getDeclaringClass()->getName() === Model::class,
+            )
+            && self::listedAttributeName($class, $name) === null
+            && ! method_exists($class, $name)
+            && ! property_exists($class, $name)
+            && resolve(ModelAttributeResolver::class)->resolveAttribute($class, $name)['type'] === 'unknown';
     }
 
     /**

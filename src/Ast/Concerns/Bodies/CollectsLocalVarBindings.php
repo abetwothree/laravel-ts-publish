@@ -14,7 +14,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\CollectsInstanceofGuards
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -426,17 +428,9 @@ trait CollectsLocalVarBindings
         ?int $before,
         AnalysisScope $scope,
     ): void {
-        if ($assignment->getDocComment() === null) {
-            return;
-        }
+        $tag = $this->varTag($assignment, $name, $scope);
 
-        $tag = resolve(PropertyDocblockTypeReader::class)->extractVarTag(
-            $assignment->getDocComment()->getText(),
-            $scope->declaringFileClass,
-            $scope->relativeClassNames(),
-        );
-
-        if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
+        if ($tag === null) {
             return;
         }
 
@@ -447,7 +441,42 @@ trait CollectsLocalVarBindings
             'before' => $before,
             'expr' => $assign->expr,
         ];
-        $scope->varDocBindings[$name][] = $tag[2] ? [...$binding, 'relative' => true] : $binding;
+        $scope->varDocBindings[$name][] = $tag[1] ? [...$binding, 'relative' => true] : $binding;
+    }
+
+    /**
+     * The type an inline `@var` on an assignment declares for a name, and whether it spells `self`, `static` or
+     * `parent`; null where it has none for that name.
+     *
+     * @return array{string, bool}|null
+     */
+    private function varTag(ExpressionStmt $assignment, string $name, AnalysisScope $scope): ?array
+    {
+        $doc = $assignment->getDocComment();
+        $tag = $doc === null ? null : resolve(PropertyDocblockTypeReader::class)->extractVarTag(
+            $doc->getText(),
+            $scope->declaringFileClass,
+            $scope->relativeClassNames(),
+        );
+
+        return $tag === null || ($tag[1] !== null && $tag[1] !== $name) ? null : [$tag[0], $tag[2]];
+    }
+
+    /**
+     * Whether the inline `@var` on an assignment names a class other than a concrete model, such as an interface, the
+     * abstract `Model` or a plain object, whose member a join could not read as null.
+     */
+    private function declaresOtherThanModels(ExpressionStmt $assignment, string $name, AnalysisScope $scope): bool
+    {
+        $tag = $this->varTag($assignment, $name, $scope);
+        $declared = $tag === null ? null : DeclaredClasses::docblockType(
+            $tag[0],
+            $scope->declaringFileClass,
+            $scope->runtime->class->getName(),
+            $scope->declaringFileClass->getName(),
+        );
+
+        return $declared !== null && ! array_all($declared['classes'], ReceiverType::isConcreteModel(...));
     }
 
     /**
@@ -493,15 +522,17 @@ trait CollectsLocalVarBindings
     ): void {
         $after = $statement->getEndFilePos();
         $end = $this->blockSpanEnd($name, $after, $block, $writes);
+        $bound = $scope->bindsName($name);
 
-        // With nothing of its block past it, the `@var` still types the value a join carries past the block.
-        if ($end === null) {
+        // With nothing of its block past it, the `@var` still types the value a join carries past the block. A bound
+        // name's tag naming another class would end its binding, and only a concrete model reads a lacking member null.
+        if ($end === null || ($end <= $after && $bound && $this->declaresOtherThanModels($statement, $name, $scope))) {
             return;
         }
 
         $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope);
 
-        if ($end > $after && ! $scope->bindsName($name)) {
+        if ($end > $after && ! $bound) {
             $scope->bindingGaps[$name][] = [$after, $end, [$assign->expr], false, false];
         }
     }
