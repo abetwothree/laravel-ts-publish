@@ -960,8 +960,8 @@ in both places, so declare one, or type the key with `#[TsCasts]`.
 
 ### A serializing class cast publishes what `serialize()` returns, in every context
 
-A class cast whose caster implements `SerializesCastableAttributes` publishes the type its `serialize()` declares,
-because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
+A class cast whose caster has a `serialize()` method publishes the type that method declares, because
+`Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
 instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 
 ### An `array`, `collection` or `AsCollection` cast publishes a list, though an object payload is sent as an object

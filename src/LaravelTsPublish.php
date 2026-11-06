@@ -1732,6 +1732,7 @@ class LaravelTsPublish
      * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
      * not. Null leaves get() to type the value: for a caster without one or whose serialize() declares nothing, and,
      * without the interface, for a serialize() declaring only `mixed`, or `array` or `object` over a non-scalar get().
+     * Over a scalar get(), a vague `array` reads as a list or a record.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
@@ -1756,7 +1757,7 @@ class LaravelTsPublish
             return null;
         }
 
-        return $serialized;
+        return $vague ? [...$serialized, 'type' => $this->listOrRecordArms($serialized['type'])] : $serialized;
     }
 
     /**
@@ -3640,11 +3641,19 @@ class LaravelTsPublish
         }
 
         // Nothing says which keys an internal method's array holds, and json_encode() writes string keys as an object.
-        $types['type'] = implode(' | ', array_map(
-            fn (string $arm): string => $arm === 'unknown[]' ? 'unknown[] | Record<string, unknown>' : $arm,
-            TsTypeString::splitTopLevelUnion($types['type']),
-        ));
+        $types['type'] = $this->listOrRecordArms($types['type']);
 
         return $types;
+    }
+
+    /**
+     * A type with each `unknown[]` arm read as a list or a record, since json_encode() writes an array by its keys.
+     */
+    private function listOrRecordArms(string $type): string
+    {
+        return implode(' | ', array_map(
+            fn (string $arm): string => $arm === 'unknown[]' ? 'unknown[] | Record<string, unknown>' : $arm,
+            TsTypeString::splitTopLevelUnion($type),
+        ));
     }
 }

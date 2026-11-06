@@ -93,7 +93,8 @@ Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so
 import. A caster with a `serialize()` method publishes what it declares instead, since `Model::toArray()` writes that
 wherever the method exists, with or without `SerializesCastableAttributes`. One that declares nothing leaves `get()`
 to type it. Without the interface, so does one declaring only `mixed`, and one declaring only `array`, `object` or
-both over a `get()` that reads no scalar; over a scalar `get()` they stand, since `serialize()` sends something else.
+both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since `serialize()` sends something else,
+and a vague `array` reads as a list or a record, as `json_encode()` writes it by its keys.
 
 ### Step 2: an override, resolved and composed
 

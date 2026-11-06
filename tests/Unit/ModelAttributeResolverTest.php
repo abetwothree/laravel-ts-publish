@@ -948,9 +948,10 @@ test('a nullable column cast to a class with a serialize() method publishes what
 ]);
 
 // A vague serialize() without the interface leaves an object get() to type the value, but not a scalar one, which
-// serialize() evidently turns into something else. The interface keeps what its serialize() declares.
+// serialize() evidently turns into something else; an `array` then reads as a list or a record, as json_encode() writes
+// it by its keys. The interface keeps what its serialize() declares.
 test('a vague serialize() leaves the type to get() only without the interface and over a get() returning no scalar', function (string $column, string $type, string $sent) {
-    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id', 'secondary_contact_id'];
     $row = (new VagueSerializeWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
 
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(VagueSerializeWarehouse::class, $column)['type'])->toBe($type)
@@ -961,7 +962,8 @@ test('a vague serialize() leaves the type to get() only without the interface an
     'a ?object serialize() over a get() returning a value object' => ['status', '{ x: number; y: number } | null', '{"x":1,"y":2}'],
     'an array|object serialize() over a get() returning a value object' => ['color', '{ x: number; y: number }', '{"x":1,"y":2}'],
     'an object serialize() over a get() returning a number' => ['priority', 'object', '{"v":0}'],
-    'an array serialize() over a get() returning a string, read as a list as an array cast is' => ['manager_id', 'unknown[]', '{"v":""}'],
+    'an array serialize() writing an object over a get() returning a string' => ['manager_id', 'unknown[] | Record<string, unknown>', '{"v":""}'],
+    'an array serialize() writing a list over a get() returning a string' => ['secondary_contact_id', 'unknown[] | Record<string, unknown>', '[""]'],
     'a Castable whose caster\'s serialize() declares mixed, with the interface' => ['primary_contact_id', 'unknown | null', '{"x":1,"y":2}'],
 ]);
 

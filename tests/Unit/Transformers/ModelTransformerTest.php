@@ -2036,7 +2036,8 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a ?object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'status', '{ x: number; y: number } | null'],
         'an array|object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'color', '{ x: number; y: number }'],
         'an object serialize() method over a number' => [VagueSerializeWarehouse::class, 'priority', 'object'],
-        'an array serialize() method over a string' => [VagueSerializeWarehouse::class, 'manager_id', 'unknown[]'],
+        'an array serialize() method writing an object over a string' => [VagueSerializeWarehouse::class, 'manager_id', 'unknown[] | Record<string, unknown>'],
+        'an array serialize() method writing a list over a string' => [VagueSerializeWarehouse::class, 'secondary_contact_id', 'unknown[] | Record<string, unknown>'],
         'a Castable whose caster\'s serialize() declares mixed' => [VagueSerializeWarehouse::class, 'primary_contact_id', 'unknown | null'],
     ]);
 });

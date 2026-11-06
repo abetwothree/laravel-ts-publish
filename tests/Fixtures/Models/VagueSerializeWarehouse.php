@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NumberObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ObjectSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\PrefixedMixedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LooselySerializedTally;
 use Illuminate\Database\Eloquent\Model;
 
@@ -36,6 +37,7 @@ class VagueSerializeWarehouse extends Model
             'priority' => NumberObjectSerializeCast::class,
             'manager_id' => StringArraySerializeCast::class,
             'primary_contact_id' => LooselySerializedTally::class,
+            'secondary_contact_id' => StringListSerializeCast::class,
         ];
     }
 }

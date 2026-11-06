@@ -31,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ShapeArraySerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringArraySerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringListSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartKind;
@@ -572,7 +573,8 @@ describe('a cast whose caster serializes', function () {
         'a ?object serialize() without the interface, which leaves a value object to get()' => [NullableObjectSerializeCast::class, '{ x: number; y: number }'],
         'an array|object serialize() without the interface, which leaves a value object to get()' => [ArrayOrObjectSerializeCast::class, '{ x: number; y: number }'],
         'an object serialize() without the interface over a get() returning a number' => [NumberObjectSerializeCast::class, 'object'],
-        'an array serialize() without the interface over a get() returning a string' => [StringArraySerializeCast::class, 'unknown[]'],
+        'an array serialize() without the interface over a get() returning a string' => [StringArraySerializeCast::class, 'unknown[] | Record<string, unknown>'],
+        'an array serialize() writing a list, without the interface, over a get() returning a string' => [StringListSerializeCast::class, 'unknown[] | Record<string, unknown>'],
         'an array serialize() with the interface' => [ArraySerializeInterfaceCast::class, 'unknown[]'],
     ]);
 
