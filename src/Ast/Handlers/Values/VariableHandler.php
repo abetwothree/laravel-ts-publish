@@ -30,12 +30,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\AbstractCursorPaginator;
 use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Enumerable;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -48,6 +53,7 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\NodeFinder;
 use ReflectionMethod;
 
 /**
@@ -58,6 +64,8 @@ use ReflectionMethod;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
+ *
+ * @phpstan-type DeclaredReplacement array{ValueExpressionResult|null, list<Expr>|null}
  *
  * @internal
  */
@@ -75,6 +83,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
 
     /** The classes whose map() runs over their items: a collection, or a paginator, which forwards it to its page. */
     private const array MAPS_ITEMS = [Enumerable::class, AbstractPaginator::class, AbstractCursorPaginator::class];
+
+    /** What a dropped arm can leave a value or a shape member, which a local's `@var` may fill. */
+    private const array PLACEHOLDERS = ['null', 'never[]'];
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -464,6 +475,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * the `null` an untypable arm's drop left, as AccessorBodyAnalyzer reads a body. Then the `@var` type, if it is
      * precise enough to publish, optional where the reading was, since Laravel drops a missing conditional value.
      *
+     * The tag also fills a `never[]` or a literal's member that a drop left, where it admits what the kept arm sends.
+     *
      * A collection is sent as its all() reads, so a record the `@var` keys of either kind keeps its list arm.
      *
      * @param  VarDocBinding  $span
@@ -485,8 +498,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A declared local's reading where it stands, else its `@var` type where that can replace it; see
-     * declaredLocalValue().
+     * A declared local's reading where it stands, else its `@var` type where that can replace it, whole or in each
+     * placeholder a drop left; see declaredLocalValue().
      *
      * @param  VarDocBinding  $span
      * @return ValueExpressionResult|null
@@ -494,14 +507,14 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     private function declaredReadingOrTag(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $dropped = DroppedUnionArms::dropped();
-        // A placeholder the tag replaces is never published, so the warnings its reading raised are not either.
+        // A placeholder the tag replaces is never published, so the warning its drop raised is not either.
         [$reading, $replacement] = DroppedUnionArms::replaceable(
             function () use ($name, $span, $scope, $engine, $dropped): array {
                 $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
 
-                return [$reading, $this->declaredReplacement($span, $reading, $dropped)];
+                return [$reading, ...$this->declaredReplacement($span, $reading, $dropped)];
             },
-            fn (array $read): bool => $read[1] === null,
+            fn (array $read, ?Expr $arm): bool => $read[1] === null || ($read[2] !== null && ! in_array($arm, $read[2], true)),
         );
 
         return $replacement ?? $reading;
@@ -512,6 +525,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      * left once the read began at the given count of dropped arms.
      *
      * @param  ValueExpressionResult|null  $reading
+     *
+     * @phpstan-assert-if-true !null $reading
      */
     private function readingStands(?array $reading, int $dropped): bool
     {
@@ -521,22 +536,185 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * The `@var` type in place of a reading that does not stand, where the tag is precise enough to publish, optional
-     * where the reading was; null where the reading stands or the tag cannot replace it.
+     * The `@var` type in place of a reading that does not stand, or of a `never[]` a drop left that the tag lists,
+     * beside null, as it replaces every placeholder; else the reading with each member a drop left filled from the tag,
+     * beside the arms whose placeholders it fills (filledMembers()); else nothing.
      *
      * @param  VarDocBinding  $span
      * @param  ValueExpressionResult|null  $reading
-     * @return ValueExpressionResult|null
+     * @return DeclaredReplacement
      */
-    private function declaredReplacement(array $span, ?array $reading, int $dropped): ?array
+    private function declaredReplacement(array $span, ?array $reading, int $dropped): array
     {
-        if ($this->readingStands($reading, $dropped)) {
-            return null;
+        $stands = $this->readingStands($reading, $dropped);
+        $drops = $stands && DroppedUnionArms::dropped() !== $dropped;
+        $listed = $drops && $reading['type'] === 'never[]';
+        $left = $drops && ! $listed ? $this->leftMembers($reading, $span['expr']) : [];
+
+        if ($stands && ! $listed && $left === []) {
+            return [null, null];
         }
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
-        return ValueResult::isPublishableReading($declared) ? [...$declared, 'optional' => $reading['optional'] ?? false] : null;
+        if (! ValueResult::isPublishableReading($declared)) {
+            return [null, null];
+        }
+
+        if (! $stands || ($listed && $this->admitsPlaceholder($declared['type'], 'never[]'))) {
+            return [[...$declared, 'optional' => $reading['optional'] ?? false], null];
+        }
+
+        return $this->filledMembers($reading, $declared, $left) ?? [null, null];
+    }
+
+    /**
+     * Each member of a shape a literal assigns that a dropped arm inside its own item left only `null` or `never[]`,
+     * by its printed key, with the arms whose placeholder warnings the read under way holds there.
+     *
+     * @param  ValueExpressionResult  $reading
+     * @return array<string, non-empty-list<Expr>>
+     */
+    private function leftMembers(array $reading, Expr $assigned): array
+    {
+        $members = TsTypeShape::members($reading['type']);
+        $arms = DroppedUnionArms::heldPlaceholderArms();
+
+        if ($members === null || $arms === [] || ! $assigned instanceof Array_) {
+            return [];
+        }
+
+        $items = $this->itemsByStoredKey(array_values($assigned->items)) ?? [];
+        $left = [];
+
+        foreach ($members as [$printed, $type]) {
+            $key = in_array($type, self::PLACEHOLDERS, true) ? PrintedKey::decode($printed) : null;
+            $item = $key === null ? null : $items[$key] ?? null;
+            $own = $item === null ? [] : array_values(array_filter(
+                $arms,
+                fn (Expr $arm): bool => new NodeFinder()->findFirst($item->value, fn (Node $node): bool => $node === $arm) !== null,
+            ));
+
+            if ($own !== []) {
+                $left[$printed] = $own;
+            }
+        }
+
+        return $left;
+    }
+
+    /**
+     * The reading with each member a drop left taken from the `@var` shape's member where that admits the placeholder,
+     * and the arms whose placeholders it fills; null where none fills, or the tag's imports cannot follow.
+     *
+     * @param  ValueExpressionResult  $reading
+     * @param  ValueExpressionResult  $declared
+     * @param  array<string, non-empty-list<Expr>>  $left  see leftMembers()
+     * @return array{ValueExpressionResult, list<Expr>}|null
+     */
+    private function filledMembers(array $reading, array $declared, array $left): ?array
+    {
+        $members = TsTypeShape::members($reading['type']) ?? [];
+        $filled = [];
+        $arms = [];
+
+        foreach ($members as $index => [$printed, $type]) {
+            $tagged = isset($left[$printed]) ? TsTypeShape::memberType($declared['type'], (string) PrintedKey::decode($printed)) : null;
+
+            if ($tagged !== null && $this->admitsPlaceholder($tagged, $type)) {
+                $members[$index][1] = $filled[] = $tagged;
+                array_push($arms, ...$left[$printed]);
+            }
+        }
+
+        $type = '{ '.implode('; ', array_map(fn (array $member): string => implode(': ', $member), $members)).' }';
+        $result = $filled === [] ? null : $this->withTaggedImports([...$reading, 'type' => $type], $declared, implode(' | ', $filled));
+
+        return $result === null ? null : [$result, $arms];
+    }
+
+    /**
+     * Whether a `@var` type admits the placeholder a drop left, what its kept arm sends, and says more than it does
+     * without anything vague: a null arm for a `null`, a list arm for a `never[]`.
+     */
+    private function admitsPlaceholder(string $tagged, string $placeholder): bool
+    {
+        if ($tagged === $placeholder || TsTypeString::typeNameOccursIn('unknown', $tagged)) {
+            return false;
+        }
+
+        return match ($placeholder) {
+            'null' => in_array('null', TsTypeString::splitTopLevelUnion($tagged), true),
+            'never[]' => TsTypeShape::elementType($tagged) !== null,
+            default => false,
+        };
+    }
+
+    /**
+     * A filled reading with the `@var`'s models, enums and custom imports that its filled members spell, each class on
+     * its embedded channel as a shape's member carries one; null where such a class shares a name with one the reading
+     * holds, since no token could tell them apart.
+     *
+     * @param  ValueExpressionResult  $filled
+     * @param  ValueExpressionResult  $declared
+     * @return ValueExpressionResult|null
+     */
+    private function withTaggedImports(array $filled, array $declared, string $spelled): ?array
+    {
+        $models = $this->spelledClasses(
+            [...(isset($declared['modelFqcn']) ? [$declared['modelFqcn']] : []), ...$declared['embeddedModelFqcns'] ?? []],
+            [...(isset($filled['modelFqcn']) ? [$filled['modelFqcn']] : []), ...$filled['embeddedModelFqcns'] ?? []],
+            $spelled,
+            fn (string $fqcn): array => [class_basename($fqcn)],
+        );
+        $enums = $this->spelledClasses(
+            [...(isset($declared['directEnumFqcn']) ? [$declared['directEnumFqcn']] : []), ...$declared['embeddedEnumFqcns'] ?? []],
+            [...(isset($filled['directEnumFqcn']) ? [$filled['directEnumFqcn']] : []), ...$filled['embeddedEnumFqcns'] ?? []],
+            $spelled,
+            ValueResult::enumNames(...),
+        );
+        $custom = ImportMaps::spelledIn($declared['customImports'] ?? [], $spelled);
+
+        if ($models === null || $enums === null) {
+            return null;
+        }
+
+        return [
+            ...$filled,
+            ...($models === [] ? [] : ['embeddedModelFqcns' => [...$filled['embeddedModelFqcns'] ?? [], ...$models]]),
+            ...($enums === [] ? [] : ['embeddedEnumFqcns' => [...$filled['embeddedEnumFqcns'] ?? [], ...$enums]]),
+            ...($custom === [] ? [] : ['customImports' => ImportMaps::merge($filled['customImports'] ?? [], $custom)]),
+        ];
+    }
+
+    /**
+     * Each of the tag's classes whose name the filled members spell, once; null where one shares a name with another
+     * class the reading holds.
+     *
+     * @param  list<class-string>  $tagged
+     * @param  list<class-string>  $held
+     * @param  Closure(class-string): list<string>  $namesOf
+     * @return list<class-string>|null
+     */
+    private function spelledClasses(array $tagged, array $held, string $spelled, Closure $namesOf): ?array
+    {
+        $classes = [];
+
+        foreach (array_unique($tagged) as $fqcn) {
+            $names = $namesOf($fqcn);
+
+            if (! array_any($names, fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $spelled))) {
+                continue;
+            }
+
+            if (array_any($held, fn (string $other): bool => $other !== $fqcn && array_intersect($namesOf($other), $names) !== [])) {
+                return null;
+            }
+
+            $classes[] = $fqcn;
+        }
+
+        return $classes;
     }
 
     /**

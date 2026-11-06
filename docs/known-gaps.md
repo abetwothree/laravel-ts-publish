@@ -34,7 +34,10 @@ spread helper's key or a model accessor's getter body left with only that `null`
 getter that only ever returns `null` still publishes `null`. A method read as a value is the exception: one return it
 cannot type leaves the whole call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its
 own `instanceof` test, whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a
-`@return` docblock or `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
+`@return` docblock or `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning. A local's
+inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the tag lists, and a literal's member
+its own item's drop left where the tag's member admits it; a member a nested literal, a helper or another local left
+stays as it is.
 
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or

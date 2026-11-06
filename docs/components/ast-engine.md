@@ -604,7 +604,9 @@ no reader binds from, for the join to name. `VariableWrites` classifies each wri
 cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so
 `$s = $s . 'x'` reads the value `$s` held before.
 
-Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
+Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague or the `null` a
+dropped arm left. It also replaces a `never[]` a drop left where it lists, and fills a literal's member that its own
+item's drop left `null` or `never[]` where `T`'s member admits that, importing only what the filled member spells.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
 it with a value naming another class. A collection binding also ends at a step that replaces its models with other
@@ -920,7 +922,8 @@ answer, and past a write naming no class where `receiversKeep` holds, a member r
 warns. `$this` is typed, so where a read leaves out a `tagOnly` class over it, `warnOfDeclined()` warns instead that
 the class it is read as does not declare the member, or, where it declares it, that the member could not be typed.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
-getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
+getter body that gives way to the model's declared type, and lets each through only where nothing replaces the
+placeholder it names: a filled member withdraws its own warning and keeps the others.
 `provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the
 audit entries too. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
 `--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a

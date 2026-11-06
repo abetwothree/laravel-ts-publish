@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
@@ -11,8 +12,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedFormsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredLocalFormsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedMemberVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LocalAliasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasCode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
@@ -26,6 +29,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\CartTotalsResource;
 use Workbench\App\Http\Resources\DeclaredConditionalResource;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
@@ -100,6 +104,46 @@ function inlineVarReturned(string $body): array
     $last = $stmts[array_key_last($stmts)];
 
     return [$scope, $last instanceof Return_ && $last->expr instanceof Expr ? $last->expr : throw new LogicException('No return.')];
+}
+
+/**
+ * A fresh analysis of DroppedMemberVarResource: each key's type, the names it imports, and each placeholder warning
+ * it raises as the line and the arm the warning names, without the arm's namespace.
+ *
+ * @return array{array<string, string>, list<string>, list<string>}
+ */
+function droppedMemberVarAnalysis(): array
+{
+    AnalysisWarnings::reset();
+    resolve(AnalysisMemo::class)->reset();
+    $analysis = resolve(AstEngine::class)->analyze(DroppedMemberVarResource::class, 'toArray', Post::class);
+    $placeholders = array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'was left out of its union'),
+    );
+
+    return [
+        array_column($analysis->properties, 'type', 'name'),
+        array_merge([], ...array_values($analysis->typeImports)),
+        array_values(array_map(
+            fn (string $message): string => preg_match('/line (\d+) .*?because `\\\\Workbench\\\\App\\\\Support\\\\([^`]+)`/', $message, $m) === 1
+                ? $m[1].' '.$m[2]
+                : $message,
+            $placeholders,
+        )),
+    ];
+}
+
+/**
+ * What DroppedMemberVarResource sends for a post with the given id, holding one comment.
+ *
+ * @return array<string, mixed>
+ */
+function droppedMemberVarSent(int $id): array
+{
+    $post = (new Post)->forceFill(['id' => $id])->setRelation('comments', new EloquentCollection([CommentRack::comment(3)]));
+
+    return json_decode((string) json_encode(DroppedMemberVarResource::make($post)->resolve()), true);
 }
 
 describe('an inline @var on a local assignment', function () {
@@ -759,6 +803,86 @@ describe('an inline @var on a local assignment', function () {
             ->toBe('string')
             ->and($resolved('$this->whenLoaded("author", function (\Workbench\App\Models\User $a) { /** @var \Workbench\App\Models\Comment|null $a */ $a = $a->comments->first(); return $a; })'))
             ->toBe('Comment | null');
+    });
+
+    // Only a member its own drop left, under a tag member that admits the kept arm, fills; its warning alone goes (C6).
+    test('a @var shape fills a member a dropped arm left null', function () {
+        [$types, $imports, $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'filled' => '{ a: string | null; b: number }',
+            'literal' => '{ a: null; b: number | null }',
+            'model' => '{ a: Comment | null; b: number }',
+            'enum' => '{ a: StatusType | null; b: number }',
+            'unspelled' => '{ a: string | null; b: Grade }',
+        ])
+            ->and($imports)->toContain('Comment', 'StatusType')
+            ->and(array_values(array_intersect($warned, [
+                "27 Opaque::value('s')",
+                '33 Opaque::value(1)',
+                '37 Opaque::value($this->comments->first())',
+                '47 Opaque::value(\Workbench\App\Enums\Status::Published)',
+                "49 Opaque::value('s')",
+            ])))->toBe([])
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['filled', 'literal', 'enum', 'unspelled'])))->toBe([
+                'filled' => ['a' => 's', 'b' => 1],
+                'literal' => ['a' => null, 'b' => 1],
+                'enum' => ['a' => Status::Published->value, 'b' => 1],
+                'unspelled' => ['a' => 's', 'b' => []],
+            ])
+            ->and(droppedMemberVarSent(1)['model']['a']['id'])->toBe(3)
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['filled', 'literal', 'model', 'enum'])))->toBe([
+                'filled' => ['a' => null, 'b' => 1],
+                'literal' => ['a' => null, 'b' => null],
+                'model' => ['a' => null, 'b' => 1],
+                'enum' => ['a' => null, 'b' => 1],
+            ]);
+    });
+
+    // No null arm, a callable read as unknown, or a class named like one the reading holds: the member keeps null.
+    test('leaves a member a dropped arm left null where the tag\'s member cannot fill it, and keeps its warning', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'unadmitted' => '{ a: null; b: number }',
+            'both' => '{ a: string | null; b: null }',
+            'callable' => '{ a: null; b: number }',
+            'same_name' => '{ a: null; b: Grade }',
+            'defaulted' => '{ a: string; b: number }',
+        ])
+            ->and($warned)->toBe([
+                "29 Opaque::value('s')",
+                '31 Opaque::value(1)',
+                "43 Opaque::value('s')",
+                "45 Opaque::value(['fn' => 'strlen'])",
+                '51 Opaque::value(null)',
+                "53 Opaque::value('s')",
+            ])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['unadmitted', 'both', 'callable', 'same_name', 'defaulted'])))->toBe([
+                'unadmitted' => ['a' => null, 'b' => 1],
+                'both' => ['a' => null, 'b' => null],
+                'callable' => ['a' => null, 'b' => 1],
+                'same_name' => ['a' => null, 'b' => []],
+                'defaulted' => ['a' => 'x', 'b' => 1],
+            ])
+            ->and(droppedMemberVarSent(1)['both'])->toBe(['a' => 's', 'b' => 1]);
+    });
+
+    test('fills a never[] a dropped arm left from a tag listing it, whole or as a member, and only that', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'list_member' => '{ a: string[]; b: number }',
+            'listed' => 'string[]',
+            'empty' => 'never[]',
+            'unlisted' => 'never[]',
+        ])
+            ->and(array_values(array_intersect($warned, ["35 Opaque::value(['s'])", "39 Opaque::value(['s'])"])))->toBe([])
+            ->and($warned)->toContain("43 Opaque::value('s')")
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['list_member', 'listed', 'empty', 'unlisted'])))
+            ->toBe(['list_member' => ['a' => ['s'], 'b' => 1], 'listed' => ['s'], 'empty' => [], 'unlisted' => 's'])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['list_member', 'listed', 'unlisted'])))
+            ->toBe(['list_member' => ['a' => [], 'b' => 1], 'listed' => [], 'unlisted' => []]);
     });
 
     test('pins the precedence through a workbench resource', function () {

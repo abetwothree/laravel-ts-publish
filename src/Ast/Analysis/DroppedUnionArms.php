@@ -23,7 +23,7 @@ use PhpParser\PrettyPrinter\Standard;
  * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
- * @phpstan-type HeldWarning array{subject: string, message: string}
+ * @phpstan-type HeldWarning array{subject: string, message: string, arm?: Expr}
  *
  * @internal
  */
@@ -73,6 +73,18 @@ final class DroppedUnionArms
     public static function leftNullSince(string $type, int $dropped): bool
     {
         return $type === 'null' && self::$dropped !== $dropped;
+    }
+
+    /**
+     * The arms whose drop left a placeholder that the innermost replaceable() read under way holds a warning for.
+     *
+     * @return list<Expr>
+     */
+    public static function heldPlaceholderArms(): array
+    {
+        $innermost = array_key_last(self::$held);
+
+        return $innermost === null ? [] : array_column(self::$held[$innermost], 'arm');
     }
 
     /** Count the arms a reused analysis dropped when it was first computed, as computing it again would. */
@@ -125,7 +137,7 @@ final class DroppedUnionArms
                 $arm->getStartLine(),
                 $placeholder,
                 new Standard()->prettyPrintExpr($arm),
-            ));
+            ), $arm);
         }
 
         return $union;
@@ -224,13 +236,14 @@ final class DroppedUnionArms
     }
 
     /**
-     * Run a read whose placeholder its caller may replace, as a local's inline `@var` or a model's declared accessor
-     * type does, and let the warnings raised inside it reach the run output only where $kept says the value stands.
+     * Run a read whose placeholders its caller may replace, as a local's inline `@var` or a model's declared accessor
+     * type does, and let each warning raised inside it reach the run output only where $kept says it still stands,
+     * asked with the arm whose placeholder the warning names, if it names one.
      *
      * @template TRead
      *
      * @param  Closure(): TRead  $read
-     * @param  Closure(TRead): bool  $kept
+     * @param  Closure(TRead, Expr|null): bool  $kept
      * @return TRead
      */
     public static function replaceable(Closure $read, Closure $kept): mixed
@@ -243,9 +256,9 @@ final class DroppedUnionArms
             $held = array_pop(self::$held) ?? [];
         }
 
-        if ($kept($value)) {
-            foreach ($held as $warning) {
-                self::warn($warning['subject'], $warning['message']);
+        foreach ($held as $warning) {
+            if ($kept($value, $warning['arm'] ?? null)) {
+                self::warn($warning['subject'], $warning['message'], $warning['arm'] ?? null);
             }
         }
 
@@ -259,7 +272,7 @@ final class DroppedUnionArms
      * @template TRead
      *
      * @param  Closure(): TRead  $read
-     * @param  Closure(TRead): bool  $kept  asked twice, so it must only inspect the value
+     * @param  Closure(TRead): bool  $kept  asked more than once, so it must only inspect the value
      * @return TRead
      */
     public static function provisional(Closure $read, Closure $kept): mixed
@@ -289,8 +302,11 @@ final class DroppedUnionArms
             : null;
     }
 
-    /** Hold a warning for the innermost replaceable() read under way, or add it to the run's warnings. */
-    private static function warn(string $subject, string $message): void
+    /**
+     * Hold a warning for the innermost replaceable() read under way, with the arm whose placeholder it names, or add it
+     * to the run's warnings.
+     */
+    private static function warn(string $subject, string $message, ?Expr $placeholderArm = null): void
     {
         $innermost = array_key_last(self::$held);
 
@@ -300,6 +316,7 @@ final class DroppedUnionArms
             return;
         }
 
-        self::$held[$innermost][] = ['subject' => $subject, 'message' => $message];
+        $warning = ['subject' => $subject, 'message' => $message];
+        self::$held[$innermost][] = $placeholderArm === null ? $warning : [...$warning, 'arm' => $placeholderArm];
     }
 }
