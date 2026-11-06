@@ -20,7 +20,9 @@ use ReflectionProperty;
  * @phpstan-import-type DeclaredType from DeclaredClasses
  *
  * @phpstan-type KeyKind 'string'|'array-key'|'int'|null
- * @phpstan-type LeftOutWrite array{name: string, value: Expr}
+ * @phpstan-type LeftOutWrite array{
+ *     name: string, value: Expr, relative?: true, undeclared?: array{class-string, string},
+ * }
  *
  * @internal
  */
@@ -56,7 +58,8 @@ final readonly class ReceiverType
      *                                       warns of where it publishes a type
      * @param  array<class-string, LeftOutWrite>  $tagOnly  the classes of such a join only a write's inline `@var`
      *                                                      names, over a value naming none, each with that write: a
-     *                                                      read they cannot answer leaves them out and warns of it
+     *                                                      read they cannot answer drops them with a warning, as
+     *                                                      ReceiverMemberReader::leftOutWrite() rules
      */
     public function __construct(
         public array $classes,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Closure;
@@ -19,6 +20,7 @@ use PhpParser\PrettyPrinter\Standard;
  * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
  * @phpstan-type HeldWarning array{subject: string, message: string}
@@ -185,6 +187,35 @@ final class DroppedUnionArms
                 .'may not admit every value it sends. Give what it reads a return type or a `@return` docblock naming a class.',
                 $arm->getStartLine(),
                 new Standard()->prettyPrintExpr($arm),
+            ));
+        }
+    }
+
+    /**
+     * Record and warn in the run output, once each, of the writes a member read left out of a join: `$this` read as a
+     * class that does not declare the member, and any other write as warnOfLeftOut() words it.
+     *
+     * @param  list<LeftOutWrite>  $writes
+     */
+    public static function warnOfDeclined(array $writes, AnalysisScope $scope): void
+    {
+        foreach ($writes as $write) {
+            self::record($write['value'], $scope, 'binding-join');
+
+            if (! isset($write['undeclared'])) {
+                self::warnOfLeftOut([$write['value']], $scope);
+
+                continue;
+            }
+
+            [$class, $member] = $write['undeclared'];
+            self::warn($scope->subjectReflection->getName(), sprintf(
+                'The value on line %d leaves out `%s`, read as `%s`, which does not declare `%s`, so its published '
+                .'type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+                $write['value']->getStartLine(),
+                new Standard()->prettyPrintExpr($write['value']),
+                $class,
+                $member,
             ));
         }
     }

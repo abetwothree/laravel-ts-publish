@@ -715,8 +715,9 @@ it('reads a member of what a self spelling returns, is passed to or joins only b
 // A static call through such a receiver, and a join of it with a block's write, keep the reading by declaration.
 it('reads a member of a self spelling\'s static call or block-joined value only by its declaration', function () {
     expect(analyzedKeyTypes(ChainedLabelChild::class, 'joined'))->toBe([
-        'staticOnVar' => 'unknown', 'gapHelper' => 'unknown', 'gapClosure' => 'unknown', 'gapLocal' => 'unknown', 'branchJoin' => 'unknown',
+        'staticOnVar' => 'unknown', 'gapHelper' => 'unknown', 'gapClosure' => 'unknown', 'gapLocal' => 'unknown',
+        'gapLocalTag' => 'unknown', 'branchJoin' => 'unknown',
     ])
         ->and(json_encode(new ChainedLabelChild()->joined()))
-        ->toBe('{"staticOnVar":"x","gapHelper":"x","gapClosure":["x"],"gapLocal":"x","branchJoin":"x"}');
+        ->toBe('{"staticOnVar":"x","gapHelper":"x","gapClosure":["x"],"gapLocal":"x","gapLocalTag":"x","branchJoin":"x"}');
 });

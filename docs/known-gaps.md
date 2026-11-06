@@ -24,16 +24,17 @@ type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-unio
 drop). A parameter written in a block drops the value it came in with the same way: `transform($this->opaque(), …)`
 whose callback may set `$value = $comment->id` publishes `number`. So does the join of a local's branches, for a value
 one branch writes, and a member read past such a join: past `if (…) { $user = $this->opaque(); }`, `$user->name` reads
-the old model's member alone, and so does a class only an inline `@var` there names that cannot answer the read.
-Widening the union to `unknown` would be more honest but less specific. Where the drop leaves only `null` or `never[]`,
-the run output warns, naming the line and the arm left out, and so does a parameter's, a branch join's or a member
-read's join drop, whose published type may not admit every value Laravel sends; a class the generation cache serves
-prints nothing until a `--fresh` run. A spread helper's key or a model accessor's getter body left with only that `null`
-publishes `unknown` instead, while a getter that only ever returns `null` still publishes `null`. A method read as a
-value is the exception: one return it cannot type leaves the whole call `unknown`, or the vague type it declares. So is
-`$this->resource` read whole under its own `instanceof` test, whose untypable class leaves the whole ternary `unknown`.
-Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes back; a cast on the key types it but
-leaves the warning.
+the old model's member alone, and so does a class only an inline `@var` there names that cannot answer the read, a tag
+over `$this` included; a `static`, `self` or `parent` tag over `$this` whose class declares the member but cannot type
+it leaves the read `unknown` instead. Widening the union to `unknown` would be more honest but less specific. Where the
+drop leaves only `null` or `never[]`, the run output warns, naming the line and the arm left out, and so does a
+parameter's, a branch join's or a member read's join drop, whose published type may not admit every value Laravel sends;
+a class the generation cache serves prints nothing until a `--fresh` run. A spread helper's key or a model accessor's
+getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns `null` still
+publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole call `unknown`,
+or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose untypable class
+leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes
+back; a cast on the key types it but leaves the warning.
 
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or

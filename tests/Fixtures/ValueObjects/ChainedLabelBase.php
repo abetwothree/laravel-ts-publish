@@ -124,6 +124,7 @@ class ChainedLabelBase
                 return $s->label();
             })->all(),
             'gapLocal' => $local->label(),
+            'gapLocalTag' => $local->tag,
             'branchJoin' => $either->label(),
         ];
     }

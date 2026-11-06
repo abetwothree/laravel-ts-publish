@@ -269,8 +269,10 @@ final class ReceiverMethodReturnResolver
             };
 
             // A class only a write's `@var` names gives way to the join's others, which the warning names.
-            if ($result === null && isset($receiver->tagOnly[$class])) {
-                $declined[] = $receiver->tagOnly[$class]['value'];
+            $write = $result === null ? ReceiverMemberReader::leftOutWrite($receiver, $class, $methodName, true) : null;
+
+            if ($write !== null) {
+                $declined[] = $write;
 
                 continue;
             }
@@ -287,11 +289,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        foreach ($declined as $write) {
-            DroppedUnionArms::record($write, $scope, 'binding-join');
-        }
-
-        DroppedUnionArms::warnOfLeftOut($declined, $scope);
+        DroppedUnionArms::warnOfDeclined($declined, $scope);
 
         return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
     }

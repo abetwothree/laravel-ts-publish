@@ -16,10 +16,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedOpenModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedRelativeTagResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedThisTagResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedThisTagUserResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedTopLevelVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GetterTitleUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MagicTitleUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ThisTaggedUser;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -349,6 +352,57 @@ test('a parameter\'s last-statement relative @var that declines the member keeps
         ->and(joinedDropWarnings())->toBe(['29 $this->opaque($a)', '37 $this->opaque($a)', '45 $this->opaque($a)'])
         ->and(joinedSends(JoinedRelativeTagResource::class, true))
         ->toBe(['static_name' => 'Ann', 'self_name' => 'Ann', 'parent_name' => 'Ann', 'static_key' => 3, 'static_title' => null]);
+});
+
+// The resource declares no `name` and forwards it to the post, and the value object declares none of the members, so
+// `$this` gives way to the user, with a warning naming the class it is read as; members the post answers join.
+test('a parameter\'s last-statement @var over $this whose class does not declare the member keeps the old model\'s member', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedThisTagResource::class, Post::class))->toBe([
+        'static_name?' => 'string',
+        'self_name?' => 'string',
+        'parent_name?' => 'string',
+        'totals_name?' => 'string',
+        'static_title?' => 'string | null',
+        'static_key?' => 'number',
+        'totals_key?' => 'number',
+        'totals_year?' => 'string | null',
+    ])
+        ->and(AnalysisWarnings::all())->toBe(array_map(fn (array $drop): array => [
+            'subject' => JoinedThisTagResource::class,
+            'message' => "The value on line {$drop[0]} leaves out `\$this`, read as `{$drop[1]}`, which does not declare `{$drop[2]}`, "
+                .'so its published type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+        ], [
+            [30, JoinedThisTagResource::class, 'name'],
+            [38, JoinedThisTagResource::class, 'name'],
+            [46, JsonResource::class, 'name'],
+            [54, CartTotals::class, 'name'],
+            [78, CartTotals::class, 'getKey()'],
+            [86, CartTotals::class, 'created_at'],
+        ]))
+        ->and(joinedSends(JoinedThisTagResource::class, true))->toBe([
+            'static_name' => null, 'self_name' => null, 'parent_name' => null, 'totals_name' => null,
+            'static_title' => 'Banana', 'static_key' => 7, 'totals_key' => 7, 'totals_year' => null,
+        ])
+        ->and(joinedSends(JoinedThisTagResource::class, false))->toBe([
+            'static_name' => 'Ann', 'self_name' => 'Ann', 'parent_name' => 'Ann', 'totals_name' => 'Ann',
+            'static_title' => null, 'static_key' => 3, 'totals_key' => 3, 'totals_year' => null,
+        ]);
+});
+
+// A model's method reads the same way: the value object the tag names declares no `name`, while the model types it.
+test('a model method\'s @var over $this naming a class that does not declare the member keeps the parameter\'s member', function () {
+    AnalysisWarnings::reset();
+    $user = new ThisTaggedUser()->forceFill(['id' => 3, 'name' => 'Ann']);
+
+    expect(publishedResourceKeyTypes(JoinedThisTagUserResource::class, ThisTaggedUser::class))
+        ->toBe(['static_name' => 'string', 'totals_name' => 'string'])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The value on line 31 leaves out `$this`, read as `'.CartTotals::class.'`, which does not declare `name`, so its published '
+                .'type may not admit every value it sends. Give the local a `@var` naming a class that declares it.',
+        ])
+        ->and(new JoinedThisTagUserResource($user)->resolve(Request::create('/')))->toBe(['static_name' => 'Ann', 'totals_name' => 'Ann']);
 });
 
 // collect() wraps the joined collection, so its callback's parameter takes the element with what the join left out.

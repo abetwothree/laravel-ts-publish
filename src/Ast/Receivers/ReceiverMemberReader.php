@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOneOrManyThrough;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
+use PhpParser\Node\Expr\Variable;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -33,6 +34,7 @@ use Throwable;
  * holds. The rules are in docs/components/receiver-types.md § Property access on a receiver.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @internal
  */
@@ -78,8 +80,10 @@ final class ReceiverMemberReader
                 continue;
             }
 
-            if ($result === null && isset($held->tagOnly[$heldClass])) {
-                $declined[] = $held->tagOnly[$heldClass]['value'];
+            $write = $result === null ? self::leftOutWrite($held, $heldClass, $name, false) : null;
+
+            if ($write !== null) {
+                $declined[] = $write;
 
                 continue;
             }
@@ -96,14 +100,37 @@ final class ReceiverMemberReader
             return null;
         }
 
-        foreach ($declined as $write) {
-            DroppedUnionArms::record($write, $scope, 'binding-join');
-        }
-
-        DroppedUnionArms::warnOfLeftOut($declined, $scope);
+        DroppedUnionArms::warnOfDeclined($declined, $scope);
         $union = count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
 
         return $readsNull ? [...$union, 'type' => TsTypeString::withNullArm($union['type'])] : $union;
+    }
+
+    /**
+     * The write a read of a member one class of a join cannot answer leaves out: the write whose inline `@var` alone
+     * names the class; none where no write does, or where a `self`, `static` or `parent` over `$this` names a class
+     * declaring the member, whose reading by declaration stands. `$this` carries the class and member a warning names.
+     *
+     * @param  class-string  $class
+     * @return LeftOutWrite|null
+     */
+    public static function leftOutWrite(ReceiverType $held, string $class, string $member, bool $method): ?array
+    {
+        $write = $held->tagOnly[$class] ?? null;
+
+        if ($write === null) {
+            return null;
+        }
+
+        $owner = $held->memberOwner($class, $member, $method);
+
+        if (isset($write['relative']) && self::declares($owner, $member, $method)) {
+            return null;
+        }
+
+        return $write['value'] instanceof Variable && $write['value']->name === 'this'
+            ? [...$write, 'undeclared' => [$owner, $method ? $member.'()' : $member]]
+            : $write;
     }
 
     /**
@@ -344,6 +371,22 @@ final class ReceiverMemberReader
         return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+$/', TsTypeString::withoutNullArm($type['type'])) === 1
             ? ReceiverType::of($held[0])
             : null;
+    }
+
+    /**
+     * Whether a class declares a member, typed or not: a method for a call; for a read, a property, or on a model a
+     * method, a relation's or an accessor's, or an attribute it lists.
+     *
+     * @param  class-string  $class
+     */
+    private static function declares(string $class, string $name, bool $method): bool
+    {
+        if ($method) {
+            return method_exists($class, $name);
+        }
+
+        return property_exists($class, $name)
+            || (is_a($class, Model::class, true) && (method_exists($class, $name) || self::listedAttributeName($class, $name) !== null));
     }
 
     /**

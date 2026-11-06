@@ -645,9 +645,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types, and an
-     * object no class names. A scalar, an array or `null` holds no object a member read could answer, so it is left out
-     * quietly.
+     * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types, an
+     * object no class names, and `$this` read as a class that does not declare the member. A scalar, an array or `null`
+     * holds no object a member read could answer, so it is left out quietly.
      *
      * @param  ValueExpressionResult  $read
      */
@@ -659,8 +659,17 @@ final class ReceiverClassResolver
 
         $untyped = [];
         $objects = [];
+        $undeclared = [];
 
-        foreach ($receiver->leftOut as ['name' => $name, 'value' => $value]) {
+        foreach ($receiver->leftOut as $write) {
+            if (isset($write['undeclared'])) {
+                $undeclared[] = $write;
+
+                continue;
+            }
+
+            ['name' => $name, 'value' => $value] = $write;
+
             // Only the type is wanted: what reading the write drops or warns of belongs to the write, not this read.
             $type = DroppedUnionArms::provisional(
                 fn (): ?string => $scope->resolvingBinding($name, $value, fn (): array => $engine->resolve($value))['type'] ?? null,
@@ -678,6 +687,7 @@ final class ReceiverClassResolver
 
         DroppedUnionArms::warnOfLeftOut($untyped, $scope);
         DroppedUnionArms::warnOfUnnamedObject($objects, $scope);
+        DroppedUnionArms::warnOfDeclined($undeclared, $scope);
     }
 
     /**
@@ -967,9 +977,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a value a gap's write assigned, as the inline `@var` on that write declares where it has one: tagged by
-     * that write where the value names no class, so a read its classes cannot answer gives way to the join's others.
-     * `$this` is the subject, whose class the tag only spells, so its reading by declaration stands.
+     * Resolve a value a gap's write assigned as the inline `@var` on it declares: tagged by that write where the value
+     * names no class, `$this` included, so a read its classes cannot answer gives way to the join's others. A relative
+     * tag over `$this` is marked: the subject runs a member its class declares, or an override, so that reading stands.
      */
     private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
     {
@@ -982,10 +992,15 @@ final class ReceiverClassResolver
         $declared = $this->resolveDeclared($name, $span, $scope);
         $assigned = $this->unguarded($this->fromBoundExpression($name, $value, $scope), $this->expandedAlias($span));
 
-        return ($value instanceof Variable && $value->name === 'this')
-            || ($assigned !== null && array_any($assigned->classes, $this->isNameable(...)))
-            ? $declared
-            : $declared?->taggedBy(['name' => $name, 'value' => $value]);
+        if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
+            return $declared;
+        }
+
+        $write = ['name' => $name, 'value' => $value];
+
+        return $declared?->taggedBy(isset($span['relative']) && $value instanceof Variable && $value->name === 'this'
+            ? [...$write, 'relative' => true]
+            : $write);
     }
 
     /**
@@ -1055,6 +1070,8 @@ final class ReceiverClassResolver
 
         return $this->carried($receiver, $this->mergeEach(
             $receiver,
+            $name,
+            false,
             fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($receiver->memberOwner($class, $name, false), $name),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
         ));
@@ -1283,6 +1300,8 @@ final class ReceiverClassResolver
 
         $result = $this->mergeEach(
             $receiver,
+            $method,
+            true,
             fn (string $class): ?ReceiverType => $this->memberMethod($receiver->memberOwner($class, $method, true), $method, false, $receiver->relatedModel),
             $shortCircuits,
         );
@@ -2586,21 +2605,23 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Merge what each class a receiver holds answers, as merge() does; a class only a write's `@var` names that answers
-     * nothing is left out instead, its write kept for the read through the result to warn of.
+     * Merge what each class a receiver holds answers for a member, as merge() does; a class only a write's `@var` names
+     * that answers nothing is left out instead, as ReceiverMemberReader::leftOutWrite() rules, its write kept for the
+     * read through the result to warn of.
      *
      * @param  Closure(class-string): ?ReceiverType  $answer
      */
-    private function mergeEach(ReceiverType $receiver, Closure $answer, bool $shortCircuits): ?ReceiverType
+    private function mergeEach(ReceiverType $receiver, string $member, bool $method, Closure $answer, bool $shortCircuits): ?ReceiverType
     {
         $parts = [];
         $declined = [];
 
         foreach ($receiver->classes as $class) {
             $part = $answer($class);
+            $write = $part === null ? ReceiverMemberReader::leftOutWrite($receiver, $class, $member, $method) : null;
 
-            if ($part === null && isset($receiver->tagOnly[$class])) {
-                $declined[] = $receiver->tagOnly[$class];
+            if ($write !== null) {
+                $declined[] = $write;
 
                 continue;
             }
