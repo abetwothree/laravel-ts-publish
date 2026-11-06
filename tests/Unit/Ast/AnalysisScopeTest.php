@@ -147,6 +147,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->passedValues[$name] = $expr;
         $scope->relativeParameters[$name] = true;
         $scope->guardedParameters[$name] = 'guarded';
+        $scope->leftOutParameters[$name] = [['name' => 'outer', 'value' => $expr]];
     }
 
     return $scope;

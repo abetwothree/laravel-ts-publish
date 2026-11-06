@@ -172,6 +172,24 @@ final class DroppedUnionArms
     }
 
     /**
+     * Warn in the run output, once per object a receiver's join left out as naming no class, that the published type
+     * may not admit every value the read sends.
+     *
+     * @param  list<Expr>  $dropped  the writes the join left out
+     */
+    public static function warnOfUnnamedObject(array $dropped, AnalysisScope $scope): void
+    {
+        foreach ($dropped as $arm) {
+            self::warn($scope->subjectReflection->getName(), sprintf(
+                'The value on line %d leaves out `%s`, an object whose class could not be named, so its published type '
+                .'may not admit every value it sends. Give what it reads a return type or a `@return` docblock naming a class.',
+                $arm->getStartLine(),
+                new Standard()->prettyPrintExpr($arm),
+            ));
+        }
+    }
+
+    /**
      * Run a read whose placeholder its caller may replace, as a local's inline `@var` or a model's declared accessor
      * type does, and let the warnings raised inside it reach the run output only where $kept says the value stands.
      *

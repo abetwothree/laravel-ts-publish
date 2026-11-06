@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
@@ -21,6 +22,7 @@ use PhpParser\Node\Expr;
  * as the closure it amounts to, whose body ClosureHandler resolves, binding the class an unbound parameter declares.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @internal
  */
@@ -144,6 +146,7 @@ trait BindsMapCallbacks
      *
      * @param  list<ValueExpressionResult>  $parameters
      * @param  class-string<Model>|null  $elementModel
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the element left out
      * @return ValueExpressionResult|null
      */
     protected function resolveArrayCallback(
@@ -155,6 +158,7 @@ trait BindsMapCallbacks
         ExpressionEngine $engine,
         bool $unread = false,
         bool $guardsElement = false,
+        array $leftOut = [],
     ): ?array {
         $callback = CallableForms::asOneValueClosure(CallableForms::heldCallable($callback, $scope), count($parameters));
 
@@ -167,7 +171,7 @@ trait BindsMapCallbacks
             null,
             $engine,
             fn (): array => $engine->resolve($callback),
-            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, true, $unread, $guardsElement),
+            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, true, $unread, $guardsElement, $leftOut),
             function () use ($scope, $arrayed): void {
                 $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
                 $scope->mapResultArrayed = false;
@@ -187,6 +191,7 @@ trait BindsMapCallbacks
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
      * @param  ValueExpressionResult|null  $keyValue
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the element left out
      * @return ValueExpressionResult|null
      */
     protected function resolveMapCallback(
@@ -199,6 +204,7 @@ trait BindsMapCallbacks
         ?array $keyValue = null,
         bool $unread = false,
         bool $guardsElement = false,
+        array $leftOut = [],
     ): ?array {
         if ($callback === null) {
             return null;
@@ -210,7 +216,7 @@ trait BindsMapCallbacks
             $parameters[] = $keyValue;
         }
 
-        return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine, $unread, $guardsElement);
+        return $this->resolveArrayCallback($callback, $parameters, $elementModel, $arrayed, $scope, $engine, $unread, $guardsElement, $leftOut);
     }
 
     /**

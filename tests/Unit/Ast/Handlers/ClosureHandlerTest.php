@@ -422,6 +422,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->passedValues[$name] = $outer;
         $scope->relativeParameters[$name] = true;
         $scope->guardedParameters[$name] = 'guarded';
+        $scope->leftOutParameters[$name] = [['name' => 'outerSource', 'value' => $outer]];
     }
 
     $before = $scope->nameBindings();

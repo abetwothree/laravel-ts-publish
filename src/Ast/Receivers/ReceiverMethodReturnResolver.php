@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -235,6 +236,7 @@ final class ReceiverMethodReturnResolver
         bool $armsOnly,
     ): ?array {
         $results = [];
+        $declined = [];
 
         if ($receiver->elementModel !== null) {
             DependencyRecorder::recordClass($receiver->elementModel);
@@ -266,6 +268,13 @@ final class ReceiverMethodReturnResolver
                 default => $read(),
             };
 
+            // A class only a write's `@var` names gives way to the join's others, which the warning names.
+            if ($result === null && isset($receiver->tagOnly[$class])) {
+                $declined[] = $receiver->tagOnly[$class]['value'];
+
+                continue;
+            }
+
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
                 return null;
@@ -277,6 +286,12 @@ final class ReceiverMethodReturnResolver
         if ($results === []) {
             return null;
         }
+
+        foreach ($declined as $write) {
+            DroppedUnionArms::record($write, $scope, 'binding-join');
+        }
+
+        DroppedUnionArms::warnOfLeftOut($declined, $scope);
 
         return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
     }

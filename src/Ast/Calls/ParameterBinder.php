@@ -60,10 +60,12 @@ use ReflectionParameter;
  * @phpstan-import-type CollectionBinding from AnalysisScope
  * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
  * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type PassedBinding = array{model: class-string<Model>|null, classes: non-empty-list<class-string>|null,
  *     elementModel: class-string<Model>|null, value: ValueExpressionResult|null, unsaved: bool, refines: bool,
- *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true, key?: KeyKind}
+ *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true, key?: KeyKind,
+ *     leftOut?: non-empty-list<LeftOutWrite>}
  *
  * @internal
  */
@@ -155,10 +157,12 @@ final class ParameterBinder
      *
      * A bound model is guarded, as `unread`, whatever declares it where $unread says no reading reaches the callback
      * without the guard; else where $guardsElement says the element is guarded and names the model, not a declaration.
+     * The element model a variable's join names keeps the writes that join left out.
      *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
      * @param  string|null  $docComment  the callback's, whose `@param` declares a parameter with no native type
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the element left out
      * @return PassedBinding|null
      */
     public static function elementBinding(
@@ -169,6 +173,7 @@ final class ParameterBinder
         bool $unread = false,
         bool $guardsElement = false,
         ?string $docComment = null,
+        array $leftOut = [],
     ): ?array {
         $declaredModel = self::declaredClosureModel($param, $scope, $docComment);
         $documented = $param?->type === null;
@@ -180,7 +185,7 @@ final class ParameterBinder
             return null;
         }
 
-        return [
+        $binding = [
             'model' => $model,
             'classes' => null,
             'elementModel' => null,
@@ -195,6 +200,8 @@ final class ParameterBinder
                 default => null,
             },
         ];
+
+        return $leftOut === [] || $model === null || $model !== $elementModel ? $binding : [...$binding, 'leftOut' => $leftOut];
     }
 
     /**
@@ -248,6 +255,7 @@ final class ParameterBinder
      *
      * @param  list<Expr|ValueExpressionResult>  $passed
      * @param  class-string<Model>|null  $firstElementModel
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the first element left out
      */
     public static function bindCallbackArguments(
         ArrowFunction|ClosureExpr $callback,
@@ -258,6 +266,7 @@ final class ParameterBinder
         bool $elements = false,
         bool $unread = false,
         bool $guardsElement = false,
+        array $leftOut = [],
     ): void {
         foreach ($passed as $position => $argument) {
             $param = $callback->params[$position] ?? null;
@@ -274,7 +283,7 @@ final class ParameterBinder
             $value = $argument['type'] === 'unknown' ? null : $argument;
             $docComment = (string) $callback->getDocComment();
             $binding = $position === 0
-                ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment)
+                ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment, $leftOut)
                 : self::elementBinding(null, $value, $param, $scope, docComment: $docComment);
 
             if ($binding !== null) {
@@ -419,6 +428,12 @@ final class ParameterBinder
                 $scope->guardedParameters[$name] = $guard;
             } else {
                 unset($scope->guardedParameters[$name]);
+            }
+
+            if (isset($binding['leftOut'])) {
+                $scope->leftOutParameters[$name] = $binding['leftOut'];
+            } else {
+                unset($scope->leftOutParameters[$name]);
             }
 
             if ($model !== null) {

@@ -6,19 +6,25 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementClassVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementPostVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLastStatementVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLeftOutResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedMapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedOpenModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedTopLevelVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorTitleUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GetterTitleUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MagicTitleUser;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\CartTotals;
 
 /**
  * A post titled Banana, pinned or not, with options a=x and an empty b, one comment `hi` (id 5) and its author Ann.
@@ -74,6 +80,19 @@ function joinedDeclaredSends(bool $guest): array
     $sent = json_decode((string) json_encode($resource->resolve(Request::create('/'))), true);
 
     return $sent;
+}
+
+/**
+ * Each run-output warning about an arm a join left out, as its line and the expression it names.
+ *
+ * @return list<string>
+ */
+function joinedDropWarnings(): array
+{
+    return array_values(array_map(
+        fn (array $warning): string => (string) preg_replace('/^The value on line (\d+) leaves out `(.+?)`, .*$/s', '$1 $2', $warning['message']),
+        AnalysisWarnings::all(),
+    ));
 }
 
 test('a local written in sequence and inside branches joins the values that can reach the read', function () {
@@ -249,22 +268,69 @@ test('a member read past a parameter\'s last-statement @var reads each class', f
         ->toMatchArray(['param_last_class' => null, 'name_last' => 'Ann', 'name_last_untyped' => 'Ann']);
 });
 
-// Only a concrete model reads a lacking member as null, so a tag naming another class leaves the old model's reading.
+// A class the tag names that cannot answer the read gives way to the old model's, with a warning naming its write; a
+// plain object that types the member joins.
 test('a parameter\'s last-statement @var naming a class other than a concrete model keeps the old model\'s member', function () {
+    AnalysisWarnings::reset();
+
     expect(publishedResourceKeyTypes(JoinedLastStatementClassVarResource::class, Post::class))->toBe([
         'auth_name?' => 'string',
         'model_email?' => 'string',
         'object_name?' => 'string',
         'object_name_untyped?' => 'string',
+        'numbered_name?' => 'string | number',
+        'auth_key?' => 'number',
+        'auth_year?' => 'string | null',
     ])
+        ->and(joinedDropWarnings())->toBe([
+            '34 $this->opaque($this->author)',
+            '42 $this->opaque($this->author)',
+            '50 $this->opaque(new \\'.CartTotals::class.'(1.5, true, 2))',
+            '58 $this->opaque(new \\'.CartTotals::class.'(1.5, true, 2))',
+            '74 $this->opaque($this->author)',
+            '82 $this->opaque($this->author)',
+        ])
         ->and(joinedSends(JoinedLastStatementClassVarResource::class, false))->toBe([
             'auth_name' => 'Ann',
             'model_email' => 'ann@example.com',
             'object_name' => 'Ann',
             'object_name_untyped' => 'Ann',
+            'numbered_name' => 'Ann',
+            'auth_key' => 3,
+            'auth_year' => null,
         ])
         ->and(fn () => joinedSends(JoinedLastStatementClassVarResource::class, true))
         ->toThrow(ErrorException::class, 'Undefined property');
+});
+
+// Each user may answer `title` with a value no rule types, so its arm gives way to the post's, with a warning.
+test('a parameter\'s last-statement @var naming a model that declines the member keeps the old model\'s member', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedLastStatementPostVarResource::class, Post::class))->toBe([
+        'accessor_title?' => 'string',
+        'magic_title?' => 'string',
+        'getter_title?' => 'string',
+    ])
+        ->and(joinedDropWarnings())->toBe([
+            '31 $this->opaque((new \\'.AccessorTitleUser::class.'())->forceFill([\'id\' => 1]))',
+            '39 $this->opaque((new \\'.MagicTitleUser::class.'())->forceFill([\'id\' => 2]))',
+            '47 $this->opaque((new \\'.GetterTitleUser::class.'())->forceFill([\'id\' => 3]))',
+        ])
+        ->and(joinedSends(JoinedLastStatementPostVarResource::class, true))
+        ->toBe(['accessor_title' => 1, 'magic_title' => 123, 'getter_title' => 1])
+        ->and(joinedSends(JoinedLastStatementPostVarResource::class, false))
+        ->toBe(['accessor_title' => 'Banana', 'magic_title' => 'Banana', 'getter_title' => 'Banana']);
+});
+
+// The callback's parameter takes the joined collection's element, so its read warns of the write the join left out.
+test('a callback mapping a joined collection warns of the write the join left out', function () {
+    AnalysisWarnings::reset();
+
+    expect(publishedResourceKeyTypes(JoinedMapResource::class, Post::class))
+        ->toBe(['contents' => 'string[]', 'sorted_contents' => 'string[]'])
+        ->and(joinedDropWarnings())->toBe(['27 $this->opaque($this->comments)'])
+        ->and(joinedSends(JoinedMapResource::class, true))->toBe(['contents' => ['hi'], 'sorted_contents' => ['hi']]);
 });
 
 // Each of these models may answer the member through an override or a subclass, so the read stays unknown.
@@ -281,16 +347,21 @@ test('a member read past a join declines where an arm\'s model may answer a memb
         ->toBe(['magic_title' => 'Banana', 'attribute_title' => 'Banana', 'any_content' => 'hi', 'morphed_content' => 'hi']);
 });
 
-// A member read of a string throws, so the literal and the column are left out quietly; the untyped value is left out
-// of a read that publishes nothing, so nothing warns.
+// A member read of a string or an array throws, so those writes are left out quietly, while an object no class names
+// warns; the untyped value is left out of a read that publishes nothing, so nothing warns of it.
 test('a join leaves out a typed write naming no class quietly, and warns of an untyped one only where the read is typed', function () {
     AnalysisWarnings::reset();
 
-    expect(publishedResourceKeyTypes(JoinedLeftOutResource::class, Post::class))
-        ->toBe(['guest_name' => 'string', 'titled_name' => 'string', 'opaque_title' => 'unknown'])
-        ->and(AnalysisWarnings::all())->toBe([])
+    expect(publishedResourceKeyTypes(JoinedLeftOutResource::class, Post::class))->toBe([
+        'guest_name' => 'string',
+        'titled_name' => 'string',
+        'listed_name' => 'string',
+        'object_name' => 'string',
+        'opaque_title' => 'unknown',
+    ])
+        ->and(joinedDropWarnings())->toBe(['45 (object) [\'name\' => 5]'])
         ->and(joinedSends(JoinedLeftOutResource::class, false))
-        ->toBe(['guest_name' => 'Ann', 'titled_name' => 'Ann', 'opaque_title' => null])
+        ->toBe(['guest_name' => 'Ann', 'titled_name' => 'Ann', 'listed_name' => 'Ann', 'object_name' => 'Ann', 'opaque_title' => null])
         ->and(fn () => joinedSends(JoinedLeftOutResource::class, true))
         ->toThrow(ErrorException::class, 'Attempt to read property "name" on string');
 });

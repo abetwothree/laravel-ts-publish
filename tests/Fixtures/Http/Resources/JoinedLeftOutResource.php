@@ -9,8 +9,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Locals holding the author that a branch replaces with a string literal, a string column or a value no rule types,
- * read past the branch through a member the author has and one it lacks.
+ * Locals holding the author that a branch replaces with a string literal, a string column, an array, an object no
+ * class names or a value no rule types, read past the branch through a member the author has and one it lacks.
  *
  * @mixin Post
  */
@@ -33,6 +33,18 @@ final class JoinedLeftOutResource extends JsonResource
             $titled = $this->title;
         }
 
+        $listed = $this->author;
+
+        if ($this->is_pinned) {
+            $listed = ['name' => 1];
+        }
+
+        $object = $this->author;
+
+        if ($this->is_pinned) {
+            $object = (object) ['name' => 5];
+        }
+
         $opaque = $this->author;
 
         if ($this->is_pinned) {
@@ -42,6 +54,8 @@ final class JoinedLeftOutResource extends JsonResource
         return [
             'guest_name' => $guest->name,
             'titled_name' => $titled->name,
+            'listed_name' => $listed->name,
+            'object_name' => $object->name,
             'opaque_title' => $opaque->title,
         ];
     }

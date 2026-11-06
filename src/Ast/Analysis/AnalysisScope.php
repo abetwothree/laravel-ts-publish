@@ -54,6 +54,7 @@ use ReflectionMethod;
  * @phpstan-import-type CollectedElement from ResourceCollections
  * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
  * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
@@ -91,6 +92,7 @@ use ReflectionMethod;
  * @phpstan-type BindingGap array{0: int, 1: int, 2: list<Expr>|null, 3: bool, 4: bool, 5?: list<Expr>}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
  * @phpstan-type ParameterGuard 'unread'|'guarded'|'element'
+ * @phpstan-type LeftOutParametersMap array<string, non-empty-list<LeftOutWrite>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
@@ -113,7 +115,8 @@ use ReflectionMethod;
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap,
  *      relativeParameters: array<string, true>,
- *      guardedParameters: array<string, ParameterGuard>
+ *      guardedParameters: array<string, ParameterGuard>,
+ *      leftOutParameters: LeftOutParametersMap
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -161,6 +164,7 @@ final class AnalysisScope
         'passedValues' => [],
         'relativeParameters' => [],
         'guardedParameters' => [],
+        'leftOutParameters' => [],
     ];
 
     /**
@@ -339,6 +343,14 @@ final class AnalysisScope
      * @var array<string, ParameterGuard>
      */
     public array $guardedParameters = [];
+
+    /**
+     * The parameters bound from the element of a variable's join, with the writes that join left out, which a read
+     * through the parameter warns of where it publishes a type.
+     *
+     * @var LeftOutParametersMap
+     */
+    public array $leftOutParameters = [];
 
     /**
      * Params bound to a whole collection of one model rather than one element: a to-many `whenLoaded` param, a passed
@@ -1207,6 +1219,7 @@ final class AnalysisScope
             'passedValues' => $this->passedValues,
             'relativeParameters' => $this->relativeParameters,
             'guardedParameters' => $this->guardedParameters,
+            'leftOutParameters' => $this->leftOutParameters,
         ];
     }
 
@@ -1236,6 +1249,7 @@ final class AnalysisScope
         $this->passedValues = $snapshot['passedValues'];
         $this->relativeParameters = $snapshot['relativeParameters'];
         $this->guardedParameters = $snapshot['guardedParameters'];
+        $this->leftOutParameters = $snapshot['leftOutParameters'];
     }
 
     /**
@@ -1458,6 +1472,10 @@ final class AnalysisScope
 
             if (isset($snapshot['guardedParameters'][$from])) {
                 $this->guardedParameters[$to] = $snapshot['guardedParameters'][$from];
+            }
+
+            if (isset($snapshot['leftOutParameters'][$from])) {
+                $this->leftOutParameters[$to] = $snapshot['leftOutParameters'][$from];
             }
 
             if (isset($snapshot['varCollectionBindings'][$from])) {
@@ -1683,7 +1701,13 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
-        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters, $this->guardedParameters];
+        return [
+            ...$this->classBindingTables(),
+            $this->varValueBindings,
+            $this->relativeParameters,
+            $this->guardedParameters,
+            $this->leftOutParameters,
+        ];
     }
 
     /**
@@ -1737,6 +1761,7 @@ final class AnalysisScope
                 $this->passedValues[$name],
                 $this->relativeParameters[$name],
                 $this->guardedParameters[$name],
+                $this->leftOutParameters[$name],
             );
         }
     }

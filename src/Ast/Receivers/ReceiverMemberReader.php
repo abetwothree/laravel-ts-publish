@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
@@ -44,7 +45,8 @@ final class ReceiverMemberReader
      * The value `<receiver>->name` sends, unioned over every class the receiver holds; null when any class cannot type
      * it. The caller adds the `| null` of a `?->` or of the receiver's short circuit.
      *
-     * On a variable's join, a plain concrete model lacking the member reads it as null where another class types it.
+     * On a variable's join, a plain concrete model lacking the member reads it as null where another class types it,
+     * and a class only a write's `@var` names that cannot type it is left out with a warning naming the write.
      *
      * @param  bool  $relations  a model's relation answers a name no attribute does, as for `->name`, not for
      *                           getAttributeValue()
@@ -54,6 +56,7 @@ final class ReceiverMemberReader
     {
         $results = [];
         $readsNull = false;
+        $declined = [];
 
         foreach ($held->classes as $heldClass) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
@@ -75,6 +78,12 @@ final class ReceiverMemberReader
                 continue;
             }
 
+            if ($result === null && isset($held->tagOnly[$heldClass])) {
+                $declined[] = $held->tagOnly[$heldClass]['value'];
+
+                continue;
+            }
+
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
                 return null;
@@ -87,6 +96,11 @@ final class ReceiverMemberReader
             return null;
         }
 
+        foreach ($declined as $write) {
+            DroppedUnionArms::record($write, $scope, 'binding-join');
+        }
+
+        DroppedUnionArms::warnOfLeftOut($declined, $scope);
         $union = count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
 
         return $readsNull ? [...$union, 'type' => TsTypeString::withNullArm($union['type'])] : $union;

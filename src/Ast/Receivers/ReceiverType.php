@@ -54,6 +54,9 @@ final readonly class ReceiverType
      *                        them, so a plain concrete model lacking a member another class has reads it as null
      * @param  list<LeftOutWrite>  $leftOut  the writes such a join left out as naming no class, which a read through it
      *                                       warns of where it publishes a type
+     * @param  array<class-string, LeftOutWrite>  $tagOnly  the classes of such a join only a write's inline `@var`
+     *                                                      names, over a value naming none, each with that write: a
+     *                                                      read they cannot answer leaves them out and warns of it
      */
     public function __construct(
         public array $classes,
@@ -74,6 +77,7 @@ final readonly class ReceiverType
         public bool $stringKeyed = false,
         public bool $joined = false,
         public array $leftOut = [],
+        public array $tagOnly = [],
     ) {}
 
     /**
@@ -360,6 +364,16 @@ final readonly class ReceiverType
     }
 
     /**
+     * The same receiver with every class it holds named only by the inline `@var` on a write.
+     *
+     * @param  LeftOutWrite  $write
+     */
+    public function taggedBy(array $write): self
+    {
+        return $this->copy(tagOnly: array_fill_keys($this->classes, $write));
+    }
+
+    /**
      * The same receiver also holding writes a join left out, each once.
      *
      * @param  list<LeftOutWrite>  $writes
@@ -397,6 +411,7 @@ final readonly class ReceiverType
             runtimeInstance: false,
             declaredOnly: false,
             intersections: array_intersect_key($this->intersections, array_flip($classes)),
+            tagOnly: array_intersect_key($this->tagOnly, array_flip($classes)),
         );
     }
 
@@ -453,6 +468,7 @@ final readonly class ReceiverType
      * @param  list<string>|null  $filled
      * @param  Intersections|null  $intersections
      * @param  list<LeftOutWrite>|null  $leftOut
+     * @param  array<class-string, LeftOutWrite>|null  $tagOnly
      */
     private function copy(
         ?array $classes = null,
@@ -469,6 +485,7 @@ final readonly class ReceiverType
         ?bool $stringKeyed = null,
         ?bool $joined = null,
         ?array $leftOut = null,
+        ?array $tagOnly = null,
     ): self {
         return new self(
             classes: $classes ?? $this->classes,
@@ -489,6 +506,7 @@ final readonly class ReceiverType
             stringKeyed: $stringKeyed ?? $this->stringKeyed,
             joined: $joined ?? $this->joined,
             leftOut: $leftOut ?? $this->leftOut,
+            tagOnly: $tagOnly ?? $this->tagOnly,
         );
     }
 }

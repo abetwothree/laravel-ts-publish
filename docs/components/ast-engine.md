@@ -560,14 +560,15 @@ it, and an untyped member stays `unknown`.
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), as a
-top-level `@var` types its write's value in a join past its span; on a bound name's block-final write, only a tag naming
-concrete models or no class keeps its span, so one naming an interface, `Model` or another object leaves the binding's
-reading. A block may not run and a loop runs it again, so a read before the write or past the block stays unbound, as
-does a name a reference can write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). Past an `if`
-that assigns a local on every path, the join below binds it. A name a parameter or a seeded binding holds takes its gaps
-from the join below instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's
-own `$x` never reads its enclosing block's, while a bound name keeps its exit-block gap for the value a closure
-captures, up to the closure's own first `$x = …` of it.
+top-level `@var` types its write's value in a join past its span, a bound name's block-final write's included; where the
+value names no class, the tag's classes join as `tagOnly`, so a read they cannot answer keeps the binding's reading and
+warns ([Receiver types § Property access on a receiver](receiver-types.md#property-access-on-a-receiver)). A block may
+not run and a loop runs it again, so a read before the write or past the block stays unbound, as does a name a reference
+can write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). Past an `if` that assigns a local on
+every path, the join below binds it. A name a parameter or a seeded binding holds takes its gaps from the join below
+instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own `$x` never reads
+its enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up to the closure's
+own first `$x = …` of it.
 `AnalysisScope::copyBindings()` passes a closure parameter the value of the gap one write opened, a block local's or a
 parameter's, and in a gap the old binding may still hold past, that binding joined with the gap's writes.
 
@@ -875,11 +876,13 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 `ConditionalMethodHandler::applyConditionalDefault()`, `MatchHandler`'s arms, `VariableHandler`'s join of a parameter
 past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
 where an earlier value still reaches the read), `ReceiverClassResolver::warnOfLeftOut()` for a receiver's join
-(`binding-join` too: a write no rule types that `fromGap()` left out beside a value naming a class, recorded once a read
-through it publishes a type), the walk's branch join (`walk-branch-join`, naming the last key write or array item the
-branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a spread helper's
-returns (`merge-branch-join`, naming the same for each walked, literal or joined branch). `analyzeClosureUnion()`
-records because `unionResults()` receives only resolved results and cannot name the expression it drops.
+(`binding-join` too: a write no rule types, or an object no class names, that `fromGap()` left out beside a value naming
+a class, recorded once a read through it publishes a type), `ReceiverMemberReader::value()` and
+`ReceiverMethodReturnResolver`'s read of each class (`binding-join` as well: the write of a `tagOnly` class that cannot
+answer), the walk's branch join (`walk-branch-join`, naming the last key write or array item the branch saw, never a
+sibling's, that it reads as `unknown`) and the join of a merge call's sides or a spread helper's returns
+(`merge-branch-join`, naming the same for each walked, literal or joined branch). `analyzeClosureUnion()` records
+because `unionResults()` receives only resolved results and cannot name the expression it drops.
 `CoalesceHandler` strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never returns
 that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
 exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
@@ -902,10 +905,11 @@ Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Wher
 and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
 when nothing was dropped. The three join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
 the read, so beside a typed arm it warns that the published type may not admit every value the read sends. A receiver's
-join publishes no type of its own, so `ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` warn through
-`ReceiverClassResolver::warnOfLeftOut()` once their read publishes one, of each left-out write no rule types; a typed
-one, a string's or an array's, holds no object a member read could answer, and past a write naming no class where
-`receiversKeep` holds, a member read keeps the old class, so neither warns.
+join publishes no type of its own, so `ReceiverPropertyFetchHandler`, `ReceiverMethodCallHandler` and
+`VariableHandler`'s read of a bound parameter's attribute warn through `ReceiverClassResolver::warnOfLeftOut()` once
+their read publishes one: of a left-out write no rule types, and through `warnOfUnnamedObject()` of one typed as an
+object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could answer,
+and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither warns.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
 `provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the

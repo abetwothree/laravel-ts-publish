@@ -14,9 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\CollectsInstanceofGuards
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -463,23 +461,6 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether the inline `@var` on an assignment names a class other than a concrete model, such as an interface, the
-     * abstract `Model` or a plain object, whose member a join could not read as null.
-     */
-    private function declaresOtherThanModels(ExpressionStmt $assignment, string $name, AnalysisScope $scope): bool
-    {
-        $tag = $this->varTag($assignment, $name, $scope);
-        $declared = $tag === null ? null : DeclaredClasses::docblockType(
-            $tag[0],
-            $scope->declaringFileClass,
-            $scope->runtime->class->getName(),
-            $scope->declaringFileClass->getName(),
-        );
-
-        return $declared !== null && ! array_all($declared['classes'], ReceiverType::isConcreteModel(...));
-    }
-
-    /**
      * Bind the assignments of one nested block, then those of the blocks its statements hold.
      *
      * @param  array<Node\Stmt>  $block
@@ -522,17 +503,15 @@ trait CollectsLocalVarBindings
     ): void {
         $after = $statement->getEndFilePos();
         $end = $this->blockSpanEnd($name, $after, $block, $writes);
-        $bound = $scope->bindsName($name);
 
-        // With nothing of its block past it, the `@var` still types the value a join carries past the block. A bound
-        // name's tag naming another class would end its binding, and only a concrete model reads a lacking member null.
-        if ($end === null || ($end <= $after && $bound && $this->declaresOtherThanModels($statement, $name, $scope))) {
+        // With nothing of its block past it, the `@var` still types the value a join carries past the block.
+        if ($end === null) {
             return;
         }
 
         $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope);
 
-        if ($end > $after && ! $bound) {
+        if ($end > $after && ! $scope->bindsName($name)) {
             $scope->bindingGaps[$name][] = [$after, $end, [$assign->expr], false, false];
         }
     }

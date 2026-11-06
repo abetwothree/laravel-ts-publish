@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,6 +48,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
+use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -643,8 +645,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types. A
-     * typed one, such as a string or an array, holds no object a member read could answer, so it is left out quietly.
+     * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types, and an
+     * object no class names. A scalar, an array or `null` holds no object a member read could answer, so it is left out
+     * quietly.
      *
      * @param  ValueExpressionResult  $read
      */
@@ -655,6 +658,7 @@ final class ReceiverClassResolver
         }
 
         $untyped = [];
+        $objects = [];
 
         foreach ($receiver->leftOut as ['name' => $name, 'value' => $value]) {
             // Only the type is wanted: what reading the write drops or warns of belongs to the write, not this read.
@@ -666,10 +670,14 @@ final class ReceiverClassResolver
             if ($type === null || $type === 'unknown') {
                 DroppedUnionArms::record($value, $scope, 'binding-join');
                 $untyped[] = $value;
+            } elseif (! $this->holdsNoObject($value, $type)) {
+                DroppedUnionArms::record($value, $scope, 'binding-join');
+                $objects[] = $value;
             }
         }
 
         DroppedUnionArms::warnOfLeftOut($untyped, $scope);
+        DroppedUnionArms::warnOfUnnamedObject($objects, $scope);
     }
 
     /**
@@ -838,12 +846,15 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
-     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys. A parameter
-     * in relativeParameters reads by its declarations, and one in guardedParameters keeps its guard.
+     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys.
+     *
+     * A parameter in relativeParameters reads by its declarations, one in guardedParameters keeps its guard, and one in
+     * leftOutParameters keeps the writes the join it was bound from left out.
      */
     private function fromBindings(string $name, AnalysisScope $scope, ?Variable $read = null): ?ReceiverType
     {
         $held = $this->boundReceiver($name, $scope, $read);
+        $held = isset($scope->leftOutParameters[$name]) ? $held?->leavingOut($scope->leftOutParameters[$name]) : $held;
         $held = match ($scope->guardedParameters[$name] ?? null) {
             'unread', 'guarded' => $held?->asGuarded(),
             'element' => $held?->asGuardingElement(),
@@ -956,15 +967,24 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a value a gap's write assigned, as the inline `@var` on that write declares where it has one.
+     * Resolve a value a gap's write assigned, as the inline `@var` on that write declares where it has one: tagged by
+     * that write where the value names no class, so a read its classes cannot answer gives way to the join's others. A
+     * `self`, `static` or `parent` tag is read by its declarations, which stand.
      */
     private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
     {
         $span = $scope->declaredWrite($name, $value);
 
-        return $span === null
-            ? $this->fromBoundExpression($name, $value, $scope)
-            : $this->resolveDeclared($name, $span, $scope);
+        if ($span === null) {
+            return $this->fromBoundExpression($name, $value, $scope);
+        }
+
+        $declared = $this->resolveDeclared($name, $span, $scope);
+        $assigned = $this->unguarded($this->fromBoundExpression($name, $value, $scope), $this->expandedAlias($span));
+
+        return isset($span['relative']) || ($assigned !== null && array_any($assigned->classes, $this->isNameable(...)))
+            ? $declared
+            : $declared?->taggedBy(['name' => $name, 'value' => $value]);
     }
 
     /**
@@ -981,6 +1001,20 @@ final class ReceiverClassResolver
     private function fromBoundExpression(string $name, Expr $bound, AnalysisScope $scope): ?ReceiverType
     {
         return $scope->resolvingBinding($name, $bound, fn (): ?ReceiverType => $this->resolve($bound, $scope));
+    }
+
+    /**
+     * Whether a typed value holds no object: an array literal or cast, or a type whose every arm is a scalar, `null` or
+     * a list. A shape or a record may be an array or an object alike, so only the syntax tells an array's apart.
+     */
+    private function holdsNoObject(Expr $value, string $type): bool
+    {
+        return $value instanceof Array_
+            || $value instanceof Cast\Array_
+            || array_all(
+                TsTypeString::splitTopLevelUnion($type),
+                fn (string $arm): bool => preg_match('/^(?:string|number|boolean|bigint|null|true|false|-?[\d.]+|([\'"]).*\1|.+\[\]|\[.*\])$/s', $arm) === 1,
+            );
     }
 
     /**
@@ -1018,11 +1052,9 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return $this->carried($receiver, $this->merge(
-            array_map(
-                fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($receiver->memberOwner($class, $name, false), $name),
-                $receiver->classes,
-            ),
+        return $this->carried($receiver, $this->mergeEach(
+            $receiver,
+            fn (string $class): ?ReceiverType => ReceiverMemberReader::classes($receiver->memberOwner($class, $name, false), $name),
             $receiver->shortCircuits || $fetch instanceof NullsafePropertyFetch,
         ));
     }
@@ -1248,11 +1280,9 @@ final class ReceiverClassResolver
             return $read;
         }
 
-        $result = $this->merge(
-            array_map(
-                fn (string $class): ?ReceiverType => $this->memberMethod($receiver->memberOwner($class, $method, true), $method, false, $receiver->relatedModel),
-                $receiver->classes,
-            ),
+        $result = $this->mergeEach(
+            $receiver,
+            fn (string $class): ?ReceiverType => $this->memberMethod($receiver->memberOwner($class, $method, true), $method, false, $receiver->relatedModel),
             $shortCircuits,
         );
 
@@ -2474,7 +2504,7 @@ final class ReceiverClassResolver
      * only when every part agrees on them; a collection is keyed, a model unsaved or attributeless, and a receiver read
      * by declarations or guarded, when any part is, and a surviving element guarded where any part's is.
      *
-     * Each part's left-out writes stay.
+     * Each part's left-out writes stay, and a class stays tagged where every part holding it tags it.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -2495,6 +2525,8 @@ final class ReceiverClassResolver
         $guardsElement = false;
         $stringKeyed = true;
         $leftOut = [];
+        $tagOnly = [];
+        $untagged = [];
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -2502,6 +2534,8 @@ final class ReceiverClassResolver
             }
 
             $leftOut = [...$leftOut, ...$type->leftOut];
+            $tagOnly = [...$tagOnly, ...$type->tagOnly];
+            $untagged = [...$untagged, ...array_diff($type->classes, array_keys($type->tagOnly))];
 
             $parts[] = $type;
             $classes = [...$classes, ...$type->classes];
@@ -2544,9 +2578,38 @@ final class ReceiverClassResolver
             guarded: $guarded,
             guardsElement: $elementModel !== null && $guardsElement,
             stringKeyed: $stringKeyed,
+            tagOnly: array_diff_key($tagOnly, array_flip($untagged)),
         );
 
         return $merged->leavingOut($leftOut);
+    }
+
+    /**
+     * Merge what each class a receiver holds answers, as merge() does; a class only a write's `@var` names that answers
+     * nothing is left out instead, its write kept for the read through the result to warn of.
+     *
+     * @param  Closure(class-string): ?ReceiverType  $answer
+     */
+    private function mergeEach(ReceiverType $receiver, Closure $answer, bool $shortCircuits): ?ReceiverType
+    {
+        $parts = [];
+        $declined = [];
+
+        foreach ($receiver->classes as $class) {
+            $part = $answer($class);
+
+            if ($part === null && isset($receiver->tagOnly[$class])) {
+                $declined[] = $receiver->tagOnly[$class];
+
+                continue;
+            }
+
+            $parts[] = $part;
+        }
+
+        $merged = $parts === [] ? null : $this->merge($parts, $shortCircuits);
+
+        return $declined === [] ? $merged : $merged?->leavingOut($declined);
     }
 
     /**

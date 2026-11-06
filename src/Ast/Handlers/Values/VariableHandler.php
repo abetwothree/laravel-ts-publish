@@ -112,10 +112,18 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            $boundModel = resolve(ReceiverClassResolver::class)->boundModel($expr->var, $scope);
+            $receivers = resolve(ReceiverClassResolver::class);
+            $boundModel = $receivers->boundModel($expr->var, $scope);
             $attribute = $boundModel === null ? null : $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
 
             if ($attribute !== null && $attribute['type'] !== 'unknown') {
+                // A parameter bound from a join's element warns of what that join left out, as a receiver's read does.
+                $held = isset($scope->leftOutParameters[$expr->var->name]) ? $receivers->resolve($expr->var, $scope) : null;
+
+                if ($held !== null) {
+                    $receivers->warnOfLeftOut($held, $attribute, $scope, $engine);
+                }
+
                 return $attribute;
             }
         }
@@ -717,6 +725,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             $engine,
             unread: $receiver?->guarded === true && ! $this->mayHoldCollection($call->var, $declared, $scope),
             guardsElement: $receiver?->guardsItems() === true,
+            leftOut: $receiver->leftOut ?? [],
         );
 
         return $this->mappedList($bodyResult, $receiver?->keyed === true, $receiver?->shortCircuits === true);
