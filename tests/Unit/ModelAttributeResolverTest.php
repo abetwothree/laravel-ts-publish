@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeDel
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeFilterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixedGetCastableReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
@@ -65,6 +66,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializeComment;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralNullCycleProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MixedGetCastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
@@ -1970,7 +1972,7 @@ test('an array serialize() without the interface publishes its own type over a g
 ]);
 
 // Model::toArray() calls serialize() whenever the caster has the method, but a read off the model gets get()'s value,
-// which json_encode() writes as it is; a get() declaring only `mixed` leaves the reading as it was.
+// which json_encode() writes as it is; a get() declaring only `mixed` publishes what its returns prove, else as before.
 test('a cast with a serialize() method publishes serialize()\'s type for the model and get()\'s for a read off it', function (string $column, string $columnType, string $readType, string $raw, string $sent, string $read) {
     $resolver = resolve(ModelAttributeResolver::class);
     $post = (new LabelSerializePost)->setRawAttributes([$column => $raw]);
@@ -1983,7 +1985,7 @@ test('a cast with a serialize() method publishes serialize()\'s type for the mod
     'a label get() without the interface' => ['title', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
     'a label get() with the interface' => ['content', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
     'a number get() without the interface' => ['user_id', 'string', 'number', '7', '"n7"', '7'],
-    'a get() declaring mixed with the interface, as published before' => ['category', 'string', 'string', '7', '"p7"', '{"x":7,"y":1}'],
+    'a get() declaring mixed with the interface, as its returns prove' => ['category', 'string', '{ x: number; y: number }', '7', '"p7"', '{"x":7,"y":1}'],
     'a get() declaring mixed without the interface, as published before' => ['status', 'string', 'unknown | null', '7', '"7"', '"7"'],
 ]);
 
@@ -1995,7 +1997,7 @@ test('a resource reading a serializing cast off its model publishes get()\'s typ
         'method_label_whole' => '{ text: string }',
         'interface_label' => '{ text: string }',
         'interface_label_whole' => '{ text: string }',
-        'mixed_interface' => 'string',
+        'mixed_interface' => '{ x: number; y: number }',
         'number' => 'number',
         'mixed_method' => 'unknown | null',
     ])->and(json_encode(LabelSerializeReadResource::make($post)->resolve()))
@@ -2050,6 +2052,25 @@ test('a read of a column cast to a Castable that is not the value publishes its 
         ->and(json_encode(CastableValueReadResource::make($post)->resolve()))
         ->toBe('{"declared_base":{"text":"a"},"declared_base_whole":{"text":"a"},"propertied":{"text":"c"}}')
         ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"c"');
+});
+
+// A get() declaring only `mixed` says nothing of the value, so its returns say what a read off the model sends; where
+// they prove nothing, the read keeps the column's type.
+test('a read of a column whose caster\'s get() declares only mixed publishes what its returns prove', function () {
+    $post = (new MixedGetCastablePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'category' => 'c']);
+    $columns = (new ModelTransformer(MixedGetCastablePost::class))->data()->columns;
+
+    expect(resourceProps(MixedGetCastableReadResource::class))->toBe([
+        'castable_mixed_get' => '{ text: string }',
+        'caster_mixed_get' => '{ text: string }',
+        'nested_only' => '{ title: { text: string }; content: { text: string } }',
+        'opaque_castable' => $columns['category']['type'],
+        'opaque_only' => "Pick<MixedGetCastablePost, 'category'>",
+    ])->and(json_encode(MixedGetCastableReadResource::make($post)->resolve()))->toBe(
+        '{"castable_mixed_get":{"text":"a"},"caster_mixed_get":{"text":"b"},'
+        .'"nested_only":{"title":{"text":"a"},"content":{"text":"b"}},"opaque_castable":"c","opaque_only":{"category":"c"}}',
+    )->and([$columns['title']['type'], $columns['content']['type'], $columns['category']['type']])->toBe(['string', 'string', 'string'])
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"b"', '"category":"oc"');
 });
 
 // self:: runs the parent's own stop(), which returns, so a NULL falls off get()'s end and is sent unserialized.

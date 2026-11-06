@@ -989,14 +989,15 @@ date object instead, yet publishes the same type. The reverse holds for a new-st
 body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
 in both places, so declare one, or type the key with `#[TsCasts]`.
 
-### A serializing class cast whose `get()` declares nothing publishes `serialize()`'s type wherever it is read
+### A serializing class cast whose `get()` proves nothing publishes `serialize()`'s type wherever it is read
 
 A class cast whose caster has a `serialize()` method publishes, on the model, the type `Model::toArray()` writes:
 what `serialize()` declares, or, where it declares nothing or only `mixed`, what its returns prove. An API resource
 that reads the attribute off the model, directly or through `only()` or `except()`, sends the `get()` value instead,
-and publishes `get()`'s type. Where `get()` declares nothing or only `mixed`, as Laravel's `make:cast` stub does, a
-caster implementing `SerializesCastableAttributes` still publishes `serialize()`'s type there, as it always has.
-Declare `get()`'s return type, or type the key with `#[TsCasts]`.
+and publishes `get()`'s type. Where `get()` declares nothing or only `mixed`, as Laravel's `make:cast` stub does, it
+publishes what `get()`'s returns prove; where they prove nothing, as `return $value;` does, a caster implementing
+`SerializesCastableAttributes` still publishes `serialize()`'s type there, as it always has. Declare `get()`'s return
+type, or type the key with `#[TsCasts]`.
 
 Laravel sends a null `get()` value without calling `serialize()`, but a declared `serialize()` type gains `| null` only
 where `get()` declares one or returns a literal `null` itself. A null that `get()` passes on from another member or

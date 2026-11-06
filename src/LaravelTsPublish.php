@@ -379,6 +379,11 @@ class LaravelTsPublish
                 ?? $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
                 ?? $this->castGetReturnTypes(new ReflectionClass($phpType));
 
+            // A read of the value sends what get() returns, so where it declares only `mixed` its returns may prove it.
+            if ($this->readsCastValue && TsTypeString::isUnknownOnly($castReturnType['type'])) {
+                $castReturnType = $this->getBodyTypes($phpType) ?? $castReturnType;
+            }
+
             if ($castReturnType['type'] !== 'unknown') {
                 return $castReturnType;
             }
@@ -1804,7 +1809,7 @@ class LaravelTsPublish
         $body = $this->readCasterBody(
             $caster,
             'serialize',
-            fn (): ?array => $this->provenSerializeBody($caster),
+            fn (): ?array => $this->provenCasterBody($caster, 'serialize'),
             fn (?array $info): bool => $info !== null,
         );
 
@@ -3536,8 +3541,8 @@ class LaravelTsPublish
 
     /**
      * The type a read of a `Castable` cast's value off its model sends under castValueToTsType(): what the get() of
-     * each caster its `castUsing()` names returns, declared first, then returned. Null outside such a read, or where a
-     * caster's get() reads nothing, which leaves the Castable to type the value it may also be.
+     * each caster its `castUsing()` names returns, declared first, then returned. Null outside such a read. Where a
+     * caster's get() reads nothing, the column's serialized type, else null to leave the Castable to type the value.
      *
      * @return TypeScriptTypeInfo|null
      */
@@ -3552,7 +3557,17 @@ class LaravelTsPublish
         $infos = $this->castersValueTypes(CastCasters::declared($castable))
             ?? $this->castersValueTypes(CastCasters::returned($castable));
 
-        return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
+        if ($infos !== null) {
+            return $this->mergeTypeScriptInfos($infos);
+        }
+
+        $this->readsCastValue = false;
+
+        try {
+            return $this->castableSerializedTypes($cast);
+        } finally {
+            $this->readsCastValue = true;
+        }
     }
 
     /**
@@ -3605,16 +3620,34 @@ class LaravelTsPublish
     }
 
     /**
-     * What serialize()'s returns prove, read with no union arm left out; null where they prove nothing but a vague
+     * The type a caster's get() returns where it declares only `mixed`, as its own returns prove; null where they prove
+     * nothing but a vague type, or name a class a cast type cannot import.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    private function getBodyTypes(string $caster): ?array
+    {
+        return $this->readCasterBody(
+            $caster,
+            'get',
+            fn (): ?array => $this->provenCasterBody($caster, 'get'),
+            fn (?array $info): bool => $info !== null,
+            'value',
+        );
+    }
+
+    /**
+     * What a caster method's returns prove, read with no union arm left out; null where they prove nothing but a vague
      * type, or name a model, a resource or another class whose import a cast type cannot carry.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
      */
-    private function provenSerializeBody(string $caster): ?array
+    private function provenCasterBody(string $caster, string $method): ?array
     {
         $dropped = DroppedUnionArms::dropped();
-        $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'serialize');
+        $result = resolve(AstEngine::class)->analyzeMethodValue($caster, $method);
 
         if ($result === null || DroppedUnionArms::dropped() !== $dropped || ! $this->provesType($result['type'])) {
             return null;
@@ -3713,11 +3746,12 @@ class LaravelTsPublish
      * @param  class-string  $caster
      * @param  Closure(): TRead  $read
      * @param  Closure(TRead): bool  $kept
+     * @param  string  $reading  what the read answers, apart from another read of the same body
      * @return TRead|null
      */
-    private function readCasterBody(string $caster, string $method, Closure $read, Closure $kept): mixed
+    private function readCasterBody(string $caster, string $method, Closure $read, Closure $kept, string $reading = ''): mixed
     {
-        $key = self::CASTER_BODY_GUARD.$caster.'@'.$method;
+        $key = self::CASTER_BODY_GUARD.$caster.'@'.$method.($reading === '' ? '' : ':'.$reading);
         $memo = resolve(AnalysisMemo::class);
 
         return $memo->remember($key, function () use ($caster, $method, $key, $memo, $read, $kept): mixed {
