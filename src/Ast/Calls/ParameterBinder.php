@@ -373,14 +373,15 @@ final class ParameterBinder
             return $value;
         }
 
-        $enum = $value['directEnumFqcn'] ?? null;
+        $direct = $value['directEnumFqcn'] ?? null;
+        $enums = array_values(array_unique([...($direct === null ? [] : [$direct]), ...($value['embeddedEnumFqcns'] ?? [])]));
         $arms = [];
-        $keepsEnum = false;
+        $kept = [];
 
         foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
-            $enumArm = $enum !== null && self::enumArmFits($arm, $enum, $scalars);
-            $keepsEnum = $keepsEnum || $enumArm;
-            array_push($arms, ...($enumArm || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+            $enum = array_find($enums, static fn (string $enum): bool => self::enumArmFits($arm, $enum, $scalars));
+            $kept = $enum === null ? $kept : [...$kept, $enum];
+            array_push($arms, ...($enum !== null || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
         }
 
         $type = implode(' | ', array_values(array_unique($arms)));
@@ -389,7 +390,13 @@ final class ParameterBinder
             return $value;
         }
 
-        return [...ValueResult::unknown(), 'type' => $type, ...($keepsEnum && $enum !== null ? ['directEnumFqcn' => $enum] : [])];
+        // An enum's alias the parameter takes as it is keeps the channel that imports it.
+        return [
+            ...ValueResult::unknown(),
+            'type' => $type,
+            ...($direct !== null && in_array($direct, $kept, true) ? ['directEnumFqcn' => $direct] : []),
+            ...(array_diff($kept, [$direct]) === [] ? [] : ['embeddedEnumFqcns' => array_values(array_unique(array_diff($kept, [$direct])))]),
+        ];
     }
 
     /**

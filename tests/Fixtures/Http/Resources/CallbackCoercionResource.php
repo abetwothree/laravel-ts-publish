@@ -34,6 +34,7 @@ final class CallbackCoercionResource extends JsonResource
             'enum_value_int' => collect([Status::from(1)->value])->map(fn (int $v) => $v)->all(),
             'enum_value_array_map_int' => array_map(fn (int $v) => $v, [Status::from(1)->value]),
             'enum_value_string' => collect([Status::from(1)->value])->map(fn (string $v) => $v)->all(),
+            'enum_value_or_zero' => collect([$this->resource->status?->value ?? 0])->map(fn (int $v) => $v)->all(),
             'models_as_strings' => array_map(fn (string $c) => $c, $this->resource->comments->all()),
             'models_mapped_as_strings' => $this->resource->comments->map(fn (string $c) => $c)->all(),
             'when_has_string' => $this->whenHas('id', fn (string $v) => $v),

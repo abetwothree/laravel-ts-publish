@@ -833,6 +833,7 @@ test('reads a value as a scalar parameter receives it in coercive mode', functio
     'an int-backed enum value kept by int' => ['int $v', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]],
     'an int-backed enum value kept beside a converted arm' => ['int $v', ['type' => 'StatusType | string', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusType | number', 'optional' => false, 'directEnumFqcn' => Status::class]],
     'an int-backed enum value converted by string' => ['string $v', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'string', 'optional' => false]],
+    'an enum value a union names, kept beside a number' => ['int $v', ['type' => 'StatusType | string', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]], ['type' => 'StatusType | number', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]],
     'an enum case name kept by string' => ['string $v', ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class]],
     'a class type left as it is' => ['Post $v', ['type' => 'Post', 'optional' => false], ['type' => 'Post', 'optional' => false]],
     'an unknown value left as it is' => ['int $v', ['type' => 'unknown', 'optional' => false], ['type' => 'unknown', 'optional' => false]],

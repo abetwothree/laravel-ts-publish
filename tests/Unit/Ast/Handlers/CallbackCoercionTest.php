@@ -31,12 +31,14 @@ it('types a scalar callback parameter as the type PHP converts the passed value 
         'enum_value_int' => 'StatusType[]',
         'enum_value_array_map_int' => 'StatusType[]',
         'enum_value_string' => 'string[]',
+        'enum_value_or_zero' => '(StatusType | number)[]',
         'models_as_strings' => 'string[]',
         'models_mapped_as_strings' => 'string[]',
         'when_has_string?' => 'string',
         'transform_string?' => 'string',
         'exists_loaded_string?' => 'string',
     ])->and([$sent['enum_value_int'], $sent['enum_value_array_map_int'], $sent['enum_value_string']])->toBe([[1], [1], ['1']])
+        ->and($sent['enum_value_or_zero'])->toBe([0])
         ->and([$sent['models_as_strings'], $sent['models_mapped_as_strings']])->toBe([[$comment], [$comment]])
         ->and([$sent['when_has_string'], $sent['transform_string'], $sent['exists_loaded_string']])->toBe(['7', '7', '1']);
 });
