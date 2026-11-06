@@ -94,9 +94,9 @@ it('types Conditionable::when() and unless() as the callback, the default or the
         ->and([$pinned['void_or_default']['post']['id'], $unpinned['void_or_default']])->toBe([7, 'b']);
 });
 
-// Laravel calls a callable with the object and the value the call holds, so a write in the callable's body to a name
-// either reads changes neither: each is read as the caller reads it. A variable a closure captures by reference reads
-// `unknown` wherever the closure may have written it, so that key declines.
+// Laravel calls a callable with the object and the value the call holds, so neither a parameter named like a variable
+// either reads nor a write in the callable's body changes them: each is read as the caller reads it. A variable a
+// closure captures by reference reads `unknown` wherever the closure may have written it, so that key declines.
 it('passes a callable the object and the value as the caller reads them', function () {
     $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableRebindingEvent(
         (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
@@ -108,7 +108,20 @@ it('passes a callable the object and the value as the caller reads them', functi
         'looped' => 'boolean | { post: Post }',
         'receiver_assigned' => 'string | { id: string }',
         'referenced' => 'unknown',
+        'receiver_shadow' => 'string | { name: string }',
+        'receiver_shadow_rewritten' => 'string | { name: string }',
+        'condition_shadow' => 'boolean | { post: Post }',
+        'condition_shadow_rewritten' => 'boolean | { post: Post }',
+        'default_shadow' => 'string | boolean',
+        'default_shadow_rewritten' => 'string | boolean',
+        'value_shadow' => 'boolean | { post: Post }',
+        'rest_shadow' => 'boolean[] | { post: Post }',
+        'receiver_second_shadow' => 'string | { id: string }',
     ])->and([$pinned['assigned'], $pinned['looped'], $pinned['referenced']])->toBe([true, true, true])
+        ->and([$pinned['receiver_shadow'], $unpinned['receiver_shadow'], $pinned['receiver_shadow_rewritten']])->toBe(['box', ['name' => 'box'], 'box'])
+        ->and([$pinned['condition_shadow'], $pinned['condition_shadow_rewritten'], $unpinned['condition_shadow']['post']['id']])->toBe([true, true, 7])
+        ->and([$pinned['default_shadow'], $unpinned['default_shadow'], $unpinned['default_shadow_rewritten']])->toBe(['a', false, false])
+        ->and([$pinned['value_shadow'], $pinned['rest_shadow'], $pinned['receiver_second_shadow']])->toBe([true, [true], 'n'])
         ->and([$unpinned['assigned']['post']['id'], $unpinned['looped']['post']['id'], $unpinned['referenced']['post']['id']])->toBe([7, 7, 7])
         ->and([$pinned['receiver_assigned'], $unpinned['receiver_assigned']])->toBe(['n', 'n']);
 });
@@ -141,25 +154,20 @@ it('keeps the answers it had for a when() that is not Conditionable\'s two-callb
         'dropped_arm' => 'unknown',
         'dropped_in_helper' => 'unknown',
         'uncalled_closure' => 'unknown',
-        'shadowed_value' => 'unknown',
-        'shadowed_rest' => 'unknown',
-        'shadowed_receiver' => 'unknown',
     ]);
 });
 
-// A callable reads the object and the value in its own scope, where a same-named parameter hides the variable the call
-// passes. A closure a callable returns is sent as `{}`, as nothing calls it, and an arm read with a value left out or
-// an `unknown` arm would publish a type Laravel does not keep to.
+// A closure a callable returns is sent as `{}`, as nothing calls it, and an arm read with a value left out or an
+// `unknown` arm would publish a type Laravel does not keep to.
 it('declines Conditionable::when() where a callable cannot be read for what Laravel sends', function () {
     $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableDeclinedEvent(
         (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
     )->broadcastWith()), true);
     $pinned = $sent(true);
 
-    expect([$pinned['shadowed_value'], $pinned['shadowed_rest'], $pinned['shadowed_receiver']])->toBe([true, [true], 'n'])
-        ->and([$pinned['dropped_arm'], $pinned['dropped_in_helper'], $pinned['uncalled_closure']])->toBe([['a' => 1], [1], []])
+    expect([$pinned['dropped_arm'], $pinned['dropped_in_helper'], $pinned['uncalled_closure']])->toBe([['a' => 1], [1], []])
         ->and($pinned['unknown_arm'])->toBe(['a' => 'x'])
-        ->and($sent(false)['shadowed_value']['post']['id'])->toBe(7)
+        ->and($sent(false)['dropped_arm']['post']['id'])->toBe(7)
         ->and(AnalysisWarnings::all())->toBe([]);
 
     expect(conditionableCallKeys(ConditionableDeclinedEvent::class))->toMatchArray([
@@ -167,9 +175,6 @@ it('declines Conditionable::when() where a callable cannot be read for what Lara
         'dropped_arm' => 'unknown',
         'dropped_in_helper' => 'unknown',
         'uncalled_closure' => 'unknown',
-        'shadowed_value' => 'unknown',
-        'shadowed_rest' => 'unknown',
-        'shadowed_receiver' => 'unknown',
     ])->and(AnalysisWarnings::all())->toBe([]);
 });
 

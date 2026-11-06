@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConditionablePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyedBox;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnWhenBox;
 use Closure;
 use Illuminate\Broadcasting\Channel;
@@ -45,15 +44,13 @@ final class ConditionableDeclinedEvent implements ShouldBroadcast
 
     /**
      * The payload: a proxy, a class's own when(), a model's, a Conditionable model's own, a query's, a callback no
-     * reader types or reads with an arm left out, one returning a closure, one whose parameter shadows a name the
-     * receiver or condition reads, and an object whose JSON none does.
+     * reader types or reads with an arm left out, one returning a closure, and an object whose JSON none does.
      *
      * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
         $pinned = $this->post->is_pinned;
-        $keyed = new KeyedBox;
 
         return [
             'proxy' => $this->when($pinned),
@@ -70,9 +67,6 @@ final class ConditionableDeclinedEvent implements ShouldBroadcast
             'dropped_arm' => $this->when($pinned, fn (): ?object => $pinned ? json_decode('{"a":1}') : null),
             'dropped_in_helper' => $this->when($pinned, fn () => $this->decodedOrNull($pinned)),
             'uncalled_closure' => $this->when($pinned, fn (): ?Closure => $pinned ? fn () => 1 : null),
-            'shadowed_value' => $this->when($pinned, fn ($pinned, $value) => $value),
-            'shadowed_rest' => $this->when($pinned, fn ($pinned, ...$rest) => $rest),
-            'shadowed_receiver' => $keyed->when($this->post, fn ($held, $keyed) => $held->id),
         ];
     }
 }

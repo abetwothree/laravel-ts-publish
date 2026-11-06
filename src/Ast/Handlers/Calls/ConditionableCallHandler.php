@@ -28,7 +28,6 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
-use PhpParser\NodeFinder;
 use ReflectionMethod;
 
 /**
@@ -79,11 +78,6 @@ final class ConditionableCallHandler implements ExpressionHandler
 
         $object = $expr->var;
         $condition = $arguments->named('value')?->value;
-        $passedAsWritten = array_filter([$this->isThis($object) ? null : $object, $this->calledFirst($condition) ? null : $condition]);
-
-        if ($this->shadowsPassed($callables, array_values($passedAsWritten))) {
-            return null;
-        }
 
         // A declined read leaves neither the dropped arms it raised nor their warnings, as the call was never read.
         return DroppedUnionArms::provisional(
@@ -178,34 +172,6 @@ final class ConditionableCallHandler implements ExpressionHandler
                 ? ['value' => $engine->resolve($condition), 'receiver' => resolve(ReceiverClassResolver::class)->resolve($condition, $scope)]
                 : $unread,
         ];
-    }
-
-    /**
-     * Whether a callable names a parameter after a variable read by the object or the condition the call is written
-     * with, as passed: a reading the call keeps conservative, though both are read in the caller's scope.
-     *
-     * @param  non-empty-list<Expr>  $callables
-     * @param  list<Expr>  $passed
-     */
-    private function shadowsPassed(array $callables, array $passed): bool
-    {
-        $read = [];
-
-        foreach ($passed as $value) {
-            foreach (new NodeFinder()->findInstanceOf($value, Variable::class) as $variable) {
-                $read[] = $variable->name;
-            }
-        }
-
-        foreach ($callables as $callable) {
-            foreach ($callable instanceof ArrowFunction || $callable instanceof ClosureExpr ? $callable->params : [] as $param) {
-                if ($param->var instanceof Variable && in_array($param->var->name, $read, true)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

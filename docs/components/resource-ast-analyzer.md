@@ -488,13 +488,12 @@ Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a
 `$this`. [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) types it, required, as
 the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
 of a `null` either returns and of a default not passed. Each callable is passed the object, with the receiver it holds,
-and the condition as the caller reads them (`ParameterBinder::bindReadArguments()`), so a write in its body to a name
-either reads changes neither. It declines with fewer than two arguments, which return a `HigherOrderWhenProxy`; on a
-model, a query or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class declaring its own `when()`; where
-a callable names a parameter after a variable the object or the condition reads; and where a call's value or the
-object's JSON reads an `unknown` arm, drops an arm, or holds a closure Laravel hands back uncalled. A declined read
-keeps neither the arms it dropped nor their warnings (`DroppedUnionArms::provisional()`); a warning added directly, such
-as a first-class callable's, can remain.
+and the condition as the caller reads them (`ParameterBinder::bindReadArguments()`), so neither a parameter named like a
+variable either reads nor a write in its body changes them. It declines with fewer than two arguments, which return a
+`HigherOrderWhenProxy`; on a model, a query or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class
+declaring its own `when()`; and where a call's value or the object's JSON reads an `unknown` arm, drops an arm, or holds
+a closure Laravel hands back uncalled. A declined read keeps neither the arms it dropped nor their warnings
+(`DroppedUnionArms::provisional()`); a warning added directly, such as a first-class callable's, can remain.
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
