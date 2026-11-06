@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
@@ -538,7 +539,8 @@ describe('custom cast get() docblock', function () {
     });
 });
 
-// Model::toArray() writes what a SerializesCastableAttributes caster's serialize() returns, never the get() value.
+// Model::toArray() writes what a caster's serialize() returns, never the get() value, whether or not the caster
+// implements SerializesCastableAttributes: Laravel checks for the method.
 describe('a cast whose caster serializes', function () {
     test('publishes the type serialize() declares', function (string $cast, string $type) {
         expect($this->service->castToTsType($cast)['type'])->toBe($type);
@@ -547,6 +549,7 @@ describe('a cast whose caster serializes', function () {
         'a ?string serialize()' => [NullableSerializedLabelCast::class, 'string | null'],
         'a Castable whose castUsing() names a serializing caster' => [SerializedLabelCastable::class, 'string'],
         'an untyped serialize(), which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
+        'a serialize() method without the interface' => [NoInterfaceTypedSerializeCast::class, 'string'],
     ]);
 
     test('keeps the value type of a Castable, which a resource can send as itself', function () {

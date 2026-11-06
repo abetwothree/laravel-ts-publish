@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
@@ -57,6 +58,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeMode
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedPropertyTagsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
@@ -910,6 +912,7 @@ test('a type holds a nullable column\'s null by a top-level arm, by any null und
     'a Castable whose caster is anonymous' => [AnonymousCasterCastable::class, false, false],
     'a serializing caster whose serialize() declares nothing' => [BlankToNullSerializeCast::class, false, false],
     'a caster that is inbound too' => [InboundDualCast::class, false, false],
+    'a serialize() method declaring nothing, without the interface' => [NoInterfaceSerializeCast::class, false, false],
 ]);
 
 // Model::toArray() writes a serializing caster's serialize(), and never reads a caster that is inbound too.
@@ -923,6 +926,17 @@ test('a nullable column cast to a class whose get() does not decide what toArray
     'a caster that is inbound too' => ['coordinate_data', 'string | null', true],
     'a serialize() declaring a non-null type' => ['status', 'string', false],
     'a serialize() that may return null' => ['color', 'string | null', true],
+]);
+
+// Laravel calls a caster's serialize() method whether or not the caster implements SerializesCastableAttributes.
+test('a nullable column cast to a class with a serialize() method but not the interface publishes what serialize() sends', function (string $column, string $type, mixed $sent) {
+    $row = sentAsJson((new SerializeMethodWarehouse)->setRawAttributes(['phone' => null, 'coordinate_data' => null])->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializeMethodWarehouse::class, $column)['type'])->toBe($type)
+        ->and($row->{$column})->toBe($sent);
+})->with([
+    'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', null],
+    'a serialize() declaring a non-null string over a get() returning a number' => ['coordinate_data', 'string', 'n0'],
 ]);
 
 test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {
@@ -977,6 +991,17 @@ test('an accessor whose native return does not decide its null keeps the looser 
 })->with([
     'a non-null getter beside a class cast that reads NULL as null' => ['phone', 'string | null', true],
     'a getter declaring mixed, whose docblock declares a nested null only' => ['coordinate_data', '{ a: number | null }', false],
+]);
+
+// Laravel counts a cast in its primitive cast types, `datetime` with or without a format, as no class cast.
+test('an accessor beside a datetime cast takes its null from its getter, which toArray() runs', function (string $column) {
+    $sent = sentAsJson((new AccessorCastNullWarehouse)->setRawAttributes([$column => null])->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AccessorCastNullWarehouse::class, $column)['type'])->toBe('string')
+        ->and($sent->{$column})->toBe('read');
+})->with([
+    'datetime' => ['status'],
+    'datetime with a format' => ['color'],
 ]);
 
 test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on a class cast whose get() declares a non-null type', function (string $column, string $type) {

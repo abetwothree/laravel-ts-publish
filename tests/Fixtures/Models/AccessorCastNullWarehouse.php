@@ -10,24 +10,37 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Accessors on the nullable `warehouses` columns whose native getter return does not decide the null: one beside a
- * class cast, which toArray() runs instead of the getter, and one declaring `mixed`.
+ * class cast, which toArray() runs instead of the getter, and one declaring `mixed`. Two sit beside a `datetime`
+ * cast, which is no class cast, so the getter decides.
  */
 class AccessorCastNullWarehouse extends Model
 {
     protected $table = 'warehouses';
 
     /**
-     * A class cast on the key the accessor below also reads.
+     * A class cast on the key the accessor below also reads, and two date casts.
      *
      * @return array<string, string>
      */
     protected function casts(): array
     {
-        return ['phone' => GaugeCardCast::class];
+        return ['phone' => GaugeCardCast::class, 'status' => 'datetime', 'color' => 'datetime:Y-m-d'];
     }
 
     /** A getter declaring a non-null string, beside a class cast that reads a NULL as null. */
     protected function phone(): Attribute
+    {
+        return Attribute::make(get: fn (mixed $value): string => 'read');
+    }
+
+    /** A getter declaring a non-null string, beside a `datetime` cast. */
+    protected function status(): Attribute
+    {
+        return Attribute::make(get: fn (mixed $value): string => 'read');
+    }
+
+    /** A getter declaring a non-null string, beside a `datetime:Y-m-d` cast. */
+    protected function color(): Attribute
     {
         return Attribute::make(get: fn (mixed $value): string => 'read');
     }

@@ -40,7 +40,6 @@ use Closure;
 use DateTimeInterface;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
-use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
@@ -1729,15 +1728,15 @@ class LaravelTsPublish
     }
 
     /**
-     * The type a `SerializesCastableAttributes` caster's serialize() declares, which Model::toArray() writes for the
-     * attribute. Null for any other caster, or one whose serialize() declares nothing, which leaves get() to type it.
+     * The type a caster's serialize() declares, which Model::toArray() writes wherever the method exists, interface or
+     * not. Null for a caster without one, or whose serialize() declares nothing, which leaves get() to type it.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
      */
     protected function serializedCastTypes(string $caster): ?array
     {
-        if (! is_a($caster, SerializesCastableAttributes::class, true)) {
+        if (! method_exists($caster, 'serialize')) {
             return null;
         }
 

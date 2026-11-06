@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DeclaredCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InstanceCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceTypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ReceiverDualCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
@@ -45,6 +47,8 @@ test('a cast declares a non-null get() only when every caster\'s native get() re
     'a serializing caster whose serialize() may return null' => [NullableSerializedLabelCast::class, false],
     'a serializing caster whose serialize() declares nothing' => [BlankToNullSerializeCast::class, false],
     'a caster that is inbound too, whose get() Laravel never calls' => [InboundDualCast::class, false],
+    'a serialize() method declaring nothing, without the interface' => [NoInterfaceSerializeCast::class, false],
+    'a serialize() method declaring a non-null type, without the interface' => [NoInterfaceTypedSerializeCast::class, true],
     'AsCollection' => [AsCollection::class, false],
     'a built-in cast' => ['array', false],
 ]);

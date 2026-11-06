@@ -168,9 +168,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a type already holds the column's `null`. Laravel calls a class cast's `get()` for a NULL column too, so
-     * one whose every caster declares a native non-null return never sends it. Otherwise a top-level arm holds it,
-     * whatever null the value's members hold; an accessor whose getter declares no native type counts any `null`.
+     * Whether a type already holds the column's `null`. A class cast whose every caster declares a native non-null
+     * `get()` and `serialize()`, and is not inbound, never sends it, as Laravel calls both for a NULL column too.
+     * Otherwise a top-level arm holds it, whatever null its members hold; an untyped accessor getter counts any.
      */
     public static function typeHoldsNull(string $type, ?string $cast): bool
     {
@@ -1923,6 +1923,19 @@ class ModelAttributeResolver
     }
 
     /**
+     * Whether Laravel reads a key through a class cast, by its own `isClassCastable()`: one of its primitive cast
+     * types, such as `datetime:Y-m-d`, is none, and a cast it cannot resolve throws there.
+     */
+    private static function hasClassCast(Model $instance, string $attributeName): bool
+    {
+        try {
+            return new ReflectionMethod($instance, 'isClassCastable')->invoke($instance, $attributeName) === true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
      *
      * @param  list<class-string>  $modelFqcns
@@ -2014,8 +2027,7 @@ class ModelAttributeResolver
      */
     private function withAccessorNull(array $ctx, string $attributeName, array $accessorInfo, ?bool $nullable): array
     {
-        $cast = $ctx['instance']->getCasts()[$attributeName] ?? null;
-        $return = is_string($cast) && class_exists(Str::before($cast, ':'))
+        $return = self::hasClassCast($ctx['instance'], $attributeName)
             ? null
             : $this->getterNativeReturn($ctx['reflection'], $ctx['instance'], $attributeName);
 

@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
@@ -2022,6 +2023,9 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a caster that is inbound too' => [SerializedCastNullWarehouse::class, 'coordinate_data', 'string | null'],
         'a non-null getter beside a class cast' => [AccessorCastNullWarehouse::class, 'phone', 'string | null'],
         'a getter declaring mixed' => [AccessorCastNullWarehouse::class, 'coordinate_data', '{ a: number | null }'],
+        'a non-null getter beside a datetime cast' => [AccessorCastNullWarehouse::class, 'status', 'string'],
+        'a serialize() method declaring nothing, without the interface' => [SerializeMethodWarehouse::class, 'phone', 'string | null'],
+        'a serialize() method declaring a string, without the interface' => [SerializeMethodWarehouse::class, 'coordinate_data', 'string'],
     ]);
 });
 

@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Database\Eloquent\CastsInboundAttributes;
-use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionMethod;
@@ -44,8 +43,8 @@ final class CastCasters
     }
 
     /**
-     * Whether what every caster sends declares a native type that excludes null: its `get()`, and a serializing
-     * caster's `serialize()` too, which Model::toArray() writes. Laravel never calls an inbound caster's `get()`.
+     * Whether what every caster sends declares a native type that excludes null: its `get()`, and its `serialize()`
+     * too where it has one, which Model::toArray() writes. Laravel never calls an inbound caster's `get()`.
      */
     public static function getDeclaresNonNull(string $cast): bool
     {
@@ -55,16 +54,15 @@ final class CastCasters
     }
 
     /**
-     * Whether a caster's `get()`, and a serializing one's `serialize()`, declare a native non-null return, and it is
-     * not inbound too.
+     * Whether a caster's `get()`, and its `serialize()` where it has one, declare a native non-null return, and it is
+     * not inbound too. Laravel looks for the method, not the `SerializesCastableAttributes` interface.
      */
     private static function sendsNonNull(string $caster): bool
     {
         return is_a($caster, CastsAttributes::class, true)
             && ! is_a($caster, CastsInboundAttributes::class, true)
             && self::returnsNonNull($caster, 'get')
-            && (! is_a($caster, SerializesCastableAttributes::class, true)
-                || self::returnsNonNull($caster, 'serialize'));
+            && (! method_exists($caster, 'serialize') || self::returnsNonNull($caster, 'serialize'));
     }
 
     /**
