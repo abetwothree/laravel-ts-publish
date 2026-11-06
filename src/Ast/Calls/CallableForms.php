@@ -11,6 +11,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -97,19 +98,27 @@ final class CallableForms
     }
 
     /**
-     * The callable a caller that calls any callable value runs, as Conditionable and transform() do: a callable string
-     * or pair, held in a local or not, as the closure asOneValueClosure() makes of it, called with $arity values, else
-     * heldCallable()'s. Null for a string or array that names no call.
+     * The callable a caller that calls any callable value runs, as Conditionable and transform() do: a closure, a
+     * `null` it skips, or a first-class callable, callable string or pair written there or as a local's one write,
+     * the last two as the closure asOneValueClosure() makes of them for $arity values. Null for any other spelling.
      */
     public static function calledCallable(Expr $value, AnalysisScope $scope, int $arity = 1): ?Expr
     {
-        $held = $value instanceof Variable && $scope->declaredAt($value) === null
-            ? $scope->soleWriteSeenBy($value) ?? $value
-            : $value;
+        $span = $value instanceof Variable ? $scope->declaredAt($value) : null;
+        $held = match (true) {
+            ! $value instanceof Variable => $value,
+            $span === null => $scope->soleWriteSeenBy($value),
+            default => $span['expr'],
+        };
 
-        return $held instanceof String_ || $held instanceof Array_
-            ? self::asOneValueClosure($held, $arity)
-            : self::heldCallable($value, $scope);
+        // A callable a property, a key, a ternary, a call or a parameter holds names no one call, so none is read.
+        return match (true) {
+            $held instanceof String_, $held instanceof Array_ => self::asOneValueClosure($held, $arity),
+            $held instanceof ArrowFunction, $held instanceof ClosureExpr,
+            $held instanceof ConstFetch && $held->name->toLowerString() === 'null' => $value,
+            $held !== null && self::isFirstClassCallable($held) => $held,
+            default => null,
+        };
     }
 
     /**

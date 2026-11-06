@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\AliasedToken;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
@@ -18,6 +19,9 @@ use Workbench\App\Models\Post;
  */
 final class CallbackCoercionResource extends JsonResource
 {
+    /** A function's name, held by a property. */
+    public string $lengthOf = 'strlen';
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
@@ -42,6 +46,10 @@ final class CallbackCoercionResource extends JsonResource
             'exists_loaded_string' => $this->whenExistsLoaded('comments', fn (string $f) => $f),
             'transform_function' => $this->transform($this->resource->title, 'strlen'),
             'transform_pair' => $this->transform($this->resource->title, [$this, 'length']),
+            'alias_as_string' => collect([new AliasedToken('a')])->map(fn (string $v) => $v)->all(),
+            'alias_transformed' => $this->transform(new AliasedToken('a'), fn (string $v) => $v),
+            'transform_property' => $this->transform($this->resource->title, $this->lengthOf),
+            'transform_ternary' => $this->transform($this->resource->title, $this->resource->id > 0 ? 'strlen' : 'ucfirst'),
         ];
     }
 

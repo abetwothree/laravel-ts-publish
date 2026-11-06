@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCallableEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCallableSpellingsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCoercedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableDeclinedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionablePayloadEvent;
@@ -154,6 +155,24 @@ it('types a callable string or pair as the call it names', function () {
         ->and([$unpinned['static_string'], $unpinned['unless_pair'], $unpinned['default_string'], $unpinned['unless_default_pair']])
         ->toBe([['name' => 'box'], 'S', 'L', 7])
         ->and($unpinned['this_pair']['post']['id'])->toBe(7);
+});
+
+// Only a literal callable, or a local's one write of one, says which call runs; any other spelling would read the
+// callable itself as the value, so the key stays unknown.
+it('leaves a callable no literal or one write spells unknown', function () {
+    $sent = json_decode((string) json_encode(new ConditionableCallableSpellingsEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => true]),
+    )->broadcastWith()), true);
+
+    expect(conditionableCallKeys(ConditionableCallableSpellingsEvent::class))->each->toBe('unknown')
+        ->and($sent)->toBe([
+            'two_write_pair' => 3,
+            'ternary_pair' => 3,
+            'offset_pair' => 3,
+            'property_string' => 'L',
+            'helper_pair' => 3,
+            'param_string' => 'L',
+        ]);
 });
 
 // No generated file exports an enum the config leaves out, so the object's own JSON leaves its member unknown.

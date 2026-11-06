@@ -320,6 +320,18 @@ it('types array_keys() as the list of its array\'s keys, arm by arm', function (
     'array_values() of a literal spreading a list' => ['array_keys(array_values([1, ...$this->counts()]))', 'number[]'],
 ]);
 
+// array_values() re-indexes from 0, so array_keys() of it sends the list of numbers its type names.
+it('sends the numbers array_keys() of array_values() publishes', function (string $php, array $sent) {
+    $resource = new ArrayMapSourcesResource(new Post);
+    $value = Closure::bind(eval('return fn () => '.$php.';'), $resource, $resource)();
+
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe('number[]')
+        ->and(json_encode($value))->toBe(json_encode($sent));
+})->with([
+    'array_values() of a record' => ['array_keys(array_values($this->scores))', [0, 1]],
+    'array_values() of a literal spreading a list' => ['array_keys(array_values([1, ...$this->counts()]))', [0, 1, 2, 3]],
+]);
+
 /**
  * Seeded array literals of 1 to 5 items, each beside the array PHP builds of it: a key a name, a quote, a decimal
  * integer as an int or a string, negative or past JavaScript's safe range, a string PHP keeps though numeric, or none.

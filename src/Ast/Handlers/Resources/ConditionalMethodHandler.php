@@ -519,10 +519,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $value = $valueArg->value;
-        // transform() calls any callable, so a callable string or pair is the call it names.
-        $callback = CallableForms::passingOneValue(
-            CallableForms::calledCallable($callbackArg->value, $scope) ?? $callbackArg->value,
-        );
+        // transform() calls any callable: a callable string or pair is the call it names, any other spelling none.
+        $called = CallableForms::calledCallable($callbackArg->value, $scope);
+
+        if ($called === null) {
+            return [...ValueResult::unknown(), 'optional' => true];
+        }
+
+        $callback = CallableForms::passingOneValue($called);
         $resolvedValue = null;
         $model = null;
         $outer = AnalysisScope::NO_NAME_BINDINGS;

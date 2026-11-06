@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -358,8 +359,8 @@ final class ParameterBinder
 
     /**
      * A value as a parameter of a native scalar type receives it in coercive mode, as Laravel's own code and PHP's
-     * functions call a callback: each arm the type admits kept as it is, literal included, and every other arm read as
-     * the type, which PHP converts it to, or throws on, sending nothing. Any other type, or `unknown`, keeps the value.
+     * functions call a callback: each arm the type admits kept as it is, an enum's alias or a type the app declares
+     * included, and every other arm read as the type PHP converts it to. Any other type, or `unknown`, keeps the value.
      *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult
@@ -375,13 +376,17 @@ final class ParameterBinder
 
         $direct = $value['directEnumFqcn'] ?? null;
         $enums = array_values(array_unique([...($direct === null ? [] : [$direct]), ...($value['embeddedEnumFqcns'] ?? [])]));
+        // A type the app declares for a class names nothing the binder can test against the scalar, so it stays.
+        $declared = ImportMaps::localNames($value['customImports'] ?? []);
         $arms = [];
         $kept = [];
+        $keepsDeclared = false;
 
         foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
             $enum = array_find($enums, static fn (string $enum): bool => self::enumArmFits($arm, $enum, $scalars));
             $kept = $enum === null ? $kept : [...$kept, $enum];
-            array_push($arms, ...($enum !== null || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+            $keepsDeclared = $keepsDeclared || in_array($arm, $declared, true);
+            array_push($arms, ...($enum !== null || in_array($arm, $declared, true) || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
         }
 
         $type = implode(' | ', array_values(array_unique($arms)));
@@ -390,12 +395,13 @@ final class ParameterBinder
             return $value;
         }
 
-        // An enum's alias the parameter takes as it is keeps the channel that imports it.
+        // An enum's alias or a declared type the parameter takes as it is keeps the channel that imports it.
         return [
             ...ValueResult::unknown(),
             'type' => $type,
             ...($direct !== null && in_array($direct, $kept, true) ? ['directEnumFqcn' => $direct] : []),
             ...(array_diff($kept, [$direct]) === [] ? [] : ['embeddedEnumFqcns' => array_values(array_unique(array_diff($kept, [$direct])))]),
+            ...($keepsDeclared ? ['customImports' => $value['customImports'] ?? []] : []),
         ];
     }
 
