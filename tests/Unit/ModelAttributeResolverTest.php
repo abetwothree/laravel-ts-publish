@@ -57,6 +57,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfReadingSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
@@ -65,6 +66,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
@@ -983,6 +985,30 @@ test('a column cast to a class whose serialize() declares nothing publishes what
     'an undeclared serialize() typed by its returns, on a nullable column' => ['phone', 'string | null', '""', '"x"'],
     'an undeclared serialize() typed by its returns over a get() that may return null' => ['coordinate_data', 'string | null', 'null', '"x"'],
 ]);
+
+// Laravel skips serialize() for a null get() value; a get() declaring no native type sends one only where its
+// `@return` or, without one, its body says it may.
+test('a not-null column cast to a class whose get() declares no type publishes null only where get() may return it', function (string $column, string $type, string $sentForNull, string $sentForValue) {
+    $columns = ['title', 'content', 'category'];
+    $nulls = (new UntypedGetSerializePost)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new UntypedGetSerializePost)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UntypedGetSerializePost::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a get() whose body proves a string' => ['title', 'string', '"s"', '"s7"'],
+    'a get() whose @return documents a number' => ['content', 'object', '{"v":0}', '{"v":7}'],
+    'a get() whose body proves nothing' => ['category', 'string | null', 'null', '"o7"'],
+]);
+
+// Reading the body reads the cast again, which stops at get()'s type there instead of reading the body forever.
+test('a cast whose serialize() reads the attribute it casts publishes what that read gives', function () {
+    $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['phone' => null])->toArray()['phone'];
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'phone')['type'])->toBe('string | null')
+        ->and(json_encode($sent))->toBe('""');
+});
 
 test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {
     $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'primary_contact_id', 'secondary_contact_id'];

@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
@@ -2043,6 +2044,9 @@ describe('a nullable column cast to a class or read through an accessor', functi
         'a typed serialize() over a get() that may return null, on a not-null column' => [SerializeBodyWarehouse::class, 'name', 'string | null'],
         'an undeclared serialize() typed by its returns' => [SerializeBodyWarehouse::class, 'phone', 'string | null'],
         'an undeclared serialize() typed by its returns over a get() that may return null' => [SerializeBodyWarehouse::class, 'coordinate_data', 'string | null'],
+        'a typed serialize() over an untyped get() whose body proves a string, on a not-null column' => [UntypedGetSerializePost::class, 'title', 'string'],
+        'a typed serialize() over an untyped get() whose @return documents a number' => [UntypedGetSerializePost::class, 'content', 'object'],
+        'a typed serialize() over an untyped get() whose body proves nothing' => [UntypedGetSerializePost::class, 'category', 'string | null'],
     ]);
 });
 

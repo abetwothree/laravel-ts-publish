@@ -1768,25 +1768,12 @@ class LaravelTsPublish
      */
     protected function serializeBodyTypes(string $caster): ?array
     {
-        $key = 'serialize-body:'.$caster;
-        $memo = resolve(AnalysisMemo::class);
-
-        $body = $memo->remember($key, function () use ($caster, $key, $memo): ?array {
-            // A dependency's body is never read, as no value read follows one, and a read already under way stops.
-            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, 'serialize')->getFileName())
-                || ! $memo->enter($key)) {
-                return null;
-            }
-
-            try {
-                return DroppedUnionArms::provisional(
-                    fn (): ?array => $this->provenSerializeBody($caster),
-                    fn (?array $info): bool => $info !== null,
-                );
-            } finally {
-                $memo->leave($key);
-            }
-        });
+        $body = $this->readCasterBody(
+            $caster,
+            'serialize',
+            fn (): ?array => $this->provenSerializeBody($caster),
+            fn (?array $info): bool => $info !== null,
+        );
 
         return $body === null ? null : $this->withGetNull($caster, $body);
     }
@@ -3573,7 +3560,7 @@ class LaravelTsPublish
 
     /**
      * A serialize() reading with a `null` arm where get() may return null, which Model::toArray() sends without
-     * calling serialize(): a get() with no native type or one allowing null.
+     * calling serialize().
      *
      * @param  class-string  $caster
      * @param  TypeScriptTypeInfo  $types
@@ -3581,11 +3568,77 @@ class LaravelTsPublish
      */
     private function withGetNull(string $caster, array $types): array
     {
-        $get = new ReflectionMethod($caster, 'get')->getReturnType();
-
-        return $get === null || $get->allowsNull()
+        return $this->getMayReturnNull($caster)
             ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
             : $types;
+    }
+
+    /**
+     * Whether a caster's get() may return null: its native type allows null, or without one its `@return`, else its
+     * body, holds null or says nothing.
+     *
+     * @param  class-string  $caster
+     */
+    private function getMayReturnNull(string $caster): bool
+    {
+        $get = new ReflectionMethod($caster, 'get');
+        $native = $get->getReturnType();
+
+        if ($native !== null) {
+            return $native->allowsNull();
+        }
+
+        $docComment = $get->getDocComment();
+
+        if ($docComment !== false && $this->extractReturnTypeFromDocblock($docComment) !== null) {
+            return $this->mayHoldNull($this->docblockReturnTypes($get)['type']);
+        }
+
+        // The body's reading only decides the null, so whatever it reads publishes nothing and leaves no trace.
+        return $this->readCasterBody($caster, 'get', function () use ($caster): bool {
+            $dropped = DroppedUnionArms::dropped();
+            $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'get');
+
+            return $result === null || DroppedUnionArms::dropped() !== $dropped || $this->mayHoldNull($result['type']);
+        }, static fn (): bool => false) ?? true;
+    }
+
+    /**
+     * Whether a type may hold null: a top-level `null` arm, or nothing known of it but that.
+     */
+    private function mayHoldNull(string $type): bool
+    {
+        return TsTypeString::hasNullArm($type) || TsTypeString::isUnknownOnly($type);
+    }
+
+    /**
+     * A caster method's body read once per run; null for a dependency's method, which no value read follows, or one
+     * already under read. Its warnings, drop count and audit entries outlive it only where $kept says it stands.
+     *
+     * @template TRead
+     *
+     * @param  class-string  $caster
+     * @param  Closure(): TRead  $read
+     * @param  Closure(TRead): bool  $kept
+     * @return TRead|null
+     */
+    private function readCasterBody(string $caster, string $method, Closure $read, Closure $kept): mixed
+    {
+        $key = 'caster-body:'.$caster.'@'.$method;
+        $memo = resolve(AnalysisMemo::class);
+
+        return $memo->remember($key, function () use ($caster, $method, $key, $memo, $read, $kept): mixed {
+            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, $method)->getFileName())
+                || ! $memo->enter($key)) {
+                return null;
+            }
+
+            try {
+                return DroppedUnionArms::provisional($read, $kept);
+            } finally {
+                $memo->leave($key);
+            }
+        });
     }
 
     /**

@@ -102,9 +102,9 @@ wherever the method exists, with or without `SerializesCastableAttributes`. `ser
    as does `array`, `object` or both over a `get()` that reads no scalar. Over a scalar `get()` they stand, since
    `serialize()` sends something else, and a vague `array` reads as a list or a record, as `json_encode()` writes it.
 
-The reading that stands gains `| null` where `get()` declares no native type or one allowing null, since
-`Model::toArray()` sends a null value without calling `serialize()`. `typeHoldsNull()` sees that arm, so a nullable
-column adds no second one.
+The reading that stands gains `| null` where `get()` may return null, since `Model::toArray()` sends a null value
+without calling `serialize()`: where its native type allows null, or, with none, where its `@return`, else its body as
+the engine reads it, holds null or says nothing. `typeHoldsNull()` sees that arm, so a nullable column adds no second.
 
 ### Step 2: an override, resolved and composed
 
