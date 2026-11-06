@@ -489,7 +489,10 @@ Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a
 the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
 of a `null` either returns and of a default not passed. It declines with fewer than two arguments, which return a
 `HigherOrderWhenProxy`; on a model, a query or a relation (`ReceiverClassResolver::conditionalQuery()`); on a class
-declaring its own `when()`; and where a callable or the object's JSON reads `unknown`, whose arm Laravel can send.
+declaring its own `when()`; where a callable names a parameter after a variable the object or the condition reads,
+since the binder reads what it passes in the callable's scope; and where a call's value or the object's JSON reads an
+`unknown` arm, drops an arm, or holds a closure Laravel hands back uncalled. A declined read keeps none of its warnings
+(`DroppedUnionArms::provisional()`).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing

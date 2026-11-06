@@ -909,6 +909,12 @@ publish `unknown` too; `stdClass` publishes `Record<string, unknown>`. Type such
 class a `#[TsType]`: a `new` of a class with an override, its own or an inherited one, publishes the override whoever
 serializes it, as every other read of the class does. A model's override does not apply to a `new` of the model.
 
+The object a `Conditionable` `when()` or `unless()` hands back reads the same way. Where it can be sent, because a
+callable returns `null` or no default is passed, the key publishes `unknown` unless the package knows the class's
+JSON. That includes a class with an untyped public property, such as an event `make:event` generates, whose
+`InteractsWithSockets` declares `public $socket`. Pass a default that returns a value, or type the key with
+`#[TsCasts]`.
+
 ### An override publishes in every context, though some send the class's public properties
 
 An override is the type you declare, and every read of the class publishes it. For an `Arrayable` class that is not

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
@@ -26,6 +27,7 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\NodeFinder;
 use ReflectionMethod;
 
 /**
@@ -74,22 +76,16 @@ final class ConditionableCallHandler implements ExpressionHandler
         }
 
         $passed = [$this->passedObject($expr->var, $receiver), $this->passedValue($arguments->named('value')?->value)];
-        $arms = array_map(fn (Expr $callable): array => $this->callbackValue($callable, $passed, $scope, $engine), $callables);
 
-        if (array_any($arms, fn (array $arm): bool => $arm['type'] === 'unknown')) {
+        if ($this->shadowsPassed($callables, $passed)) {
             return null;
         }
 
-        $sendsItself = count($callables) === 1 || array_any($arms, fn (array $arm): bool => $this->mayBeNull($arm['type']));
-        $itself = $sendsItself ? $this->ownJson($receiver['classes']) : null;
-
-        if ($sendsItself && $itself === null) {
-            return null;
-        }
-
-        $value = ValueResult::unionResults([...$this->nonNullArms($arms), ...($itself === null ? [] : [$itself])]);
-
-        return $receiver['shortCircuits'] ? [...$value, 'type' => TsTypeString::withNullArm($value['type'])] : $value;
+        // A declined read leaves neither the warnings nor the dropped arms it raised, as the call was never read.
+        return DroppedUnionArms::provisional(
+            fn (): ?array => $this->conditionalValue($callables, $passed, $receiver, $scope, $engine),
+            static fn (?array $value): bool => $value !== null,
+        );
     }
 
     /**
@@ -108,6 +104,68 @@ final class ConditionableCallHandler implements ExpressionHandler
         }
 
         return $default === null ? [$callback] : [$callback, $default];
+    }
+
+    /**
+     * The union of what each callable's call returns, with the object's own JSON in place of a null and of a default
+     * not passed; null where a call or the object reads less than Laravel sends.
+     *
+     * @param  non-empty-list<Expr>  $callables
+     * @param  list<Expr|ValueExpressionResult>  $passed
+     * @param  ConditionableReceiver  $receiver
+     * @return ValueExpressionResult|null
+     */
+    private function conditionalValue(array $callables, array $passed, array $receiver, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $dropped = DroppedUnionArms::dropped();
+        $arms = array_map(
+            fn (Expr $callable): array => ValueResult::calledValue($this->callbackValue($callable, $passed, $scope, $engine)),
+            $callables,
+        );
+
+        // An arm read with a value left out would publish the null that value left as the object.
+        if (DroppedUnionArms::dropped() !== $dropped || ! array_all($arms, $this->readsWhatIsSent(...))) {
+            return null;
+        }
+
+        $sendsItself = count($callables) === 1 || array_any($arms, fn (array $arm): bool => $this->mayBeNull($arm['type']));
+        $itself = $sendsItself ? $this->ownJson($receiver['classes']) : null;
+
+        if ($sendsItself && $itself === null) {
+            return null;
+        }
+
+        $value = ValueResult::unionResults([...$this->nonNullArms($arms), ...($itself === null ? [] : [$itself])]);
+
+        return $receiver['shortCircuits'] ? [...$value, 'type' => TsTypeString::withNullArm($value['type'])] : $value;
+    }
+
+    /**
+     * Whether a callable names a parameter after a variable the object or the value it is passed reads: the binder
+     * reads what it is passed in the callable's own scope, where that parameter hides the variable.
+     *
+     * @param  non-empty-list<Expr>  $callables
+     * @param  list<Expr|ValueExpressionResult>  $passed
+     */
+    private function shadowsPassed(array $callables, array $passed): bool
+    {
+        $read = [];
+
+        foreach ($passed as $value) {
+            foreach ($value instanceof Expr ? new NodeFinder()->findInstanceOf($value, Variable::class) : [] as $variable) {
+                $read[] = $variable->name;
+            }
+        }
+
+        foreach ($callables as $callable) {
+            foreach ($callable instanceof ArrowFunction || $callable instanceof ClosureExpr ? $callable->params : [] as $param) {
+                if ($param->var instanceof Variable && in_array($param->var->name, $read, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -214,14 +272,25 @@ final class ConditionableCallHandler implements ExpressionHandler
         $kept = [];
 
         foreach ($arms as $arm) {
-            $type = TsTypeString::withoutNullArm($arm['type'] === 'void' ? 'null' : $arm['type']);
+            $members = array_diff(TsTypeString::splitTopLevelUnion($arm['type']), ['null', 'void']);
 
-            if ($type !== 'unknown') {
-                $kept[] = [...$arm, 'type' => $type];
+            if ($members !== []) {
+                $kept[] = [...$arm, 'type' => implode(' | ', $members)];
             }
         }
 
         return $kept;
+    }
+
+    /**
+     * Whether a call's value reads as what it sends: no `unknown` arm, and no closure or prop object, which Laravel
+     * hands back uncalled for json_encode() to write as `{}`.
+     *
+     * @param  ValueExpressionResult  $arm
+     */
+    private function readsWhatIsSent(array $arm): bool
+    {
+        return ! in_array('unknown', TsTypeString::splitTopLevelUnion($arm['type']), true) && ValueResult::heldNullsOf($arm) === null;
     }
 
     /**

@@ -668,7 +668,7 @@ final class ParameterBinder
 
         $resolved = array_map(static fn (Expr|array $value): array => $value instanceof Expr ? $engine->resolve($value) : $value, $values);
 
-        return $resolved === [] || array_any($resolved, static fn (array $value): bool => $value['type'] === 'unknown')
+        return array_any($resolved, static fn (array $value): bool => $value['type'] === 'unknown')
             ? ValueResult::unknown()
             : ValueResult::unionResults($resolved);
     }

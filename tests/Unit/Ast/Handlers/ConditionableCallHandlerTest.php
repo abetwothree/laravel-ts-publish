@@ -115,7 +115,40 @@ it('keeps the answers it had for a when() that is not Conditionable\'s two-callb
         'listed' => 'unknown',
         'opaque' => 'unknown',
         'fluent' => 'unknown',
+        'unknown_arm' => 'unknown',
+        'dropped_arm' => 'unknown',
+        'dropped_in_helper' => 'unknown',
+        'uncalled_closure' => 'unknown',
+        'shadowed_value' => 'unknown',
+        'shadowed_rest' => 'unknown',
+        'shadowed_receiver' => 'unknown',
     ]);
+});
+
+// A callable reads the object and the value in its own scope, where a same-named parameter hides the variable the call
+// passes. A closure a callable returns is sent as `{}`, as nothing calls it, and an arm read with a value left out or
+// an `unknown` arm would publish a type Laravel does not keep to.
+it('declines Conditionable::when() where a callable cannot be read for what Laravel sends', function () {
+    $sent = fn (bool $pinned): array => json_decode((string) json_encode(new ConditionableDeclinedEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => $pinned]),
+    )->broadcastWith()), true);
+    $pinned = $sent(true);
+
+    expect([$pinned['shadowed_value'], $pinned['shadowed_rest'], $pinned['shadowed_receiver']])->toBe([true, [true], 'n'])
+        ->and([$pinned['dropped_arm'], $pinned['dropped_in_helper'], $pinned['uncalled_closure']])->toBe([['a' => 1], [1], []])
+        ->and($pinned['unknown_arm'])->toBe(['a' => 'x'])
+        ->and($sent(false)['shadowed_value']['post']['id'])->toBe(7)
+        ->and(AnalysisWarnings::all())->toBe([]);
+
+    expect(conditionableCallKeys(ConditionableDeclinedEvent::class))->toMatchArray([
+        'unknown_arm' => 'unknown',
+        'dropped_arm' => 'unknown',
+        'dropped_in_helper' => 'unknown',
+        'uncalled_closure' => 'unknown',
+        'shadowed_value' => 'unknown',
+        'shadowed_rest' => 'unknown',
+        'shadowed_receiver' => 'unknown',
+    ])->and(AnalysisWarnings::all())->toBe([]);
 });
 
 // A resource's own `$this->when()` stays JsonResource's, which leaves the key out, while a box it holds runs
