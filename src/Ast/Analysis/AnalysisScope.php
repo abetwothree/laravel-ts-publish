@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -30,8 +31,11 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
@@ -49,13 +53,14 @@ use ReflectionMethod;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type CollectedElement from ResourceCollections
  * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
+ * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
- * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
+ * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null, arm?: true}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
- * @phpstan-type NarrowedRead array{list<string>, ReceiverType}
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -64,16 +69,20 @@ use ReflectionMethod;
  *      after: int,
  *      before: int|null,
  *      expr: Expr,
- *      nested?: true,
- *      relative?: true
+ *      relative?: true,
+ *      boundLast?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
- * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
+ * @phpstan-type CollectionBinding array{
+ *     type: string, modelFqcn: class-string<Model>, classes?: non-empty-list<class-string>, key?: KeyKind,
+ * }
+ * @phpstan-type VarCollectionBindingsMap array<string, CollectionBinding>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type ByReferenceForm array{
  *      effect: ByReferenceEffect,
+ *      matches: string|null,
  *      values: list<Expr>,
  *      path: list<string>,
  *      callback: ArrowFunction|ClosureExpr|null,
@@ -83,6 +92,8 @@ use ReflectionMethod;
  * }
  * @phpstan-type BindingGap array{0: int, 1: int, 2: list<Expr>|null, 3: bool, 4: bool, 5?: list<Expr>}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
+ * @phpstan-type ParameterGuard 'unread'|'guarded'|'element'
+ * @phpstan-type LeftOutParametersMap array<string, non-empty-list<LeftOutWrite>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
@@ -104,7 +115,9 @@ use ReflectionMethod;
  *      bindingGaps: BindingGapsMap,
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap,
- *      relativeParameters: array<string, true>
+ *      relativeParameters: array<string, true>,
+ *      guardedParameters: array<string, ParameterGuard>,
+ *      leftOutParameters: LeftOutParametersMap
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -118,7 +131,6 @@ use ReflectionMethod;
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
- *      narrowedReads: list<NarrowedRead>,
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
  *      mapResultArrayed: bool,
@@ -152,6 +164,8 @@ final class AnalysisScope
         'keyBuiltLocals' => [],
         'passedValues' => [],
         'relativeParameters' => [],
+        'guardedParameters' => [],
+        'leftOutParameters' => [],
     ];
 
     /**
@@ -171,6 +185,15 @@ final class AnalysisScope
     public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
+     * The classes other than a model an API resource subject declares `$this->resource` to hold, by a `@var` or a tag
+     * such as `@extends JsonResource<PostStats>` (ProxyDeclaration::of()), or null. Derived by seedDeclaredHeld(); it
+     * backs no proxy target, so a scope given no model keeps none.
+     *
+     * @var non-empty-list<class-string>|null
+     */
+    public ?array $declaredHeld = null;
+
+    /**
      * The classes an `instanceof` proof holds `$this->resource` to inside the ternary arm, or the value in an `if`
      * block, it proves, or null. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before
      * the redeclaration and the backing class.
@@ -178,15 +201,6 @@ final class AnalysisScope
      * @var non-empty-list<class-string>|null
      */
     public ?array $provenProxy = null;
-
-    /**
-     * The `$this` read paths, as property names outermost first, with what an `instanceof` ternary's proven arm holds
-     * each to while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
-     * reads them.
-     *
-     * @var list<NarrowedRead>
-     */
-    public array $narrowedReads = [];
 
     /**
      * The proof on `$this->resource` a value inside its span resolves under while the proof leaves provenProxy null,
@@ -265,8 +279,9 @@ final class AnalysisScope
      * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
      * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
      *
-     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS. Each holds
-     * for the offsets past its `after` and through its `before`.
+     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS, and those
+     * on a chain of property reads on `$this` under its proofKey(). Each holds for the offsets past its `after` and
+     * through its `before`; one a ternary's arm binds on a chain holds at every offset while the arm resolves.
      *
      * @var VarGuardBindingsMap
      */
@@ -322,9 +337,26 @@ final class AnalysisScope
     public array $relativeParameters = [];
 
     /**
-     * Closure params bound to a whole relation collection rather than one element — a to-many
-     * `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback
-     * for an untyped `->map()` closure param.
+     * The parameters bound from a guarded receiver (ReceiverType::$guarded): `element` where only what the parameter's
+     * element yields is guarded, `guarded` where the parameter is, and `unread` where it is bound in a callback no
+     * reading reaches without the guard, so a helper it is handed keeps the guard across a declared parameter.
+     *
+     * @var array<string, ParameterGuard>
+     */
+    public array $guardedParameters = [];
+
+    /**
+     * The parameters bound from the element of a variable's join, with the writes that join left out, which a read
+     * through the parameter warns of where it publishes a type.
+     *
+     * @var LeftOutParametersMap
+     */
+    public array $leftOutParameters = [];
+
+    /**
+     * Params bound to a whole collection of one model rather than one element: a to-many `whenLoaded` param, a passed
+     * Eloquent collection, or one a `@param` collection generic declares, which names its classes and kind of key too.
+     * Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param.
      *
      * @var VarCollectionBindingsMap
      */
@@ -484,6 +516,7 @@ final class AnalysisScope
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+        $this->seedDeclaredHeld();
     }
 
     /**
@@ -572,6 +605,61 @@ final class AnalysisScope
     }
 
     /**
+     * The varGuardBindings key an `instanceof` proof on a subject sits under: a variable's name, PROXY_GUARDS for
+     * `$this->resource`, or `$this->` and the property names a chain of reads on `$this` spells; null for any other.
+     */
+    public static function proofKey(Expr $subject): ?string
+    {
+        if ($subject instanceof Variable) {
+            return is_string($subject->name) ? $subject->name : null;
+        }
+
+        $path = self::thisReadPath($subject);
+
+        return $path === null ? null : '$this->'.implode('->', $path);
+    }
+
+    /**
+     * A proof that holds at every offset while the code it covers resolves: a ternary arm's, or the one a closure
+     * parameter takes from the variable its call passes.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     * @return VarGuardBinding
+     */
+    public static function armProof(array $classes): array
+    {
+        return ['classes' => $classes, 'after' => PHP_INT_MIN, 'before' => null, 'arm' => true];
+    }
+
+    /**
+     * Whether a proof is one armProof() made, which no position bounds, unlike an `if` block's.
+     *
+     * @param  VarGuardBinding  $guard
+     */
+    public static function isArmProof(array $guard): bool
+    {
+        return isset($guard['arm']);
+    }
+
+    /**
+     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
+     * for `$this->owner?->team`; null for any other expression.
+     *
+     * @return non-empty-list<string>|null
+     */
+    public static function thisReadPath(Expr $expr): ?array
+    {
+        $path = [];
+
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($path, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *
@@ -582,6 +670,7 @@ final class AnalysisScope
     {
         $this->subjectReflection = $subject;
         $this->runtime = $this->runtime->withClass($subject);
+        $this->seedDeclaredHeld();
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -595,6 +684,15 @@ final class AnalysisScope
     {
         $this->modelClass = $modelClass;
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($this->subjectReflection, $modelClass);
+    }
+
+    /**
+     * Derive declaredHeld from what proxyDeclarer() declares: the constructor and rebase() run it, and a builder that
+     * swaps in a subclass as the runtime class runs it again.
+     */
+    public function seedDeclaredHeld(): void
+    {
+        $this->declaredHeld = self::declaredHeldBy($this->proxyDeclarer());
     }
 
     /**
@@ -754,6 +852,19 @@ final class AnalysisScope
     }
 
     /**
+     * The class whose declarations say what `$this->resource` holds: the runtime class where it extends the subject, as
+     * a subclass running an ancestor's body does, so its own model and tags win there too; else the subject.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function proxyDeclarer(): ReflectionClass
+    {
+        $runtime = $this->runtime->class;
+
+        return $runtime->isSubclassOf($this->subjectReflection->getName()) ? $runtime : $this->subjectReflection;
+    }
+
+    /**
      * The inline `@var` binding a read of a variable falls within, or null.
      *
      * @return VarDocBinding|null
@@ -776,17 +887,23 @@ final class AnalysisScope
     }
 
     /**
-     * The inline `@var` on a write nested in a block that assigned a value, which still types that value where a join
-     * carries it past the block, or null.
+     * The inline `@var` on the write that assigned a value, which still types that value where a join carries it past
+     * the span the tag holds for, or null.
      *
      * @return VarDocBinding|null
      */
     public function declaredWrite(string $name, Expr $value): ?array
     {
-        return array_find(
-            $this->varDocBindings[$name] ?? [],
-            fn (array $binding): bool => isset($binding['nested']) && $binding['expr'] === $value,
-        );
+        return array_find($this->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $value);
+    }
+
+    /**
+     * Whether the scope reads a callback no reading reaches without the guard, as an `unread` parameter bound in it
+     * says, so nothing read in it may publish a conditional's first-token guess.
+     */
+    public function readsUnreadCallback(): bool
+    {
+        return in_array('unread', $this->guardedParameters, true);
     }
 
     /**
@@ -809,6 +926,27 @@ final class AnalysisScope
     public function proofAt(string $name, int $offset): ?array
     {
         return self::latestGuard($this->varGuardBindings[$name] ?? [], $offset);
+    }
+
+    /**
+     * The proofs on chains of property reads on `$this`, by key: a variable's are its own, and on an API resource the
+     * proxy's reach a nested body through provenProxy.
+     *
+     * @return VarGuardBindingsMap
+     */
+    public function thisPathProofs(): array
+    {
+        if ($this->varGuardBindings === []) {
+            return [];
+        }
+
+        $proxy = $this->hasResourceProxy() ? self::PROXY_GUARDS : null;
+
+        return array_filter(
+            $this->varGuardBindings,
+            fn (string $key): bool => $key !== $proxy && str_starts_with($key, '$this->'),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**
@@ -932,7 +1070,7 @@ final class AnalysisScope
 
     /**
      * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off, then
-     * restore it.
+     * restore it; every method body the read reaches reads its cases so too: AnalysisMemo::readingCasesAsEnums().
      *
      * @template TRead
      *
@@ -945,7 +1083,7 @@ final class AnalysisScope
         $this->casesAsLiterals = false;
 
         try {
-            return $read();
+            return resolve(AnalysisMemo::class)->readingCasesAsEnums($read);
         } finally {
             $this->casesAsLiterals = $literals;
         }
@@ -1090,6 +1228,8 @@ final class AnalysisScope
             'keyBuiltLocals' => $this->keyBuiltLocals,
             'passedValues' => $this->passedValues,
             'relativeParameters' => $this->relativeParameters,
+            'guardedParameters' => $this->guardedParameters,
+            'leftOutParameters' => $this->leftOutParameters,
         ];
     }
 
@@ -1118,6 +1258,8 @@ final class AnalysisScope
         $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
         $this->passedValues = $snapshot['passedValues'];
         $this->relativeParameters = $snapshot['relativeParameters'];
+        $this->guardedParameters = $snapshot['guardedParameters'];
+        $this->leftOutParameters = $snapshot['leftOutParameters'];
     }
 
     /**
@@ -1140,13 +1282,20 @@ final class AnalysisScope
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
         $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
-        $this->narrowedReads = $replacesProxy ? [] : array_values(array_filter(
-            $this->narrowedReads,
-            fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
-        ));
+        $paths = [];
+
+        // An `if` proof holds at this body's offsets alone; a ternary arm's holds at every offset, a callee's too.
+        foreach ($replacesProxy ? [] : $this->thisPathProofs() as $key => $guards) {
+            $held = array_values(array_filter($guards, self::isArmProof(...)));
+
+            if ($held !== [] && ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->'))) {
+                $paths[$key] = $held;
+            }
+        }
 
         $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
         $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
@@ -1229,7 +1378,9 @@ final class AnalysisScope
         }
 
         $outer = $this->nameBindings();
+        $paths = $this->thisPathProofs();
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
 
         // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
         foreach ($closure->uses as $use) {
@@ -1329,6 +1480,14 @@ final class AnalysisScope
                 $this->relativeParameters[$to] = true;
             }
 
+            if (isset($snapshot['guardedParameters'][$from])) {
+                $this->guardedParameters[$to] = $snapshot['guardedParameters'][$from];
+            }
+
+            if (isset($snapshot['leftOutParameters'][$from])) {
+                $this->leftOutParameters[$to] = $snapshot['leftOutParameters'][$from];
+            }
+
             if (isset($snapshot['varCollectionBindings'][$from])) {
                 $this->varCollectionBindings[$to] = $snapshot['varCollectionBindings'][$from];
             }
@@ -1345,7 +1504,7 @@ final class AnalysisScope
         $guard = self::latestGuard($snapshot['varGuardBindings'][$from] ?? [], $offset);
 
         if ($guard !== null) {
-            $this->varGuardBindings[$to] = [['classes' => $guard['classes'], 'after' => PHP_INT_MIN, 'before' => null]];
+            $this->varGuardBindings[$to] = [self::armProof($guard['classes'])];
         }
 
         if (isset($snapshot['varDocBindings'][$from])) {
@@ -1363,6 +1522,27 @@ final class AnalysisScope
         if (isset($snapshot['passedValues'][$from])) {
             $this->passedValues[$to] = $snapshot['passedValues'][$from];
         }
+    }
+
+    /**
+     * The classes other than a model a subject declares its `$this->resource` to hold; null for a subject with no
+     * resource proxy, or one declaring only models or nothing.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return non-empty-list<class-string>|null
+     */
+    private static function declaredHeldBy(ReflectionClass $subject): ?array
+    {
+        if (! $subject->isSubclassOf(JsonResource::class) || $subject->isSubclassOf(ResourceCollection::class)) {
+            return null;
+        }
+
+        $held = array_values(array_filter(
+            ProxyDeclaration::of($subject)['classes'] ?? [],
+            fn (string $class): bool => ! is_a($class, Model::class, true),
+        ));
+
+        return $held === [] ? null : $held;
     }
 
     /**
@@ -1531,7 +1711,13 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
-        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters];
+        return [
+            ...$this->classBindingTables(),
+            $this->varValueBindings,
+            $this->relativeParameters,
+            $this->guardedParameters,
+            $this->leftOutParameters,
+        ];
     }
 
     /**
@@ -1584,6 +1770,8 @@ final class AnalysisScope
                 $this->keyBuiltLocals[$name],
                 $this->passedValues[$name],
                 $this->relativeParameters[$name],
+                $this->guardedParameters[$name],
+                $this->leftOutParameters[$name],
             );
         }
     }
@@ -1607,7 +1795,6 @@ final class AnalysisScope
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
-            'narrowedReads' => $this->narrowedReads,
             'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
@@ -1633,7 +1820,6 @@ final class AnalysisScope
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];
-        $this->narrowedReads = $state['narrowedReads'];
         $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];

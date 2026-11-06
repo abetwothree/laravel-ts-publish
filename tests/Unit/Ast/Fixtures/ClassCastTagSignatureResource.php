@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Support\Opaque;
 
 /** A class-level `#[TsCasts]` adds `extra_tag`, a key the body never has, beside a docblock-filled `_tag` signature. */
 #[TsCasts(['extra_tag' => 'number'])]
@@ -37,6 +38,6 @@ final class ClassCastTagSignatureResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

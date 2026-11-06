@@ -365,6 +365,14 @@ class TsTypeString
     }
 
     /**
+     * A type with a `null` arm when another type has a top-level one, as withNullArm() appends it.
+     */
+    public function withNullArmOf(string $from, string $to): string
+    {
+        return $this->hasNullArm($from) ? $this->withNullArm($to) : $to;
+    }
+
+    /**
      * The type with a `null` arm appended unless it has a top-level one, `unknown` too, as a nullable PHP type prints.
      */
     public function orNull(string $type): string
@@ -503,6 +511,16 @@ class TsTypeString
         }
 
         return array_all(explode('.', $name), fn (string $segment): bool => $this->extractImportableTypes($segment) === [$segment]);
+    }
+
+    /**
+     * Whether a docblock's type replaces a declared one: the declaration is unknown or vague, and the docblock is
+     * neither, or spells the declaration's list as the record a string-keyed array encodes as.
+     */
+    public function documentedWins(string $declared, string $documented): bool
+    {
+        return $this->isVagueTsType($declared)
+            && (! $this->isVagueTsType($documented) || $this->spellsListAsRecord($declared, $documented));
     }
 
     /**

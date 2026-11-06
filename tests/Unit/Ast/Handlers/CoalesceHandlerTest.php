@@ -2,13 +2,18 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullableResourceEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableResourceHolder;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -16,6 +21,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use Workbench\App\Models\Post;
 
 /**
  * A throwaway scope for tests that never inspect its contents.
@@ -408,6 +414,38 @@ it('strips a held object\'s null where json_encode() sends it', function () {
     expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine)['type'])
         ->toBe('number | string');
 });
+
+// A collection read through no null object is never null, so `??` hands it back and never runs its right operand; a
+// relation of a to-one relation or of `first()` is null where that model is.
+it('returns a left holding a collection whole, and unions the right of a left that may be null', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a relation' => ['$this->comments ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation chain' => ['$this->comments->only([5, 7]) ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation chain beside a list of keys' => ['$this->comments->take(2) ?? collect($this->names())->keys()->all()', 'Comment[]'],
+    'a collect() value' => ['collect($this->names()) ?? $this->scores', 'string[]'],
+    'a nullable attribute' => ['$this->options ?? collect($this->scores)->all()', 'Record<string, string> | Record<string, number>'],
+    'a relation behind a ?->' => ['$this->resource?->comments ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'the subject\'s relation' => ['$this->resource->comments ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation of a to-one relation, which may be null' => ['$this->author->posts ?? collect($this->scores)->all()', 'Post[] | Record<string, number>'],
+    'a relation of first(), which may be null' => ['$this->comments->first()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'a relation of last(), which may be null' => ['$this->comments->last()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+]);
+
+// Only an API resource's `$this->resource` is the proxy the engine reads as never null; elsewhere it is a member.
+it('unions the right of a relation read through a nullable member named resource, outside an API resource', function (string $class, string $method) {
+    expect(analyzedKeyTypes($class, $method))->toBe([
+        'scores' => 'Comment[] | Record<string, number>',
+        'literal' => 'Comment[] | { a: number }',
+    ])->and(json_encode($method === 'toArray' ? new NullableResourceHolder()->toArray() : new NullableResourceEvent()->broadcastWith()))
+        ->toBe('{"scores":{"x":1},"literal":{"a":1}}');
+})->with([
+    'a plain class' => [NullableResourceHolder::class, 'toArray'],
+    'a broadcast event' => [NullableResourceEvent::class, 'broadcastWith'],
+]);
 
 it('declines a non-coalesce BinaryOp', function () {
     $handler = new CoalesceHandler;

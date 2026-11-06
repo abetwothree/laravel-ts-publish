@@ -517,6 +517,19 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($relation->firstWhere('id', 0))->toBeNull();
     });
 
+    // CollectionSteps::passesDefault() decides for each: Laravel returns the default where no item matches.
+    test('a collection\'s first(), last() and firstWhere() hold its element model, unless they may return a default', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $held = fn (string $php): ?ReceiverType => $resolver->resolve(receiverExpr($php), postScope());
+
+        expect($held('$this->resource->comments->first()'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->last()'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->firstWhere("id", 1)'))->toEqual(ReceiverType::of(Comment::class))
+            ->and($held('$this->resource->comments->first(null, "none")'))->toBeNull()
+            ->and($held('$this->resource->comments->last(default: "none")'))->toBeNull()
+            ->and($held('$this->resource->comments->first(...$arguments)'))->toBeNull();
+    });
+
     // A `new` with no constructor argument holds no attributes; a copy, a filled model and any model a step reaches
     // may hold some. The binder's `new` for a passed copy is one of those.
     test('marks only a new model built with no constructor argument as holding no attributes', function () {
@@ -836,7 +849,7 @@ describe('DeclaredClasses::docblockArms()', function () {
         $context = new ReflectionClass(ReceiverReturnsProbe::class);
 
         expect(DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class))
-            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable]);
+            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable, 'intersections' => []]);
     })->with([
         'bool' => ['bool', false],
         'a nullable string' => ['?string', true],
@@ -866,7 +879,7 @@ describe('DeclaredClasses::docblockArms()', function () {
             DependencyRecorder::stop();
         }
 
-        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true])
+        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true, 'intersections' => []])
             ->and($paths)->toBe([(string) $context->getFileName()]);
     });
 
@@ -875,9 +888,9 @@ describe('DeclaredClasses::docblockArms()', function () {
         $context = new ReflectionClass(ReceiverReturnsProbe::class);
         $arms = fn (string $type): array => DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
 
-        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true])
-            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true])
-            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false]);
+        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true, 'intersections' => []])
+            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true, 'intersections' => []])
+            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false, 'intersections' => []]);
     });
 });
 

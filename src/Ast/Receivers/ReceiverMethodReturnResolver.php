@@ -5,32 +5,42 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -40,21 +50,24 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type RuleCall MethodCall|NullsafeMethodCall|StaticCall|null
+ * @phpstan-type ModelRule Closure(ReceiverType, AnalysisScope, RuleCall): (ValueExpressionResult|null)
+ *
  * @internal
  */
 final class ReceiverMethodReturnResolver
 {
     use FiltersAttributeKeys;
     use ResolvesFilteredRelationTypes;
-    use SpellsKeyedCollections;
+
+    /** The model methods that read one attribute by name, as a property read does. */
+    public const array ATTRIBUTE_READS = ['getAttribute', 'getAttributeValue'];
 
     /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
 
     /** What a resource collection's items answer, whichever class holds them: the held value, an item, the list. */
     private const array ITEMS_VALUE = ['toArray', 'jsonSerialize'];
-
-    private const array ITEMS_ELEMENT = ['first', 'last'];
 
     private const array ITEMS_LIST = ['items', 'getCollection'];
 
@@ -102,44 +115,13 @@ final class ReceiverMethodReturnResolver
         MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
         ?CallSite $site = null,
     ): ?array {
-        $results = [];
+        // Inside a callback no reading reaches without the guard, every receiver reads as a guarded one does.
+        $armsOnly = $receiver->collectedItems || $receiver->guarded || $scope->readsUnreadCallback();
+        $result = $this->resolveEach($receiver, $methodName, $scope, $fromInside, $call, $site, $armsOnly);
 
-        if ($receiver->elementModel !== null) {
-            DependencyRecorder::recordClass($receiver->elementModel);
-        }
-
-        foreach ($receiver->classes as $class) {
-            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
-            DependencyRecorder::recordClass($class);
-
-            // Where a collection's items cannot run the method the call throws, so no response carries that arm.
-            if ($receiver->collectedItems && ! $this->itemsHolderRuns($class, $methodName)) {
-                continue;
-            }
-
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn(
-                $scope->calleeRuntime(new ReflectionClass($class), $receiver->runtimeInstance),
-                $methodName,
-                $fromInside,
-                $site,
-                $receiver->declaredOnly,
-            );
-
-            // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
-            if ($result === null) {
-                return null;
-            }
-
-            $results[] = $result;
-        }
-
-        if ($results === []) {
+        if ($result === null) {
             return null;
         }
-
-        $result = count($results) === 1
-            ? $results[0]
-            : ValueResult::unionResults($results);
 
         return in_array($methodName, $this->supportedAttributeFilters(), true) && ! $scope->carriesImports
             ? $this->filterReturnWithoutImports($result, $methodName, $call)
@@ -209,7 +191,8 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
+     * Whether a model rule types the method from the model's class, as for getKey(), toArray() or a loosely declared
+     * array: every rule modelRule() holds, so one added there reaches this too.
      *
      * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
      *
@@ -219,7 +202,7 @@ final class ReceiverMethodReturnResolver
     {
         DependencyRecorder::recordClass($class);
 
-        return ($methodName === 'toArray' || isset(self::MODEL_ARRAY_RETURNS[$methodName])) && $this->runsModelMethod($class, $methodName);
+        return $this->modelRule($class, $methodName) !== null;
     }
 
     /**
@@ -235,6 +218,82 @@ final class ReceiverMethodReturnResolver
         DependencyRecorder::recordClass($class);
 
         return $this->modelRule($class, $methodName) !== null || ($this->loads($methodName) && $this->runsModelMethod($class, $methodName));
+    }
+
+    /**
+     * Type a method on every class the receiver holds, an API resource's undeclared one on what it forwards to, and
+     * union the answers; null when any class declines, or none can run it.
+     *
+     * @param  bool  $armsOnly  a resource collection's items, a guarded receiver, or what an API resource forwards a
+     *                          call to: a conditional `@return` there publishes a rule's or the body's answer, no guess
+     * @return ValueExpressionResult|null
+     */
+    private function resolveEach(
+        ReceiverType $receiver,
+        string $methodName,
+        AnalysisScope $scope,
+        bool $fromInside,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+        ?CallSite $site,
+        bool $armsOnly,
+    ): ?array {
+        $results = [];
+        $declined = [];
+
+        if ($receiver->elementModel !== null) {
+            DependencyRecorder::recordClass($receiver->elementModel);
+        }
+
+        foreach ($receiver->classes as $class) {
+            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
+            DependencyRecorder::recordClass($class);
+
+            // Where a collection's items cannot run the method the call throws, so no response carries that arm.
+            if ($receiver->collectedItems && ! $this->itemsHolderRuns($class, $methodName)) {
+                continue;
+            }
+
+            $owner = $receiver->memberOwner($class, $methodName, true);
+            $held = ProxyDeclaration::forwarded($owner, $methodName, true);
+            $read = fn (): ?array => $this->resolveOn(
+                $scope->calleeRuntime(new ReflectionClass($owner), $receiver->runtimeInstance && $owner === $class),
+                $methodName,
+                $fromInside,
+                $site,
+                $receiver->declaredOnly,
+            );
+            $result = $this->ruleFor($receiver, $owner, $methodName, $scope, $call) ?? match (true) {
+                $held !== null => $this->resolveEach($held, $methodName, $scope, false, $call, $site, true),
+                $armsOnly => $receiver->guarded && $this->handsBackPaginator($owner, $methodName)
+                    ? null
+                    : $this->withoutConditionalGuess($owner, $methodName, $read()),
+                default => $read(),
+            };
+
+            // A class only a write's `@var` names gives way to the join's others, which the warning names.
+            $write = $result === null ? ReceiverMemberReader::leftOutWrite($receiver, $class, $methodName, true) : null;
+
+            if ($write !== null) {
+                $declined[] = $write;
+
+                continue;
+            }
+
+            // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
+            if ($result === null) {
+                return null;
+            }
+
+            $results[] = $result;
+        }
+
+        if ($results === []) {
+            return null;
+        }
+
+        DroppedUnionArms::warnOfDeclined($declined, $scope);
+
+        return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
     }
 
     /**
@@ -256,6 +315,12 @@ final class ReceiverMethodReturnResolver
             return $items;
         }
 
+        $picked = $methodName === 'random' ? $this->randomItems($receiver, $class, $call) : null;
+
+        if ($picked !== null) {
+            return $picked;
+        }
+
         // first() and firstWhere() find the model the query builds, or null where no row matches.
         if ($receiver->relatedModel !== null && resolve(ReceiverClassResolver::class)->findsQueriedModel($class, $methodName)) {
             return $this->publishedModelOrNull($receiver->relatedModel);
@@ -270,7 +335,7 @@ final class ReceiverMethodReturnResolver
         $modelRule = $this->modelRule($class, $methodName);
 
         if ($modelRule !== null) {
-            return $modelRule($receiver);
+            return $modelRule($receiver, $scope, $call);
         }
 
         // A base collection holding the models, as toBase() hands back, has no modelKeys().
@@ -280,9 +345,10 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $this->listOrKeyed(ValueResult::arrayWrapType($keyType), $receiver)];
         }
 
-        // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them.
+        // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them, or the
+        // record a list declared under string keys reads.
         if ($methodName === 'all' && $receiver->elementModel !== null) {
-            return $this->listedModels($receiver->elementModel, $receiver->keyed);
+            return $this->listedModels($receiver->elementModel, $receiver->keyed, $receiver->stringKeyed);
         }
 
         // It writes what each model's own toArray() does, under the same keys.
@@ -370,7 +436,7 @@ final class ReceiverMethodReturnResolver
      * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() also names these.
      *
      * @param  class-string  $class
-     * @return (Closure(ReceiverType): (ValueExpressionResult|null))|null
+     * @return ModelRule|null
      */
     private function modelRule(string $class, string $methodName): ?Closure
     {
@@ -395,6 +461,22 @@ final class ReceiverMethodReturnResolver
             return fn (): ?array => $this->publishedModelOrNull($class);
         }
 
+        // Model::__get() is getAttribute(), so a literal key reads as the property does. It reads attributes through
+        // getAttributeValue() and relations through getRelationValue(); an override of any of them reads as declared.
+        if (in_array($methodName, self::ATTRIBUTE_READS, true)
+            && $this->runsModelMethod($class, $methodName)
+            && $this->runsModelMethod($class, 'getAttributeValue')
+        ) {
+            $relations = $methodName === 'getAttribute' && $this->runsModelMethod($class, 'getRelationValue');
+
+            return fn (ReceiverType $receiver, AnalysisScope $scope, MethodCall|NullsafeMethodCall|StaticCall|null $call): ?array => $this->attributeRead(
+                $receiver->withClasses([$class]),
+                $scope,
+                $call,
+                $relations,
+            );
+        }
+
         // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
         if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
             return fn (): array => $this->attributeRecordResult(nullable: false);
@@ -405,6 +487,25 @@ final class ReceiverMethodReturnResolver
         return $held !== null && $this->runsModelMethod($class, $methodName)
             ? fn (): array => [...ValueResult::unknown(), 'type' => $held]
             : null;
+    }
+
+    /**
+     * What `getAttribute('name')` or `getAttributeValue('name')` reads off one model: the member `->name` reads, a
+     * relation only where the call loads one; null for any key but one literal string, and for a static call, which
+     * `parent::` can make from an override.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function attributeRead(
+        ReceiverType $model,
+        AnalysisScope $scope,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+        bool $relations,
+    ): ?array {
+        $args = $call instanceof MethodCall || $call instanceof NullsafeMethodCall ? $call->getArgs() : [];
+        $key = count($args) === 1 && ! $args[0]->unpack ? $args[0]->value : null;
+
+        return $key instanceof String_ ? ReceiverMemberReader::value($model, $key->value, $scope, $relations) : null;
     }
 
     /**
@@ -665,9 +766,7 @@ final class ReceiverMethodReturnResolver
         }
 
         return match (true) {
-            in_array($methodName, self::ITEMS_ELEMENT, true) => $this->mayReturnDefault($call, $methodName)
-                ? null
-                : [...$item, 'type' => "{$name} | null"],
+            $call !== null && CollectionSteps::elementCall($call, $methodName) => [...$item, 'type' => "{$name} | null"],
             in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => $this->heldItems(
                 new ReceiverType([Collection::class], collectedItems: true, collectedElement: $element),
                 $scope,
@@ -677,18 +776,110 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a first() or last() call may return its `$default`, which Laravel sends when no item matches; a call
-     * whose arguments cannot be read counts.
+     * What a collection's own `random()` hands back where its item is known: the item for no `$number` or a `null` one,
+     * since an empty collection throws, a list for a count or a callable, and either where the argument may be null.
+     * A list of items picked with `$preserveKeys`, or by an unpacked call, may keep keys that leave 0..n-1.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
      */
-    private function mayReturnDefault(MethodCall|NullsafeMethodCall|StaticCall|null $call, string $methodName): bool
+    private function randomItems(ReceiverType $receiver, string $class, MethodCall|NullsafeMethodCall|StaticCall|null $call): ?array
     {
-        if ($call === null) {
-            return true;
+        $item = $this->knownItem($receiver);
+        // A paginator's __call() runs random() on its collection.
+        $runs = ($receiver->collectedItems && ! method_exists($class, 'random'))
+            || (method_exists($class, 'random') && in_array(
+                new ReflectionMethod($class, 'random')->getDeclaringClass()->getName(),
+                [Collection::class, LazyCollection::class],
+                true,
+            ));
+
+        if ($item === null || $call === null || ! $runs) {
+            return null;
         }
 
-        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $methodName));
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, 'random'));
+        $unpacked = $arguments->hasUnpack();
+        $number = $arguments->named('number')?->value;
+        $kept = $arguments->named('preserveKeys')?->value;
+        $list = ValueResult::arrayWrapType($item['type']);
+        $list = ! $unpacked && ($kept === null || $this->isLiteral($kept, 'false')) ? $list : ArrayArms::keyedList($list);
 
-        return $arguments->hasUnpack() || $arguments->named('default') !== null;
+        // An unpacked call may pass any argument, so every arm stays.
+        $type = match (true) {
+            $unpacked => $item['type'].' | '.$list,
+            $number === null || $this->isLiteral($number, 'null') => $item['type'],
+            $number instanceof Int_ || $number instanceof ClosureExpr || $number instanceof ArrowFunction => $list,
+            default => $item['type'].' | '.$list,
+        };
+
+        return [...$item, 'type' => $type];
+    }
+
+    /**
+     * One item of a collection whose items are known, as its value: a resource collection's collected element, else
+     * the model a collection lists, where this run publishes it; null otherwise.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function knownItem(ReceiverType $receiver): ?array
+    {
+        if ($receiver->collectedItems) {
+            return $receiver->collectedElement === null ? null : ResourceCollections::elementValue($receiver->collectedElement);
+        }
+
+        // A relation names its related model by this check, so its items are named as its own read names them.
+        if ($receiver->elementModel === null || ! PublishedModelRegistry::isPublished($receiver->elementModel)) {
+            return null;
+        }
+
+        return [...ValueResult::unknown(), 'type' => class_basename($receiver->elementModel), 'modelFqcn' => $receiver->elementModel];
+    }
+
+    /**
+     * Whether an argument is the constant a lowercase name spells, such as `null` or `false`.
+     */
+    private function isLiteral(Expr $value, string $constant): bool
+    {
+        return $value instanceof ConstFetch && $value->name->toLowerString() === $constant;
+    }
+
+    /**
+     * Whether a paginator's method hands the paginator itself back, as `through()` does: Laravel sends its toArray(),
+     * which the shape its properties read never spells, so a guarded receiver publishes no reading of it; a resource
+     * collection's own paginator keeps the reading it has without the guard.
+     */
+    private function handsBackPaginator(string $class, string $methodName): bool
+    {
+        return array_any(PaginatorSteps::KINDS, fn (string $kind): bool => is_a($class, $kind, true))
+            && DeclaredClasses::returnClasses($class, $methodName) === [$class];
+    }
+
+    /**
+     * A method's reading less its conditional `@return`'s guess: the docblock reader keeps only the first token, as
+     * `($number`, of a conditional an arm of which reads no type, and the token may spell one. A body read where the
+     * token spells no type stands; where it spells one, as `($int`, no body is read and the reading is withdrawn.
+     *
+     * @param  class-string  $class
+     * @param  ValueExpressionResult|null  $result
+     * @return ValueExpressionResult|null
+     */
+    private function withoutConditionalGuess(string $class, string $methodName, ?array $result): ?array
+    {
+        if ($result === null || ! method_exists($class, $methodName)) {
+            return $result;
+        }
+
+        $method = new ReflectionMethod($class, $methodName);
+        $reading = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
+
+        if ($reading === null || ! str_starts_with($reading, '($')) {
+            return $result;
+        }
+
+        $guess = resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::docblockReturnTypes($method));
+
+        return $guess !== null && $guess['type'] === $result['type'] ? null : $result;
     }
 
     /**
@@ -739,11 +930,11 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a method's native return type, else its `@return` docblock, admits null.
+     * Whether a method's native or tentative return type, else its `@return` docblock, admits null.
      */
     private function returnAllowsNull(ReflectionMethod $method): bool
     {
-        $native = $method->getReturnType();
+        $native = DeclaredClasses::reflectedReturnType($method);
 
         if ($native !== null) {
             return $native->allowsNull();
@@ -763,16 +954,21 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1; null where
-     * the model has no published file.
+     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1, or only that
+     * object where $record says a declaration names the keys strings; null where the model has no published file.
      *
      * @param  class-string<Model>  $model
      * @return ValueExpressionResult|null
      */
-    private function listedModels(string $model, bool $keyed): ?array
+    private function listedModels(string $model, bool $keyed, bool $record = false): ?array
     {
         $list = ValueResult::arrayWrapType(class_basename($model));
-        $models = [...ValueResult::unknown(), 'type' => $keyed ? $this->keyedObjectArm($list) : $list, 'modelFqcn' => $model];
+        $type = match (true) {
+            $record => 'Record<string, '.class_basename($model).'>',
+            $keyed => ArrayArms::keyedList($list),
+            default => $list,
+        };
+        $models = [...ValueResult::unknown(), 'type' => $type, 'modelFqcn' => $model];
 
         return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
     }
@@ -782,6 +978,6 @@ final class ReceiverMethodReturnResolver
      */
     private function listOrKeyed(string $list, ReceiverType $receiver): string
     {
-        return $receiver->keyed ? $this->keyedObjectArm($list) : $list;
+        return $receiver->keyed ? ArrayArms::keyedList($list) : $list;
     }
 }

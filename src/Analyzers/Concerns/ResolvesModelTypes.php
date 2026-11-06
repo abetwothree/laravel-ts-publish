@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -64,18 +64,21 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and #[TsType] imports for a model attribute.
+     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and #[TsType] imports for a model attribute: as a
+     * read off the model gets it, or, where $serialized, as Model::toArray() writes it.
      *
      * @return ModelAttributeTypeResult
      */
-    protected function resolveModelAttributeTypeInfo(string $attributeName): array
+    protected function resolveModelAttributeTypeInfo(string $attributeName, bool $serialized = false): array
     {
         if ($this->scope->modelClass === null || $this->modelAttributes === null) {
             return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => [], 'customImports' => []];
         }
 
-        $tsInfo = resolve(ModelAttributeResolver::class)
-            ->resolveAttribute($this->scope->modelClass, $attributeName, $this->scope->carriesImports);
+        $resolver = resolve(ModelAttributeResolver::class);
+        $tsInfo = $serialized
+            ? $resolver->resolveAttribute($this->scope->modelClass, $attributeName, $this->scope->carriesImports)
+            : $resolver->resolveAttributeValue($this->scope->modelClass, $attributeName, $this->scope->carriesImports);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
@@ -203,13 +206,14 @@ trait ResolvesModelTypes
     }
 
     /**
-     * The value a `$this->column` read of a model attribute resolves to, with its enum, class and #[TsType] channels.
+     * The value a `$this->column` read of a model attribute resolves to, or what Model::toArray() writes for it where
+     * $serialized, with its enum, class and #[TsType] channels.
      *
      * @return ValueExpressionResult
      */
-    private function modelAttributeResult(string $name): array
+    private function modelAttributeResult(string $name, bool $serialized = false): array
     {
-        $info = $this->resolveModelAttributeTypeInfo($name);
+        $info = $this->resolveModelAttributeTypeInfo($name, $serialized);
 
         // A cast class's own type name and its #[TsType(import:)] path travel with the property, the
         // same way ThisPropertyHandler carries them — without this the delegated shape names a token
@@ -235,7 +239,7 @@ trait ResolvesModelTypes
      */
     private function serializedModelAttributeResult(string $name): array
     {
-        $result = $this->modelAttributeResult($name);
+        $result = $this->modelAttributeResult($name, serialized: true);
         $modelClass = $this->scope->modelClass;
 
         if (($result['keepsKeys'] ?? false)

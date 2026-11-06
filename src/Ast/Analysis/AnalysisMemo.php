@@ -16,6 +16,8 @@ use LogicException;
  * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms and unread
  * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
+ * It also holds whether a read under way needs each enum case as its enum, whose answers it keeps apart.
+ *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
  *     held: array<string, true>,
@@ -24,6 +26,7 @@ use LogicException;
  *     dropped: int,
  *     unreadSpreads: int,
  *     reentries: int,
+ *     cuts: array<string, int>,
  *     resources: int,
  *     models: int,
  *     enums: int,
@@ -37,10 +40,12 @@ use LogicException;
  *     dropped: int,
  *     unreadSpreads: int,
  *     reentries: int|null,
+ *     cuts: array<string, int>,
  *     resources: int,
  *     models: int,
  *     enums: int,
  * }
+ * @phpstan-type ValueSite = array{Reading, AnalysisScope}
  *
  * @internal
  */
@@ -61,8 +66,17 @@ final class AnalysisMemo
     /** How often a read entered a guard a re-entry under way lifted, or reused an answer that entered one. */
     private int $reentries = 0;
 
+    /** @var array<string, int> how often a read met each guard already on the stack, or reused an answer that did */
+    private array $cuts = [];
+
     /** How many answers this run computed rather than reused. */
     private int $computations = 0;
+
+    /** How many reads under way need each enum case as its enum: readingCasesAsEnums(). */
+    private int $enumReadings = 0;
+
+    /** @var ValueSite|null the reading and scope of the value the innermost read under way types */
+    private ?array $valueSite = null;
 
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
@@ -90,6 +104,8 @@ final class AnalysisMemo
         }
 
         if (isset($this->active[$key])) {
+            $this->cuts[$key] = ($this->cuts[$key] ?? 0) + 1;
+
             return false;
         }
 
@@ -181,6 +197,22 @@ final class AnalysisMemo
     }
 
     /**
+     * How often a read has met a guard already on the stack, or reused an answer that did, among the guards keyed with
+     * $prefix; a caller compares two readings to tell whether a read went through such a cycle. reset() keeps it, as a
+     * caller may compare across one.
+     */
+    public function cuts(string $prefix = ''): int
+    {
+        $cuts = 0;
+
+        foreach ($this->cuts as $key => $count) {
+            $cuts += str_starts_with($key, $prefix) ? $count : 0;
+        }
+
+        return $cuts;
+    }
+
+    /**
      * Run a read while the guard `$key`, which the caller holds, answers a seed in place of its cut, as
      * SubjectPropertyTypeResolver's `typing-property:` guard answers a joined type to check it is a fixpoint. An answer
      * that met `$key` outside it is not reused in it, and one that meets it there is reused only until it ends.
@@ -204,8 +236,59 @@ final class AnalysisMemo
     }
 
     /**
+     * Run a read that needs each enum case as its enum, such as an `EnumResource` payload: for its whole extent the
+     * body fallback of every method it reaches, however many frames deep, reads its cases so, not as literals.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function readingCasesAsEnums(Closure $read): mixed
+    {
+        $this->enumReadings++;
+
+        try {
+            return $read();
+        } finally {
+            $this->enumReadings--;
+        }
+    }
+
+    /**
+     * Whether a read under way needs each enum case as its enum.
+     */
+    public function readsCasesAsEnums(): bool
+    {
+        return $this->enumReadings > 0;
+    }
+
+    /**
+     * Mark the value a read under way types by its reading and scope, handing back the mark it replaces for the reader
+     * to restore: a body memoized apart from its reader's reading, an accessor's, asks filterReachesValue() of it.
+     *
+     * @param  ValueSite|null  $site
+     * @return ValueSite|null
+     */
+    public function markValueSite(?array $site): ?array
+    {
+        [$previous, $this->valueSite] = [$this->valueSite, $site];
+
+        return $previous;
+    }
+
+    /**
+     * Whether `JsonResource::filter()` reaches the value the innermost read under way types, as its reading says there.
+     */
+    public function filterReachesValue(): bool
+    {
+        return $this->valueSite !== null && $this->valueSite[0]->filterReaches($this->valueSite[1]);
+    }
+
+    /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
      * found held, since only those can cut a fresh computation short somewhere else; one a seed shaped is kept apart.
+     * So is one computed while a read needs enum cases as their enums, under its own key.
      *
      * @template T
      *
@@ -214,6 +297,7 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
+        $key .= $this->enumReadings > 0 ? '@casesAsEnums' : '';
         $enums = PublishedEnums::version();
 
         $stored = $this->seeded === [] ? $this->entries[$key] ?? [] : [
@@ -242,6 +326,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped(),
             'unreadSpreads' => UnreadSpreads::count(),
             'reentries' => $this->reentries,
+            'cuts' => $this->cuts,
             'resources' => PublishedResourceRegistry::version(),
             'models' => PublishedModelRegistry::version(),
             'enums' => $enums,
@@ -332,6 +417,9 @@ final class AnalysisMemo
         DroppedUnionArms::replay($entry['dropped']);
         UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
+        foreach ($entry['cuts'] as $guard => $count) {
+            $this->cuts[$guard] = ($this->cuts[$guard] ?? 0) + $count;
+        }
 
         $innermost = array_key_last($this->frames);
 
@@ -359,6 +447,29 @@ final class AnalysisMemo
     }
 
     /**
+     * The cuts each guard has counted since a frame opened with $before.
+     *
+     * @param  array<string, int>  $before
+     * @return array<string, int>
+     */
+    private function cutsSince(array $before): array
+    {
+        if ($this->cuts === $before) {
+            return [];
+        }
+
+        $since = [];
+
+        foreach ($this->cuts as $guard => $count) {
+            if ($count > ($before[$guard] ?? 0)) {
+                $since[$guard] = $count - ($before[$guard] ?? 0);
+            }
+        }
+
+        return $since;
+    }
+
+    /**
      * Store a computed answer with what it recorded, in place of one computed under the same held guards; one a seed
      * shaped goes with the seeded answers.
      *
@@ -379,6 +490,7 @@ final class AnalysisMemo
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],
             'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
+            'cuts' => $this->cutsSince($frame['cuts']),
             'resources' => $frame['resources'],
             'models' => $frame['models'],
             'enums' => $frame['enums'],

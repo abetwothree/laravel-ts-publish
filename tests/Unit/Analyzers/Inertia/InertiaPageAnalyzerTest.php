@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ConditionableWrapController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DeclinedGuessController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocumentedClosurePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EloquentStaticsController;
@@ -42,6 +44,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SignedInUserController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UnpublishedFinderController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
@@ -1284,11 +1287,23 @@ it('admits the empty list a resolved body sends for an EnumResource over a null 
     $card = fn (Post $post): array => json_decode((string) json_encode(inertiaProps(new NullableEnumResourceController()->resolved($post))->card), true);
 
     expect(pageData(NullableEnumResourceController::class.'@resolved')['pageType'])
-        ->toBe('Inertia.SharedData & { card: Omit<PostVisibilitiesResource, \'visibilities\'> & '
-            .'{ visibilities: (AsEnum<typeof Visibility> | never[])[] } }')
+        ->toBe('Inertia.SharedData & { card: PostVisibilitiesResource }')
         ->and($card($hidden))->toBe(['visibility' => null, 'visibilities' => [[]]])
         ->and([$card($shown)['visibility']['name'], $card($shown)['visibilities'][0]['name']])
         ->toBe([Visibility::Public->name, Visibility::Public->name]);
+});
+
+// tryFrom() finds no case for an unknown value, and no filter() runs over a page prop, so the page sends `[]`.
+it('admits the empty list a page sends for an EnumResource over a tryFrom() that finds no case', function () {
+    $sent = fn (string $query): mixed => inertiaProps(
+        new NullableEnumResourceController()->tried(Request::create('/'.$query)),
+        Request::create('/'.$query),
+    )->status;
+
+    expect(pageData(NullableEnumResourceController::class.'@tried')['pageType'])
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | never[] }')
+        ->and($sent('?status=7'))->toBe([])
+        ->and($sent('?status=1')->name)->toBe(Status::Published->name);
 });
 
 // The workbench's own wrap of a nullable enum, so the golden tree and the token gate compile its `never[]` arm.
@@ -1580,8 +1595,8 @@ it('keeps a short ternary\'s other arm where the enum resource it checks cannot 
         ->toBe([Status::Published->name, Status::Published->name, [], []]);
 });
 
-// A helper's body is read as Inertia sends it, unfiltered, so the other arm never runs. Its wrap around null sends
-// `[]`, which this type does not admit, as the `| null` the helper's own reading keeps does not.
+// A helper's body is read as Inertia sends it, unfiltered, so the other arm never runs, and its wrap around the null
+// tryFrom() may return sends `[]`.
 it('types a short ternary a props helper returns over an enum resource as that resource alone', function () {
     [$picked, $absent] = array_map(function (array $query): stdClass {
         $request = Request::create('/', 'GET', $query);
@@ -1590,7 +1605,7 @@ it('types a short ternary a props helper returns over an enum resource as that r
     }, [['s' => 1], []]);
 
     expect(pageData(EnumUnionPropsController::class.'@helperElvis')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> }')
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | never[] }')
         ->and([$picked->status->name, $absent->status])->toBe([Status::Published->name, []]);
 });
 
@@ -1606,7 +1621,7 @@ it('reads a helper beside a resolved resource whose body reads it, each as Inert
     $page = pageData(EnumUnionPropsController::class.'@'.$action)['pageType'] ?? '';
     $types = array_column(TsTypeShape::members(substr($page, strlen('Inertia.SharedData & '))) ?? [], 1, 0);
 
-    expect([$types['a'] ?? null, $types['helperTryFrom'] ?? null])->toBe(['AsEnum<typeof Status>', 'AsEnum<typeof Status> | null'])
+    expect([$types['a'] ?? null, $types['helperTryFrom'] ?? null])->toBe(['AsEnum<typeof Status> | never[]', 'AsEnum<typeof Status> | null'])
         ->and([$picked->a->name, $picked->helperTryFrom->name])->toBe([Status::Published->name, Status::Published->name])
         ->and([$absent->a, $absent->helperTryFrom])->toBe([[], null]);
 })->with(['helperBesideSpread', 'spreadBesideHelper']);
@@ -2379,14 +2394,29 @@ it('publishes a factory build as a list once a count is set, else as one model',
         ->and([$sent->cleared, $sent->single, $sent->firstMade, $sent->eitherFirst])->each->toHaveProperty('email');
 });
 
-// Every body Inertia sends reads the chain alike; the resource's own interface, read as json_encode() sends it,
-// stays `unknown`.
+// A controller's Conditionable::when() returns the callback's value or the controller, never the MissingValue a
+// resource's when() returns, so Inertia always sends a resource built around it.
+it('publishes a resource prop built around a controller\'s Conditionable::when() as required', function () {
+    expect(pageData(ConditionableWrapController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'made: { data: UserResource }, built: { data: UserResource }, listed: AnonymousResourceCollection<UserResource> }');
+});
+
+// A key naming a model the registered set leaves out publishes `unknown` whole, so a ternary's `null` arm or a
+// collection guess never stands in for the user Laravel sends.
+it('keeps a page key whose finder names a model the registered set leaves out', function () {
+    PublishedModelRegistry::register([Post::class, Comment::class]);
+
+    expect(pageData(UnpublishedFinderController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { '
+        .'found: unknown, collected: (UserCollection & ResourcePagination) | JsonResourcePaginator<never> }');
+});
+
+// Every body reads the chain alike, the resolved resource's own interface too, so the page restates none of its keys.
 it('reads a query chain past its builder in a resolved resource, a helper and a collaborator alike', function () {
     $post = eloquentStaticsPost();
     $controller = new EloquentStaticsController(new QueriedIdStats);
 
     expect(pageData(EloquentStaticsController::class.'@resolvedCard')['pageType'])
-        ->toBe("Inertia.SharedData & { card: Omit<QueriedIdCardResource, 'firstId'> & { firstId: number | null } }")
+        ->toBe('Inertia.SharedData & { card: QueriedIdCardResource }')
         ->and(pageData(EloquentStaticsController::class.'@helperMeta')['pageType'])
         ->toBe('Inertia.SharedData & { meta: { firstId: number | null } }')
         ->and(pageData(EloquentStaticsController::class.'@collaboratorStats')['pageType'])
@@ -2697,14 +2727,14 @@ it('reads each paginator kind, and its kind past the paginator\'s own steps', fu
         ->toBe([15, null, 1]);
 });
 
-// A setter keeps the paginator and its items; through() maps them, `unknown` where its callable is not read.
+// A setter keeps the paginator and its items; through() maps them, as the call its callable names.
 it('types a paginator past its own steps as the same paginator', function () {
     paginatedPost();
     $sent = inertiaProps(new PaginatorSourcesController(new PostPages)->steps());
 
     expect(pageData(PaginatorSourcesController::class.'@steps')['pageType'])->toBe('Inertia.SharedData & { '
         .'withQueryString: LengthAwarePaginator<Post>, onEachSide: LengthAwarePaginator<Post>, fragment: SimplePaginator<Post>, '
-        .'base: CursorPaginator<Record<string, unknown>>, titles: LengthAwarePaginator<string>, unread: LengthAwarePaginator<unknown> }')
+        .'base: CursorPaginator<Record<string, unknown>>, titles: LengthAwarePaginator<string>, unread: LengthAwarePaginator<string> }')
         ->and([$sent->withQueryString->data[0]->title, $sent->onEachSide->total, $sent->fragment->data[0]->title])
         ->toBe(['First', 1, 'First'])
         ->and([$sent->fragment->next_page_url, $sent->base->data[0]->title, $sent->titles->data, $sent->unread->data])
@@ -2732,7 +2762,7 @@ it('publishes a with() key the when() family may leave out as always sent, with 
         ->toBe([Visibility::Public->name, [], 1]);
 });
 
-// A resource a `with()` key holds publishes its own type, and with it its kept map's known gap: a null enum sends `[]`.
+// A resource a `with()` key holds publishes its own type, whose kept map admits the `[]` a null enum sends.
 it('publishes a resource a with() key holds as its own type', function () {
     $author = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $author->id])->fresh();
@@ -2742,7 +2772,7 @@ it('publishes a resource a with() key holds as its own type', function () {
         .'data: HeldResourceWithResource; item: PostVisibilitiesResource; resolved: PostVisibilitiesResource; '
         .'kept: (AsEnum<typeof Visibility> | never[])[] } }')
         ->and(resourceProps(PostVisibilitiesResource::class))
-        ->toBe(['visibility' => 'AsEnum<typeof Visibility> | null', 'visibilities' => 'AsEnum<typeof Visibility>[]'])
+        ->toBe(['visibility' => 'AsEnum<typeof Visibility> | null', 'visibilities' => '(AsEnum<typeof Visibility> | never[])[]'])
         ->and($sent['card'])->toBe([
             'data' => ['id' => $post->id],
             'item' => ['visibility' => null, 'visibilities' => [[]]],

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -95,6 +95,23 @@ final class LoadedRelations
 
     /** The Model methods that write a loaded relation into the array Inertia and json_encode() send. */
     private const array SERIALIZERS = ['toArray', 'jsonSerialize', 'relationsToArray', 'getArrayableRelations', 'getArrayableItems'];
+
+    /**
+     * The columns of its own model a relation finds its rows by: the foreign key, and a morphTo's type, or the local
+     * key of a hasOne, hasMany, morphOne or morphMany; null for any other relation.
+     *
+     * @param  Relation<Model, Model, mixed>  $relation
+     * @return non-empty-list<string>|null
+     */
+    public static function parentKeys(Relation $relation): ?array
+    {
+        return match (true) {
+            $relation instanceof MorphTo => [$relation->getForeignKeyName(), $relation->getMorphType()],
+            $relation instanceof BelongsTo => [$relation->getForeignKeyName()],
+            $relation instanceof HasOneOrMany => [$relation->getLocalKeyName()],
+            default => null,
+        };
+    }
 
     /**
      * The `{ key: Type; … }` object a `load()` or `loadMissing()` call adds to a model, and the models it names.
@@ -584,11 +601,12 @@ final class LoadedRelations
             return false;
         }
 
-        [$parentKeys, $relatedKey] = match (true) {
-            $relation instanceof MorphTo => [[$relation->getForeignKeyName(), $relation->getMorphType()], null],
-            $relation instanceof BelongsTo => [[$relation->getForeignKeyName()], $relation->getOwnerKeyName()],
-            $relation instanceof HasOneOrMany => [[$relation->getLocalKeyName()], $relation->getForeignKeyName()],
-            default => [null, null],
+        $parentKeys = $relation instanceof Relation ? self::parentKeys($relation) : null;
+        $relatedKey = match (true) {
+            $relation instanceof MorphTo => null,
+            $relation instanceof BelongsTo => $relation->getOwnerKeyName(),
+            $relation instanceof HasOneOrMany => $relation->getForeignKeyName(),
+            default => null,
         };
 
         return $parentKeys !== null

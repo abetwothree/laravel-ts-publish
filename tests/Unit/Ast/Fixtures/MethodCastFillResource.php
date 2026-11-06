@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A docblock-filled signature beside a resource-typed same-pattern key the method's own cast retypes, so only the
@@ -44,6 +45,6 @@ final class MethodCastFillResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

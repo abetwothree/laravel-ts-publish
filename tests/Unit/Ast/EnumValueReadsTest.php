@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRenamedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRevaluedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\RenamedTone;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnumCaseMembers;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnumInterfaceReads;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Grade;
@@ -123,16 +124,34 @@ it('declines a pure enum value and types the enum interfaces by their scalars', 
         ->and(analyzedKeyTypes(EnumInterfaceReads::class))->toBe(['backed' => 'string | number', 'unit' => 'string']);
 });
 
-it('reads an enum case, a local holding one and a ternary of cases as the enum', function () {
+it('reads an enum case\'s own members as their literals, and a local holding one and a case built as the enum', function () {
     expect(analyzedKeyTypes(EnumCasePayload::class))->toBe([
-        'case_value' => 'GradeType',
-        'case_name' => 'PriorityKind',
+        'case_value' => "'pass'",
+        'case_name' => "'High'",
         'local_value' => 'GradeType',
-        'picked' => 'GradeType',
+        'picked' => "'fail' | 'pass'",
         'parsed' => 'GradeType',
         'maybe' => 'GradeType | null',
         'label' => 'string',
     ]);
+});
+
+it('types an enum case\'s own ->value and ->name as their literals', function () {
+    expect(analyzedKeyTypes(EnumCaseMembers::class))->toBe([
+        'value' => "'pass'",
+        'int_value' => '1',
+        'name' => "'Pass'",
+        'ternary' => "'pass' | 'fail'",
+        'matched' => "'pass' | 'fail'",
+        'arm_or_null' => "'pass' | null",
+        'nullsafe' => "'pass' | null",
+        'matched_or_throw' => "'pass'",
+        'matched_label' => 'string',
+    ])->and(analyzedImportNames(EnumCaseMembers::class))->toBe([])
+        ->and(json_encode(new EnumCaseMembers()->toArray()))->toBe(
+            '{"value":"pass","int_value":1,"name":"Pass","ternary":"pass","matched":"pass","arm_or_null":"pass",'
+            .'"nullsafe":"pass","matched_or_throw":"pass","matched_label":"High Priority"}',
+        );
 });
 
 it('sends the values the enum case reads publish', function () {

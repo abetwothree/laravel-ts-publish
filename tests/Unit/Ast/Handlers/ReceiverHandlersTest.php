@@ -6,14 +6,14 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationFilterHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -28,12 +28,20 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedChainSwapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedKeySwapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DateHolderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DestructuredRefSwapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalMethodResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InternalServiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamedCallableSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnNameSwapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyBranchPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
@@ -53,6 +61,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariableHeldModel
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeOverridePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
@@ -63,7 +73,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RelationValueOverridePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TranslatedTitlePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamesakeStatusCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
@@ -1026,15 +1038,17 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed.
+ * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed; with $seed, after
+ * the body's locals, as seedBody() runs the pass.
  *
  * @return array{AnalysisScope, string}
  */
-function guardPassScope(string $body): array
+function guardPassScope(string $body, bool $seed = false): array
 {
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
     $source = '<?php '.$body;
     $stmts = new AstParser()->parseSource($source);
+    $stmts = ($stmts[0] ?? null) instanceof Stmt\Namespace_ ? $stmts[0]->stmts : $stmts;
 
     $host = new class
     {
@@ -1042,13 +1056,13 @@ function guardPassScope(string $body): array
         use CollectsLocalVarBindings;
 
         /** @param  array<Stmt>  $stmts */
-        public function run(array $stmts, AnalysisScope $scope): void
+        public function run(array $stmts, AnalysisScope $scope, bool $seed): void
         {
-            $this->collectInstanceofGuards($stmts, $scope);
+            $seed ? $this->seedBody($stmts, $scope) : $this->collectInstanceofGuards($stmts, $scope);
         }
     };
 
-    $host->run($stmts, $scope);
+    $host->run($stmts, $scope, $seed);
 
     return [$scope, $source];
 }
@@ -1071,9 +1085,9 @@ function narrowingBindings(string $body): array
  *
  * @return array<string, list<array{list<class-string>, string}>>
  */
-function blockNarrowingBindings(string $body): array
+function blockNarrowingBindings(string $body, bool $seed = false): array
 {
-    [$scope, $source] = guardPassScope($body);
+    [$scope, $source] = guardPassScope($body, $seed);
 
     return array_map(fn (array $guards): array => array_map(fn (array $guard): array => [
         $guard['classes'],
@@ -1243,7 +1257,7 @@ describe('narrowing', function () {
         'a positive test whose body reads nothing' => ['$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return null; }', []],
         'an && of negated tests' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post && ! $b instanceof \Workbench\App\Models\User) { return null; }', []],
         'every negated || operand' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post || ! $b instanceof \Workbench\App\Models\User) { return null; }', ['a' => [Post::class], 'b' => [User::class]]],
-        'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', []],
+        'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', ['$this->author' => [User::class]]],
     ]);
 
     test('a chain whose leading branch always leaves binds past the chain, and a positive test only inside its block', function () {
@@ -1322,6 +1336,186 @@ describe('narrowing', function () {
             ]],
         ],
     ]);
+
+    // A write that may replace the chain, or what it reads through, ends its proof; one through it keeps the class.
+    test('binds a test on a $this chain unless something between the test and its read may change the chain', function (string $body, array $bindings) {
+        expect(blockNarrowingBindings('if ($this->author instanceof \Workbench\App\Models\User) { '.$body.' $x = 1; }'))->toBe($bindings);
+    })->with([
+        'nothing' => ['', ['$this->author' => [[[User::class], '$x = 1;']]]],
+        'an assignment to the chain' => ['$this->author = null;', []],
+        'an assignment to a chain it reads through' => ['$this->resource = null;', []],
+        'an assignment through the proxy to the member it forwards' => ['$this->resource->author = null;', []],
+        'an assignment to another chain' => ['$this->marker = 1;', ['$this->author' => [[[User::class], '$this->marker = 1; $x = 1;']]]],
+        'a member no column or relation types' => ['$this->author->seen = true;', ['$this->author' => [[[User::class], '$this->author->seen = true; $x = 1;']]]],
+        'a value its column holds' => ['$this->author->name = \'Ann\';', ['$this->author' => [[[User::class], '$this->author->name = \'Ann\'; $x = 1;']]]],
+        'a value its column does not hold' => ['$this->author->name = 5;', []],
+        'unset() of the chain' => ['unset($this->author);', []],
+        'unset() of a member no column or relation types' => ['unset($this->author->seen);', ['$this->author' => [[[User::class], 'unset($this->author->seen); $x = 1;']]]],
+        'unset() of a typed member' => ['unset($this->author->name);', []],
+        'the chain passed by reference' => ['settype($this->author, \'array\');', []],
+        'the chain passed by value' => ['is_object($this->author);', ['$this->author' => [[[User::class], 'is_object($this->author); $x = 1;']]]],
+        'a key no column or relation types' => ['$this->author[\'seen\'] = true;', ['$this->author' => [[[User::class], '$this->author[\'seen\'] = true; $x = 1;']]]],
+        'a related model\'s member, a value its column holds' => ['$this->author->profile->timezone = \'UTC\';', ['$this->author' => [[[User::class], '$this->author->profile->timezone = \'UTC\'; $x = 1;']]]],
+        'a related model\'s member, a value its column does not hold' => ['$this->author->profile->timezone = 5;', []],
+        'a chain named at runtime' => ['$this->{$name} = 1;', []],
+        'unset() of a key no column or relation types' => ['unset($this->author[\'seen\']);', ['$this->author' => [[[User::class], 'unset($this->author[\'seen\']); $x = 1;']]]],
+        'a method the subject declares' => ['$this->toArray($request);', []],
+        'a method the subject declares, called through static' => ['static::toArray($request);', []],
+        'a method JsonResource declares, called through parent' => ['parent::toArray($request);', []],
+        'a method the subject declares, called through its own class name' => ['\\Workbench\\App\\Http\\Resources\\NarrowedParentResource::toArray();', []],
+        'a method an ancestor declares, called through the ancestor\'s name' => ['\\Illuminate\\Http\\Resources\\Json\\JsonResource::toArray();', []],
+        'a method the subject declares, named as a string to call_user_func()' => ['call_user_func(\'Workbench\\App\\Http\\Resources\\NarrowedParentResource::toArray\');', []],
+        'a static method an ancestor declares, called through its name' => ['\\Illuminate\\Http\\Resources\\Json\\JsonResource::make(1);', ['$this->author' => [[[User::class], '\\Illuminate\\Http\\Resources\\Json\\JsonResource::make(1); $x = 1;']]]],
+        'a member another chain holds, named as one the chain reads through' => ['$this->marker->author = null;', []],
+        'unset() of a member another chain holds, named as one the chain reads through' => ['unset($this->marker->author);', []],
+        'a member another chain holds, named as none the chain reads through' => ['$this->marker->seen = 1;', ['$this->author' => [[[User::class], '$this->marker->seen = 1; $x = 1;']]]],
+        'a key another chain holds, named as one the chain reads through' => ['$this->marker[\'author\'] = null;', []],
+        'unset() of a key another chain holds, named as one the chain reads through' => ['unset($this->marker[\'author\']);', []],
+        'a key another chain holds, named at runtime' => ['$this->marker[$name] = null;', []],
+        'a key another chain holds, named as none the chain reads through' => ['$this->marker[\'seen\'] = 1;', ['$this->author' => [[[User::class], '$this->marker[\'seen\'] = 1; $x = 1;']]]],
+        'a method JsonResource forwards to the model' => ['$this->refresh();', []],
+        'a call on what the chain reads through' => ['$this->resource->refresh();', []],
+        'a conditional helper JsonResource declares' => ['$this->whenLoaded(\'author\');', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\'); $x = 1;']]]],
+        'a call on the proven value itself' => ['$this->author->refresh();', ['$this->author' => [[[User::class], '$this->author->refresh(); $x = 1;']]]],
+        'the chain\'s own value passed to a resource' => ['\\Workbench\\App\\Http\\Resources\\PostResource::make($this->author);', ['$this->author' => [[[User::class], '\\Workbench\\App\\Http\\Resources\\PostResource::make($this->author); $x = 1;']]]],
+        '$this->resource passed by value' => ['tap($this->resource);', []],
+        '$this passed by value' => ['is_object($this);', []],
+        '$this inside an array passed to new' => ['new \\ArrayObject([$this]);', []],
+        'a chain it reads through inside a callable array' => ['call_user_func([$this->resource, \'refresh\']);', []],
+        '$this inside a callable array' => ['call_user_func([$this, \'toArray\'], $request);', []],
+        'a callable variable called' => ['$swap();', []],
+        'a callable variable passed to call_user_func()' => ['call_user_func($swap);', []],
+        'a method of $this called through $this::' => ['$this::toArray($request);', []],
+        'a first-class callable on $this' => ['$swap = $this->toArray(...);', []],
+        'a first-class callable on what the chain reads through' => ['$swap = $this->resource->refresh(...);', []],
+        'a first-class callable on the proven value' => ['$swap = $this->author->refresh(...);', ['$this->author' => [[[User::class], '$swap = $this->author->refresh(...); $x = 1;']]]],
+        'can() on the signed-in user, given $this->resource' => ['auth()->user()->can(\'view\', $this->resource);', ['$this->author' => [[[User::class], 'auth()->user()->can(\'view\', $this->resource); $x = 1;']]]],
+        'cannot() on the signed-in user, given $this' => ['auth()->user()?->cannot(\'view\', $this);', ['$this->author' => [[[User::class], 'auth()->user()?->cannot(\'view\', $this); $x = 1;']]]],
+        'canAny() on the signed-in user, given $this->resource' => ['auth()->user()->canAny([\'view\'], $this->resource);', ['$this->author' => [[[User::class], 'auth()->user()->canAny([\'view\'], $this->resource); $x = 1;']]]],
+        'can() on a receiver no class names' => ['$ability->can(\'view\', $this->resource);', []],
+        'can() on a class that is no Authorizable, given $this' => ['(new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper)->can(\'swap\', $this);', []],
+        'route() fully qualified' => ['\\route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], '\\route(\'posts.show\', $this->resource); $x = 1;']]]],
+        'Gate::allows() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::allows(\'view\', $this->resource); $x = 1;']]]],
+        'Gate::denies() given $this->resource' => ['\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Facades\\Gate::denies(\'view\', $this->resource); $x = 1;']]]],
+        'route() given $this->resource' => ['route(\'posts.show\', $this->resource);', ['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]],
+        'url() given $this->resource' => ['url(\'posts\', [$this->resource]);', ['$this->author' => [[[User::class], 'url(\'posts\', [$this->resource]); $x = 1;']]]],
+        'a static helper given the chain\'s own member' => ['\\Illuminate\\Support\\Str::limit($this->author->name, 50);', ['$this->author' => [[[User::class], '\\Illuminate\\Support\\Str::limit($this->author->name, 50); $x = 1;']]]],
+        'a class constant passed' => ['strlen(\\Workbench\\App\\Models\\Post::class);', ['$this->author' => [[[User::class], 'strlen(\\Workbench\\App\\Models\\Post::class); $x = 1;']]]],
+        'a conditional helper given a closure that reads the chain' => ['$this->when(true, fn () => $this->author->name);', ['$this->author' => [[[User::class], '$this->when(true, fn () => $this->author->name); $x = 1;']]]],
+        'a call given a closure that returns nothing' => ['collect([1])->each(function (): void {});', ['$this->author' => [[[User::class], 'collect([1])->each(function (): void {}); $x = 1;']]]],
+        'a call given a closure that returns its own parameter\'s member' => ['$this->comments->map(fn ($c) => $c->id);', ['$this->author' => [[[User::class], '$this->comments->map(fn ($c) => $c->id); $x = 1;']]]],
+        'a conditional helper given a closure that calls a method of $this' => ['$this->when(true, fn () => $this->toArray(request()));', []],
+        'a call given a closure that returns $this->resource' => ['value(fn () => $this->resource);', []],
+        'a call on what a conditional helper returns' => ['$this->whenLoaded(\'author\')->refresh();', []],
+        'a call inside a closure, on that closure\'s own parameter' => ['$this->comments->map(fn ($c) => $c->getKey());', ['$this->author' => [[[User::class], '$this->comments->map(fn ($c) => $c->getKey()); $x = 1;']]]],
+        'a call inside a closure on the chain\'s member, on its own parameter' => ['$this->author->posts->map(fn ($p) => $p->getKey());', ['$this->author' => [[[User::class], '$this->author->posts->map(fn ($p) => $p->getKey()); $x = 1;']]]],
+        'a closure body with a side call on what the chain reads through' => ['collect([1])->each(function () { $this->resource->setRelation(\'author\', null); return tap(1, fn () => null); });', []],
+        'a conditional helper given a closure that swaps through a helper' => ['$this->when(true, function () { \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::swap($this->resource); return 1; });', []],
+        'a closure importing a local by reference' => ['collect([1])->each(function () use (&$value): void {});', []],
+        'a closure writing what it imports' => ['collect([1])->each(function () use ($value): void { $value = 2; });', []],
+        'a closure writing through its own parameter' => ['collect([1])->each(function ($c): void { $c->author = null; });', []],
+        'a closure reading a local of its own' => ['collect([1])->each(function () { $y = 1; return $y; });', []],
+        'a callable a property holds, invoked' => ['($this->marker)();', []],
+        'an anonymous class built' => ['new class {};', []],
+        'a static name of the subject' => ['strlen(static::class);', []],
+        'eval()' => ['eval(\'$y = 2;\');', []],
+        'include' => ['include \'swap.php\';', []],
+        'require_once inside a closure given to a conditional helper' => ['$this->when(true, function () { require_once \'swap.php\'; return 1; });', []],
+        'extract()' => ['extract([\'request\' => null]);', []],
+        'parse_str() with one argument' => ['parse_str(\'a=1\');', []],
+        'a variable variable written' => ['${\'request\'} = null;', []],
+        'a write through a variable variable' => ['${\'self\'}->author = null;', []],
+        'a first-class callable given to a conditional helper' => ['$this->when(true, \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::swap(...));', []],
+        'a function\'s name given to a conditional helper' => ['$this->when(true, \'is_object\');', []],
+        'a static method\'s name given to a conditional helper' => ['$this->unless(false, \'\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::swap\');', []],
+        'Closure::fromCallable() given to a conditional helper' => ['$this->when(true, \\Closure::fromCallable(\'is_object\'));', []],
+        'a class-and-method array given as a conditional helper\'s default' => ['$this->when(false, 1, [\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::class, \'swap\']);', []],
+        'a callable string relative to the subject' => ['array_map(\'static::toArray\', [1]);', []],
+        'a callable array relative to the subject' => ['array_map([\'parent\', \'toArray\'], [1]);', []],
+        'a plain string given to a conditional helper' => ['$this->when(true, \'active\');', ['$this->author' => [[[User::class], '$this->when(true, \'active\'); $x = 1;']]]],
+        'whenHas() naming an attribute spelled like a function' => ['$this->whenHas(\'date\');', ['$this->author' => [[[User::class], '$this->whenHas(\'date\'); $x = 1;']]]],
+        'whenLoaded() handing the chain to a callback that calls on it' => ['$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null));', ['$this->author' => [[[User::class], '$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null)); $x = 1;']]]],
+    ]);
+
+    // A value-passing helper hands its callback the resource's member, so the callback's parameter is that member.
+    test('binds a test on a nested $this chain unless a value-passing helper hands a callback what it reads through', function (string $body, bool $binds) {
+        $guarded = 'if ($this->author->team instanceof \\Workbench\\App\\Models\\Team) { '.$body.' $x = 1; }';
+
+        expect(blockNarrowingBindings($guarded))->toBe($binds ? ['$this->author->team' => [[[Team::class], $body.' $x = 1;']]] : []);
+    })->with([
+        'whenLoaded() given a callback calling on the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a->setRelation(\'team\', null));', false],
+        'whenLoaded() given a long callback calling on the member' => ['$this->whenLoaded(\'author\', function ($a) { $a->setRelation(\'team\', null); return 1; });', false],
+        'whenLoaded() given a callback passing the member on' => ['$this->whenLoaded(\'author\', fn ($a) => \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\AuthorSwapper::swap($a));', false],
+        'whenLoaded() given a callback returning the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a);', false],
+        'whenLoaded() given a first-class callable' => ['$this->whenLoaded(\'author\', \\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\AuthorSwapper::swap(...));', false],
+        'whenLoaded() given a closure a call returns' => ['$this->whenLoaded(\'author\', \\Closure::bind(fn ($a) => $a->setRelation(\'team\', null), null));', false],
+        'whenLoaded() given its callback by name' => ['$this->whenLoaded(value: fn ($a) => tap($a), relationship: \'author\');', false],
+        'whenHas() given a callback passing the member on' => ['$this->whenHas(\'author\', fn ($a) => tap($a));', false],
+        'a callback reading the member in a nested closure' => ['$this->whenLoaded(\'author\', fn ($a) => collect([1])->map(fn ($i) => tap($a)));', false],
+        'a variadic callback parameter' => ['$this->whenLoaded(\'comments\', fn (...$c) => tap($c));', false],
+        'whenLoaded() handing a member apart from the chain' => ['$this->whenLoaded(\'comments\', fn ($c) => tap($c));', true],
+        'whenLoaded() given a callback calling on the chain through the member' => ['$this->whenLoaded(\'author\', fn ($a) => $a->team->refresh());', true],
+        'whenCounted() handing the count, a member apart' => ['$this->whenCounted(\'author\', fn ($n) => tap($n));', true],
+        'whenLoaded()\'s default, which is handed nothing' => ['$this->whenLoaded(\'comments\', fn ($c) => 1, fn ($d = null) => tap($d));', true],
+        'whenPivotLoaded(), whose callback is handed nothing' => ['$this->whenPivotLoaded(\'author_team\', fn ($p = null) => tap($p));', true],
+        'a nested callback whose own parameter shadows the member' => ['$this->whenLoaded(\'author\', fn ($a) => collect([1])->map(fn ($a) => tap($a)));', true],
+    ]);
+
+    // A local may hold anything, the chain or a callable that swaps it included, so a call reading one, or a write
+    // through one, ends the proof.
+    test('binds a test on a $this chain unless a call in its span reads a local or a write goes through one', function (string $before, string $body, array $bindings) {
+        $test = ' if ($this->author instanceof \\Workbench\\App\\Models\\User) { ';
+
+        expect(blockNarrowingBindings($before.$test.$body.' $x = 1; }', seed: true))->toBe($bindings);
+    })->with([
+        'a closure local passed to a conditional helper' => ['$swap = function () {};', '$this->when(true, $swap);', []],
+        'an arrow function local passed to array_map()' => ['$swap = fn ($i) => $i;', 'array_map($swap, [1]);', []],
+        'a first-class callable local passed to each()' => ['$swap = $this->toArray(...);', 'collect([1])->each($swap);', []],
+        'a closure local inside an array argument' => ['$swap = function () {};', 'call_user_func_array(\'array_map\', [$swap, [1]]);', []],
+        'a closure assigned in the block, then passed' => ['', '$swap = function () {}; $this->when(true, $swap);', []],
+        'a local holding no callable, passed to a conditional helper' => ['$value = 1;', '$this->when(true, $value);', []],
+        'a variable no write reaches, passed' => ['', '$this->when(true, $value);', []],
+        'a call on a local holding $this->resource' => ['$model = $this->resource;', '$model->refresh();', []],
+        'a local holding $this, passed' => ['$self = $this;', 'tap($self);', []],
+        'an array holding $this, passed' => ['$swap = [$this, \'toArray\'];', 'array_map($swap, [1]);', []],
+        'a conditional helper on a local holding $this' => ['$self = $this;', '$self->whenLoaded(\'author\');', []],
+        'a local holding the chain\'s own value, passed' => ['$author = $this->author;', 'tap($author);', []],
+        'a call on a local holding another chain' => ['$other = $this->marker;', '$other->refresh();', []],
+        'a write through a local holding $this->resource' => ['$model = $this->resource;', '$model->marker = 1;', []],
+        'a write through a local holding no chain' => ['$other = new \\stdClass;', '$other->author = null;', []],
+        'unset() through a local holding $this' => ['$self = $this;', 'unset($self->author);', []],
+        'a local bound and read in no call' => ['', '$name = $this->author->name; $copy = $name;', ['$this->author' => [[[User::class], '$name = $this->author->name; $copy = $name; $x = 1;']]]],
+        'unset() of a local itself' => ['$value = 1;', 'unset($value);', ['$this->author' => [[[User::class], 'unset($value); $x = 1;']]]],
+        'a local bound to the chain by reference, written' => ['$ref = &$this->author;', '$ref = null;', []],
+        'a local bound to the chain by reference, assigned by a foreach' => ['$ref = &$this->author;', 'foreach ([null] as $ref) {}', []],
+        'a local bound to the chain by reference, unset' => ['$ref = &$this->author;', 'unset($ref);', ['$this->author' => [[[User::class], 'unset($ref); $x = 1;']]]],
+        'a local bound by reference through destructuring, written' => ['$list = [&$this->author]; [&$ref] = $list;', '$ref = null;', []],
+        'a local bound by reference through a keyed destructuring, written' => ['$list = [\'a\' => &$this->author]; [\'a\' => &$ref] = $list;', '$ref = null;', []],
+        'any local where extract() may bind one by reference, written' => ['extract([\'ref\' => &$this->author], EXTR_REFS);', '$ref = null;', []],
+        'any local where a variable variable may be bound by reference, written' => ['${\'r\'.\'ef\'} = &$this->author;', '$ref = null;', []],
+    ]);
+
+    test('binds a test on a $this chain past route() only where it runs Laravel\'s helper', function () {
+        require_once dirname(__DIR__, 3).'/Fixtures/Stubs/NamespacedRouteFunction.php.stub';
+        $guarded = 'if ($this->author instanceof \\Workbench\\App\\Models\\User) { route(\'posts.show\', $this->resource); $x = 1; }';
+
+        expect(blockNarrowingBindings('namespace AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs; '.$guarded))->toBe([])
+            ->and(blockNarrowingBindings('namespace Elsewhere; '.$guarded))
+            ->toBe(['$this->author' => [[[User::class], 'route(\'posts.show\', $this->resource); $x = 1;']]]);
+    });
+
+    test('binds a test on a nested $this chain until a write to a chain it reads through', function () {
+        $test = 'if ($this->author->team instanceof \Workbench\App\Models\Team) { ';
+
+        expect(blockNarrowingBindings($test.'$x = 1; }'))->toBe(['$this->author->team' => [[[Team::class], '$x = 1;']]])
+            ->and(blockNarrowingBindings($test.'$this->author = null; $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'$this->author->name = \'Ann\'; $x = 1; }'))
+            ->toBe(['$this->author->team' => [[[Team::class], '$this->author->name = \'Ann\'; $x = 1;']]])
+            ->and(blockNarrowingBindings($test.'$this->author->team = null; $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'tap($this->author); $x = 1; }'))->toBe([])
+            ->and(blockNarrowingBindings($test.'tap($this->author->team); $x = 1; }'))
+            ->toBe(['$this->author->team' => [[[Team::class], 'tap($this->author->team); $x = 1;']]]);
+    });
 
     test('proves a foreach value variable non-null in the block its test runs, unless the loop is by reference', function () {
         $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
@@ -1501,16 +1695,19 @@ describe('getKey()', function () {
     });
 
     // VariableHandler declines every method typesByRule() names, so a rule ruleFor() gains reaches a variable unedited.
-    // A load() is asked with a call that loads one of the model's relations, which its rule reads.
+    // A load() is asked with a call that loads one of the model's relations, and an attribute read with one naming its
+    // key, which their rules read.
     test('typesByRule() names exactly the methods ruleFor() answers', function (string $class, array $named) {
         $rules = resolve(ReceiverMethodReturnResolver::class);
         $ruleFor = new ReflectionMethod($rules, 'ruleFor');
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), $class);
         $methods = get_class_methods($class);
         $relation = resolve(ModelAttributeResolver::class)->getRelations($class)?->first()['name'] ?? 'none';
-        $callOf = fn (string $method): ?Expr => in_array($method, ['load', 'loadMissing'], true)
-            ? receiverHandlerExpr('$model->'.$method.'("'.$relation.'")')
-            : null;
+        $callOf = fn (string $method): ?Expr => match (true) {
+            in_array($method, ['load', 'loadMissing'], true) => receiverHandlerExpr('$model->'.$method.'("'.$relation.'")'),
+            in_array($method, ReceiverMethodReturnResolver::ATTRIBUTE_READS, true) => receiverHandlerExpr('$model->'.$method.'("id")'),
+            default => null,
+        };
 
         $typed = array_values(array_filter($methods, fn (string $method): bool => $rules->typesByRule($class, $method)));
         $answered = array_values(array_filter(
@@ -1520,7 +1717,7 @@ describe('getKey()', function () {
 
         expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except');
     })->with([
-        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing']],
+        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding', 'load', 'loadMissing', 'getAttribute', 'getAttributeValue']],
         'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding', 'load']],
         'one identified by another column' => [EmailIdentifierUser::class, ['getKey', 'getAuthIdentifier']],
         'an abstract model' => [CallPathAbstractModel::class, ['getKey']],
@@ -2305,6 +2502,13 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        'map() of a @var collection over a value that names no class' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $vague */ '
+                .'$vague = $this->resource->getRelationValue(\'comments\'); return $vague->map(fn ($c) => $c->content)->all();',
+            'string[]',
+            $same,
+            ['beta', 'alpha'],
+        ],
         'a @var collection over an Eloquent collection the value names no element of' => [
             '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $rows */ '
                 .'$rows = new \Illuminate\Database\Eloquent\Collection($this->comments->all()); return $rows->first()?->content;',
@@ -2312,10 +2516,11 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        // Only the tag declares the keys, and a bare `string` one is trusted as the record all() sends.
         'a @var collection of plain values keyed by string, over a value that names no class' => [
             '/** @var \Illuminate\Support\Collection<string, int> $m */ '
-                .'$m = $this->resource->getAttribute(\'comments\')->pluck(\'id\', \'content\'); return $m->all();',
-            'number[] | Record<string, number>',
+                .'$m = \Workbench\App\Support\Opaque::value($this->resource->comments)->pluck(\'id\', \'content\'); return $m->all();',
+            'Record<string, number>',
             $keys,
             ['beta', 'alpha'],
         ],
@@ -2476,3 +2681,153 @@ describe('a collection step that keeps its items', function () {
             ->and($run($body))->toBeNull();
     });
 });
+
+describe('the workbench Opaque helper', function () {
+    test('publishes unknown for a typed argument, so a fixture can hide a type behind it', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with([
+        'a column read through the proxy' => ['\Workbench\App\Support\Opaque::value($this->title)'],
+        'a column read off $this->resource' => ['\Workbench\App\Support\Opaque::value($this->resource->title)'],
+        'a relation' => ['\Workbench\App\Support\Opaque::value($this->resource->tags)'],
+        'a literal' => ['\Workbench\App\Support\Opaque::value(1)'],
+    ]);
+});
+
+describe('getAttribute() and getAttributeValue() of a literal key', function () {
+    test('read in a model\'s own method as the property read', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AttributeCardPost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource->card()'))['type'])->toBe('{ t: string; p: string; acc: string | null }');
+    });
+
+    test('keep today\'s reading on a model that overrides getAttribute(), whose getAttributeValue() is still Laravel\'s', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AttributeOverridePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getAttribute(\'title\')', 'unknown'],
+        ['$this->getAttribute(\'title\')', 'unknown'],
+        ['$this->resource->getAttributeValue(\'title\')', 'string'],
+    ]);
+
+    test('keep today\'s reading where getAttribute() would run an override of getAttributeValue() or getRelationValue()', function (string $model, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'getAttributeValue() overridden' => [TranslatedTitlePost::class, '$this->resource->getAttribute(\'title\')', 'unknown'],
+        'getAttributeValue() overridden, through the proxy' => [TranslatedTitlePost::class, '$this->getAttribute(\'title\')', 'unknown'],
+        'getRelationValue() overridden, a relation' => [RelationValueOverridePost::class, '$this->resource->getAttribute(\'author\')', 'unknown'],
+        'getRelationValue() overridden, a column' => [RelationValueOverridePost::class, '$this->resource->getAttribute(\'title\')', 'string'],
+    ]);
+
+    test('Laravel\'s own getAttribute() reads through an overridden getAttributeValue()', function () {
+        expect((new TranslatedTitlePost)->forceFill(['title' => 'x'])->getAttribute('title'))->toBe(['en' => 'x']);
+    });
+
+    test('read through a nullsafe call as the property read or null', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource?->getAttribute(\'title\')'))['type'])->toBe('string | null')
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->author?->getAttributeValue(\'name\')'))['type'])->toBe('string | null');
+    });
+});
+
+describe('a method PHP declares only a tentative return type for', function () {
+    /** Runs the PHP expression as a resource body would, around a post created on 2020-01-02. */
+    $runAsResource = function (string $php): mixed {
+        $resource = new class((new Post)->forceFill(['created_at' => '2020-01-02 00:00:00'])) extends JsonResource {};
+
+        return Closure::bind(eval('return fn () => '.$php.';'), $resource, $resource)();
+    };
+
+    test('reads an internal method\'s tentative return type, and the runtime sends that', function (string $php, string $type, mixed $sent) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and(json_decode((string) json_encode($runAsResource($php)), true))->toBe($sent);
+    })->with([
+        'DateTimeImmutable::format()' => ['(new \DateTimeImmutable(\'2020-01-02\'))->format(\'Y\')', 'string', '2020'],
+        'ArrayIterator::count()' => ['(new \ArrayIterator([1, 2]))->count()', 'number', 2],
+        'Carbon\'s own format()' => ['$this->created_at->format(\'Y\')', 'string', '2020'],
+        'DateTime::getTimestamp(), which Carbon inherits' => ['$this->created_at->getTimestamp()', 'number', 1577923200],
+    ]);
+
+    test('reads a local and a @var holding an internal class, and an override\'s own @return over the tentative type', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(InternalMethodResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new InternalMethodResource(new Post)->toArray(request())), true);
+
+        expect($props->all())->toBe([
+            'native_year' => 'string',
+            'declared_year' => 'string',
+            'iterator_count' => 'number',
+            'documented_year' => 'number',
+        ])->and($sent)->toBe(['native_year' => '2020', 'declared_year' => '2020', 'iterator_count' => 2, 'documented_year' => 2020]);
+    });
+
+    test('reads a tentative bare array as a list or a record, since PHP may send either', function (string $php, string $type, Closure $sent) {
+        DateTimeImmutable::createFromFormat('Y-m-d', '2020-13-45');
+        $value = json_decode((string) json_encode(eval('return '.$php.';')), true);
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and($sent($value))->toBeTrue();
+    })->with([
+        'DateTimeZone::listAbbreviations(), an object' => [
+            '\\DateTimeZone::listAbbreviations()',
+            'unknown[] | Record<string, unknown>',
+            fn (array $sent): bool => ! array_is_list($sent) && isset($sent['utc']),
+        ],
+        'DateTimeZone::listIdentifiers(), a list' => [
+            '\\DateTimeZone::listIdentifiers(\\DateTimeZone::UTC)',
+            'unknown[] | Record<string, unknown>',
+            fn (array $sent): bool => $sent === ['UTC'],
+        ],
+        'DateTimeImmutable::getLastErrors() after a bad parse, an object or false' => [
+            '\\DateTimeImmutable::getLastErrors()',
+            'unknown[] | Record<string, unknown> | false',
+            fn (array $sent): bool => $sent['warning_count'] === 1 && ! array_is_list($sent),
+        ],
+    ]);
+
+    test('reads a tentative bare array off a model-less resource\'s typed property as a list or a record', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(InternalServiceResource::class))->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new InternalServiceResource(null)->toArray(request())), true);
+
+        expect($props->all())->toBe([
+            'object_copy' => 'unknown[] | Record<string, unknown>',
+            'zone_location' => 'unknown[] | Record<string, unknown> | false',
+        ])->and($sent['object_copy'])->toBe(['a' => 1])
+            ->and(array_is_list($sent['zone_location']))->toBeFalse()
+            ->and($sent['zone_location']['country_code'])->toBe('GB');
+    });
+
+    test('keeps the tentative type on a held class, which a guarded forwarded call reads too', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DateHolderResource::class))->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(new DateHolderResource(new DateTimeImmutable('2020-01-02'))->toArray(request())), true);
+
+        expect($props->all())->toBe(['forwarded_year' => 'string', 'held_year' => 'string', 'forwarded_timestamp' => 'number'])
+            ->and($sent)->toBe(['forwarded_year' => '2020', 'held_year' => '2020', 'forwarded_timestamp' => 1577923200]);
+    });
+});
+
+// PHP runs a call naming the subject's own class on `$this`, two chains can hold one object, and a destructuring binds
+// by reference, so each may swap what the test proved: the key is not narrowed, and Laravel sends the swapped value.
+it('ends a $this chain\'s proof at a call, a write or a reference that may swap what it holds', function (string $resource) {
+    $image = (new Image)->forceFill(['id' => 2]);
+    $image->setRelation('imageable', (new Post)->forceFill(['id' => 7])->setRelation('author', (new User)->forceFill(['id' => 3])));
+
+    expect(resourceProps($resource))->toBe(['id' => 'unknown'])
+        ->and(json_encode($resource::make($image)->resolve()))->toBe('{"id":"abc"}');
+})->with([
+    'a call naming its own class' => [OwnNameSwapResource::class],
+    'call_user_func() given its own method\'s name' => [NamedCallableSwapResource::class],
+    'a write through a second chain holding the same post' => [AliasedChainSwapResource::class],
+    'a key write through a second chain holding the same post' => [AliasedKeySwapResource::class],
+    'a local a destructuring bound by reference' => [DestructuredRefSwapResource::class],
+]);

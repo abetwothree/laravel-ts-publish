@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperMembers\PostHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixedBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\KeyStampingChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MixedBag;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnreadBasePayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
@@ -23,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
@@ -111,10 +117,14 @@ test('the value read declines a returned closure, a generator, a vendor method a
     'two locals bound to each other' => [NamesakeEdgeResource::class, 'cyclicLocals', null],
     'a generator' => [PostMetaService::class, 'generatedMeta', 'unknown[]'],
     'an iterable, with an iterator return nothing types' => [PostMetaService::class, 'iterableMeta', 'unknown[]'],
-    'a vendor method, whose conditional @return types nothing' => [Str::class, 'contains', null],
+    'a vendor method, whose conditional @return names a template' => [Collection::class, 'sum', null],
     'a method of this package, which an application installs under vendor/' => [CastHandler::class, 'nodeClasses', 'unknown[]'],
     'a return nothing types' => [NamesakeInvoiceResource::class, 'opaque', null],
 ]);
+
+test('a vendor method whose conditional @return\'s every arm resolves publishes their union', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(Str::class, 'contains')['type'] ?? null)->toBe('boolean');
+});
 
 // A parameter is not bound to an argument that may hold a callable, so a helper returning it publishes nothing for it.
 test('a helper passed a callable through a local, a ternary or another helper publishes unknown', function (string $key, string $type) {
@@ -179,6 +189,17 @@ test('a body fallback reads its enum cases as literals, apart from an analysis t
     expect(array_column($asEnum->properties, 'type', 'name'))->toBe(['v' => 'StatusType'])
         ->and(array_column($asLiteral->properties, 'type', 'name'))->toBe(['v' => '0'])
         ->and(collect($filtered->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>");
+});
+
+// A value read takes the body fallback's literal as the shape does, through another helper too; a wrap the body makes
+// of another helper's case still reads that case as its enum.
+test('a helper\'s plain enum case reads as its literal, as its shape\'s does, and a wrap it returns as its enum', function () {
+    $resolve = fn (string $method): ?array => resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, $method);
+
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray(['draft' => '0', 'shaped_list' => '{ l: 0[] }'])
+        ->and($resolve('draft'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve('outer'))->toBe(['type' => '0', 'optional' => false])
+        ->and($resolve('outerWrap')['type'] ?? null)->toBe('StatusType');
 });
 
 test('a body the model inherits filters the model it runs on', function () {
@@ -372,4 +393,19 @@ test('publishes a value-read shape open where a += adds an array the walk cannot
     expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['topped_up'])
         ->toBe('{ x: number; [key: string]: unknown }')
         ->and(json_encode($payload->values()['topped_up']))->toBe('{"x":1,"a":1}');
+});
+
+// A getter left only the null of a value it could not type publishes nothing it knows, while a literal null stands; the
+// run output then names no placeholder.
+it('reads a held method whose body is only the null a dropped arm leaves as unknown', function () {
+    AnalysisWarnings::reset();
+    $sent = json_decode((string) json_encode(MixedBagResource::make(new MixedBag)->resolve()), true);
+
+    expect(analyzedKeyTypes(MixedBagResource::class))->toBe([
+        'proxied' => 'unknown',
+        'held' => 'unknown',
+        'held_mixed' => 'unknown',
+        'literal_null' => 'string | null',
+    ])->and($sent)->toBe(['proxied' => 1, 'held' => 1, 'held_mixed' => 1, 'literal_null' => null])
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

@@ -4,17 +4,25 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -27,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AllowDynamicProperties;
@@ -84,6 +93,7 @@ use UnitEnum;
  *    omit?: bool,
  *    keepsKeys?: bool,
  *    closedToDottedKeys?: bool,
+ *    listKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeTypeInfo = array{
@@ -108,6 +118,9 @@ use UnitEnum;
  * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
  * never enters, so its numeric keys are never re-indexed. `closedToDottedKeys`, when true, says that object is a
  * `JsonSerializable` Inertia does not open, so a dotted key under it replaces it.
+ *
+ * `listKeys`, when true, says each list arm of `type` is keyed by ints, as `list<T>` and `array<int, T>` are; PHPDoc's
+ * `T[]` and `array<T>` take any key.
  *
  * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
  * file exports behind it, or null where an override spells that name, in a nested shape or a container too: a reader
@@ -135,6 +148,12 @@ class LaravelTsPublish
     /** The PHPDoc integer subtypes PHPStan names, each holding an int as an `int<min, max>` range does. */
     protected const array INTEGER_SUBTYPES = ['positive-int', 'negative-int', 'non-negative-int', 'non-positive-int', 'non-zero-int'];
 
+    /** What stands in for a nullable type's `?`, as in `?string`, while a conditional is split at its test's `?`. */
+    private const string NULLABLE_MARK = "\x01";
+
+    /** The guard key prefix of a caster method's body read, whose cut is the only one that shapes a get() reading. */
+    private const string CASTER_BODY_GUARD = 'caster-body:';
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -161,19 +180,29 @@ class LaravelTsPublish
 
     /**
      * Per-class cache of resolved phpstan/psalm type aliases: FQCN => alias name => resolved
-     * definition, or null when the class carries no such alias (cached to skip re-parsing its docblock).
+     * definition, or null when the class carries no such alias. TypeAliases holds it; this reads it.
      *
      * @var array<string, array<string, array{definition: string, class: ReflectionClass<object>}|null>>
      */
-    protected array $phpstanTypeAliasCache = [];
+    protected array $phpstanTypeAliasCache {
+        get => array_map(
+            fn (array $answers): array => array_map(
+                fn (?array $alias): ?array => $alias === null ? null : [...$alias, 'class' => new ReflectionClass($alias['class'])],
+                $answers,
+            ),
+            TypeAliases::answers(),
+        );
+    }
 
     /**
      * The files each cached alias answer read, FQCN => alias name => paths, replayed on a reuse; null when the answer
-     * was cached while nothing recorded.
+     * was cached while nothing recorded. TypeAliases holds it; this reads it.
      *
      * @var array<string, array<string, list<string>|null>>
      */
-    protected array $phpstanTypeAliasPaths = [];
+    protected array $phpstanTypeAliasPaths {
+        get => TypeAliases::answerPaths();
+    }
 
     /**
      * Per-file cache of resolved `use`-statement short-name → FQCN maps, keyed by file path.
@@ -189,10 +218,16 @@ class LaravelTsPublish
     private bool $shapesCarryImports = true;
 
     /**
-     * Whether a docblock shape keeps a member naming a class, by the class behind each of its tokens. Off where the
-     * result has no class channel to carry it, as a value object's shape has none; see withoutShapeClasses().
+     * Whether a shape keeps a member naming a class, by the class behind each of its tokens. Off where the result has
+     * no class channel to carry it, as a value object's own docblock shape has none; see withoutShapeClasses().
      */
     private bool $shapesCarryClasses = true;
+
+    /**
+     * Whether a cast is read as the value get() returns, which a read off the model sends, rather than as what
+     * Model::toArray() writes; see castValueToTsType().
+     */
+    private bool $readsCastValue = false;
 
     /**
      * Set something to do when the publish command runs, using a callback Closure
@@ -340,9 +375,14 @@ class LaravelTsPublish
         //    Model::toArray() writes a serializing caster's serialize() value instead, and runs serializeDate() on a
         //    date a class cast returns, so a declared date is the date type.
         if (class_exists($phpType) && is_a($phpType, CastsAttributes::class, true)) {
-            $castReturnType = $this->serializedCastTypes($phpType)
+            $castReturnType = ($this->readsCastValue ? null : $this->serializedCastTypes($phpType))
                 ?? $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
                 ?? $this->castGetReturnTypes(new ReflectionClass($phpType));
+
+            // A read of the value sends what get() returns, so where it declares only `mixed` its returns may prove it.
+            if ($this->readsCastValue && TsTypeString::isUnknownOnly($castReturnType['type'])) {
+                $castReturnType = $this->getBodyTypes($phpType) ?? $castReturnType;
+            }
 
             if ($castReturnType['type'] !== 'unknown') {
                 return $castReturnType;
@@ -386,7 +426,7 @@ class LaravelTsPublish
             && ! is_a($phpType, Model::class, true)
             && is_a($phpType, Arrayable::class, true)
         ) {
-            $shape = $this->arrayableShapeType($phpType, 'toArray');
+            $shape = $this->shapeChannels(fn (): ?array => $this->arrayableShapeType($phpType, 'toArray'), enumsInTurn: true);
 
             return [...$result, ...($shape ?? ['type' => 'unknown[]']), 'keepsKeys' => true];
         }
@@ -435,7 +475,7 @@ class LaravelTsPublish
             && ! is_a($phpType, JsonSerializable::class, true)
             && $this->hasFullyTypedPublicProperties($phpType)
         ) {
-            $shape = $this->publicPropertyShapeType($phpType);
+            $shape = $this->shapeChannels(fn (): ?array => $this->publicPropertyShapeType($phpType), enumsInTurn: true);
 
             if ($shape !== null) {
                 return [...$result, ...$shape, 'keepsKeys' => true];
@@ -445,7 +485,9 @@ class LaravelTsPublish
         // 5d. A __toString() class json_encode() writes as its public properties, `{}` for none, or any keys where an
         //     instance can gain some. Any other class keeps its token, since the same rule would type a sentinel such
         //     as MissingValue, which a resource strips before it encodes.
-        $stringableObject = class_exists($phpType) ? $this->stringableObjectType($phpType) : null;
+        $stringableObject = class_exists($phpType)
+            ? $this->shapeChannels(fn (): ?array => $this->stringableObjectType($phpType), enumsInTurn: true)
+            : null;
 
         if ($stringableObject !== null) {
             return [...$result, ...$stringableObject, 'keepsKeys' => true];
@@ -534,8 +576,26 @@ class LaravelTsPublish
         };
 
         return $type === null
-            ? $this->castableSerializedTypes($cast) ?? $this->toTsType($cast)
+            ? $this->castableSerializedTypes($cast) ?? $this->castableValueTypes($cast) ?? $this->toTsType($cast)
             : [...$this->emptyTypeScriptInfo(), 'type' => $type];
+    }
+
+    /**
+     * Resolve the type a read of an Eloquent cast's value off its model sends: castToTsType()'s, but a caster with a
+     * serialize() method publishes the value its get() returns, which json_encode() writes as it is.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function castValueToTsType(string $cast): array
+    {
+        $reads = $this->readsCastValue;
+        $this->readsCastValue = true;
+
+        try {
+            return $this->castToTsType($cast);
+        } finally {
+            $this->readsCastValue = $reads;
+        }
     }
 
     /**
@@ -550,78 +610,17 @@ class LaravelTsPublish
 
     /**
      * Resolve a phpstan/psalm type alias visible from a class: a local `@phpstan-type` definition
-     * first, then a `@phpstan-import-type Name from Class [as Alias]` (recursively, cycle-guarded
-     * via $seen — the same "already expanding" guard arrayableShapeType() uses for shape recursion).
+     * first, then a `@phpstan-import-type Name from Class [as Alias]`, as {@see TypeAliases::find()} reads it.
      *
      * @param  ReflectionClass<object>  $context
-     * @param  array<string, true>  $seen
+     * @param  array<string, true>  $seen  "{FQCN}::{alias}" lookups already under way, which answer null
      * @return array{definition: string, class: ReflectionClass<object>}|null
      */
     public function resolvePhpstanTypeAlias(string $name, ReflectionClass $context, array $seen = []): ?array
     {
-        $key = $context->getName();
-        $seenKey = $key.'::'.$name;
+        $alias = TypeAliases::lookup($name, $context, $seen);
 
-        if (isset($seen[$seenKey])) {
-            return null;
-        }
-
-        $seen[$seenKey] = true;
-
-        // A reuse replays the class files the answer read, so a later class's cache entry still names them.
-        if (array_key_exists($name, $this->phpstanTypeAliasCache[$key] ?? [])
-            && (($this->phpstanTypeAliasPaths[$key][$name] ?? null) !== null || ! DependencyRecorder::isRecording())) {
-            foreach ($this->phpstanTypeAliasPaths[$key][$name] ?? [] as $path) {
-                DependencyRecorder::record($path);
-            }
-
-            return $this->phpstanTypeAliasCache[$key][$name];
-        }
-
-        $mark = DependencyRecorder::mark();
-        // The class defines the alias or imports it, and each class an import names is read the same way below.
-        DependencyRecorder::record((string) $context->getFileName());
-        $doc = $context->getDocComment();
-        $resolved = null;
-
-        if ($doc !== false) {
-            if (preg_match(
-                '/@(?:phpstan|psalm)-type\s+'.preg_quote($name, '/').'\b(?=[\s=])\s*=?\s*(\S.*)$/m',
-                $doc,
-                $m,
-                PREG_OFFSET_CAPTURE,
-            )) {
-                $definition = $this->balanceTypeDefinition($m[1][0], $doc, $m[1][1] + strlen($m[1][0]));
-                $resolved = ['definition' => $definition, 'class' => $context];
-            }
-
-            if ($resolved === null && preg_match_all(
-                '/@(?:phpstan|psalm)-import-type\s+(\w+)\s+from\s+([\w\\\\]+)(?:\s+as\s+(\w+))?/m',
-                $doc,
-                $imports,
-                PREG_SET_ORDER,
-            )) {
-                foreach ($imports as $import) {
-                    $localName = $import[3] ?? $import[1];
-
-                    if ($localName !== $name) {
-                        continue;
-                    }
-
-                    $sourceClass = DocblockNames::resolve($import[2], $context);
-
-                    if (DocblockNames::isClassLike($sourceClass)) {
-                        $resolved = $this->resolvePhpstanTypeAlias($import[1], new ReflectionClass($sourceClass), $seen);
-                    }
-
-                    break;
-                }
-            }
-        }
-
-        $this->phpstanTypeAliasPaths[$key][$name] = DependencyRecorder::isRecording() ? DependencyRecorder::since($mark) : null;
-
-        return $this->phpstanTypeAliasCache[$key][$name] = $resolved;
+        return $alias === null ? null : [...$alias, 'class' => new ReflectionClass($alias['class'])];
     }
 
     /**
@@ -657,9 +656,7 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        $reflection = $class->getMethod($method);
-
-        return $this->resolveReflectionType($reflection->getReturnType(), $reflection->getDeclaringClass());
+        return $this->reflectedReturnTypes($class->getMethod($method));
     }
 
     /**
@@ -682,7 +679,7 @@ class LaravelTsPublish
         $reflectionMethod = $class->getMethod($method);
 
         return $this->declaredOrDocblockTypes(
-            $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass()),
+            $this->reflectedReturnTypes($reflectionMethod),
             fn (): array => $this->docblockReturnTypes($reflectionMethod),
         );
     }
@@ -1032,6 +1029,7 @@ class LaravelTsPublish
         // X[] shorthand (but not TS-style unions — split upstream)
         if (str_ends_with($type, '[]')) {
             $inner = $this->resolveDocblockContainerValue(substr($type, 0, -2), $useMap, $namespace);
+            unset($inner['listKeys']);
 
             return $this->wrapAsArray($inner);
         }
@@ -1050,11 +1048,12 @@ class LaravelTsPublish
         }
 
         $args = array_map('trim', $this->splitAtTopLevelCommas($m[2]));
-        $keyType = count($args) === 2 ? strtolower($args[0]) : 'int';
+        $keyType = count($args) === 2 ? $this->containerKeyKind(strtolower($args[0])) : 'int';
         $valueTypeString = count($args) === 2 ? $args[1] : $args[0];
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
         $literalKeys = $isList || count($args) !== 2 ? null : $this->stringLiteralKeys($args[0]);
+        unset($inner['listKeys']);
 
         // Any of the keys may be absent, and json_encode() writes string keys as an object.
         if ($literalKeys !== null) {
@@ -1072,11 +1071,15 @@ class LaravelTsPublish
             return $inner;
         }
 
+        // The list arm holds the int keys, which the Record arm beside it leaves out.
         if ($keyType === 'array-key' || $keyType === 'mixed') {
-            return $this->wrapAsMaybeKeyedArray($inner);
+            return [...$this->wrapAsMaybeKeyedArray($inner), 'listKeys' => true];
         }
 
-        return $this->wrapAsArray($inner);
+        // `array<T>` takes any key, as `T[]` does, though both publish as a list.
+        $intKeyed = $isList || (count($args) === 2 && ($keyType === 'int' || $this->isIntegerSubtype($keyType)));
+
+        return [...$this->wrapAsArray($inner), ...($intKeyed ? ['listKeys' => true] : [])];
     }
 
     /**
@@ -1104,7 +1107,7 @@ class LaravelTsPublish
 
         $qualified = $namespace.'\\'.$type;
 
-        return $namespace !== '' && DocblockNames::isClassLike($qualified) ? $qualified : $type;
+        return $namespace !== '' && DeclaredClasses::isClassLike($qualified) ? $qualified : $type;
     }
 
     /**
@@ -1119,9 +1122,12 @@ class LaravelTsPublish
             return null;
         }
 
-        // Any other conditional keeps its first token: whole, toTsType()'s partial match would guess from its arms.
+        // A conditional an arm of which reads no type, as a template's, keeps its first token: whole, toTsType()'s
+        // partial match would guess from its arms.
         if (preg_match('/^\(\s*(\S+)\s+is\s/', $type, $condition) === 1) {
-            return $this->isStringConditional($type) ? 'string' : '('.$condition[1];
+            return $this->isStringConditional($type)
+                ? 'string'
+                : $this->conditionalArmsUnion($this->conditionalArms($type) ?? []) ?? '('.$condition[1];
         }
 
         return $this->normalizeDocblockWhitespace($type);
@@ -1559,6 +1565,13 @@ class LaravelTsPublish
             $result['keepsKeys'] = true;
         }
 
+        // Every list arm keeps its int keys only where each arm spelling one says so.
+        $lists = array_filter($infos, fn (array $info): bool => ArrayArms::holdsList($info['type']));
+
+        if ($lists !== [] && array_all($lists, fn (array $info): bool => $info['listKeys'] ?? false)) {
+            $result['listKeys'] = true;
+        }
+
         return $result;
     }
 
@@ -1724,13 +1737,13 @@ class LaravelTsPublish
     {
         $castable = Str::before($cast, ':');
 
-        if (! is_a($castable, Castable::class, true)) {
+        if ($this->readsCastValue || ! is_a($castable, Castable::class, true)) {
             return null;
         }
 
-        $receivers = resolve(ReceiverClassResolver::class);
-        $infos = $this->serializedCastersTypes(DeclaredClasses::returnClasses($castable, 'castUsing'))
-            ?? $this->serializedCastersTypes($receivers->bodyReturnClasses($castable, 'castUsing'));
+        // Laravel builds the casters castUsing() returns, so where the class it declares answers nothing, they do.
+        $infos = $this->serializedCastersTypes(CastCasters::declared($castable))
+            ?? $this->serializedCastersTypes(CastCasters::returned($castable));
 
         return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
     }
@@ -1759,21 +1772,49 @@ class LaravelTsPublish
     }
 
     /**
-     * The type a `SerializesCastableAttributes` caster's serialize() declares, which Model::toArray() writes for the
-     * attribute. Null for any other caster, or one whose serialize() declares nothing, which leaves get() to type it.
+     * What Model::toArray() writes for a caster with a serialize() method: the type it declares, or where it declares
+     * nothing or `mixed` the type its returns prove, with `null` where get() may return it, which Laravel sends
+     * unserialized. Null leaves get() to type the value.
      *
      * @param  class-string  $caster
      * @return TypeScriptTypeInfo|null
      */
     protected function serializedCastTypes(string $caster): ?array
     {
-        if (! is_a($caster, SerializesCastableAttributes::class, true)) {
+        if (! method_exists($caster, 'serialize')) {
             return null;
         }
 
         $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
+        $body = TsTypeString::isUnknownOnly($serialized['type']) ? $this->serializeBodyTypes($caster) : null;
 
-        return $serialized['type'] === 'unknown' ? null : $serialized;
+        if ($body !== null) {
+            return $body;
+        }
+
+        $declared = $this->declaredSerializeTypes($caster, $serialized);
+
+        return $declared === null ? null : $this->withGetNull($caster, $declared, false);
+    }
+
+    /**
+     * The type serialize()'s own returns prove, with `null` where get() may return it; null where they prove nothing
+     * but a vague type, as `return $value;` does, or name a class a cast type cannot import.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function serializeBodyTypes(string $caster): ?array
+    {
+        $body = $this->readCasterBody(
+            $caster,
+            'serialize',
+            fn (): ?array => $this->provenCasterBody($caster, 'serialize'),
+            fn (?array $info): bool => $info !== null,
+        );
+
+        // Laravel sends a null value without calling serialize(), so a null get() cannot rule out stays.
+        return $body === null ? null : $this->withGetNull($caster, $body, true);
     }
 
     /**
@@ -1944,7 +1985,7 @@ class LaravelTsPublish
         $this->shapeExpansionStack[$key] = true;
 
         try {
-            // A value object's shape has no class channel, so a member naming a class stays `unknown`.
+            // A value object's own docblock shape has no class channel, so a member naming a class stays `unknown`.
             [$tuple, $shape] = $this->withoutShapeClasses(function () use ($fqcn, $method): array {
                 $reflection = new ReflectionMethod($fqcn, $method);
                 $tuple = $this->docblockReturnTupleType($reflection);
@@ -1979,7 +2020,8 @@ class LaravelTsPublish
 
     /**
      * Build an inline TS object shape from a class's public, non-static properties — the fallback for
-     * an Arrayable/JsonSerializable DTO with no `@return array{...}` shape.
+     * an Arrayable/JsonSerializable DTO with no `@return array{...}` shape — with the class behind each token its
+     * members and keys spell, as a docblock shape carries them.
      *
      * Reuses $shapeExpansionStack under a `::__properties` key to guard against infinite recursion.
      *
@@ -1999,36 +2041,35 @@ class LaravelTsPublish
         try {
             $reflection = new ReflectionClass($fqcn);
             $parts = [];
-            $imports = [];
+            $pieces = [];
 
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
                 if ($property->isStatic()) {
                     continue;
                 }
 
-                $member = $this->withoutShapeClasses(fn (): array => $this->shapeMemberTypes($reflection, $property));
-                $imports[] = $member['customImports'];
+                $member = $this->shapeMemberTypes($reflection, $property);
 
                 // json_encode() omits a typed property that was never assigned; a promoted or defaulted
                 // one is always present.
                 $optional = ! $property->hasDefaultValue() && ! $property->isPromoted();
+                $key = $property->getName().($optional ? '?' : '');
+                $parts[] = $key.': '.$member['type'];
 
-                $parts[] = $property->getName().($optional ? '?' : '').': '.$member['type'];
+                // A key spelled like a class's name is a token too.
+                array_push($pieces, ['type' => $key, 'customImports' => []], $member);
             }
         } finally {
             unset($this->shapeExpansionStack[$guard]);
         }
 
-        return $parts === [] ? null : ['type' => '{ '.implode('; ', $parts).' }', 'customImports' => ImportMaps::merge(...$imports)];
+        return $parts === [] ? null : $this->shapeOfPieces('{ '.implode('; ', $parts).' }', $pieces);
     }
 
     /**
      * The type one public property of a value object publishes in its shape: its docblock's, as
      * PropertyDocblockTypeReader::tag() finds it, where that says more than its declaration, else the declaration, each
-     * kept only where its custom imports bring in every name it spells.
-     *
-     * Only an override brings custom imports, so a member spelling a model's, an enum's or another class's own name
-     * stays `unknown`.
+     * kept as keptShapeMember() keeps a docblock shape's member, with the class behind each token of a class's name.
      *
      * @param  ReflectionClass<object>  $class
      * @return ShapeTypeInfo
@@ -2042,16 +2083,20 @@ class LaravelTsPublish
             fn (): array => $this->resolveDocblockTypeStringAgainst($tag['type'], $tag['context']),
         );
 
-        // A docblock type the shape cannot import yields to the declaration, as in PropertyDocblockTypeReader::read().
-        foreach ($read === $declared ? [$declared] : [$read, $declared] as $info) {
-            $shape = $this->shapeTypeInfo($info);
+        // No generated file exports an enum the config leaves out, so a reading naming one imports nothing.
+        $readings = array_values(array_filter(
+            $read === $declared ? [$declared] : [$read, $declared],
+            static fn (array $info): bool => array_all($info['enumFqcns'], PublishedEnums::includes(...)),
+        ));
 
-            if ($this->shapeKeeps($shape)) {
-                return $shape;
-            }
+        if ($readings === []) {
+            return ['type' => 'unknown', 'customImports' => []];
         }
 
-        return ['type' => 'unknown', 'customImports' => []];
+        // A docblock type the shape cannot import yields to the declaration, as in PropertyDocblockTypeReader::read().
+        $members = array_map($this->docblockTypeInfo(...), $readings);
+
+        return $this->keptShapeMember(array_find($members, $this->shapeKeeps(...)) ?? $members[0]);
     }
 
     /**
@@ -2151,36 +2196,15 @@ class LaravelTsPublish
      */
     protected function balanceTypeDefinition(string $firstLine, string $doc, int $offsetAfterFirstLine): string
     {
-        $definition = trim(rtrim($firstLine, " \t*/"));
-
-        if ($this->braceAngleDepth($definition) <= 0) {
-            return $definition;
-        }
-
-        foreach (explode("\n", substr($doc, $offsetAfterFirstLine)) as $line) {
-            $stripped = trim((string) preg_replace('#^\s*\*+/?\s?#', '', $line));
-
-            if ($stripped === '') {
-                continue;
-            }
-
-            $definition .= ' '.rtrim($stripped, " \t*/");
-
-            if ($this->braceAngleDepth($definition) <= 0) {
-                break;
-            }
-        }
-
-        return trim($definition);
+        return TypeAliases::balance($firstLine, $doc, $offsetAfterFirstLine);
     }
 
     /**
-     * The bracket depth a PHPDoc type leaves open at its end, quoted literals skipped, as the type scanner reads it.
+     * {@see TypeAliases::depth()}
      */
     protected function braceAngleDepth(string $s): int
     {
-        // A PHPDoc literal never runs past its line, so a space after the type is always read, at the depth left open.
-        return TypeScanner::depths($s.' ', ScanDialect::PhpDoc)[strlen($s)] ?? 0;
+        return TypeAliases::depth($s);
     }
 
     /**
@@ -2233,7 +2257,7 @@ class LaravelTsPublish
      */
     protected function declaredOrDocblockTypes(array $declared, Closure $docblock): array
     {
-        if ($declared['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($declared['type'])) {
+        if (! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;
         }
 
@@ -2241,11 +2265,7 @@ class LaravelTsPublish
         // docblock shape like `@return array{value: int, label: string}` can usually do better.
         $docblockInfo = $docblock();
 
-        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
-            return $docblockInfo;
-        }
-
-        if (TsTypeString::spellsListAsRecord($declared['type'], $docblockInfo['type'])) {
+        if (TsTypeString::documentedWins($declared['type'], $docblockInfo['type'])) {
             return $docblockInfo;
         }
 
@@ -2423,12 +2443,11 @@ class LaravelTsPublish
     {
         $context = end($this->aliasContextStack);
 
-        // An alias name is a PHPDoc identifier, as PHPStan's lexer reads one: a hyphen or a non-ASCII byte may follow.
-        if ($context === false || preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff-]*$/', $name) !== 1) {
+        if ($context === false || ! TypeAliases::isName($name)) {
             return null;
         }
 
-        $alias = $this->resolvePhpstanTypeAlias($name, $context);
+        $alias = TypeAliases::find($name, $context);
 
         if ($alias === null) {
             return null;
@@ -2441,12 +2460,13 @@ class LaravelTsPublish
         }
 
         $this->aliasExpansionStack[$key] = true;
+        $defining = new ReflectionClass($alias['class']);
 
         try {
-            return $this->withAliasContext($alias['class'], fn (): array => $this->resolveDocblockPartToInfo(
+            return $this->withAliasContext($defining, fn (): array => $this->resolveDocblockPartToInfo(
                 $alias['definition'],
-                $this->parseFileUseStatements($alias['class']),
-                $alias['class']->getNamespaceName(),
+                $this->parseFileUseStatements($defining),
+                $defining->getNamespaceName(),
             ));
         } finally {
             unset($this->aliasExpansionStack[$key]);
@@ -2728,6 +2748,8 @@ class LaravelTsPublish
      * A resolved type as a shape carries it: with its custom imports, unless one brings a name a model, enum or other
      * class in it publishes as, since a shape carries no FQCN channel and that class would bind to the import instead.
      *
+     * The package no longer calls it; it stays for subclasses that do.
+     *
      * @param  TypeScriptTypeInfo  $info
      * @return ShapeTypeInfo
      */
@@ -2747,7 +2769,7 @@ class LaravelTsPublish
      */
     protected function docblockTypeInfo(array $info): array
     {
-        // A reader that keeps only the type string, or a value object's shape, has no use for the classes behind it.
+        // A reader that keeps only the type string, or a value object's own docblock shape, has no use for the classes.
         $tokens = $this->shapesCarryClasses ? $this->exportedTokenFqcns($info) : [];
 
         // Only an override's token, whose class is null, says that an import of a class's name binds that token alone.
@@ -2932,18 +2954,56 @@ class LaravelTsPublish
      */
     protected function isStringConditional(string $type): bool
     {
-        // A `?` with no space after it makes a type nullable, as `?string`, which the split below would take for a `?`
-        // ending the test.
-        if (! $this->isParenthesized($type)
-            || preg_match('/\?(?!\s)/', TypeScanner::maskLiterals($type, ScanDialect::PhpDoc)) === 1) {
-            return false;
+        $arms = $this->conditionalArms($type);
+
+        return $arms !== null && array_all($arms, fn (string $arm): bool => array_all(
+            TypeScanner::split($arm, ['|', '&'], ScanDialect::PhpDoc),
+            $this->isPhpDocStringType(...),
+        ));
+    }
+
+    /**
+     * The leaf arms of a conditional return type `($x is T ? A : B)`, each nested conditional's in its place, as
+     * written; null when the type is no conditional, or one of its tests lacks a branch.
+     *
+     * @return list<string>|null
+     */
+    protected function conditionalArms(string $type): ?array
+    {
+        $body = $this->conditionalBody(trim($type));
+
+        if ($body === null) {
+            return null;
         }
 
-        $test = TypeScanner::split(substr($type, 1, -1), ['?'], ScanDialect::PhpDoc);
-        $branches = count($test) === 2 ? TypeScanner::split($test[1], [':'], ScanDialect::PhpDoc) : [];
+        $test = TypeScanner::split($this->maskNullableMarks($body), ['?'], ScanDialect::PhpDoc);
+        $branches = count($test) < 2 ? [] : TypeScanner::split(implode(' ? ', array_slice($test, 1)), [':'], ScanDialect::PhpDoc);
 
-        return count($branches) === 2 && array_all($branches, fn (string $branch): bool => $this->isStringConditional($branch)
-            || array_all(TypeScanner::split($branch, ['|', '&'], ScanDialect::PhpDoc), $this->isPhpDocStringType(...)));
+        if (count($branches) < 2) {
+            return null;
+        }
+
+        $arms = [];
+
+        // Only a conditional may follow a branch's `:` unparenthesized, so the first `:` ends the if branch.
+        foreach ([$branches[0], implode(' : ', array_slice($branches, 1))] as $branch) {
+            $leaf = $this->conditionalBody($branch) === null;
+
+            if ($leaf && count(TypeScanner::split($branch, ['?', ':'], ScanDialect::PhpDoc)) !== 1) {
+                return null;
+            }
+
+            $branch = str_replace(self::NULLABLE_MARK, '?', $branch);
+            $nested = $leaf ? [$branch] : $this->conditionalArms($branch);
+
+            if ($nested === null) {
+                return null;
+            }
+
+            array_push($arms, ...$nested);
+        }
+
+        return $arms;
     }
 
     /**
@@ -3177,21 +3237,25 @@ class LaravelTsPublish
     }
 
     /**
-     * A docblock shape as a resolved type: each class and enum behind its tokens on its channel, with the class behind
-     * each class token where two classes share a name. Null for no shape.
+     * A docblock or value-object shape as a resolved type: each class and enum behind its tokens on its channel, with
+     * the class behind each class token where two classes share a name. Null for no shape.
      *
      * A resolved type's readers carry a model's or an enum's class and no token's null, so a shape naming any other
      * class, such as an API resource, or an override spelled like a class beside it, is read with no class instead.
      *
+     * With `$enumsInTurn`, so is one whose same-named enums alternate, since this lists each enum once.
+     *
      * @param  Closure(): (ShapeTypeInfo|null)  $read
      * @return TypeScriptTypeInfo|null
      */
-    private function shapeChannels(Closure $read): ?array
+    private function shapeChannels(Closure $read, bool $enumsInTurn = false): ?array
     {
         $shape = $read();
         $carried = fn (?string $fqcn): bool => $fqcn !== null && (enum_exists($fqcn) || is_a($fqcn, Model::class, true));
 
-        if ($shape !== null && ! array_all($shape['tokenFqcns'] ?? [], $carried)) {
+        if ($shape !== null
+            && (! array_all($shape['tokenFqcns'] ?? [], $carried)
+                || ($enumsInTurn && ! TokenSlots::enumsTakeTurns($shape['type'], $shape['tokenFqcns'] ?? [])))) {
             $shape = $this->withoutShapeClasses($read);
         }
 
@@ -3247,9 +3311,10 @@ class LaravelTsPublish
         $classTokens = $info['classTokenFqcns'] ?? [];
 
         if (! in_array(null, $classTokens, true)) {
-            $fqcns = array_values(array_filter([...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']], $exported));
+            $queued = [...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']];
+            $fqcns = array_values(array_filter($queued, $exported));
 
-            return $fqcns === []
+            return $fqcns === [] || ($classTokens !== [] && count($fqcns) < count($queued))
                 ? []
                 : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
         }
@@ -3307,8 +3372,8 @@ class LaravelTsPublish
     }
 
     /**
-     * Run a docblock read whose result has no class channel, such as a value object's shape, so a shape keeps no member
-     * naming a class and the reader answers as it did before shapes carried classes.
+     * Run a docblock read whose result has no class channel, such as a value object's own docblock shape, so a shape
+     * keeps no member naming a class and the reader answers as it did before shapes carried classes.
      *
      * @template T
      *
@@ -3475,10 +3540,426 @@ class LaravelTsPublish
     }
 
     /**
+     * The type a read of a `Castable` cast's value off its model sends under castValueToTsType(): what the get() of
+     * each caster its `castUsing()` names returns, declared first, then returned. Null outside such a read. Where a
+     * caster's get() reads nothing, the column's serialized type, else null to leave the Castable to type the value.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    private function castableValueTypes(string $cast): ?array
+    {
+        $castable = Str::before($cast, ':');
+
+        if (! $this->readsCastValue || ! is_a($castable, Castable::class, true)) {
+            return null;
+        }
+
+        $infos = $this->castersValueTypes(CastCasters::declared($castable))
+            ?? $this->castersValueTypes(CastCasters::returned($castable));
+
+        if ($infos !== null) {
+            return $this->mergeTypeScriptInfos($infos);
+        }
+
+        $this->readsCastValue = false;
+
+        try {
+            return $this->castableSerializedTypes($cast);
+        } finally {
+            $this->readsCastValue = true;
+        }
+    }
+
+    /**
+     * What each caster's get() returns, as toTsType() reads a caster under castValueToTsType(); null when there is
+     * none, or one is no caster or reads nothing.
+     *
+     * @param  list<class-string>|null  $casters
+     * @return non-empty-list<TypeScriptTypeInfo>|null
+     */
+    private function castersValueTypes(?array $casters): ?array
+    {
+        $infos = [];
+
+        foreach ($casters ?? [] as $caster) {
+            $info = is_a($caster, CastsAttributes::class, true) ? $this->toTsType($caster) : null;
+
+            if ($info === null || TsTypeString::isUnknownOnly($info['type'])) {
+                return null;
+            }
+
+            $infos[] = $info;
+        }
+
+        return $infos === [] ? null : $infos;
+    }
+
+    /**
+     * The type a caster's serialize() declares, or null to leave get() to type it: where none is declared, and without
+     * the interface where it declares only `mixed`, or `array` or `object` over a get() returning an object or array.
+     * Over any other get(), a vague `array` reads as a list or a record.
+     *
+     * @param  class-string  $caster
+     * @param  TypeScriptTypeInfo  $serialized
+     * @return TypeScriptTypeInfo|null
+     */
+    private function declaredSerializeTypes(string $caster, array $serialized): ?array
+    {
+        if (is_a($caster, SerializesCastableAttributes::class, true)) {
+            return $serialized['type'] === 'unknown' ? null : $serialized;
+        }
+
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($serialized['type']), ['null']);
+        $vague = $arms !== [] && array_all($arms, $this->isVagueArm(...));
+
+        if ($vague && (TsTypeString::isUnknownOnly($serialized['type']) || $this->getReadsObject($caster))) {
+            return null;
+        }
+
+        return $vague ? [...$serialized, 'type' => $this->listOrRecordArms($serialized['type'])] : $serialized;
+    }
+
+    /**
+     * The type a caster's get() returns where it declares only `mixed`, as its own returns prove; null where they prove
+     * nothing but a vague type, or name a class a cast type cannot import.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    private function getBodyTypes(string $caster): ?array
+    {
+        return $this->readCasterBody(
+            $caster,
+            'get',
+            fn (): ?array => $this->provenCasterBody($caster, 'get'),
+            fn (?array $info): bool => $info !== null,
+            'value',
+        );
+    }
+
+    /**
+     * What a caster method's returns prove, read with no union arm left out; null where they prove nothing but a vague
+     * type, or name a model, a resource or another class whose import a cast type cannot carry.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    private function provenCasterBody(string $caster, string $method): ?array
+    {
+        $dropped = DroppedUnionArms::dropped();
+        $result = resolve(AstEngine::class)->analyzeMethodValue($caster, $method);
+
+        if ($result === null || DroppedUnionArms::dropped() !== $dropped || ! $this->provesType($result['type'])) {
+            return null;
+        }
+
+        $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
+        $importable = [...$info['enumTypes'], ...ImportMaps::localNames($info['customImports'])];
+
+        return TsTypeString::shapeValueHasUnimportableToken($info['type'], $importable) ? null : $info;
+    }
+
+    /**
+     * Whether a body's reading says what it sends: an arm besides `null`, none of them `object` or vague, and no
+     * `unknown` inside one, as a word outside literals, which would read less than get()'s type.
+     */
+    private function provesType(string $type): bool
+    {
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($type), ['null']);
+
+        return $arms !== []
+            && preg_match('/\bunknown\b/', TypeScanner::maskLiterals($type)) !== 1
+            && ! array_any($arms, $this->isVagueArm(...));
+    }
+
+    /**
+     * Whether a union arm says nothing of its value but its kind: `object`, or an arm TsTypeString reads as vague.
+     */
+    private function isVagueArm(string $arm): bool
+    {
+        return $arm === 'object' || TsTypeString::isVagueOnly($arm);
+    }
+
+    /**
+     * A serialize() reading with a `null` arm where get() returns null, which Model::toArray() sends without calling
+     * serialize(): where get() provably does, or, when its reading proves neither, as $unproven says.
+     *
+     * @param  class-string  $caster
+     * @param  TypeScriptTypeInfo  $types
+     * @return TypeScriptTypeInfo
+     */
+    private function withGetNull(string $caster, array $types, bool $unproven): array
+    {
+        return ($this->getReturnsNull($caster) ?? $unproven)
+            ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
+            : $types;
+    }
+
+    /**
+     * Whether a caster's get() returns null, as its native type, else its `@return`, else its body's reading proves:
+     * by a `null` arm the body returns literally, or by none; null where none proves either: a `mixed` type, a body
+     * the engine cannot read or leaves an arm out of, one read through a caster cycle, or a null a read carries in.
+     *
+     * @param  class-string  $caster
+     */
+    private function getReturnsNull(string $caster): ?bool
+    {
+        $get = new ReflectionMethod($caster, 'get');
+        $native = $get->getReturnType();
+
+        if ($native !== null && ! ($native instanceof ReflectionNamedType && $native->getName() === 'mixed')) {
+            return $native->allowsNull();
+        }
+
+        $docComment = $get->getDocComment();
+        $documented = $docComment === false || $this->extractReturnTypeFromDocblock($docComment) === null
+            ? null
+            : $this->docblockReturnTypes($get)['type'];
+
+        if ($documented !== null && ! TsTypeString::isUnknownOnly($documented)) {
+            return TsTypeString::hasNullArm($documented);
+        }
+
+        // The body's reading only decides the null, so whatever it reads publishes nothing and leaves no trace.
+        $read = $this->readCasterBody($caster, 'get', function () use ($caster): ?bool {
+            $memo = resolve(AnalysisMemo::class);
+            [$cuts, $dropped] = [$memo->cuts(self::CASTER_BODY_GUARD), DroppedUnionArms::dropped()];
+            $result = resolve(AstEngine::class)->analyzeMethodValue($caster, 'get');
+
+            if ($result === null || $memo->cuts(self::CASTER_BODY_GUARD) !== $cuts) {
+                return null;
+            }
+
+            return TsTypeString::hasNullArm($result['type']) ?: (DroppedUnionArms::dropped() === $dropped ? false : null);
+        }, static fn (): bool => false);
+
+        // Another member's null may be one its column allows on a path get() never takes, so only a literal one proves.
+        return ($read === true && ! resolve(ReturnLiteralReader::class)->returnsNull($caster, 'get')) ? null : $read;
+    }
+
+    /**
+     * A caster method's body read once per run; null for a dependency's method, which no value read follows, or one
+     * already under read. Its warnings, drop count and audit entries outlive it only where $kept says it stands.
+     *
+     * @template TRead
+     *
+     * @param  class-string  $caster
+     * @param  Closure(): TRead  $read
+     * @param  Closure(TRead): bool  $kept
+     * @param  string  $reading  what the read answers, apart from another read of the same body
+     * @return TRead|null
+     */
+    private function readCasterBody(string $caster, string $method, Closure $read, Closure $kept, string $reading = ''): mixed
+    {
+        $key = self::CASTER_BODY_GUARD.$caster.'@'.$method.($reading === '' ? '' : ':'.$reading);
+        $memo = resolve(AnalysisMemo::class);
+
+        return $memo->remember($key, function () use ($caster, $method, $key, $memo, $read, $kept): mixed {
+            if (DependencyFiles::ofApplication()->contains(new ReflectionMethod($caster, $method)->getFileName())) {
+                return null;
+            }
+
+            if (! $memo->enter($key)) {
+                return null;
+            }
+
+            try {
+                return DroppedUnionArms::provisional($read, $kept);
+            } finally {
+                $memo->leave($key);
+            }
+        });
+    }
+
+    /**
+     * Whether every arm a caster's get() reads besides null is an object or an array, as a vague `array` or `object`
+     * serialize() may leave it; an enum, a scalar or `unknown` arm says serialize() writes something else.
+     *
+     * @param  class-string  $caster
+     */
+    private function getReadsObject(string $caster): bool
+    {
+        $get = $this->serializedDateReturnTypes(new ReflectionMethod($caster, 'get'))
+            ?? $this->castGetReturnTypes(new ReflectionClass($caster));
+        $arms = array_diff(TsTypeString::splitTopLevelUnion($get['type']), ['null']);
+
+        return $arms !== [] && array_all($arms, fn (string $arm): bool => $arm === 'object'
+            || str_starts_with($arm, '{')
+            || str_starts_with($arm, '[')
+            || str_ends_with($arm, '[]')
+            || str_starts_with($arm, 'Record<')
+            || in_array($arm, $get['classes'], true));
+    }
+
+    /**
      * Whether a PHPDoc type is one pair of parentheses whole, as a group or a conditional's `($… ? … : …)` is.
      */
     private function isParenthesized(string $phpType): bool
     {
         return str_ends_with($phpType, ')') && str_starts_with($phpType, '(') && $this->closesAtEnd($phpType);
+    }
+
+    /**
+     * The text inside a conditional type `($x is T ? A : B)`, or the whole of one an else branch spells without
+     * parentheses; null when the type is no conditional.
+     */
+    private function conditionalBody(string $type): ?string
+    {
+        if ($this->isParenthesized($type)) {
+            $inner = trim(substr($type, 1, -1));
+
+            return preg_match('/^[^\s\'"]\S*\s+is\s/', $inner) === 1 ? $inner : null;
+        }
+
+        return preg_match('/^[^\s(\'"]\S*\s+is\s/', $type) === 1 ? $type : null;
+    }
+
+    /**
+     * The type with each `?` written against a name, as `?string` makes it nullable, marked outside its literals, so a
+     * split at `?` cuts only at a conditional's test.
+     */
+    private function maskNullableMarks(string $type): string
+    {
+        preg_match_all('/\?(?=[\\\\A-Za-z_])/', TypeScanner::maskLiterals($type, ScanDialect::PhpDoc), $marks, PREG_OFFSET_CAPTURE);
+
+        foreach ($marks[0] as [, $offset]) {
+            $type[$offset] = self::NULLABLE_MARK;
+        }
+
+        return $type;
+    }
+
+    /**
+     * The union a conditional's arms read as, each arm folded as conditionalArmParts() folds it, and `array{}` beside a
+     * list taken in by the list. Null when no arm is left, or one reads no type, as `mixed`, a template, `static` or
+     * `$this` does.
+     *
+     * @param  list<string>  $arms
+     */
+    private function conditionalArmsUnion(array $arms): ?string
+    {
+        $parts = $this->conditionalArmParts($arms);
+        $readings = array_map($this->readsWithoutContext(...), $parts);
+        $empty = array_search('array{}', $parts, true);
+
+        // json_encode() writes an empty array as `[]`, which a list arm beside it admits.
+        if ($empty !== false && array_any($readings, fn (string $reading): bool => str_ends_with($reading, '[]'))) {
+            unset($parts[$empty], $readings[$empty]);
+        }
+
+        if ($parts === [] || array_any($readings, fn (string $reading): bool => preg_match('/\bunknown\b/', TypeScanner::maskLiterals($reading)) === 1)) {
+            return null;
+        }
+
+        // Lists follow the other members, then booleans and null, as `string|string[]|null` and `int|false` read.
+        $ordered = [[], [], [], []];
+
+        foreach ($parts as $index => $part) {
+            $ordered[match (true) {
+                $part === 'null' => 3,
+                in_array($part, ['bool', 'true', 'false'], true) => 2,
+                str_ends_with($readings[$index], '[]') => 1,
+                default => 0,
+            }][] = $part;
+        }
+
+        return implode('|', array_merge(...$ordered));
+    }
+
+    /**
+     * A conditional's arms split into one list of distinct union members, folded as PHPStan prints them: `?T` is `T`
+     * and `null`, `true` beside `false` is `bool`, a string subtype is `string`, which takes in the string literals,
+     * and a `never` arm, which returns nothing, is left out.
+     *
+     * @param  list<string>  $arms
+     * @return list<string>
+     */
+    private function conditionalArmParts(array $arms): array
+    {
+        $parts = [];
+
+        foreach ($arms as $arm) {
+            foreach ($this->splitPhpDocUnionType($this->normalizeDocblockWhitespace($arm)) as $part) {
+                array_push($parts, ...(str_starts_with($part, '?') ? [ltrim(substr($part, 1)), 'null'] : [$part]));
+            }
+        }
+
+        $parts = array_values(array_unique(array_map(fn (string $part): string => match (true) {
+            in_array(strtolower($part), ['true', 'false', 'null', 'bool', 'never'], true) => strtolower($part),
+            strtolower($part) === 'boolean' => 'bool',
+            preg_match('/^array\s*\{\s*\}$/i', $part) === 1 => 'array{}',
+            in_array($this->phpDocStringLiteral($part), [null, ''], true)
+                && array_all(TypeScanner::split($part, ['&'], ScanDialect::PhpDoc), $this->isPhpDocStringType(...)) => 'string',
+            default => $part,
+        }, $parts)));
+
+        $bool = in_array('bool', $parts, true) || array_diff(['true', 'false'], $parts) === [];
+        $string = in_array('string', $parts, true);
+        $parts = array_values(array_filter($parts, fn (string $part): bool => $part !== 'never'
+            && ! ($bool && in_array($part, ['true', 'false'], true))
+            && ! ($string && $this->phpDocStringLiteral($part) !== null)));
+
+        return $bool && ! in_array('bool', $parts, true) ? [...$parts, 'bool'] : $parts;
+    }
+
+    /**
+     * What one union member of a PHPDoc type reads as, as docblockReturnTypes() reads it, outside every class: a bare
+     * name a class would import or alias reads no type there, as a template's does.
+     */
+    private function readsWithoutContext(string $phpType): string
+    {
+        $stack = $this->aliasContextStack;
+        $this->aliasContextStack = [];
+
+        try {
+            return $this->resolveDocblockTypePart($phpType, [], '')['type'];
+        } finally {
+            $this->aliasContextStack = $stack;
+        }
+    }
+
+    /**
+     * A container's key as the converter reads it: `int|string`, however spelled, is `array-key`; any other as written.
+     */
+    private function containerKeyKind(string $key): string
+    {
+        $arms = array_map(trim(...), explode('|', $key));
+        sort($arms);
+
+        return $arms === ['int', 'string'] ? 'array-key' : $key;
+    }
+
+    /**
+     * A method's reflected return type, native or PHP's tentative one, whose tentative `array` is a list or a record.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    private function reflectedReturnTypes(ReflectionMethod $method): array
+    {
+        $type = DeclaredClasses::reflectedReturnType($method);
+        $types = $this->resolveReflectionType($type, $method->getDeclaringClass());
+        $arms = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
+
+        $array = fn (?ReflectionType $arm): bool => $arm instanceof ReflectionNamedType && $arm->getName() === 'array';
+
+        if ($method->hasReturnType() || ! array_any($arms, $array)) {
+            return $types;
+        }
+
+        // Nothing says which keys an internal method's array holds, and json_encode() writes string keys as an object.
+        $types['type'] = $this->listOrRecordArms($types['type']);
+
+        return $types;
+    }
+
+    /**
+     * A type with each `unknown[]` arm read as a list or a record, since json_encode() writes an array by its keys.
+     */
+    private function listOrRecordArms(string $type): string
+    {
+        return implode(' | ', array_map(
+            fn (string $arm): string => $arm === 'unknown[]' ? 'unknown[] | Record<string, unknown>' : $arm,
+            TsTypeString::splitTopLevelUnion($type),
+        ));
     }
 }

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A docblock-filled signature beside a same-pattern key only the class-level cast types, so the fill joins the cast.
@@ -47,6 +48,6 @@ final class CastRestoredFillResource extends JsonResource
     /** Deliberately untyped so only a docblock or a cast can type what it returns. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

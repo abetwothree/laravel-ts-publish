@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
@@ -14,10 +15,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Enumerable;
+use PhpParser\Node;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -30,6 +38,7 @@ use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
 use PhpParser\Node\UnionType;
 use ReflectionClass;
+use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
@@ -43,57 +52,91 @@ use ReflectionParameter;
  * binding there, and the parameter's own `$x = …;` the value it binds: the caller seeds the body (seedBody()) once its
  * parameters are bound.
  *
+ * A callback's parameters bind to what its caller passes them: a collection's element (elementBinding()), the value
+ * at their position (bindCallbackArgument()), each position in turn (bindCallbackArguments()), what its caller read in
+ * its own scope (bindReadArguments()), or the relation whenLoaded() passes (loadedBinding()).
+ *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ * @phpstan-import-type ParameterGuard from AnalysisScope
+ * @phpstan-import-type CollectionBinding from AnalysisScope
+ * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
+ * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
- * @phpstan-type PassedBinding = array{
- *     model: class-string<Model>|null,
- *     classes: non-empty-list<class-string>|null,
- *     elementModel: class-string<Model>|null,
- *     value: ValueExpressionResult|null,
- *     unsaved: bool,
- *     refines: bool,
- *     declaredOnly: bool,
- * }
+ * @phpstan-type ReadArgument = array{value: ValueExpressionResult, receiver: ReceiverType|null}
+ * @phpstan-type PassedBinding = array{model: class-string<Model>|null, classes: non-empty-list<class-string>|null,
+ *     elementModel: class-string<Model>|null, value: ValueExpressionResult|null, unsaved: bool, refines: bool,
+ *     declaredOnly: bool, guard: ParameterGuard|null, loaded?: true, key?: KeyKind,
+ *     leftOut?: non-empty-list<LeftOutWrite>}
  *
  * @internal
  */
 final class ParameterBinder
 {
+    /** The TypeScript type each PHP scalar type a parameter can declare stands for. */
+    private const array SCALAR_TYPES = [
+        'int' => 'number',
+        'float' => 'number',
+        'string' => 'string',
+        'bool' => 'boolean',
+        'true' => 'true',
+        'false' => 'false',
+        'null' => 'null',
+    ];
+
     /**
-     * The class a closure parameter's native type names, alone or behind a `?`, with whether the `?` is there; null for
-     * any other type, or a name no class or interface has. A `self` or `parent` names the class the scope binds it to.
+     * The class a closure parameter's type names, alone or beside `null`, with whether `null` is there: its native
+     * type, else the `@param` $docComment gives it where it has none; null for any other type, or a name no class or
+     * interface has. A native `self` or `parent` names the class the scope binds it to.
      *
      * @return array{class-string, bool}|null
      */
-    public static function declaredClass(Param $param, AnalysisScope $scope): ?array
+    public static function declaredClass(Param $param, AnalysisScope $scope, ?string $docComment = null): ?array
     {
-        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
-        $class = $type instanceof Name ? self::typeClassName($type, $scope) : null;
+        if ($param->type === null) {
+            return $docComment === null ? null : self::documentedClass($param, $scope, $docComment);
+        }
 
-        return $class !== null && (class_exists($class) || interface_exists($class))
-            ? [$class, $param->type instanceof NullableType]
-            : null;
+        [$type, $nullable] = self::classArm($param->type);
+        $class = $type === null ? null : self::typeClassName($type, $scope);
+
+        return $class !== null && DeclaredClasses::isValueClass($class) ? [$class, $nullable] : null;
     }
 
     /**
-     * Whether a closure parameter's type is `self` or `parent`, alone or behind a `?`: the object may be any subclass.
+     * The one concrete model a closure parameter's non-null declaration names, natively or by `@param`; null for any
+     * other declaration, or none.
+     *
+     * The instance declaredModel() reads a method parameter's.
+     *
+     * @return class-string<Model>|null
+     */
+    public static function declaredClosureModel(?Param $param, AnalysisScope $scope, ?string $docComment = null): ?string
+    {
+        $declared = $param === null ? null : self::declaredClass($param, $scope, $docComment);
+
+        return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
+    }
+
+    /**
+     * Whether a closure parameter's type is `self` or `parent`, alone or beside `null`: the object may be any subclass.
      */
     public static function spellsRelativeClass(Param $param): bool
     {
-        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+        $type = $param->type === null ? null : self::classArm($param->type)[0];
 
-        return $type instanceof Name && $type->isSpecialClassName();
+        return $type !== null && $type->isSpecialClassName();
     }
 
     /**
-     * Bind a closure parameter by the one class its native type names, and say whether it bound a model, which stands
-     * for its value too: a concrete model neither a `?` nor an `= null` default lets be null in varModelBindings, and
+     * Bind a closure parameter by the one class its declaration names, and say whether it bound a model, which stands
+     * for its value too: a concrete model neither `null` nor an `= null` default lets be null in varModelBindings, and
      * any other class, a Request included, in varDeclaredBindings. A `self` or `parent` marks it in relativeParameters.
      */
-    public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope): bool
+    public static function bindClosureClass(Param $param, string $name, AnalysisScope $scope, ?string $docComment = null): bool
     {
-        $declared = $param->variadic ? null : self::declaredClass($param, $scope);
+        $declared = $param->variadic ? null : self::declaredClass($param, $scope, $docComment);
 
         if ($declared === null) {
             return false;
@@ -119,6 +162,293 @@ final class ParameterBinder
     }
 
     /**
+     * How a callback's parameter binds a collection's element: by its model, or the concrete model a non-null native
+     * declaration names where it names none or another, else by its value; null for neither. A bound model is guarded
+     * where $unread or $guardsElement says so, and keeps the writes the join holding it left out.
+     *
+     * @param  class-string<Model>|null  $elementModel
+     * @param  ValueExpressionResult|null  $elementValue
+     * @param  string|null  $docComment  the callback's, whose `@param` declares a parameter with no native type
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the element left out
+     * @return PassedBinding|null
+     */
+    public static function elementBinding(
+        ?string $elementModel,
+        ?array $elementValue,
+        ?Param $param,
+        AnalysisScope $scope,
+        bool $unread = false,
+        bool $guardsElement = false,
+        ?string $docComment = null,
+        array $leftOut = [],
+    ): ?array {
+        $declaredModel = self::declaredClosureModel($param, $scope, $docComment);
+        $documented = $param?->type === null;
+        $model = $elementModel !== null && ($declaredModel === null || $documented || is_a($elementModel, $declaredModel, true))
+            ? $elementModel
+            : $declaredModel;
+
+        if ($model === null && $elementValue === null) {
+            return null;
+        }
+
+        $binding = [
+            'model' => $model,
+            'classes' => null,
+            'elementModel' => null,
+            'value' => $model === null ? $elementValue : null,
+            'unsaved' => false,
+            'refines' => false,
+            'declaredOnly' => $model !== null && $model !== $elementModel && $param !== null && self::spellsRelativeClass($param),
+            'guard' => match (true) {
+                $model === null => null,
+                $unread => 'unread',
+                $guardsElement && $model !== $declaredModel => 'guarded',
+                default => null,
+            },
+        ];
+
+        return $leftOut === [] || $model === null || $model !== $elementModel ? $binding : [...$binding, 'leftOut' => $leftOut];
+    }
+
+    /**
+     * Bind a callback's parameter at $position to what its caller passes there: an expression as itself, a typed value
+     * as its value, and for a variadic parameter the list it collects. A `$filled` argument is never null.
+     *
+     * @param  Expr|ValueExpressionResult  $argument
+     */
+    public static function bindCallbackArgument(
+        ArrowFunction|ClosureExpr $callback,
+        int $position,
+        Expr|array $argument,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        bool $filled = false,
+    ): void {
+        $param = $callback->params[$position] ?? null;
+
+        if ($param === null || ! $param->var instanceof Variable || ! is_string($param->var->name)) {
+            return;
+        }
+
+        $name = $param->var->name;
+
+        if ($param->variadic) {
+            $element = self::coercedValue($param, $argument instanceof Expr ? $engine->resolve($argument) : $argument);
+            $element = $filled ? [...$element, 'type' => TsTypeString::withoutNullArm($element['type'])] : $element;
+
+            if ($element['type'] !== 'unknown') {
+                $scope->varValueBindings[$name] = [...$element, 'type' => ValueResult::arrayWrapType($element['type']), 'optional' => false];
+            }
+
+            return;
+        }
+
+        if ($filled) {
+            $scope->nonNullReads[$name][] = ['read' => $param->var, 'after' => null, 'before' => null];
+        }
+
+        // A scalar parameter holds what PHP converts the value to, which only the value's own type says.
+        if ($argument instanceof Expr && self::declaresScalar($param)) {
+            $argument = $engine->resolve($argument);
+            $argument = $filled ? [...$argument, 'type' => TsTypeString::withoutNullArm($argument['type'])] : $argument;
+        }
+
+        if ($argument instanceof Expr) {
+            $scope->closureParamExprBindings[$name] = $argument;
+        } elseif ($argument['type'] !== 'unknown') {
+            $scope->varValueBindings[$name] = self::coercedValue($param, $argument);
+        }
+    }
+
+    /**
+     * Bind a callback's parameters by position to what its caller passes, each as bindCallbackArgument() binds it; or,
+     * where $elements says the values are an array's elements, each typed one as elementBinding() binds it, so a model
+     * a parameter declares binds, the first with $firstElementModel and the guards. A variadic one collects the rest.
+     *
+     * @param  list<Expr|ValueExpressionResult>  $passed
+     * @param  class-string<Model>|null  $firstElementModel
+     * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the first element left out
+     */
+    public static function bindCallbackArguments(
+        ArrowFunction|ClosureExpr $callback,
+        array $passed,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?string $firstElementModel = null,
+        bool $elements = false,
+        bool $unread = false,
+        bool $guardsElement = false,
+        array $leftOut = [],
+    ): void {
+        foreach ($passed as $position => $argument) {
+            $param = $callback->params[$position] ?? null;
+
+            if ($param !== null && $param->variadic) {
+                self::bindCallbackArgument($callback, $position, self::collectedValue(array_slice($passed, $position), $engine), $scope, $engine);
+
+                return;
+            }
+
+            $scalar = $param !== null && self::declaresScalar($param);
+
+            if (! $elements || $argument instanceof Expr || $param === null
+                || ! $param->var instanceof Variable || ! is_string($param->var->name)
+                || ($scalar && $argument['type'] !== 'unknown')
+            ) {
+                self::bindCallbackArgument($callback, $position, $argument, $scope, $engine);
+
+                continue;
+            }
+
+            // A scalar parameter holds what PHP converts an element to, never the model it is.
+            if ($scalar && $position === 0 && $firstElementModel !== null) {
+                $model = ['type' => class_basename($firstElementModel), 'optional' => false];
+                self::bindCallbackArgument($callback, $position, $model, $scope, $engine);
+
+                continue;
+            }
+
+            // An element nothing types binds nothing, so the parameter's own declaration binds it.
+            $value = $argument['type'] === 'unknown' ? null : self::coercedValue($param, $argument);
+            $docComment = (string) $callback->getDocComment();
+            $binding = $position === 0
+                ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment, $leftOut)
+                : self::elementBinding(null, $value, $param, $scope, docComment: $docComment);
+
+            if ($binding !== null) {
+                resolve(self::class)->bindPassed([$param->var->name => $binding], $scope);
+            }
+        }
+    }
+
+    /**
+     * Bind a callback's parameters by position to what its caller read in its own scope, each as a method's parameter
+     * binds the argument passed it (passedBinding()), so nothing the callback's own body writes changes them. A
+     * variadic one collects the rest of the values, as bindCallbackArgument() does.
+     *
+     * @param  list<ReadArgument>  $passed
+     */
+    public static function bindReadArguments(ArrowFunction|ClosureExpr $callback, array $passed, AnalysisScope $scope, ExpressionEngine $engine): void
+    {
+        $binder = resolve(self::class);
+
+        foreach ($passed as $position => $argument) {
+            $param = $callback->params[$position] ?? null;
+
+            if ($param === null || ! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                return;
+            }
+
+            if ($param->variadic) {
+                $values = array_column(array_slice($passed, $position), 'value');
+                self::bindCallbackArgument($callback, $position, self::collectedValue($values, $engine), $scope, $engine);
+
+                return;
+            }
+
+            $value = self::coercedValue($param, $argument['value']);
+            // A value PHP converts to the parameter's scalar type is no longer the object the receiver names.
+            $binding = $binder->passedBinding($value, $value === $argument['value'] ? $argument['receiver'] : null);
+
+            if ($binding !== null) {
+                $binder->bindPassed([$param->var->name => $binding], $scope);
+            }
+        }
+    }
+
+    /**
+     * A value as a parameter of a native scalar type receives it in coercive mode, as Laravel's own code and PHP's
+     * functions call a callback: each arm the type admits kept as it is, an enum's alias or a type the app declares
+     * included, and every other arm read as the type PHP converts it to. Any other type, or `unknown`, keeps the value.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    public static function coercedValue(Param $param, array $value): array
+    {
+        $scalars = $value['type'] === 'unknown' ? null : self::declaredScalars($param);
+        $converted = $scalars === null ? [] : array_values(array_unique(array_diff_key($scalars, ['null' => true])));
+
+        if ($scalars === null || $converted === []) {
+            return $value;
+        }
+
+        $direct = $value['directEnumFqcn'] ?? null;
+        $enums = array_values(array_unique([...($direct === null ? [] : [$direct]), ...($value['embeddedEnumFqcns'] ?? [])]));
+        // A type the app declares for a class names nothing the binder can test against the scalar, so it stays.
+        $declared = ImportMaps::localNames($value['customImports'] ?? []);
+        $arms = [];
+        $kept = [];
+        $keepsDeclared = false;
+
+        foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
+            $enum = array_find($enums, static fn (string $enum): bool => self::enumArmFits($arm, $enum, $scalars));
+            $kept = $enum === null ? $kept : [...$kept, $enum];
+            $keepsDeclared = $keepsDeclared || in_array($arm, $declared, true);
+            array_push($arms, ...($enum !== null || in_array($arm, $declared, true) || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+        }
+
+        $type = implode(' | ', array_values(array_unique($arms)));
+
+        if ($type === $value['type']) {
+            return $value;
+        }
+
+        // An enum's alias or a declared type the parameter takes as it is keeps the channel that imports it.
+        return [
+            ...ValueResult::unknown(),
+            'type' => $type,
+            ...($direct !== null && in_array($direct, $kept, true) ? ['directEnumFqcn' => $direct] : []),
+            ...(array_diff($kept, [$direct]) === [] ? [] : ['embeddedEnumFqcns' => array_values(array_unique(array_diff($kept, [$direct])))]),
+            ...($keepsDeclared ? ['customImports' => $value['customImports'] ?? []] : []),
+        ];
+    }
+
+    /**
+     * Whether a parameter declares a native scalar type, so it holds what PHP converts a passed value to.
+     */
+    public static function declaresScalar(Param $param): bool
+    {
+        return self::declaredScalars($param) !== null;
+    }
+
+    /**
+     * How a whenLoaded() callback's first parameter binds the relation Laravel passes it: its one model; its whole
+     * collection by the element, which binds no value of its own; or a morphTo's targets, any one of which it may hold.
+     *
+     * @param  RelationTypeInfo  $relation
+     * @return PassedBinding|null
+     */
+    public static function loadedBinding(array $relation): ?array
+    {
+        $binding = [
+            'model' => null,
+            'classes' => null,
+            'elementModel' => null,
+            'value' => null,
+            'unsaved' => false,
+            'refines' => false,
+            'declaredOnly' => false,
+            'guard' => null,
+            'loaded' => true,
+        ];
+        $model = $relation['modelFqcn'];
+
+        return match (true) {
+            $model !== null && str_ends_with($relation['type'], '[]') => [
+                ...$binding,
+                'classes' => [EloquentCollection::class],
+                'elementModel' => $model,
+                'value' => ['type' => $relation['type'], 'optional' => false],
+            ],
+            $model !== null => [...$binding, 'model' => $model],
+            $relation['morphFqcns'] !== [] => [...$binding, 'classes' => $relation['morphFqcns']],
+            default => null,
+        };
+    }
+
+    /**
      * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -138,28 +468,42 @@ final class ParameterBinder
         $docComment = (string) $closure->getDocComment();
 
         foreach ($closure->params as $param) {
-            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
-                continue;
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $this->bindClosureParameter($param, $param->var->name, $docComment, $scope);
             }
+        }
+    }
 
-            $name = $param->var->name;
+    /**
+     * Bind one closure parameter by what it declares, natively or by the `@param` $docComment gives it: the class
+     * bindClosureClass() binds, the element a collection generic names, and its value.
+     */
+    public function bindClosureParameter(Param $param, string $name, string $docComment, AnalysisScope $scope): void
+    {
+        if (self::bindClosureClass($param, $name, $scope, $docComment)) {
+            return;
+        }
 
-            if (self::bindClosureClass($param, $name, $scope)) {
-                continue;
-            }
+        $native = $this->closureTypeInfo($param, $scope);
+        $value = $this->heldValue(
+            $native === null ? null : resolve(ReflectedTypeAcceptor::class)->accept($native),
+            $name,
+            $param->variadic,
+            $docComment,
+            $scope->declaringFileClass,
+        );
+        $nativeClasses = $param->type === null ? null : $scope->varDeclaredBindings[$name] ?? null;
+        $collection = $value === null || $param->variadic || ($param->type !== null && $nativeClasses === null)
+            ? null
+            : $this->declaredCollection($docComment, $name, $scope->declaringFileClass, $nativeClasses, $value);
 
-            $native = $this->closureTypeInfo($param, $scope);
-            $value = $this->heldValue(
-                $native === null ? null : resolve(ReflectedTypeAcceptor::class)->accept($native),
-                $name,
-                $param->variadic,
-                $docComment,
-                $scope->declaringFileClass,
-            );
+        if ($collection !== null) {
+            unset($scope->varDeclaredBindings[$name]);
+            $scope->varCollectionBindings[$name] = $collection;
+        }
 
-            if ($value !== null) {
-                $scope->varValueBindings[$name] = $value;
-            }
+        if ($value !== null) {
+            $scope->varValueBindings[$name] = $value;
         }
     }
 
@@ -172,20 +516,26 @@ final class ParameterBinder
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
      * An argument spelled `self`, `static` or `parent` marks the parameter in relativeParameters: it may be a subclass.
+     * One a guarded receiver binds keeps its guard in guardedParameters; an `unread` one replaces a declared binding,
+     * and a refining one a declared collection binding too.
+     *
+     * A relation whenLoaded() passes binds a morphTo's targets in varClassBindings, and no value of its own.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $passed, AnalysisScope $scope): void
     {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly]) {
+        foreach ($passed as $name => $binding) {
+            ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guard' => $guard] = $binding;
+            $loaded = $binding['loaded'] ?? false;
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
-            if ($refines && isset($scope->varDeclaredBindings[$name])) {
-                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            if ($refines && (isset($scope->varDeclaredBindings[$name]) || isset($scope->varCollectionBindings[$name]))) {
+                unset($scope->varDeclaredBindings[$name], $scope->varCollectionBindings[$name], $scope->varValueBindings[$name]);
             } elseif ($unsaved && $classes !== null && $declaredModel !== null && is_a($classes[0], $declaredModel, true)) {
                 // A declared concrete model binds as a saved row, so a passed one no row backs yet replaces it.
                 unset($scope->varModelBindings[$name]);
-            } elseif ($scope->bindsName($name)) {
+            } elseif ($scope->bindsName($name) && ! ($refines && $guard === 'unread')) {
                 continue;
             }
 
@@ -193,6 +543,18 @@ final class ParameterBinder
                 $scope->relativeParameters[$name] = true;
             } else {
                 unset($scope->relativeParameters[$name]);
+            }
+
+            if ($guard !== null) {
+                $scope->guardedParameters[$name] = $guard;
+            } else {
+                unset($scope->guardedParameters[$name]);
+            }
+
+            if (isset($binding['leftOut'])) {
+                $scope->leftOutParameters[$name] = $binding['leftOut'];
+            } else {
+                unset($scope->leftOutParameters[$name]);
             }
 
             if ($model !== null) {
@@ -207,12 +569,16 @@ final class ParameterBinder
                 $scope->varCollectionBindings[$name] = [
                     'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),
                     'modelFqcn' => $elementModel,
+                    ...($classes === null || $classes === [EloquentCollection::class] ? [] : ['classes' => $classes]),
+                    ...(isset($binding['key']) ? ['key' => $binding['key']] : []),
                 ];
+            } elseif ($classes !== null && $loaded) {
+                $scope->varClassBindings[$name] = $classes;
             } elseif ($classes !== null) {
                 $scope->varDeclaredBindings[$name] = $classes;
             }
 
-            if ($value !== null) {
+            if ($value !== null && ! $loaded) {
                 $scope->varValueBindings[$name] = $value;
             }
         }
@@ -223,6 +589,7 @@ final class ParameterBinder
      * other classes and its value otherwise; null when it binds nothing. A `?->` can end it as null: no class binds.
      *
      * A binding that refines a declared class names a class, or is null, since its value alone would lose the class.
+     * The receiver's guard, and its element's, ride along.
      *
      * @param  ValueExpressionResult  $value
      * @return PassedBinding|null
@@ -238,10 +605,15 @@ final class ParameterBinder
         // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
         $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
         $declaredOnly = $classes !== null && $held->declaredOnly;
+        $guard = match (true) {
+            $classes !== null && $held->guarded => 'guarded',
+            $elementModel !== null && $held->guardsElement => 'element',
+            default => null,
+        };
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! TsTypeString::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guard' => $guard];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -250,11 +622,13 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines, 'declaredOnly' => $declaredOnly, 'guard' => $guard];
     }
 
     /**
-     * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call.
+     * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call: one
+     * whose declaration binds nothing, one a narrower argument refines, a declared model, or a `@param` collection,
+     * whose element a known argument outranks.
      */
     public function takesPassedValues(ReflectionMethod $method): bool
     {
@@ -262,8 +636,75 @@ final class ParameterBinder
             $method->getParameters(),
             fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method)
                 || $this->narrowableClasses($parameter) !== null
-                || $this->declaredModel($parameter) !== null,
+                || $this->declaredModel($parameter) !== null
+                || $this->documentedCollection($parameter, $method) !== null,
         );
+    }
+
+    /**
+     * The collection a method parameter's `@param` generic declares, as bindDeclared() binds it; null for none.
+     *
+     * @return CollectionBinding|null
+     */
+    public function documentedCollection(ReflectionParameter $parameter, ReflectionMethod $method): ?array
+    {
+        $context = LaravelTsPublish::methodDeclaringFileClass($method);
+        $docComment = (string) $method->getDocComment();
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter);
+        $value = $this->declaredValue($parameter, $docComment, $context);
+
+        return $this->parameterCollection($parameter, $classes, $docComment, $context, $value);
+    }
+
+    /**
+     * How an argument binds a parameter a `@param` collection generic declares: by the collection it holds, its keys
+     * and value, the declaration naming only an element or keys it leaves unknown, and narrowing a class a method only
+     * declares ($bounded); null where it names no collection, may end as null, or is guarded and not `unread`.
+     *
+     * @param  CollectionBinding  $declared
+     * @param  ValueExpressionResult  $value
+     * @return PassedBinding|null
+     */
+    public function passedCollection(
+        ReflectionParameter $parameter,
+        array $declared,
+        array $value,
+        ?ReceiverType $receiver,
+        bool $unread = false,
+        bool $bounded = false,
+    ): ?array {
+        if ($receiver === null
+            || $receiver->shortCircuits
+            || ($receiver->guarded && ! $unread)
+            || ! $receiver->within([Enumerable::class])
+        ) {
+            return null;
+        }
+
+        unset($value['absentReadsNull']);
+        $declaredKey = $declared['key'] ?? null;
+        $known = self::argumentKey($value['type'], $receiver);
+        // Where nothing names the keys, the declaration spells them, for the value and the receiver alike.
+        $key = $known === false ? ($declaredKey === 'int' ? null : $declaredKey) : self::keyKind($known, $declaredKey);
+        $element = $receiver->elementModel ?? $declared['modelFqcn'];
+        $classes = $bounded ? self::narrowest($receiver->classes, $declared['classes'] ?? [EloquentCollection::class]) : $receiver->classes;
+        $native = $this->nativeClasses($parameter);
+
+        return [
+            'model' => null,
+            'classes' => $native === null || new ReceiverType($classes)->within($native) ? $classes : $native,
+            'elementModel' => $element,
+            'value' => self::keyedValue($value, $key) ?? self::listedValue($declared, $element, $key) ?? self::readValue($value),
+            'unsaved' => false,
+            'refines' => true,
+            'declaredOnly' => $receiver->declaredOnly,
+            'guard' => match (true) {
+                $unread => 'unread',
+                $receiver->guardsElement => 'element',
+                default => null,
+            },
+            ...($key === null ? [] : ['key' => $key]),
+        ];
     }
 
     /**
@@ -328,11 +769,260 @@ final class ParameterBinder
     }
 
     /**
+     * The value each item of a variadic parameter's list holds: the one value passed, or the union of every value
+     * passed, `unknown` where any value is.
+     *
+     * @param  list<Expr|ValueExpressionResult>  $values
+     * @return Expr|ValueExpressionResult
+     */
+    private static function collectedValue(array $values, ExpressionEngine $engine): Expr|array
+    {
+        if (count($values) === 1) {
+            return $values[0];
+        }
+
+        $resolved = array_map(static fn (Expr|array $value): array => $value instanceof Expr ? $engine->resolve($value) : $value, $values);
+
+        return array_any($resolved, static fn (array $value): bool => $value['type'] === 'unknown')
+            ? ValueResult::unknown()
+            : ValueResult::unionResults($resolved);
+    }
+
+    /**
+     * The TypeScript type each PHP scalar a parameter's native type names stands for, keyed by that scalar, `null`
+     * included where the type or a `= null` default admits it; null where the type names anything else, or nothing.
+     *
+     * @return array<string, string>|null
+     */
+    private static function declaredScalars(Param $param): ?array
+    {
+        $type = $param->type;
+        $members = match (true) {
+            $type instanceof Identifier => [$type],
+            $type instanceof NullableType => [$type->type, new Identifier('null')],
+            $type instanceof UnionType => $type->types,
+            default => [],
+        };
+        $scalars = self::defaultsToNull($param) ? ['null' => 'null'] : [];
+
+        foreach ($members as $member) {
+            $name = $member instanceof Identifier ? $member->toLowerString() : '';
+            $scalar = self::SCALAR_TYPES[$name] ?? null;
+
+            if ($scalar === null) {
+                return null;
+            }
+
+            $scalars[$name] = $scalar;
+        }
+
+        return $members === [] ? null : $scalars;
+    }
+
+    /**
+     * Whether a TypeScript arm is a value a parameter of those PHP scalars takes as it is: a number for `int` or
+     * `float`, a string for `string`, a boolean for `bool` or its literal for `true` and `false`, and null for `null`.
+     *
+     * @param  array<string, string>  $scalars
+     */
+    private static function fitsScalars(string $arm, array $scalars): bool
+    {
+        return match (true) {
+            $arm === 'number', is_numeric($arm) => isset($scalars['int']) || isset($scalars['float']),
+            $arm === 'string', preg_match('/^([\'"`]).*\1$/s', $arm) === 1 => isset($scalars['string']),
+            $arm === 'boolean' => isset($scalars['bool']),
+            $arm === 'true', $arm === 'false' => isset($scalars['bool']) || isset($scalars[$arm]),
+            default => isset($scalars[$arm]) && $arm === 'null',
+        };
+    }
+
+    /**
+     * Whether an arm is an enum's value alias a parameter takes as it is, as its backing scalar fits the parameter, or
+     * its case-name alias, a string.
+     *
+     * @param  array<string, string>  $scalars
+     */
+    private static function enumArmFits(string $arm, string $enum, array $scalars): bool
+    {
+        if ($arm === ValueResult::enumKindName($enum)) {
+            return isset($scalars['string']);
+        }
+
+        $backing = $arm === ValueResult::enumTypeName($enum) && enum_exists($enum)
+            ? new ReflectionEnum($enum)->getBackingType()?->getName()
+            : null;
+
+        return match ($backing) {
+            'int' => isset($scalars['int']) || isset($scalars['float']),
+            'string' => isset($scalars['string']),
+            default => false,
+        };
+    }
+
+    /**
      * Whether a parameter's default is `null`, which makes its declared type nullable.
      */
     private static function defaultsToNull(Param $param): bool
     {
         return $param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null';
+    }
+
+    /**
+     * The keys an argument is known to hold: `string` for string keys, `moved` for keys off 0..n-1 of either kind,
+     * `list` for keys 0..n-1, as its receiver, an element it names, or a value spelled only as lists or records says;
+     * false where nothing names them.
+     */
+    private static function argumentKey(string $type, ReceiverType $receiver): string|false
+    {
+        $arms = array_values(array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']));
+        $lists = $arms !== [] && array_all($arms, fn (string $arm): bool => ArrayArms::listElement($arm) !== null);
+        $records = $arms !== [] && array_all($arms, ArrayArms::isKeyed(...));
+
+        return match (true) {
+            $receiver->stringKeyed => 'string',
+            $receiver->keyed || ($receiver->elementModel === null && $records) => 'moved',
+            $receiver->elementModel !== null || $lists => 'list',
+            default => false,
+        };
+    }
+
+    /**
+     * The kind of key known keys bind: a list none, string keys `string`, moved keys `string` where the declaration
+     * names that kind, else either kind.
+     *
+     * @param  KeyKind  $declared
+     * @return KeyKind
+     */
+    private static function keyKind(string $known, ?string $declared): ?string
+    {
+        return match ($known) {
+            'list' => null,
+            'string' => 'string',
+            default => $declared === 'string' ? 'string' : 'array-key',
+        };
+    }
+
+    /**
+     * The classes the narrower of two names, the first where neither is within the other.
+     *
+     * @param  non-empty-list<class-string>  $first
+     * @param  non-empty-list<class-string>  $second
+     * @return non-empty-list<class-string>
+     */
+    private static function narrowest(array $first, array $second): array
+    {
+        return new ReceiverType($second)->within($first) ? $second : $first;
+    }
+
+    /**
+     * An argument's value where its spelling holds the keys bound: a list for a list, no list arm for a `string` key,
+     * not only lists for either kind; null for a vague value or another spelling.
+     *
+     * @param  ValueExpressionResult  $value
+     * @param  KeyKind  $key
+     * @return ValueExpressionResult|null
+     */
+    private static function keyedValue(array $value, ?string $key): ?array
+    {
+        $type = $value['type'];
+        $lists = ArrayArms::holdsList($type) && array_all(
+            array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']),
+            fn (string $arm): bool => ArrayArms::listElement($arm) !== null,
+        );
+        $fits = match ($key) {
+            null => $lists,
+            'string' => ! ArrayArms::holdsList($type),
+            default => ! $lists,
+        };
+
+        return $fits && ! TsTypeString::isVagueTsType($type) ? [...$value, 'optional' => false] : null;
+    }
+
+    /**
+     * An argument's value as it reads, where it is not vague.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult|null
+     */
+    private static function readValue(array $value): ?array
+    {
+        return TsTypeString::isVagueTsType($value['type']) ? null : [...$value, 'optional' => false];
+    }
+
+    /**
+     * The value a collection of one element reads as under the given keys: the declaration's element type where it
+     * names the element, else the element model's own; null where neither spells one type.
+     *
+     * @param  CollectionBinding  $declared
+     * @param  class-string<Model>  $element
+     * @param  KeyKind  $key
+     * @return ValueExpressionResult|null
+     */
+    private static function listedValue(array $declared, string $element, ?string $key): ?array
+    {
+        $types = $element === $declared['modelFqcn']
+            ? array_values(array_unique(array_filter(
+                ArrayArms::arms($declared['type'], ArrayArms::elementOf(...)) ?? [],
+                fn (string $type): bool => $type !== 'never',
+            )))
+            : [LaravelTsPublish::toTsType($element)['type']];
+
+        if (count($types) !== 1 || $types[0] === 'unknown') {
+            return null;
+        }
+
+        $list = TsTypeShape::listType($types);
+
+        return [...ValueResult::unknown(), 'type' => match ($key) {
+            'string' => "Record<string, {$types[0]}>",
+            'array-key' => ArrayArms::keyedList($list),
+            default => $list,
+        }, 'optional' => false, 'modelFqcn' => $element];
+    }
+
+    /**
+     * The one class name a native type spells, alone or beside `null`, with whether `null` is there; a null name for
+     * any other type.
+     *
+     * @return array{Name|null, bool}
+     */
+    private static function classArm(Node $type): array
+    {
+        if ($type instanceof NullableType) {
+            return [$type->type instanceof Name ? $type->type : null, true];
+        }
+
+        $arms = $type instanceof UnionType ? $type->types : [$type];
+        $named = array_values(array_filter(
+            $arms,
+            fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
+        ));
+
+        return count($named) === 1 && $named[0] instanceof Name ? [$named[0], count($arms) > 1] : [null, false];
+    }
+
+    /**
+     * The class a closure parameter's `@param` names, alone or beside `null`, read against the scope's declaring file,
+     * with whether `null` is there; null for a tag the local gate refuses, any other type, or a `self`, `static`,
+     * `parent` or `$this`, which may be a subclass.
+     *
+     * @return array{class-string, bool}|null
+     */
+    private static function documentedClass(Param $param, AnalysisScope $scope, string $docComment): ?array
+    {
+        $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
+        $context = $scope->declaringFileClass;
+        $tag = $name === null ? null : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context);
+
+        if ($tag === null || preg_match('/(?<![\\w\\\\$])(?:self|static|parent|\\$this)(?![\\w\\\\])/i', $tag) === 1) {
+            return null;
+        }
+
+        $arms = DeclaredClasses::docblockArms($tag, $context, $context->getName(), $context->getName());
+
+        return $arms['named'] && count($arms['classes']) === 1 && $arms['intersections'] === []
+            ? [$arms['classes'][0], $arms['nullable']]
+            : null;
     }
 
     /**
@@ -345,8 +1035,9 @@ final class ParameterBinder
     }
 
     /**
-     * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
-     * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
+     * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, a collection whose
+     * `@param` generic names its element in varCollectionBindings, any other class-only type in varDeclaredBindings,
+     * and its value, from the native type, else a `@param` where that is too vague.
      *
      * A Request parameter binds as a request, except in an API resource, whose output was inferred without the request
      * rules; a name the scope already binds is left as it is.
@@ -394,11 +1085,14 @@ final class ParameterBinder
                 continue;
             }
 
-            if ($classes !== null) {
+            $value = $this->declaredValue($parameter, $docComment, $context);
+            $collection = $this->parameterCollection($parameter, $classes, $docComment, $context, $value);
+
+            if ($collection !== null) {
+                $scope->varCollectionBindings[$name] = $collection;
+            } elseif ($classes !== null) {
                 $scope->varDeclaredBindings[$name] = $classes;
             }
-
-            $value = $this->declaredValue($parameter, $docComment, $context);
 
             if ($value !== null) {
                 $scope->varValueBindings[$name] = $value;
@@ -430,6 +1124,62 @@ final class ParameterBinder
         $declaring = $parameter->getDeclaringClass()?->getName() ?? '';
 
         return DeclaredClasses::nativeClasses($parameter->getType(), $declaring, $declaring);
+    }
+
+    /**
+     * The collection a method parameter's `@param` generic declares over its native classes and the value it reads as;
+     * null for a variadic one, a native type naming no class, or a value that does not read.
+     *
+     * @param  non-empty-list<class-string>|null  $classes  the classes the native type names
+     * @param  ReflectionClass<object>  $context
+     * @param  ValueExpressionResult|null  $value
+     * @return CollectionBinding|null
+     */
+    private function parameterCollection(
+        ReflectionParameter $parameter,
+        ?array $classes,
+        string $docComment,
+        ReflectionClass $context,
+        ?array $value,
+    ): ?array {
+        return $value === null || $parameter->isVariadic() || ($parameter->hasType() && $classes === null)
+            ? null
+            : $this->declaredCollection($docComment, $parameter->getName(), $context, $classes, $value);
+    }
+
+    /**
+     * The collection a parameter's `@param` generic declares, as `Collection<int, Comment>` does: its classes, narrowed
+     * to the native ones where those are narrower, its element, a concrete model the run publishes, its kind of key and
+     * the value it reads as; null for any other `@param`, or a native type that is no collection of it.
+     *
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports resolve the `@param`
+     * @param  non-empty-list<class-string>|null  $native  the classes the native type names, null where it has none
+     * @param  ValueExpressionResult  $value
+     * @return CollectionBinding|null
+     */
+    private function declaredCollection(string $docComment, string $name, ReflectionClass $context, ?array $native, array $value): ?array
+    {
+        $tag = resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context);
+        $generic = $tag === null ? null : DeclaredClasses::collectionGeneric($tag, $context);
+        $documented = $tag === null ? null : DeclaredClasses::docblockClasses($tag, $context, $context->getName(), $context->getName());
+
+        if ($generic === null
+            || $generic['element'] === null
+            || $documented === null
+            || ! ValueResult::everyModelPublished([$generic['element']])
+        ) {
+            return null;
+        }
+
+        $classes = match (true) {
+            $native === null || new ReceiverType($documented)->within($native) => $documented,
+            new ReceiverType($native)->within($documented) => $native,
+            default => null,
+        };
+
+        return $classes !== null && new ReceiverType($classes)->within([Enumerable::class])
+            ? ['type' => $value['type'], 'modelFqcn' => $generic['element'], 'classes' => $classes, 'key' => $generic['key']]
+            : null;
     }
 
     /**
@@ -467,7 +1217,10 @@ final class ParameterBinder
         if ($value === null || TsTypeString::isVagueTsType($value['type'])) {
             $reader = resolve(PropertyDocblockTypeReader::class);
             $tag = $reader->extractParamTag($docComment, $name, $context);
-            $value = $tag === null ? $value : $reader->readDeclared($tag, $context);
+            $documented = $tag === null ? null : $reader->readDeclared($tag, $context);
+            $value = $documented !== null && TsTypeString::documentedWins($value['type'] ?? 'unknown', $documented['type'])
+                ? $documented
+                : $value;
         }
 
         if (! ValueResult::isPublishableReading($value)) {

@@ -9,9 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVisibilitiesR
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
-/** Inertia actions rendering enum resources over a route-bound post's nullable enums, alone and beside other arms. */
+/** Inertia actions rendering enum resources over a post's nullable enums, or a status `tryFrom()` may not find. */
 class NullableEnumResourceController
 {
     /** Renders the visibility the post may lack, wrapped. */
@@ -19,6 +20,14 @@ class NullableEnumResourceController
     {
         return Inertia::render('NullableEnumResource/Show', [
             'visibility' => EnumResource::make($post->visibility),
+        ]);
+    }
+
+    /** Renders the status `tryFrom()` finds for the request's `status`, which may be none, wrapped. */
+    public function tried(Request $request): Response
+    {
+        return Inertia::render('NullableEnumResource/Tried', [
+            'status' => EnumResource::make(Status::tryFrom($request->integer('status'))),
         ]);
     }
 

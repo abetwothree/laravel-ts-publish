@@ -5,11 +5,18 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyListPipelineResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\EnumCaseHelperService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Models\Post;
@@ -42,6 +49,15 @@ test('collection pipelines keep their element types to the end of the chain', fu
         ->and($props['doubled']['type'])->toBe('Comment[]')
         ->and($props['typed']['type'])->toBe('{ id: number }[]')
         ->and($props['typed']['optional'])->toBeTrue();
+});
+
+// Collection::map() calls its callback from Laravel's own code, so PHP converts each item to a scalar parameter's type.
+test('a map callback\'s scalar parameter binds the type PHP converts each item to', function () {
+    $scope = collectionPipelineScope();
+    $result = collectionPipelineEngine($scope)->resolve(collectionPipelineExpr("collect(['5'])->map(fn (int \$v) => \$v)->all()"));
+
+    expect($result['type'])->toBe('number[]')
+        ->and(collect(['5'])->map(fn (int $v) => $v)->all())->toBe([5]);
 });
 
 test('data_get declines a wildcard key', function () {
@@ -101,7 +117,7 @@ test('a collect() root whose keys broke carries the keyed Record arm', function 
         ->toBe('number[] | Record<string, number>');
 });
 
-// elementTypeOf() declines a top-level union: sortBy() leaves `Comment[] | Record<string, Comment>`,
+// A root read as a top-level union declines: sortBy() leaves `Comment[] | Record<string, Comment>`,
 // and which arm the elements came from is exactly what a union does not say.
 test('a collect() root resolving to a top-level union declines', function () {
     $scope = collectionPipelineScope();
@@ -116,6 +132,19 @@ test('a collect() root resolving to a top-level union declines', function () {
         ))->toBeNull();
 });
 
+// A `list{}` return types as the empty tuple `[]`, which holds no element: the pipeline reads it as the empty list.
+test('a collect() root typed as the empty tuple pipes the empty list', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(EmptyListPipelineResource::class)->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+    expect($props->all())->toBe([
+        'values' => 'never[]',
+        'all' => 'never[]',
+        'mapped_const' => 'number[]',
+        'mapped_same' => 'never[]',
+    ]);
+});
+
 // Where the receiver resolver names no element for the root's argument, such as an array of models, the model its value
 // carries binds instead.
 test('a collect() root binds its map parameter to the model its value carries', function (string $php, string $type) {
@@ -126,4 +155,176 @@ test('a collect() root binds its map parameter to the model its value carries', 
     'the relation\'s all()' => ['collect($this->comments->all())->map(fn ($c) => $c->content)->all()', 'string[]'],
     'a whenLoaded() value' => ['collect($this->whenLoaded(\'comments\'))->map(fn ($c) => ["id" => $c->id])->all()', '{ id: number }[]'],
     'a spread of the element' => ['collect($this->comments->all())->map(fn ($c) => [...$c->toArray(), "f" => 1])->all()', "(Omit<Comment, 'f'> & { f: number })[]"],
+]);
+
+// map() keeps the keys of the array collect() wraps, and calls any callable form with each element.
+test('a collect() root maps any array through any callable, keeping its keys', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a Record' => ['collect($this->scores)->map(fn ($n) => $n * 2)->all()', 'Record<string, number>'],
+    'a string callable' => ["collect(\$this->names())->map('strtoupper')->all()", 'string[]'],
+    'a first-class callable' => ['collect($this->names())->map(strtoupper(...))->all()', 'string[]'],
+    'a first-class method' => ['collect($this->names())->map($this->shout(...))->all()', 'string[]'],
+    'a vague root, typed callback' => [
+        "collect(\$this->opaque())->map(fn (\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ValueObjects\\MapOption \$c) => ['id' => \$c->itemId])->all()",
+        '{ id: number }[] | Record<string, { id: number }>',
+    ],
+]);
+
+// VariableHandler maps a collection no chain handler takes, such as a relation's plucked values, with the same typer.
+test('a map() over any other collection calls any callable form', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a string callable' => ["\$this->comments->pluck('content')->map('strtoupper')->all()", 'string[]'],
+    'a first-class method' => ["\$this->comments->pluck('content')->map(\$this->shoutUntyped(...))->all()", 'string[]'],
+    'a closure' => ["\$this->comments->pluck('content')->map(fn (\$c) => strtoupper(\$c))->all()", 'string[]'],
+]);
+
+// A pipeline root keeps a literal holding a `when*()` value, as Laravel's filter never reaches into the Collection; a
+// kept Collection writes its keys as they are, where `all()` hands the resource an array it re-indexes.
+test('a collect() pipeline keeps a root holding a when() value, and a kept map its int keys', function () {
+    expect(publishedResourceKeyTypes(CollectPipelineRootsResource::class, Post::class))->toMatchArray([
+        'when_all' => 'number[]',
+        'when_values' => 'number[]',
+        'when_map_identity' => 'number[]',
+        'when_map_const' => 'string[]',
+        'when_filter' => 'number[] | Record<string, number>',
+        'when_loaded_map' => 'number[]',
+        'gapped_kept' => '{ "1": string; "3": string }',
+        'gapped_all' => 'string[]',
+    ])->and(json_encode(new CollectPipelineRootsResource(new Post)->resolve(Request::create('/'))))->toContain(
+        '"when_all":[1],"when_values":[2],"when_map_identity":[2],"when_map_const":["x","x"],"when_filter":[2],'
+        .'"when_loaded_map":[1],"gapped_kept":{"1":"A","3":"B"},"gapped_all":["A","B"]',
+    );
+});
+
+// The body fallback reads a bare case as its literal, yet a mapped case is still the enum its callback reads.
+test('a helper\'s map() or array_map() over enum cases binds its untyped parameter to the enum', function (string $method, string $type) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(EnumCaseHelperService::class, $method)['type'] ?? null)->toBe($type);
+})->with([
+    'array_map()' => ['mappedGrades', '{ m: GradeType[] }'],
+    'collect()->map()->all()' => ['collectedStatuses', '{ m: StatusType[] }'],
+    'the cases alone, as the literals they send' => ['gradeCases', "{ m: ('pass' | 'fail')[] }"],
+    'a callback reading no member, which keeps the literal' => ['identity', '{ m: 0[] }'],
+]);
+
+// A vague helper's body fallback hands its case over as a literal, so the callback reads it again as its enum.
+test('a map() over the case a vague helper returns reads it as its enum', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
+        'collected_values' => 'StatusType[]',
+        'collected_icons' => 'string[]',
+        'collected_resources' => 'AsEnum<typeof Status>[]',
+        'collected_outer_resources' => 'AsEnum<typeof Status>[]',
+        'collected_shape_values' => '{ s: StatusType }',
+    ]);
+});
+
+// keys() re-lists the keys of items still keyed 0..n-1, or of a Record or a shape a collect() root holds; collect(null)
+// holds none. A step that moved the keys first, such as filter() or keyBy(), leaves keys() unread.
+it('types keys() in a collect() pipeline over a list, a record and a nullable root', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record' => ['collect($this->scores)->keys()->all()', 'string[]'],
+    'a record, kept' => ['collect($this->scores)->keys()', 'string[]'],
+    'a nullable record' => ['collect($this->options)->keys()->all()', 'string[]'],
+    'a shape keyed by a name and a number' => ['collect(["a" => 1, 200 => "x"])->keys()->all()', "('a' | 200)[]"],
+    'a list' => ['collect($this->names())->keys()->all()', 'number[]'],
+    'a list, kept' => ['collect($this->counts())->keys()', 'number[]'],
+    'a relation' => ['$this->comments->keys()->all()', 'number[]'],
+    'a record re-listed by values()' => ['collect($this->scores)->values()->keys()->all()', 'number[]'],
+    'a list after a step that keeps its keys' => ['collect($this->names())->take(1)->keys()->all()', 'number[]'],
+    'keys mapped' => ['collect($this->names())->keys()->map(fn ($i) => $i * 2)->all()', 'number[]'],
+    'keys filtered' => ['collect($this->scores)->keys()->filter()->all()', 'string[] | Record<string, string>'],
+    'null' => ['collect(null)->keys()->all()', 'never[]'],
+    'a list after filter()' => ['collect($this->names())->filter()->keys()->all()', 'unknown'],
+    'a relation after keyBy()' => ['$this->comments->keyBy(\'id\')->keys()->all()', 'unknown'],
+    'a relation\'s keys mapped by the map arm' => ['$this->comments->keys()->map(fn ($k) => $k)->all()', 'number[]'],
+    'a value nothing types' => ['collect($this->opaque())->keys()->all()', 'unknown'],
+    'a record mapped first' => ['collect($this->scores)->map(fn ($v) => $v)->keys()->all()', 'unknown'],
+    'a literal keyed at runtime' => ['collect([$this->title => 1, "a" => 2])->keys()->all()', 'unknown'],
+    'a literal with a negative key' => ['collect([-3 => $this->title, "a" => 2])->keys()->all()', "(-3 | 'a')[]"],
+    'a helper\'s literal keyed at runtime' => ['collect($this->keyedByTitle())->keys()->all()', 'unknown'],
+    'a when() value, whose shape may be open' => ['collect($this->when($this->title, ["a" => 1]))->keys()->all()', 'unknown'],
+    'a when() record' => ['collect($this->when($this->title, $this->scores))->keys()->all()', 'string[]'],
+]);
+
+// collect(null) is empty, which json_encode() writes as `[]`: a list admits that, a Record or a shape adds `never[]`.
+it('types collect() of a record and of a nullable root', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record, kept' => ['collect($this->scores)', 'Record<string, number>'],
+    'a record\'s all()' => ['collect($this->scores)->all()', 'Record<string, number>'],
+    'a nullable record, kept' => ['collect($this->options)', 'Record<string, string> | never[]'],
+    'a nullable record\'s all()' => ['collect($this->options)->all()', 'Record<string, string> | never[]'],
+    'a record\'s values()' => ['collect($this->scores)->values()->all()', 'number[]'],
+    'a nullable record\'s values()' => ['collect($this->options)->values()->all()', 'string[]'],
+    'a shape\'s values()' => ['collect(["a" => $this->title, "b" => 1])->values()->all()', '(string | number)[]'],
+    'a record mapped' => ['collect($this->scores)->map(fn (int $v): string => (string) $v)->all()', 'Record<string, string>'],
+    'a nullable record mapped, its empty arm as a list' => ['collect($this->options)->map(fn ($v) => strlen($v))->all()', 'Record<string, number> | number[]'],
+    'a record\'s values() mapped' => ['collect($this->scores)->values()->map(fn ($v) => $v * 2)->all()', 'number[]'],
+    'a nullable list' => ['collect($this->tags ?? null)->map(fn ($t) => $t->id)->all()', 'number[]'],
+    'a record filtered, whose keys a Record may lose' => ['collect($this->scores)->filter()->all()', 'unknown'],
+]);
+
+// collect() of a MissingValue a `when*()` call leaves is empty too, which json_encode() writes as `[]`.
+it('types collect() of a when*() value as possibly empty', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a record, kept' => ['collect($this->when($this->title, $this->scores))', 'Record<string, number> | never[]'],
+    'a record\'s all()' => ['collect($this->when($this->title, $this->scores))->all()', 'Record<string, number> | never[]'],
+    'a shape\'s all()' => ['collect($this->when($this->title, ["a" => 1]))->all()', '{ a: number } | never[]'],
+    'a nullable record\'s all()' => ['collect($this->whenNotNull($this->options))->all()', 'Record<string, string> | never[]'],
+    'a record mapped' => ['collect($this->when($this->title, $this->scores))->map(fn ($v) => $v * 2)->all()', 'Record<string, number> | number[]'],
+    'a list, which admits []' => ['collect($this->when($this->title, $this->names()))->all()', 'string[]'],
+]);
+
+// makeHidden(), setVisible() and the other steps that drop serialized attributes leave models their interface lacks.
+it('leaves a relation chain that hides attributes unread, and keeps one that adds them', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'makeHidden()' => ['$this->comments->makeHidden("content")', 'unknown'],
+    'mergeHidden()' => ['$this->comments->mergeHidden(["content"])', 'unknown'],
+    'setHidden()' => ['$this->comments->setHidden(["content"])', 'unknown'],
+    'setVisible()' => ['$this->comments->setVisible(["id"])', 'unknown'],
+    'mergeVisible()' => ['$this->comments->mergeVisible(["id"])', 'unknown'],
+    'setAppends()' => ['$this->comments->setAppends([])', 'unknown'],
+    'withoutAppends()' => ['$this->comments->withoutAppends()', 'unknown'],
+    'makeVisible(), which only adds' => ['$this->comments->makeVisible("content")', 'Comment[]'],
+    'append(), which only adds' => ['$this->comments->append("x")', 'Comment[]'],
+]);
+
+// The steps that keep the items are CollectionSteps' own, so the collect() and relation chains read each one alike.
+it('walks each step CollectionSteps says keeps the items', function (string $php, string $type) {
+    $expr = collectionPipelineExpr($php);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a front take()' => ['collect([1, 2])->take(1)->all()', 'number[]'],
+    'shuffle()' => ['collect([1, 2])->shuffle()->all()', 'number[]'],
+    'each()' => ['collect([1, 2])->each(fn () => null)->all()', 'number[]'],
+    'keyBy()' => ['collect([1, 2])->keyBy(fn ($n) => $n)->all()', 'number[] | Record<string, number>'],
+    'sortDesc()' => ['collect([1, 2])->sortDesc()->all()', 'number[] | Record<string, number>'],
+    'sortBy() then values()' => ['collect($this->names())->sortBy(fn ($n) => $n)->values()->all()', 'string[]'],
+    'sortBy() after map()' => ['collect($this->names())->map(fn ($n) => $n)->sortBy(fn ($n) => $n)->all()', 'string[] | Record<string, string>'],
+    'a relation\'s tap() then first()' => ['$this->comments->tap(fn () => null)->first()', 'Comment | null'],
+    'a relation\'s sort() then values(), kept' => ['$this->comments->sort()->values()', 'Comment[]'],
 ]);

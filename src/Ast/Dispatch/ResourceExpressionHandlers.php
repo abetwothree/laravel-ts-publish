@@ -7,37 +7,38 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Dispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ArrayMergeHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\BinaryOpHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ArrayMergeHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ConditionableCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\StaticCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationFilterHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaWrapperHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ReceiverPropertyFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\BinaryOpHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\OffsetReadHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\TernaryHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ConditionalMethodHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ToResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClassConstantHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ConstFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ScalarHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use Illuminate\Http\Resources\Json\JsonResource;
 use LogicException;
 
@@ -52,12 +53,12 @@ final class ResourceExpressionHandlers
 {
     /**
      * Each handler only Inertia runs, under the handler it goes before. InertiaResourcePropHandler precedes
-     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to. The query chain and
-     * table handlers precede StaticCallHandler, whose last arm claims every static call, and so NewResourceHandler too.
+     * ToResourceHandler, the first that types a resource as the value a nested key flattens it to. The table handler
+     * precedes StaticCallHandler, whose last arm claims every static call, and so NewResourceHandler too.
      */
     private const array INERTIA_HANDLERS = [
         ToResourceHandler::class => [InertiaResourcePropHandler::class],
-        StaticCallHandler::class => [ModelFinderHandler::class, InertiaTableHandler::class],
+        StaticCallHandler::class => [InertiaTableHandler::class],
     ];
 
     /**
@@ -175,7 +176,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 28 handlers in registration order — the single source every profile above filters.
+     * Construct all 30 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -195,6 +196,7 @@ final class ResourceExpressionHandlers
             new ConditionalMethodHandler,
             new ToResourceHandler,
             new InertiaWrapperHandler,
+            new ModelFinderHandler,
             new StaticCallHandler,
             new NewResourceHandler,
             new ThisPropertyHandler,
@@ -208,6 +210,7 @@ final class ResourceExpressionHandlers
             new MatchHandler,
             new OffsetReadHandler,
             new ReceiverPropertyFetchHandler,
+            new ConditionableCallHandler,
             new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,
         ];

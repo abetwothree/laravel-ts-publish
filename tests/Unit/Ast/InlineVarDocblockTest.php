@@ -3,14 +3,22 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasedFormsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredLocalFormsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedMemberVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LocalAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasCode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CommentRack;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -21,6 +29,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\CartTotalsResource;
 use Workbench\App\Http\Resources\DeclaredConditionalResource;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
@@ -97,6 +106,46 @@ function inlineVarReturned(string $body): array
     return [$scope, $last instanceof Return_ && $last->expr instanceof Expr ? $last->expr : throw new LogicException('No return.')];
 }
 
+/**
+ * A fresh analysis of DroppedMemberVarResource: each key's type, the names it imports, and each placeholder warning
+ * it raises as the line and the arm the warning names, without the arm's namespace.
+ *
+ * @return array{array<string, string>, list<string>, list<string>}
+ */
+function droppedMemberVarAnalysis(): array
+{
+    AnalysisWarnings::reset();
+    resolve(AnalysisMemo::class)->reset();
+    $analysis = resolve(AstEngine::class)->analyze(DroppedMemberVarResource::class, 'toArray', Post::class);
+    $placeholders = array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'was left out of its union'),
+    );
+
+    return [
+        array_column($analysis->properties, 'type', 'name'),
+        array_merge([], ...array_values($analysis->typeImports)),
+        array_values(array_map(
+            fn (string $message): string => preg_match('/line (\d+) .*?because `\\\\Workbench\\\\App\\\\Support\\\\([^`]+)`/', $message, $m) === 1
+                ? $m[1].' '.$m[2]
+                : $message,
+            $placeholders,
+        )),
+    ];
+}
+
+/**
+ * What DroppedMemberVarResource sends for a post with the given id, holding one comment.
+ *
+ * @return array<string, mixed>
+ */
+function droppedMemberVarSent(int $id): array
+{
+    $post = (new Post)->forceFill(['id' => $id])->setRelation('comments', new EloquentCollection([CommentRack::comment(3)]));
+
+    return json_decode((string) json_encode(DroppedMemberVarResource::make($post)->resolve()), true);
+}
+
 describe('an inline @var on a local assignment', function () {
     test('types every read through the local after it, and leaves the controls to the assignment', function () {
         config()->set('ts-publish.output_to_files', false);
@@ -159,9 +208,10 @@ describe('an inline @var on a local assignment', function () {
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; $x = null; $x->b;',
             [[CartTotals::class], null],
         ],
+        // Past the loop the tag still types its write's value, and a member read of the loop's `null` throws.
         'a later write inside a loop, which ends the span where the loop starts' => [
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; foreach ([1] as $i) { $x->b; $x = null; } $x->c;',
-            [[CartTotals::class], null, null],
+            [[CartTotals::class], null, [CartTotals::class]],
         ],
         'a by-reference closure use after it' => [
             '/** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->a; $f = function () use (&$x) {}; $x->b;',
@@ -307,12 +357,8 @@ describe('an inline @var on a local assignment', function () {
         'an intersection' => ['\Workbench\App\Models\Post&\JsonSerializable'],
         'an unclosed shape' => ['array{a: int'],
         'an empty shape' => ['array{}'],
-        'a bracket list' => ['int[]'],
         'a parenthesized union' => ['(int|string)[]'],
-        'a key union' => ['array<int|string, int>'],
-        'an array-key key' => ['array<array-key, int>'],
         'a one-parameter array' => ['array<int>'],
-        'a one-parameter collection' => ['\Illuminate\Support\Collection<\Workbench\App\Models\Comment>'],
         'a generic that is not a collection' => ['\Workbench\App\Models\Post<int, int>'],
         'a pseudo-type' => ['non-empty-string'],
         'an integer range' => ['int<0, max>'],
@@ -336,6 +382,12 @@ describe('an inline @var on a local assignment', function () {
         'a closure in a shape' => ['array{fn: \Closure(int): string}'],
         'a numeric string key' => ["array<'1'|'2', int>"],
         'a literal key beside a scalar key' => ["array<'a'|string, int>"],
+        'an unimported global class in a namespaced file' => ['DateTimeImmutable'],
+        'a bracket list of an unimported global class' => ['DateTimeImmutable[]'],
+        'an alias the file does not define' => ['NoSuchAlias'],
+        'an array object' => ['\\ArrayObject<string, int>'],
+        'a bracket list before a generic' => ['int[]<int>'],
+        'a bracket list of a callable' => ['callable(int): string[]'],
     ]);
 
     test('binds a tag built only from supported forms, and reads it in full', function (string $type, ?string $read) {
@@ -423,7 +475,117 @@ describe('an inline @var on a local assignment', function () {
         'a record slot holding a scalar or a list' => ['array<string, int|list<int>>', 'Record<string, number | number[]>'],
         'a list slot holding two records' => ['list<array<string, int>|array<string, bool>>', '(Record<string, number> | Record<string, boolean>)[]'],
         'a list slot holding a shape or null' => ['list<array{a: int}|null>', '({ a: number } | null)[]'],
+        'a bracket list' => ['int[]', 'number[]'],
+        'a bracket list of an imported class' => ['User[]', 'User[]'],
+        'a nullable bracket list' => ['?int[]', 'number[] | null'],
+        'a bracket list of lists' => ['int[][]', 'number[][]'],
+        'a bracket list after a generic' => ['list<int>[]', 'number[][]'],
+        'a bracket list after a shape' => ['array{a: int}[]', '{ a: number }[]'],
+        'a key union' => ['array<int|string, int>', 'number[] | Record<string, number>'],
+        'a key union written the other way' => ['array<string|int, int>', 'number[] | Record<string, number>'],
+        'an array-key key' => ['array<array-key, int>', 'number[] | Record<string, number>'],
+        'a one-parameter collection' => ['\\Illuminate\\Support\\Collection<\\Workbench\\App\\Models\\Comment>', 'Comment[]'],
+        'a collection keyed by a key union' => ['\\Illuminate\\Support\\Collection<int|string, Comment>', 'Comment[] | Record<string, Comment>'],
+        'a collection keyed by array-key' => ['\\Illuminate\\Support\\Collection<array-key, Comment>', 'Comment[] | Record<string, Comment>'],
     ]);
+
+    test('binds a bracket list, a one-parameter collection and an int|string or array-key keyed array', function () {
+        $resolved = function (string $declared, string $read = '$d'): string {
+            [$scope, $returned] = inlineVarReturned('/** @var '.$declared.' $d */ $d = json_decode(""); return '.$read.';');
+
+            return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned)['type'];
+        };
+        $collection = '\\Illuminate\\Support\\Collection<\\Workbench\\App\\Models\\Comment>';
+
+        expect($resolved('\\Workbench\\App\\Models\\Comment[]'))->toBe('Comment[]')
+            ->and($resolved('string[]'))->toBe('string[]')
+            ->and($resolved($collection))->toBe('Comment[]')
+            ->and($resolved($collection, '$d->first()?->content'))->toBe('string | null')
+            ->and($resolved('array<int|string, \\Workbench\\App\\Models\\Comment>'))->toBe('Comment[] | Record<string, Comment>')
+            ->and($resolved('array<array-key, string>'))->toBe('string[] | Record<string, string>');
+    });
+
+    test('binds a local @var naming a @phpstan-type, an imported alias and a renamed import', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(LocalAliasResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+        $sent = json_decode((string) json_encode(LocalAliasResource::make(new Post)->resolve()), true);
+
+        expect($props->only(['local', 'nullable_local', 'list_local', 'imported', 'renamed'])->all())->toBe([
+            'local' => '{ a: number; b: string }',
+            'nullable_local' => '{ a: number; b: string } | null',
+            'list_local' => '{ a: number; b: string }[]',
+            'imported' => '{ c: boolean; d: number[] }',
+            'renamed' => '{ c: boolean; d: number[] }',
+        ])
+            ->and($sent['local'])->toBe(['a' => 1, 'b' => 'x'])
+            ->and($sent['list_local'])->toBe([['a' => 1, 'b' => 'x']])
+            ->and($sent['renamed'])->toBe(['c' => true, 'd' => [1]]);
+    });
+
+    // An alias admits exactly what its definition would spelled directly, in the file that wrote it.
+    test('holds an alias to what its definition, spelled directly, would bind', function (string $alias, ?string $read) {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $context = new ReflectionClass(AliasedFormsResource::class);
+        $tag = $reader->extractVarTag('/** @var '.$alias.' $d */', $context, []);
+
+        expect($tag === null ? null : $reader->readDeclared($alias, $context)['type'] ?? null)->toBe($read)
+            ->and($read === null ? $tag : null)->toBeNull()
+            ->and($reader->extractParamTag("/**\n * @param  {$alias}  \$d\n */", 'd', $context))->toBe($read === null ? null : $alias);
+    })->with([
+        'an unimported global class' => ['When', null],
+        'a list of one' => ['Whens', null],
+        'a shape holding one' => ['WhenShape', null],
+        'an intersection' => ['Coded', null],
+        'a pseudo-type' => ['Loose', null],
+        'an integer range' => ['Range', null],
+        'an alias naming itself' => ['Tree', null],
+        'a shape' => ['Pair', '{ a: number; b: string }'],
+        'a list of another alias' => ['Pairs', '{ a: number; b: string }[]'],
+        'a nullable alias' => ['?Pair', '{ a: number; b: string } | null'],
+        'a shape holding a callable, read unknown by design' => ['Callback', '{ fn: unknown }'],
+        'a renamed import' => ['Duo', '{ c: boolean; d: number[] }'],
+    ]);
+
+    test('reads a local or a @param naming an alias of an unimported global class as nothing, as the class itself', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(AliasedFormsResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'when' => 'unknown',
+            'when_year' => 'unknown',
+            'pairs' => '{ a: number; b: string }[]',
+            'helper_when' => '{ w: unknown }',
+        ]);
+    });
+
+    // Only a bare `string` key is the record all() sends; keys of either kind may be a list, so both arms stay.
+    test('reads a local\'s receiver from each form it binds: a one-parameter collection, keys and an alias', function () {
+        $post = (new Post)->forceFill(['id' => 4, 'title' => 'T'])
+            ->setRelation('comments', new EloquentCollection([CommentRack::comment(3), CommentRack::comment(4)]));
+        $sent = json_decode((string) json_encode(DeclaredLocalFormsResource::make($post)->resolve()), true);
+        $comment = fn (int $id): array => CommentRack::comment($id)->toArray();
+
+        expect(resourceProps(DeclaredLocalFormsResource::class))->toBe([
+            'one_param_first' => 'string | null',
+            'either' => 'Comment[] | Record<string, Comment>',
+            'either_all' => 'Comment[] | Record<string, Comment>',
+            'either_first' => 'string | null',
+            'any_key_all' => 'Comment[] | Record<string, Comment>',
+            'keyed_all' => 'Record<string, Comment>',
+            'aliased' => 'Comment[]',
+            'aliased_first' => 'string | null',
+            'nullable_aliased_first' => 'string | null',
+            'keyed_alias_all' => 'Record<string, Comment>',
+        ])
+            ->and($sent['one_param_first'])->toBe('c3')
+            ->and($sent['either'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['either_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['keyed_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)])
+            ->and($sent['aliased'])->toBe([$comment(3), $comment(4)])
+            ->and($sent['nullable_aliased_first'])->toBe('c3')
+            ->and($sent['keyed_alias_all'])->toBe(['c3' => $comment(3), 'c4' => $comment(4)]);
+    });
 
     test('binds a local by its @phpstan-var or @psalm-var over a plain @var', function () {
         [$scope, $returned] = inlineVarReturned("/**\n * @var array \$l\n * @phpstan-var list<string> \$l\n */ \$l = json_decode(\"\"); return \$l;");
@@ -469,7 +631,7 @@ describe('an inline @var on a local assignment', function () {
         'a shape key, which stays a key' => ['array{self: int, static?: string}', ['self' => Team::class, 'static' => Team::class], 'array{self: int, static?: string}'],
         'a quoted key' => ["array{'self': int}", ['self' => Team::class], "array{'self': int}"],
         'a parent the declaring class lacks' => ['parent', ['self' => Team::class], null],
-        'a bracket list, declined as any class\'s is' => ['self[]', ['self' => Team::class], null],
+        'a bracket list' => ['self[]', ['self' => Team::class], '\\'.Team::class.'[]'],
         'a class constant' => ['self::NAME', ['self' => Team::class], null],
         'a conditional type\'s arm, declined as before' => ['($d is null ? self : static)', ['self' => Team::class, 'static' => Team::class], null],
     ]);
@@ -524,6 +686,21 @@ describe('an inline @var on a local assignment', function () {
 
         expect([$named?->elementModel, $named?->declaredOnly])->toBe([Comment::class, true])
             ->and([$spelled?->elementModel, $spelled?->declaredOnly])->toBe([null, true]);
+    });
+
+    // The whitelist declines `&`, spelled directly or through an alias, so only a span built by hand reaches it.
+    test('keeps an intersection\'s other members on the receiver a declared local names', function () {
+        $scope = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $span = [
+            'type' => '\\'.Post::class.'&\\'.HasCode::class,
+            'context' => $scope->declaringFileClass,
+            'after' => 0,
+            'before' => null,
+            'expr' => new Variable('unbound'),
+        ];
+        $held = resolve(ReceiverClassResolver::class)->resolveDeclared('p', $span, $scope);
+
+        expect([$held?->classes, $held?->intersections])->toBe([[Post::class], [Post::class => [HasCode::class]]]);
     });
 
     // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
@@ -627,6 +804,120 @@ describe('an inline @var on a local assignment', function () {
             ->toBe('string')
             ->and($resolved('$this->whenLoaded("author", function (\Workbench\App\Models\User $a) { /** @var \Workbench\App\Models\Comment|null $a */ $a = $a->comments->first(); return $a; })'))
             ->toBe('Comment | null');
+    });
+
+    // Only a member its own drop left, under a tag member that admits the kept arm, fills; its warning alone goes.
+    test('a @var shape fills a member a dropped arm left null', function () {
+        [$types, $imports, $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'filled' => '{ a: string | null; b: number }',
+            'literal' => '{ a: null; b: number | null }',
+            'model' => '{ a: Comment | null; b: number }',
+            'enum' => '{ a: StatusType | null; b: number }',
+            'unspelled' => '{ a: string | null; b: Grade }',
+        ])
+            ->and($imports)->toContain('Comment', 'StatusType')
+            ->and(array_values(array_intersect($warned, [
+                "27 Opaque::value('s')",
+                '33 Opaque::value(1)',
+                '37 Opaque::value($this->comments->first())',
+                '47 Opaque::value(\Workbench\App\Enums\Status::Published)',
+                "49 Opaque::value('s')",
+            ])))->toBe([])
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['filled', 'literal', 'enum', 'unspelled'])))->toBe([
+                'filled' => ['a' => 's', 'b' => 1],
+                'literal' => ['a' => null, 'b' => 1],
+                'enum' => ['a' => Status::Published->value, 'b' => 1],
+                'unspelled' => ['a' => 's', 'b' => []],
+            ])
+            ->and(droppedMemberVarSent(1)['model']['a']['id'])->toBe(3)
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['filled', 'literal', 'model', 'enum'])))->toBe([
+                'filled' => ['a' => null, 'b' => 1],
+                'literal' => ['a' => null, 'b' => null],
+                'model' => ['a' => null, 'b' => 1],
+                'enum' => ['a' => null, 'b' => 1],
+            ]);
+    });
+
+    // No null arm, a callable read as unknown, or a class named like one the reading holds: the member keeps null.
+    test('leaves a member a dropped arm left null where the tag\'s member cannot fill it, and keeps its warning', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'unadmitted' => '{ a: null; b: number }',
+            'both' => '{ a: string | null; b: null }',
+            'callable' => '{ a: null; b: number }',
+            'same_name' => '{ a: null; b: Grade }',
+            'defaulted' => '{ a: string; b: number }',
+        ])
+            ->and($warned)->toBe([
+                "29 Opaque::value('s')",
+                '31 Opaque::value(1)',
+                "43 Opaque::value('s')",
+                "45 Opaque::value(['fn' => 'strlen'])",
+                '51 Opaque::value(null)',
+                "53 Opaque::value('s')",
+                "63 Opaque::value('s')",
+                '67 Opaque::value(null)',
+            ])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['unadmitted', 'both', 'callable', 'same_name', 'defaulted'])))->toBe([
+                'unadmitted' => ['a' => null, 'b' => 1],
+                'both' => ['a' => null, 'b' => null],
+                'callable' => ['a' => null, 'b' => 1],
+                'same_name' => ['a' => null, 'b' => []],
+                'defaulted' => ['a' => 'x', 'b' => 1],
+            ])
+            ->and(droppedMemberVarSent(1)['both'])->toBe(['a' => 's', 'b' => 1]);
+    });
+
+    // The literal may match any arm of the tag, so the order its arms are written in is no order of the member's.
+    test('fills a member from every arm of a union @var tag, in one order, and only where every arm answers', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'union_tag' => '{ a: string | number | null; b: number }',
+            'union_tag_reversed' => '{ a: string | number | null; b: number }',
+            'union_record' => '{ a: string | number | null; b: string }',
+            'union_list' => '{ a: string[] | number[]; b: number }',
+            'union_lacking' => '{ a: null; b: number }',
+            'nullable_tag' => '{ a: string | null; b: number }',
+            'union_same_name' => '{ a: null; b: number }',
+        ])
+            ->and(array_values(array_intersect($warned, [
+                '55 Opaque::value(1)',
+                '57 Opaque::value(1)',
+                '59 Opaque::value(1)',
+                '61 Opaque::value([1])',
+                "65 Opaque::value('s')",
+            ])))->toBe([])
+            ->and($warned)->toContain("63 Opaque::value('s')", '67 Opaque::value(null)')
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['union_tag', 'union_record', 'union_list', 'union_lacking'])))
+            ->toBe([
+                'union_tag' => ['a' => 1, 'b' => 1],
+                'union_record' => ['a' => 1, 'b' => 'x'],
+                'union_list' => ['a' => [1], 'b' => 1],
+                'union_lacking' => ['a' => 's', 'b' => 1],
+            ])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['union_tag', 'union_list', 'nullable_tag'])))
+            ->toBe(['union_tag' => ['a' => null, 'b' => 1], 'union_list' => ['a' => [], 'b' => 1], 'nullable_tag' => ['a' => null, 'b' => 1]]);
+    });
+
+    test('fills a never[] a dropped arm left from a tag listing it, whole or as a member, and only that', function () {
+        [$types, , $warned] = droppedMemberVarAnalysis();
+
+        expect($types)->toMatchArray([
+            'list_member' => '{ a: string[]; b: number }',
+            'listed' => 'string[]',
+            'empty' => 'never[]',
+            'unlisted' => 'never[]',
+        ])
+            ->and(array_values(array_intersect($warned, ["35 Opaque::value(['s'])", "39 Opaque::value(['s'])"])))->toBe([])
+            ->and($warned)->toContain("43 Opaque::value('s')")
+            ->and(array_intersect_key(droppedMemberVarSent(1), array_flip(['list_member', 'listed', 'empty', 'unlisted'])))
+            ->toBe(['list_member' => ['a' => ['s'], 'b' => 1], 'listed' => ['s'], 'empty' => [], 'unlisted' => 's'])
+            ->and(array_intersect_key(droppedMemberVarSent(0), array_flip(['list_member', 'listed', 'unlisted'])))
+            ->toBe(['list_member' => ['a' => [], 'b' => 1], 'listed' => [], 'unlisted' => []]);
     });
 
     test('pins the precedence through a workbench resource', function () {

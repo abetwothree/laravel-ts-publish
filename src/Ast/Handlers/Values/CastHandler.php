@@ -1,0 +1,180 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\Cast;
+use PhpParser\Node\Expr\Cast\Array_ as CastArray_;
+use PhpParser\Node\Expr\Cast\Bool_ as CastBool;
+use PhpParser\Node\Expr\Cast\Double as CastDouble;
+use PhpParser\Node\Expr\Cast\Int_ as CastInt;
+use PhpParser\Node\Expr\Cast\Object_ as CastObject;
+use PhpParser\Node\Expr\Cast\String_ as CastString;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Scalar\Float_;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
+
+/**
+ * PHP cast operators: a scalar cast alone sets the type, while `(object)` and `(array)` keep what the operand holds.
+ *
+ * `(object)` returns an object unchanged and builds a stdClass of an array, a scalar literal or an enum's value, which
+ * an API resource's filter never enters. `(array)` keeps an array, makes null an empty one, and types an object as
+ * `unknown[]`: its array form mangles non-public member keys.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
+ */
+final class CastHandler implements ExpressionHandler
+{
+    /** @return list<class-string<Expr>> */
+    public function nodeClasses(): array
+    {
+        return [Cast::class];
+    }
+
+    /** @return ValueExpressionResult|null */
+    public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        return match (true) {
+            $expr instanceof CastBool => ['type' => 'boolean', 'optional' => false],
+            $expr instanceof CastInt, $expr instanceof CastDouble => ['type' => 'number', 'optional' => false],
+            $expr instanceof CastString => ['type' => 'string', 'optional' => false],
+            $expr instanceof CastObject => $this->objectCast($expr->expr, $scope, $engine),
+            $expr instanceof CastArray_ => $this->arrayCast($expr->expr, $scope, $engine),
+            default => null,
+        };
+    }
+
+    /**
+     * `(object) $operand`: an object the receiver resolver names as itself, any other value as the stdClass PHP builds
+     * of each arm, null among them, and an enum's value under `scalar`; null where an arm cannot be read.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function objectCast(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
+        $literalOperand = $this->isScalarLiteral($operand);
+        $result = $engine->resolve($operand);
+        $enum = ! $isObject && ValueResult::readsEnumType($result) ? $result['directEnumFqcn'] ?? null : null;
+        $arms = ArrayArms::arms($result['type'], fn (string $arm): ?string => match (true) {
+            $arm === 'unknown' => null,
+            $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
+            $isObject => $arm,
+            $enum !== null && $arm === ValueResult::enumTypeName($enum) => '{ scalar: '.$arm.' }',
+            default => $this->builtObject($arm, $literalOperand),
+        }, skipNull: false);
+
+        if ($arms === null || $arms === []) {
+            return null;
+        }
+
+        // Two arms of an object stay apart: two same-named classes spell one token, each with its own import.
+        $type = implode(' | ', $isObject ? $arms : array_values(array_unique($arms)));
+
+        if ($enum === null) {
+            return [...$result, 'type' => $type, 'keepsKeys' => true];
+        }
+
+        // The object holds the enum's value inside it, so the type's import rides the embedded channel.
+        unset($result['directEnumFqcn']);
+
+        return [...$result, 'type' => $type, 'keepsKeys' => true, 'embeddedEnumFqcns' => [$enum, ...$result['embeddedEnumFqcns'] ?? []]];
+    }
+
+    /**
+     * `(array) $operand`: an array literal or an operand typed as an array as itself, which an API resource's filter
+     * enters again, a `null` arm as the empty array PHP makes of it; any other value, an object the receiver resolver
+     * names among them, as `unknown[]`.
+     *
+     * @return ValueExpressionResult
+     */
+    private function arrayCast(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        if ($operand instanceof Array_) {
+            return $engine->resolve($operand);
+        }
+
+        if (resolve(ReceiverClassResolver::class)->resolve($operand, $scope) === null) {
+            $result = $engine->resolve($operand);
+            $arms = ArrayArms::arms(
+                $result['type'],
+                static fn (string $arm): ?string => match (true) {
+                    $arm === 'null' => 'never[]',
+                    ArrayArms::isArray($arm) => $arm,
+                    default => null,
+                },
+                skipNull: false,
+            );
+
+            if ($arms !== null && $arms !== []) {
+                unset($result['keepsKeys']);
+                $filled = array_values(array_diff($arms, ['never[]']));
+                // A list arm already admits the empty array.
+                $kept = $filled !== [] && ArrayArms::holdsList(implode(' | ', $filled)) ? $filled : $arms;
+
+                return [...$result, 'type' => implode(' | ', array_values(array_unique($kept)))];
+            }
+        }
+
+        return ['type' => 'unknown[]', 'optional' => false];
+    }
+
+    /**
+     * The stdClass `(object)` builds of one arm that holds no object: a keyed array as itself, a list or tuple keyed by
+     * index, a scalar under `scalar` where the operand or the arm is a literal; null for any other arm.
+     */
+    private function builtObject(string $arm, bool $literalOperand): ?string
+    {
+        if (ArrayArms::isKeyed($arm)) {
+            return $arm;
+        }
+
+        $element = TsTypeShape::isWrapped($arm, '[', ']') ? $this->tupleValues($arm) : TsTypeShape::elementType($arm);
+
+        if ($element !== null) {
+            return 'Record<string, '.$element.'>';
+        }
+
+        // An object the resolver cannot name may type as `string`, as a Carbon date does; PHP returns it as is.
+        $isScalar = TsTypeShape::isScalar($arm)
+            && ($literalOperand || ! in_array($arm, ['string', 'number', 'boolean'], true));
+
+        return $isScalar ? '{ scalar: '.$arm.' }' : null;
+    }
+
+    /**
+     * Every member type of a tuple as one union, or `never` for the empty tuple.
+     */
+    private function tupleValues(string $tuple): string
+    {
+        $members = TsTypeShape::tupleMembers($tuple);
+
+        return $members === [] ? 'never' : TsTypeString::hoistNull($members);
+    }
+
+    /**
+     * Whether the operand is a string, int, float or boolean literal, which no object can be.
+     */
+    private function isScalarLiteral(Expr $operand): bool
+    {
+        return $operand instanceof String_
+            || $operand instanceof Int_
+            || $operand instanceof Float_
+            || ($operand instanceof ConstFetch && in_array($operand->name->toLowerString(), ['true', 'false'], true));
+    }
+}

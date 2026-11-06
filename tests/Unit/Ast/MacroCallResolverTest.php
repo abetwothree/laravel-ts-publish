@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CaseMacroResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroAncestorResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroScopeLeakResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingChainResource;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroStoreShadowResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\CaseMacros;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\SelfTypedTwin;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MacroShadowedPost;
@@ -235,3 +237,17 @@ it('reads a macro returning self as the macro\'s scope class', function () {
         ->toMatchArray(['type' => 'SelfTypedHelpers', 'modelFqcn' => SelfTypedHelpers::class])
         ->and(new SelfTypedHelpers()->twin())->toBeInstanceOf(SelfTypedHelpers::class);
 })->after(fn () => SelfTypedHelpers::flushMacros());
+
+// A macro's body fallback reads its case as the literal it sends, except where a wrap or a map callback needs the enum.
+it('reads a macro\'s plain enum case as its literal, and as its enum where a wrap or a map reads it', function () {
+    CaseMacros::register();
+
+    expect(resourceProps(CaseMacroResource::class))->toBe([
+        'draft' => '0',
+        'draft_resource' => 'AsEnum<typeof Status>',
+        'outer_resource' => 'AsEnum<typeof Status>',
+        'draft_values' => 'StatusType[]',
+        'helper_resource' => 'AsEnum<typeof Status>',
+        'helper_values' => 'StatusType[]',
+    ]);
+});

@@ -35,7 +35,10 @@ use PhpParser\Node\Expr;
  *      wrapIsCollection?: bool,
  *      directIsArray?: bool,
  *      keepsKeys?: bool,
+ *      unnamedKeys?: bool,
+ *      listKeys?: bool,
  *      absentReadsNull?: bool,
+ *      absentKeys?: bool,
  *      heldObject?: bool,
  *      mayHoldObject?: HeldNulls,
  *      heldProp?: bool,
@@ -54,6 +57,15 @@ use PhpParser\Node\Expr;
  *
  * `heldProp` says every such object is an Inertia prop, which Inertia resolves even where a callable it called returned
  * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
+ *
+ * `absentKeys` says each optional member of the value's object arms is a key PHP leaves out, never a `MissingValue`,
+ * so a read of one throws or gives the member, as preg_match()'s matches leave out the groups that did not take part.
+ *
+ * `unnamedKeys` says the value is an array literal holding a key its object type leaves out: one read at runtime,
+ * spread in, numbered past a keyless item, or written as any expression but a string or an int.
+ *
+ * `listKeys` says each list arm of the type is keyed by ints, as a list literal, a `list<T>` and a collection's items
+ * are; a list without it may be PHPDoc's `T[]` or a native `array`, keyed by anything.
  *
  * `closedToDottedKeys` holds the type of a value Inertia replaces with `[]` before a dotted key writes under it, never
  * opening it as an array: an API resource, an Inertia prop object, a `JsonSerializable` object, any other object a

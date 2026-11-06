@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableWrapEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\PostOwnJsonEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
@@ -49,6 +53,7 @@ use Workbench\App\Events\UserNotification;
 use Workbench\App\Events\UserRegisteredEvent;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
 use Workbench\Crm\Events\StatusSynced;
 use Workbench\Crm\Events\UserSynced as CrmUserSynced;
@@ -644,7 +649,7 @@ test('an event types toResource() as the resource it builds, and imports it', fu
 });
 
 // Only JsonResource::resolve() drops the MissingValue a resource's when() returns. Conditionable::when() returns the
-// callback's value or the event itself, so the key is always sent, and its value is not the callback's type alone.
+// callback's value or the event itself, so the key is always sent, as the callback's type or the event's own JSON.
 test('a non-resource subject reads $this->when() as its own method, not as a resource conditional', function () {
     $properties = array_column(
         resolve(AstEngine::class)->analyzeMethod(ConditionableBroadcastEvent::class, 'broadcastWith')->properties,
@@ -652,8 +657,20 @@ test('a non-resource subject reads $this->when() as its own method, not as a res
         'name',
     );
 
-    expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
+    expect($properties['label'])->toMatchArray(['type' => 'string | { user: User }', 'optional' => false])
         ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
+});
+
+// Conditionable::when() returns the callback's value or the event itself, never the MissingValue a resource's when()
+// returns, so a resource built around it is always sent.
+it('publishes a resource built around Conditionable::when() off an API resource as required', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => ConditionableWrapEvent::class]);
+
+    expect($transformer->properties)->toBe([
+        'made' => ['type' => 'UserResource', 'optional' => false],
+        'built' => ['type' => 'UserResource', 'optional' => false],
+        'listed' => ['type' => 'UserResource[]', 'optional' => false],
+    ]);
 });
 
 // No MissingValue reaches an event payload, so a `??` fallback there stays required.
@@ -789,4 +806,39 @@ test('an event keeps a resource built around null as the resource', function () 
     $transformer = app(BroadcastEventTransformer::class, ['findable' => NullWrapBroadcastEvent::class]);
 
     expect($transformer->properties['tag']['type'])->toBe('TagResource');
+});
+
+// No JsonResource::filter() runs over an event's payload, so a wrap around null sends the `[]` resolve() returns.
+it('publishes the [] an event sends for an EnumResource over a null enum, alone or in a map', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NullEnumWrapEvent::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'wrap' => 'GradeType | never[]',
+        'kept' => '(GradeType | never[])[]',
+        'all' => '(GradeType | never[])[]',
+        'helper' => 'StatusType | never[]',
+    ])->and(json_encode(new NullEnumWrapEvent()->broadcastWith()))->toBe('{"wrap":[],"kept":[[]],"all":[[]],"helper":[]}');
+});
+
+// json_encode() writes an object of a plain class as its public properties, a model one as that model's own JSON. An
+// event presents a model its key holds alone as Partial<>, as it does a model property.
+test('an event\'s public Post read as the object\'s own JSON publishes the model, and imports it', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => PostOwnJsonEvent::class]);
+    $post = (new Post)->forceFill(['id' => 7, 'title' => 'T']);
+    $sent = json_decode((string) json_encode(new PostOwnJsonEvent($post)->broadcastWith()));
+
+    expect(LaravelTsPublish::toTsType(PostOwnJsonEvent::class))
+        ->toMatchArray(['type' => '{ post: Post }', 'classes' => ['Post'], 'classFqcns' => [Post::class]])
+        ->and($transformer->properties['copy'])->toBe(['type' => '{ post: Partial<Post>; message: string }', 'optional' => false])
+        ->and(array_merge(...array_values($transformer->typeImports)))->toContain('Post')
+        ->and($sent->copy)->message->toBe('copied')
+        ->and($sent->copy->post)->id->toBe(7)->title->toBe('T');
+});
+
+test('an object holding two same-named models publishes each under its own alias', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => PostOwnJsonEvent::class]);
+
+    expect($transformer->properties['roster'])->toBe(['type' => '{ members: AppUser[] | CrmUser[] }', 'optional' => false])
+        ->and(array_merge(...array_values($transformer->typeImports)))->toContain('User as AppUser', 'User as CrmUser')
+        ->and(json_encode(new PostOwnJsonEvent(new Post)->broadcastWith()['roster']))->toBe('{"members":[]}');
 });

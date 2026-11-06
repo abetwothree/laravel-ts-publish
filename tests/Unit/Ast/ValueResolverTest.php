@@ -253,6 +253,7 @@ it('evaluates a constant expression as PHP does, reading class constants and enu
     'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
     'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
     'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
+    'an enum\'s cases(), spread' => ['[...\\'.Status::class.'::cases(), 2]', [Status::Draft, Status::Published, 2]],
 ]);
 
 it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
@@ -267,6 +268,9 @@ it('throws for what a constant expression reads that the evaluator cannot', func
     'a magic constant, whose value depends on where it appears' => ['[__TRAIT__ => 1]'],
     'a variable' => ['$other'],
     'a missing class constant' => ['self::MISSING'],
+    'a static call other than cases()' => ['\\'.Status::class.'::from(1)'],
+    'cases() passed an argument' => ['\\'.Status::class.'::cases(1)'],
+    'cases() of a class that is no enum' => ['self::cases()'],
 ]);
 
 // json_encode() writes a list only when the keys run 0 to n-1; a resource's re-index is its publisher's.

@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
@@ -96,6 +97,32 @@ final class ValueResult
     public static function arrayWrapType(string $type): string
     {
         return TsTypeShape::listType([$type]);
+    }
+
+    /**
+     * The value each element of a list result holds: $element with the list's channels, the one enum the list embeds
+     * as the enum it holds where $element spells that enum's type, and the list's model only where $element names it,
+     * alone or beside the `null` a shorter array pads with.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult
+     */
+    public static function elementOf(array $list, string $element): array
+    {
+        $value = [...self::withoutHeldObject($list), 'type' => $element, 'optional' => false];
+        unset($value['keepsKeys'], $value['absentReadsNull']);
+
+        $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
+
+        if (count($enums) === 1 && self::enumTypeName($enums[0]) === $element) {
+            $value['directEnumFqcn'] = $enums[0];
+        }
+
+        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm($element)) {
+            unset($value['modelFqcn']);
+        }
+
+        return $value;
     }
 
     /**
@@ -249,6 +276,22 @@ final class ValueResult
         return ($callable['returnsCallable'] ?? false)
             ? [...$value, 'mayHoldObject' => ['objectNull' => $nullable, 'plainNull' => $nullable]]
             : $value;
+    }
+
+    /**
+     * The value one of several callables a caller may run returns: one's own value, else their union; `unknown` where
+     * none is read or any one reads `unknown`, as unionResults() would drop that call's arm.
+     *
+     * @param  list<ValueExpressionResult>  $values
+     * @return ValueExpressionResult
+     */
+    public static function unionOfCalls(array $values): array
+    {
+        return match (true) {
+            count($values) === 1 => $values[0],
+            $values === [] || array_any($values, static fn (array $value): bool => $value['type'] === 'unknown') => self::unknown(),
+            default => self::unionResults($values),
+        };
     }
 
     /**
@@ -900,6 +943,17 @@ final class ValueResult
 
         if ($keyed !== [] && array_all($keyed, fn (array $inner): bool => $inner['keepsKeys'] ?? false)) {
             $result['keepsKeys'] = true;
+        }
+
+        if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
+            $result['unnamedKeys'] = true;
+        }
+
+        // Every list arm keeps its int keys only where each branch spelling one says so.
+        $lists = array_filter($branchResults, fn (array $inner): bool => ArrayArms::holdsList($inner['type']));
+
+        if ($lists !== [] && array_all($lists, fn (array $inner): bool => $inner['listKeys'] ?? false)) {
+            $result['listKeys'] = true;
         }
 
         return $result;

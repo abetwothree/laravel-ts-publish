@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\BinaryOp\BitwiseOr;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
@@ -17,6 +18,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionException;
@@ -36,8 +38,13 @@ final class ByReferenceArguments
     /** By-reference functions that only move an array's internal pointer, so the value keeps its type. */
     private const array POINTER_FUNCTIONS = ['end', 'next', 'prev', 'reset'];
 
-    /** A named group in a PCRE pattern, whatever letters its name uses: `(?<name>`, `(?P<name>` or `(?'name'`. */
-    private const string NAMED_GROUP = '/\(\?(?:P?<(?![=!])|\')/';
+    /** The flags preg_match() and preg_match_all() take, by constant name. */
+    private const array PREG_FLAGS = [
+        'PREG_OFFSET_CAPTURE' => PREG_OFFSET_CAPTURE,
+        'PREG_PATTERN_ORDER' => PREG_PATTERN_ORDER,
+        'PREG_SET_ORDER' => PREG_SET_ORDER,
+        'PREG_UNMATCHED_AS_NULL' => PREG_UNMATCHED_AS_NULL,
+    ];
 
     /** The sort flags that compare int keys as numbers, so ksort() leaves a list's keys in order. */
     private const array NUMERIC_SORT_FLAGS = ['SORT_REGULAR', 'SORT_NUMERIC'];
@@ -61,6 +68,7 @@ final class ByReferenceArguments
         'natcasesort' => ['array' => ByReferenceEffect::KeepsObject],
         'natsort' => ['array' => ByReferenceEffect::KeepsObject],
         'preg_match' => ['matches' => ByReferenceEffect::WritesMatches],
+        'preg_match_all' => ['matches' => ByReferenceEffect::WritesMatches],
         'preg_replace' => ['count' => ByReferenceEffect::KeepsNumber],
         'preg_replace_callback' => ['count' => ByReferenceEffect::KeepsNumber],
         'rsort' => ['array' => ByReferenceEffect::KeepsList],
@@ -124,7 +132,7 @@ final class ByReferenceArguments
 
                 // The matches type a whole variable; a key the call writes them into stays unread.
                 if ($effect === ByReferenceEffect::WritesMatches) {
-                    return $argument instanceof Variable && $this->capturesStringList($call) ? $effect : ByReferenceEffect::Replaces;
+                    return $argument instanceof Variable && $this->matchesType($call) !== null ? $effect : ByReferenceEffect::Replaces;
                 }
 
                 // A string comparison puts `10` before `2`, keying a list out of order.
@@ -149,6 +157,30 @@ final class ByReferenceArguments
                 && in_array($this->namedFunction($call->name)?->getName(), self::ADDS_ONLY, true),
             default => false,
         };
+    }
+
+    /**
+     * The type of the matches a preg_match() or preg_match_all() call writes, from its literal pattern and its constant
+     * flags; null for a pattern or flags the call computes, or any other call.
+     */
+    public function matchesType(CallLike $call): ?string
+    {
+        $function = $call instanceof FuncCall && $call->name instanceof Name && ! $call->isFirstClassCallable()
+            ? $this->namedFunction($call->name)?->getName()
+            : null;
+
+        if ($function !== 'preg_match' && $function !== 'preg_match_all') {
+            return null;
+        }
+
+        $arguments = CallArguments::fromNames($call->getArgs(), ['pattern', 'subject', 'matches', 'flags', 'offset']);
+        $pattern = $arguments->named('pattern')?->value;
+        $flags = $arguments->named('flags');
+        $read = $flags === null ? 0 : $this->constantFlags($flags->value);
+
+        return $pattern instanceof String_ && $read !== null
+            ? PregMatches::type($pattern->value, $read, $function === 'preg_match_all')
+            : null;
     }
 
     /**
@@ -207,17 +239,22 @@ final class ByReferenceArguments
     }
 
     /**
-     * Whether a preg_match() call writes a list of strings: it passes no flags, which nest each group, and its pattern
-     * is a literal naming no group, since a named group keys the matches as an object.
+     * The value of flags written as an int, a PREG_* constant or a `|` of them, or null for any other expression.
      */
-    private function capturesStringList(CallLike $call): bool
+    private function constantFlags(Expr $flags): ?int
     {
-        $arguments = CallArguments::fromNames($call->getArgs(), ['pattern', 'subject', 'matches', 'flags', 'offset']);
-        $pattern = $arguments->named('pattern')?->value;
+        if ($flags instanceof BitwiseOr) {
+            $left = $this->constantFlags($flags->left);
+            $right = $this->constantFlags($flags->right);
 
-        return $arguments->named('flags') === null
-            && $pattern instanceof String_
-            && preg_match(self::NAMED_GROUP, $pattern->value) !== 1;
+            return $left === null || $right === null ? null : $left | $right;
+        }
+
+        return match (true) {
+            $flags instanceof Int_ => $flags->value,
+            $flags instanceof ConstFetch => self::PREG_FLAGS[$flags->name->toString()] ?? null,
+            default => null,
+        };
     }
 
     /**

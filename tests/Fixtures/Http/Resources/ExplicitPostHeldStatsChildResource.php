@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
+
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Parents\HeldStatsBodyParentResource;
+use Workbench\App\Models\Post;
+
+/**
+ * A body-less subclass whose attribute names a post over its parent's value-object generic.
+ */
+#[TsResource(model: Post::class)]
+final class ExplicitPostHeldStatsChildResource extends HeldStatsBodyParentResource {}

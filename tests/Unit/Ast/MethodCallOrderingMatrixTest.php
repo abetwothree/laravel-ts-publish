@@ -9,11 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\ModellessTable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostQueryTable;
@@ -32,6 +31,7 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
@@ -112,6 +112,7 @@ function methodCallCorpus(): array
 {
     $this_ = new Variable('this');
     $arr = fn (array $keys) => new Array_(array_map(fn (string $k) => new ArrayItem(new String_($k)), $keys));
+    $query = fn (): StaticCall => new StaticCall(new Name(Post::class), 'query');
 
     return [
         new MethodCall($this_, 'when', [new VariadicPlaceholder]),
@@ -195,6 +196,18 @@ function methodCallCorpus(): array
         new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
             new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
         ]), 'filter'), 'values'),
+        // Conditionable::when() on a date: the callback's declared value, or the date itself, which no partner types.
+        new MethodCall(new FuncCall(new Name('now')), 'when', [
+            new Arg(new ConstFetch(new Name('true'))),
+            new Arg(new ArrowFunction(['returnType' => new Identifier('string'), 'expr' => new String_('x')])),
+        ]),
+        // Query chains rooted at a model, which every profile reads alike.
+        new MethodCall($query(), 'paginate', [new Arg(new Int_(10))]),
+        new MethodCall(new StaticCall(new Name(Post::class), 'where', [new Arg(new String_('id')), new Arg(new Int_(1))]), 'first'),
+        new MethodCall(new MethodCall($query(), 'latest'), 'get'),
+        new MethodCall(new MethodCall($query(), 'pluck', [new Arg(new String_('id'))]), 'first'),
+        new MethodCall($query(), 'count'),
+        new MethodCall($query(), 'exists'),
     ];
 }
 
@@ -294,7 +307,7 @@ function inertiaMethodCallClaimantPairs(): array
 {
     return array_filter(
         methodCallPairsOf(inertiaMethodCallClaimants()),
-        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, ModelFinderHandler::class, InertiaTableHandler::class]) !== [],
+        fn (array $pair): bool => array_intersect($pair, [InertiaResourcePropHandler::class, InertiaTableHandler::class]) !== [],
     );
 }
 

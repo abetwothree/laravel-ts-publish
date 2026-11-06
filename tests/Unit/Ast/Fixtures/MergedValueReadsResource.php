@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Support\Opaque;
 
 /** One shape per method: keys a returned array or a merge sets that are not plain literal keys. */
 final class MergedValueReadsResource extends JsonResource
@@ -181,6 +182,6 @@ final class MergedValueReadsResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

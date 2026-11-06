@@ -7,6 +7,6 @@
  */
 export interface LocalVarGuardClauseResource
 {
-    early?: string | null;
+    early?: string;
     late?: number;
 }

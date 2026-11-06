@@ -7,6 +7,7 @@ namespace Workbench\App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * Interpolated keys whose pattern another spread method also fills, through a named key or its own
@@ -126,6 +127,6 @@ final class SamePatternKeysResource extends JsonResource
     /** Deliberately untyped so only a docblock can type what it returns. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

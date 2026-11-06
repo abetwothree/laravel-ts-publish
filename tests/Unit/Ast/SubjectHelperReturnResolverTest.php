@@ -30,6 +30,7 @@ use Workbench\App\Enums\WeekDays;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
+use Workbench\App\Support\Opaque;
 
 /**
  * Helpers the workbench fixture leaves out, one per edge of the rule: each wraps one of the team's enums, or returns a
@@ -70,11 +71,11 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     }
 
     /**
-     * The team's latest status read through getAttribute(), which the engine cannot type, or null without a team.
+     * The team's latest status read through Opaque::value(), which the engine cannot type, or null without a team.
      */
     public function attributeStatusResource(): ?EnumResource
     {
-        return $this->resource === null ? null : EnumResource::make($this->resource->getAttribute('latest_status'));
+        return $this->resource === null ? null : EnumResource::make(Opaque::value($this->resource->latest_status));
     }
 
     /**
@@ -232,13 +233,14 @@ it('reads a helper\'s body with its guards, and with its request parameter outsi
     'a broadcast event\'s Request parameter' => [
         new MethodCall(new Variable('this'), 'roleOf', [new Arg(new FuncCall(new Name('request')))]),
         RequestRoleHelperEvent::class,
-        ['type' => 'RoleType | null', 'optional' => false, 'enumFqcn' => Role::class],
+        ['type' => 'RoleType | never[]', 'optional' => false, 'enumFqcn' => Role::class],
     ],
 ]);
 
+// No filter() runs over an event's payload, so a wrap around a null role sends the `[]` resolve() returns.
 it('publishes a broadcast event\'s helper that wraps what its request reads', function () {
     expect(resolve(AstEngine::class)->analyze(RequestRoleHelperEvent::class, 'broadcastWith')->properties)
-        ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | null', 'optional' => false, 'description' => '']]);
+        ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | never[]', 'optional' => false, 'description' => '']]);
 });
 
 it('never reads a call or a body the rule leaves alone', function (MethodCall|string $call) {

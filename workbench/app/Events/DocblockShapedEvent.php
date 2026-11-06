@@ -7,6 +7,7 @@ namespace Workbench\App\Events;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * broadcastWith() whose body types nothing, so only its own @return shape can.
@@ -29,6 +30,6 @@ final class DocblockShapedEvent implements ShouldBroadcast
     /** Deliberately untyped. */
     private function opaque()
     {
-        return $this->post->getAttribute('published_at');
+        return Opaque::value($this->post->published_at);
     }
 }

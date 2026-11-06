@@ -1001,7 +1001,7 @@ declare global {
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -1907,7 +1907,7 @@ declare global {
             name: string;
             /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
             phone: string | null;
-            coordinate_data: { lat: number; lng: number } | null;
+            coordinate_data: { lat: number; lng: number };
             status: app.enums.StatusType | null;
             color: app.enums.ColorType | null;
             priority: app.enums.PriorityType | null;
@@ -2607,6 +2607,16 @@ declare global {
             post_table_name: string;
             category_class_name?: string | null;
             category_table_name?: string | null;
+        }
+        /**
+         * Exercises array_map(): one array keeps its keys, two arrays re-index into a list, and a callable of any form is
+         * called with each element.
+         */
+        export interface ArrayMapResource {
+            messages: string[];
+            doubled: { low: number; high: number };
+            zipped: [string | null, number | null][];
+            names: string[];
         }
         /** The other arm of the reviewable morph union ReviewResource unions over. */
         export interface ArtistResource {
@@ -3561,7 +3571,7 @@ declare global {
             week_days_when_has?: app.enums.WeekDaysType[] | null;
             week_days_when_has_default: app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: app.enums.StatusType[];
-            members_via_var?: app.enums.RoleType[];
+            members_via_var?: (app.enums.RoleType | never[])[];
             member_role_snapshot?: { role: app.enums.RoleType | null }[];
             wrapped_status_fallback: { status: app.enums.StatusType[] | app.enums.StatusType };
             latest_status_or_history: app.enums.StatusType | app.enums.StatusType[];
@@ -3939,7 +3949,7 @@ declare global {
          * that reaches it: `early` the notes and `late` the key, never the one recorded last.
          */
         export interface LocalVarGuardClauseResource {
-            early?: string | null;
+            early?: string;
             late?: number;
         }
         /**
@@ -3982,7 +3992,7 @@ declare global {
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: string | null;
+            shadowed: string;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for
@@ -4118,7 +4128,7 @@ declare global {
             total?: string;
             shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes?: string | null;
+            notes?: string;
             placed_at?: string | null;
             paid_at?: string | null;
             shipped_at?: string | null;
@@ -4371,9 +4381,9 @@ declare global {
             status_arrow?: app.enums.OrderStatusType;
             user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
-            notes_closure?: string | null;
+            notes_closure?: string;
             shipped_at?: string | null;
-            tracking?: string | null;
+            tracking?: string;
             currency_label: app.enums.CurrencyType;
             total_display: string;
         }
@@ -4418,7 +4428,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -4474,7 +4484,7 @@ declare global {
             id: number;
             status: app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             item_count: number;
             search_index: unknown;
             items: app.models.OrderItem[];
@@ -4504,7 +4514,7 @@ declare global {
             user: app.models.User;
             status: app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             search_index: unknown;
         }
         /**
@@ -4754,6 +4764,7 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            stats_summary: string | null;
             blockers: { message: string; route?: string }[];
             checks_count: string;
             loaded_checks_count?: string;
@@ -5084,13 +5095,13 @@ declare global {
             member_map_only: { id: number; role: app.enums.RoleType | null }[];
             member_emails: string[];
             member_roles: (app.enums.RoleType | null)[];
-            member_role_resources: app.enums.RoleType[];
-            member_role_resources_filtered: app.enums.RoleType[] | Record<string, app.enums.RoleType>;
-            wrapped_filtered: { roles: app.enums.RoleType[] | Record<string, app.enums.RoleType> };
-            member_names_upper: unknown;
-            member_formatted: unknown;
-            member_mapped_fcc: unknown;
-            member_plucked_fcc: unknown;
+            member_role_resources: (app.enums.RoleType | never[])[];
+            member_role_resources_filtered: (app.enums.RoleType | never[])[] | Record<string, (app.enums.RoleType | never[])>;
+            wrapped_filtered: { roles: (app.enums.RoleType | never[])[] | Record<string, (app.enums.RoleType | never[])> };
+            member_names_upper: string[];
+            member_formatted: string[];
+            member_mapped_fcc: Record<string, never>;
+            member_plucked_fcc: Record<string, never>;
             first_member: app.models.User | null;
             members_after_load: app.models.User[];
             first_member_after_load: app.models.User | null;
@@ -5399,7 +5410,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -5427,7 +5438,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -5463,6 +5474,12 @@ declare global {
             order_or_base: app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
+        }
+        /** A resource over a value object rather than a model, read through `$this->resource` and the proxy. */
+        export interface StatsSummaryResource {
+            views: number;
+            shares: number;
+            summary: string;
         }
         /** Filters itself through `$this->except()`, dropping the one accessor that names only the `#[TsType]` class. */
         export interface StockroomExceptResource {

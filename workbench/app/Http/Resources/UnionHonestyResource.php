@@ -7,6 +7,7 @@ namespace Workbench\App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
@@ -70,6 +71,6 @@ final class UnionHonestyResource extends JsonResource
     /** Deliberately untyped, so each union above drops an arm; the audit baseline pins them as residuals. */
     public function opaqueValue()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

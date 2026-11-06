@@ -7,9 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -24,6 +24,7 @@ use Exception;
 use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
@@ -134,6 +135,13 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
+     * Per model-and-attribute cache of getterNativeReturn(), which calls the accessor method.
+     *
+     * @var array<string, ReflectionType|null>
+     */
+    private array $getterReturns = [];
+
+    /**
      * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive, an enum cast,
      * `AsCollection` or `AsEnumCollection`. An enum cast passes null through, since getEnumCastableAttributeValue()
      * returns null for null, and both collection casts return null before they map an element, which may hold one.
@@ -161,15 +169,28 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a type already holds the column's `null`: a top-level arm, since a `NULL` column reaches the value as
-     * null or as what a class cast's `get()` returns, whatever null its members hold. An accessor, and a cast whose
-     * `get()` declares a native non-null type, keep the looser test, which counts any `null`.
+     * Whether a type holds the column's `null`. A class cast whose every caster declares a native non-null `get()`,
+     * and its `serialize()` where it has one, and is not inbound, never sends it, since Laravel calls both for NULL.
+     * Otherwise a top-level arm holds it, whatever null its members hold; an untyped getter counts any.
      */
     public static function typeHoldsNull(string $type, ?string $cast): bool
     {
-        return $cast === 'attribute' || $cast === 'accessor' || self::getDeclaresNonNull($cast)
-            ? str_contains($type, 'null')
-            : TsTypeString::hasNullArm($type);
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return str_contains($type, 'null');
+        }
+
+        return CastCasters::getDeclaresNonNull((string) $cast) || TsTypeString::hasNullArm($type);
+    }
+
+    /**
+     * A column's type with a `null` arm when the column is nullable and the type does not hold its null yet, as
+     * typeHoldsNull() decides.
+     *
+     * @internal
+     */
+    public static function withColumnNull(string $type, ?bool $nullable, ?string $cast): string
+    {
+        return $nullable && ! self::typeHoldsNull($type, $cast) ? TsTypeString::orNull($type) : $type;
     }
 
     /**
@@ -185,6 +206,7 @@ class ModelAttributeResolver
         $this->dbColumnNamesCache = [];
         $this->attributeClassCache = [];
         $this->attributeClassPaths = [];
+        $this->getterReturns = [];
     }
 
     /**
@@ -237,7 +259,7 @@ class ModelAttributeResolver
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
 
-                    return $this->appendNullable($accessorInfo, $attr['nullable'], 'accessor');
+                    return $this->withAccessorNull($ctx, $attributeName, $accessorInfo, $attr['nullable']);
                 }
             } catch (Throwable) { // @codeCoverageIgnore
                 // Fall through to cast/DB type
@@ -265,6 +287,42 @@ class ModelAttributeResolver
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
         return $this->appendNullable($tsInfo, $attr['nullable'], null);
+    }
+
+    /**
+     * Resolve the type a read of a model attribute off the model sends: resolveAttribute()'s, except that a cast with
+     * a serialize() method publishes the value its get() returns, which json_encode() writes, where Model::toArray()
+     * writes serialize()'s.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    public function resolveAttributeValue(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+    ): array {
+        $ctx = $this->resolveContext($modelFqcn);
+        $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
+        $casters = $attr === null ? null : CastCasters::casters((string) $attr['cast']);
+
+        if ($ctx === null || $attr === null || ! array_any($casters ?? [], self::serializes(...))) {
+            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+        }
+
+        $tsInfo = LaravelTsPublish::castValueToTsType((string) $attr['cast']);
+
+        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type.
+        if (TsTypeString::isUnknownOnly($tsInfo['type'])
+            && array_all($casters ?? [], static fn (string $caster): bool => is_a($caster, SerializesCastableAttributes::class, true))
+        ) {
+            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+        }
+
+        $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
+
+        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
     }
 
     /**
@@ -1263,12 +1321,12 @@ class ModelAttributeResolver
         $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
 
         if ($returnType === null
-            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*<(.+)>$/s', trim($returnType), $m)
+            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*</', trim($returnType))
         ) {
             return null;
         }
 
-        $get = LaravelTsPublish::splitAtTopLevelCommas($m[1])[0] ?? '';
+        $get = DeclaredClasses::genericArguments($returnType)[0] ?? '';
         $names = array_values(array_filter(
             LaravelTsPublish::splitPhpDocUnionType(ltrim($get, '?')),
             fn (string $part): bool => strtolower($part) !== 'null',
@@ -1281,7 +1339,7 @@ class ModelAttributeResolver
 
         $class = DocblockNames::resolve($match[1], LaravelTsPublish::methodDeclaringFileClass($method));
 
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+        return DeclaredClasses::isValueClass($class) ? $class : null;
     }
 
     /**
@@ -1294,10 +1352,8 @@ class ModelAttributeResolver
      */
     protected function castableValueClass(string $castable): ?string
     {
-        $receivers = resolve(ReceiverClassResolver::class);
-
-        return $this->castersValueClass(DeclaredClasses::returnClasses($castable, 'castUsing'))
-            ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
+        return $this->castersValueClass(CastCasters::declared($castable))
+            ?? $this->castersValueClass(CastCasters::returned($castable));
     }
 
     /**
@@ -1340,17 +1396,7 @@ class ModelAttributeResolver
      */
     protected function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
     {
-        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
-            return null;
-        }
-
-        $class = match ($type->getName()) {
-            'static' => $staticClass,
-            'self' => $selfClass,
-            default => $type->getName(),
-        };
-
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+        return DeclaredClasses::singleClass($type, $staticClass, $selfClass);
     }
 
     /**
@@ -1542,7 +1588,8 @@ class ModelAttributeResolver
     }
 
     /**
-     * An accessor's waterfall type, worked out once per model, attribute, import mode and case reading for the run.
+     * An accessor's waterfall type, worked out once per model, attribute, import mode, case reading and filter() reach
+     * for the run: a wrap its body builds sends null where filter() reaches its reader's value, else `[]`.
      *
      * An import-less read refines its spelling against the type with imports, so the two share this one memo.
      *
@@ -1555,9 +1602,11 @@ class ModelAttributeResolver
         bool $carriesImports = true,
         bool $casesAsLiterals = false,
     ): array {
-        return resolve(AnalysisMemo::class)->remember(
+        $memo = resolve(AnalysisMemo::class);
+
+        return $memo->remember(
             'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless')
-                .($casesAsLiterals ? '@casesAsLiterals' : ''),
+                .($casesAsLiterals ? '@casesAsLiterals' : '').($memo->filterReachesValue() ? '@filtered' : ''),
             fn (): array => $casesAsLiterals
                 ? $this->readAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports, true)
                 : $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports),
@@ -1843,9 +1892,7 @@ class ModelAttributeResolver
      */
     protected function appendNullable(array $tsInfo, ?bool $nullable, ?string $cast): array
     {
-        if ($nullable && ! self::typeHoldsNull($tsInfo['type'], $cast)) {
-            $tsInfo['type'] .= ' | null';
-        }
+        $tsInfo['type'] = self::withColumnNull($tsInfo['type'], $nullable, $cast);
 
         return $tsInfo;
     }
@@ -1914,19 +1961,24 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a cast is a `CastsAttributes` class whose `get()` declares a native type that excludes null.
+     * Whether Laravel reads a key through a class cast, by its own `isClassCastable()`: one of its primitive cast
+     * types, such as `datetime:Y-m-d`, is none, and a cast it cannot resolve throws there.
      */
-    private static function getDeclaresNonNull(?string $cast): bool
+    private static function hasClassCast(Model $instance, string $attributeName): bool
     {
-        $class = Str::before((string) $cast, ':');
-
-        if (! is_a($class, CastsAttributes::class, true)) {
+        try {
+            return new ReflectionMethod($instance, 'isClassCastable')->invoke($instance, $attributeName) === true;
+        } catch (Throwable) {
             return false;
         }
+    }
 
-        $return = new ReflectionMethod($class, 'get')->getReturnType();
-
-        return $return !== null && ! $return->allowsNull();
+    /**
+     * Whether Model::toArray() writes a caster's serialize() for the value, which Laravel decides by the method alone.
+     */
+    private static function serializes(string $caster): bool
+    {
+        return method_exists($caster, 'serialize');
     }
 
     /**
@@ -2008,5 +2060,51 @@ class ModelAttributeResolver
     private function contextFor(string $modelFqcn, bool $withoutTables): ?array
     {
         return $withoutTables ? $this->resolveRelationContext($modelFqcn) : $this->resolveContext($modelFqcn);
+    }
+
+    /**
+     * An accessor's type with its column's null. Laravel runs the getter for a NULL column too, so a native return
+     * decides: no null when it excludes one, a top-level arm when it allows one. An untyped getter counts any null, as
+     * does one declaring `mixed`, and one on a key with a class cast, which toArray() runs instead of the getter.
+     *
+     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @param  TypeScriptTypeInfo  $accessorInfo
+     * @return TypeScriptTypeInfo
+     */
+    private function withAccessorNull(array $ctx, string $attributeName, array $accessorInfo, ?bool $nullable): array
+    {
+        $return = self::hasClassCast($ctx['instance'], $attributeName)
+            ? null
+            : $this->getterNativeReturn($ctx['reflection'], $ctx['instance'], $attributeName);
+
+        return $return === null || ($return instanceof ReflectionNamedType && $return->getName() === 'mixed')
+            ? $this->appendNullable($accessorInfo, $nullable, 'accessor')
+            : $this->appendNullable($accessorInfo, $nullable && $return->allowsNull(), null);
+    }
+
+    /**
+     * The native return type an accessor's getter declares: its closure's, or an old-style `getXAttribute()`'s; null
+     * when it declares none.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     */
+    private function getterNativeReturn(ReflectionClass $reflection, Model $instance, string $attributeName): ?ReflectionType
+    {
+        $key = $reflection->getName().'@'.$attributeName;
+
+        if (array_key_exists($key, $this->getterReturns)) {
+            return $this->getterReturns[$key];
+        }
+
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($attributeName);
+        $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
+
+        return $this->getterReturns[$key] = match (true) {
+            $attribute instanceof Attribute => $attribute->get instanceof Closure
+                ? new ReflectionFunction($attribute->get)->getReturnType()
+                : null,
+            $reflection->hasMethod($oldStyle) => $reflection->getMethod($oldStyle)->getReturnType(),
+            default => null,
+        };
     }
 }

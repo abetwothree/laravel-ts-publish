@@ -256,7 +256,7 @@ test('a new route on an already-cached controller busts and regenerates its outp
 
 // The cache stores no analysis warnings, so a class it serves prints none until --fresh analyzes it again.
 test('a dropped-arm placeholder warning prints when the class is analyzed, and a cached run of the class prints none', function () {
-    $warning = UnionHonestyResource::class.': The value on line 28 publishes `null`, as if it were always null, because '
+    $warning = UnionHonestyResource::class.': The value on line 29 publishes `null`, as if it were always null, because '
         .'`$this->opaqueValue()` could not be typed and was left out of its union.';
 
     $this->artisan('ts:publish')->assertSuccessful()->expectsOutputToContain($warning);

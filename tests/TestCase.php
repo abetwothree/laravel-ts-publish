@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -73,6 +74,7 @@ class TestCase extends Orchestra
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
         RoutedControllers::flush();
+        TypeAliases::flush();
         CallArguments::reset();
         ValueResult::forgetEnumNames();
         QueryForwarding::forget();

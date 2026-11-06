@@ -41,6 +41,8 @@ it('types the value helpers as json_encode() writes what they return', function 
     'collect() with a list holding an untypable element, still a list' => ['collect([$this->title, json_decode("{}")])', 'unknown[]'],
     'collect() with a list and the spread of a list' => ['collect([...explode(",", $this->title), 1])', '(string | number)[]'],
     'collect() with a record keyed by numbers' => ['collect([200 => "OK", 404 => "Not Found"])', '{ "200": string; "404": string }'],
+    'collect() of a nullable list, as collect(null) is empty' => ['collect($this->tags ?? null)', 'Tag[]'],
+    'collect() of a nullable record, whose empty array json_encode() writes as []' => ['collect($this->options)', 'Record<string, string> | never[]'],
 ]);
 
 // A Collection's keys reach JSON as written: an API resource's filter never enters one to re-index it.
@@ -81,7 +83,6 @@ it('leaves the value helpers it cannot type, and __(), to unknown', function (st
     'collect() of a keyed when() value, which encodes as {}' => ['collect(["a" => $this->when($this->title, 1)])'],
     'collect() of a listed when() value, which encodes as {}' => ['collect([$this->when($this->title, 1)])'],
     'collect() of a column' => ['collect($this->title)'],
-    'collect() of a nullable list' => ['collect($this->tags ?? null)'],
     'url() of an unknown path' => ['url(json_decode("{}"))'],
     '__() can return an array' => ['__("x")'],
     'collect() of a spread, whose arguments are unknown' => ['collect(...$this->tags)'],

@@ -9,7 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -130,8 +130,8 @@ test('a body is analyzed once per reading, apart', function () use ($countLookup
         $readings,
     );
 
-    expect($types)->toBe([...$once = ['Record<string, never>', 'never[]', 'string', 'string'], ...$once])
-        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(4);
+    expect($types)->toBe([...$once = ['Record<string, never>', 'never[]', 'Record<string, never>', 'string', 'string'], ...$once])
+        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(5);
 });
 
 test('an accessor body is analyzed once per model, attribute and import mode', function () use ($countLookups) {

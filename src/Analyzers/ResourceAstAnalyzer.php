@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\BuildsJsonApiResourceObject;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
@@ -23,22 +24,22 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\ReadsReturnedVariables;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsReturnedVariables;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\NarrowsInstanceofSubjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\ReadsNonNullGuards;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -63,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -157,6 +159,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** How often a `parent::` spread re-entered a method on the stack, so a read that met one can tell. */
     private int $spreadReentries = 0;
 
+    /** The run's memo, held for the value site each expression marks. */
+    private ?AnalysisMemo $memo = null;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -214,6 +219,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
         $this->scope->seedCollectionFacts($this->scope->runtime->class);
+        $this->scope->seedDeclaredHeld();
 
         $this->ownsScope = $scope === null;
 
@@ -242,95 +248,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * Analyze the subject's $this->methodName body and return the resulting property/type analysis.
+     *
+     * The body's own reading and scope mark each value read outside a dispatch, such as the model array a delegation,
+     * a `parent::toArray()` spread or a merge sends.
      */
     public function analyze(): ResourceAnalysis
     {
-        if ($this->scope->modelClass !== null) {
-            DependencyRecorder::recordClass($this->scope->modelClass);
-        }
-
-        // A JSON:API resource sends its resource object as `data`, whatever toArray() returns: toArray() feeds at most
-        // its attributes.
-        if ($this->sendsJsonApiResourceObject()) {
-            return $this->buildJsonApiResourceObject();
-        }
-
-        if ($this->sendsOwnToAttributes()) {
-            return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
-        }
-
-        $context = $this->context ?? $this->locateSubjectMethod();
-        $toArrayMethod = $context?->method;
-
-        // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
-        // static::class, so the response is the subject's own body-less one.
-        if ($this->toArraySendsCollectedList()) {
-            $response = $this->buildCollectionDelegatedAnalysis();
-
-            return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
-        }
-
-        if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
-            $inherited = $this->analyzeParentCall($this->methodName, $this->returnedWhole);
-
-            // An empty result means no ancestor declared the method either, so keep delegating.
-            if ($inherited !== null && ($inherited->properties !== [] || $inherited->flatTypeAlias !== null)) {
-                return $inherited;
-            }
-
-            // Model/collection delegation only makes sense for toArray(); a generic method with no
-            // body anywhere in the chain is simply empty, not a model dump.
-            $delegated = match (true) {
-                $this->methodName !== 'toArray' => new ResourceAnalysis,
-                $this->isResourceCollection($this->scope) => $this->buildCollectionDelegatedAnalysis(),
-                default => $this->buildModelSerializedAnalysis(),
-            };
-
-            // With no model behind it, the delegation publishes none of the keys the response carries.
-            $delegated ??= ResourceAnalysis::unreadAnalysis();
-
-            // An ancestor read only partly leaves the method it stands in for read only partly.
-            if ($inherited !== null && ! $inherited->readsCompletely) {
-                $delegated->readsCompletely = false;
-            }
-
-            return $delegated;
-        }
-
-        $finder = new NodeFinder;
-
-        // A guard on `$this->resource` narrows only the proxy; in any other subject it tests a member like any other.
-        $this->scope->instanceOfWrappedClass = $this->scope->hasResourceProxy() ? $this->resolveInstanceOfType($toArrayMethod, $finder) : null;
-
-        // Re-derived once an instanceof guard has supplied a backing the constructor had none for. Not rebase(): the
-        // guard's class, model or not, backs only the proxy, while modelClass stays the resolved backing model.
-        $this->scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor(
-            $this->scope->subjectReflection,
-            $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass,
-        );
-
-        // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings,
-        // but no foreach variable over a relation, which bindForeachLoopVariables() binds only for a scope it owns.
-        if ($this->ownsScope) {
-            $subject = $this->scope->subjectReflection;
-            $method = $subject->hasMethod($this->methodName) ? $subject->getMethod($this->methodName) : null;
-
-            $this->seedVarBindings($method, $toArrayMethod->stmts, $this->passed);
-        }
-
-        $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
-        $analysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts)
-            ?? $this->ownFirstReturnAnalysis($toArrayMethod->stmts);
-
-        if ($analysis === null) {
-            return new ResourceAnalysis; // @codeCoverageIgnore
-        }
-
-        if ($passesKeys) {
-            $analysis->holdUnreadKeys();
-        }
-
-        return $this->ownMethodShaped($analysis);
+        return $this->atValueSite($this->analyzeSubjectMethod(...));
     }
 
     /**
@@ -844,7 +768,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         [$branches, $complete] = $this->resolveProvenNonNull(
             $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
             $this->scope,
-            fn (): array => $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($value->value, $this->scope)),
+            fn (): array => $this->resolveMergedBranches(CallableForms::heldCallable($value->value, $this->scope)),
         );
 
         if (! $isMerge) {
@@ -853,7 +777,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
             [$defaultBranches, $defaultComplete] = $default === null || $this->closureRequiresArguments($default)
                 ? [[], true]
-                : $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($default, $this->scope));
+                : $this->resolveMergedBranches(CallableForms::heldCallable($default, $this->scope));
             $complete = $complete && $defaultComplete;
 
             // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
@@ -1289,13 +1213,127 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * The subject's $this->methodName body read as analyze() reads it, under the value site it marks.
+     */
+    private function analyzeSubjectMethod(): ResourceAnalysis
+    {
+        if ($this->scope->modelClass !== null) {
+            DependencyRecorder::recordClass($this->scope->modelClass);
+        }
+
+        // A JSON:API resource sends its resource object as `data`, whatever toArray() returns: toArray() feeds at most
+        // its attributes.
+        if ($this->sendsJsonApiResourceObject()) {
+            return $this->buildJsonApiResourceObject();
+        }
+
+        if ($this->sendsOwnToAttributes()) {
+            return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
+        }
+
+        $context = $this->context ?? $this->locateSubjectMethod();
+        $toArrayMethod = $context?->method;
+
+        // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
+        // static::class, so the response is the subject's own body-less one.
+        if ($this->toArraySendsCollectedList()) {
+            $response = $this->buildCollectionDelegatedAnalysis();
+
+            return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
+        }
+
+        if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
+            $inherited = $this->analyzeParentCall($this->methodName, $this->returnedWhole);
+
+            // An empty result means no ancestor declared the method either, so keep delegating.
+            if ($inherited !== null && ($inherited->properties !== [] || $inherited->flatTypeAlias !== null)) {
+                return $inherited;
+            }
+
+            // Model/collection delegation only makes sense for toArray(); a generic method with no
+            // body anywhere in the chain is simply empty, not a model dump.
+            $delegated = match (true) {
+                $this->methodName !== 'toArray' => new ResourceAnalysis,
+                $this->isResourceCollection($this->scope) => $this->buildCollectionDelegatedAnalysis(),
+                default => $this->buildModelSerializedAnalysis(),
+            };
+
+            // With no model behind it, the delegation publishes none of the keys the response carries.
+            $delegated ??= ResourceAnalysis::unreadAnalysis();
+
+            // An ancestor read only partly leaves the method it stands in for read only partly.
+            if ($inherited !== null && ! $inherited->readsCompletely) {
+                $delegated->readsCompletely = false;
+            }
+
+            return $delegated;
+        }
+
+        $finder = new NodeFinder;
+
+        // A guard on `$this->resource` narrows only the proxy; in any other subject it tests a member like any other.
+        $this->scope->instanceOfWrappedClass = $this->scope->hasResourceProxy() ? $this->resolveInstanceOfType($toArrayMethod, $finder) : null;
+
+        // Re-derived once an instanceof guard has supplied a backing the constructor had none for. Not rebase(): the
+        // guard's class, model or not, backs only the proxy, while modelClass stays the resolved backing model.
+        $this->scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor(
+            $this->scope->subjectReflection,
+            $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass,
+        );
+
+        // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings,
+        // but no foreach variable over a relation, which bindForeachLoopVariables() binds only for a scope it owns.
+        if ($this->ownsScope) {
+            $subject = $this->scope->subjectReflection;
+            $method = $subject->hasMethod($this->methodName) ? $subject->getMethod($this->methodName) : null;
+
+            $this->seedVarBindings($method, $toArrayMethod->stmts, $this->passed);
+        }
+
+        $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
+        $analysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts)
+            ?? $this->ownFirstReturnAnalysis($toArrayMethod->stmts);
+
+        if ($analysis === null) {
+            return new ResourceAnalysis; // @codeCoverageIgnore
+        }
+
+        if ($passesKeys) {
+            $analysis->holdUnreadKeys();
+        }
+
+        return $this->ownMethodShaped($analysis);
+    }
+
+    /**
+     * Run a read of what this body types with its reading and scope marked in the memo as the value site, which an
+     * accessor's read asks whether filter() reaches.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    private function atValueSite(Closure $read): mixed
+    {
+        $memo = $this->memo ??= resolve(AnalysisMemo::class);
+        $outer = $memo->markValueSite([$this->reading, $this->scope]);
+
+        try {
+            return $read();
+        } finally {
+            $memo->markValueSite($outer);
+        }
+    }
+
+    /**
      * Resolve a value through the dispatcher, unknown where no handler types it.
      *
      * @return ValueExpressionResult
      */
     private function dispatchValue(Expr $expr): array
     {
-        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+        return $this->atValueSite(fn (): array => $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown());
     }
 
     /**

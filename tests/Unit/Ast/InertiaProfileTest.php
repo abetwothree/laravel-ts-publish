@@ -6,11 +6,11 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaTableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
@@ -51,7 +51,7 @@ it('gives a page and a shared-data middleware the one Inertia profile, and only 
         ->toEqual(ResourceExpressionHandlers::forNonResourceSubjects())
         ->and(ResourceExpressionHandlers::forSubject(WarehouseResource::class, $engine, reading: Reading::Inertia))
         ->toEqual(ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::make($engine)))
-        ->and($inertia)->toHaveCount(30);
+        ->and($inertia)->toHaveCount(31);
 });
 
 // An Inertia reading's CallSite binds a callable as called, which only the profile the reading builds reads as called.

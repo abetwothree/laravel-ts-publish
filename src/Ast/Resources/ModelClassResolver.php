@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Config;
@@ -24,13 +21,12 @@ use ReflectionClass;
  */
 final class ModelClassResolver
 {
-    use ResolvesClassNames;
-
     /**
      * Resolve the backing model class.
      *
-     * Precedence: #[TsResource(model:)], own @mixin/@extends, inherited @mixin/@extends, typed
-     * $resource, naming convention, #[UseResource].
+     * Precedence: the model ProxyDeclaration::model() reads, `#[TsResource(model:)]` first, then the naming convention,
+     * then `#[UseResource]`. A declared class or union the guess is not one of, as a value object, stops the guess, and
+     * a guess extending an intersection's model member narrows it.
      *
      * @template T of object
      *
@@ -44,102 +40,31 @@ final class ModelClassResolver
             return null;
         }
 
-        $tsResourceAttrs = $resource->getAttributes(TsResource::class);
+        $declared = ProxyDeclaration::model($resource);
+        $held = ProxyDeclaration::of($resource);
 
-        if ($tsResourceAttrs) {
-            $model = $tsResourceAttrs[0]->newInstance()->model;
-
-            if ($model !== null && class_exists($model) && is_a($model, Model::class, true)) {
-                return $model;
-            }
+        // The tag agrees with a guess that extends an intersection's model member, so the guess narrows it, as a guess
+        // that is any member of an intersection naming no model stands.
+        if ($declared !== null && ! isset($held['intersections'][$declared])) {
+            return $declared;
         }
 
-        $ownModel = $this->modelFromDocblock($resource);
+        $guessed = $this->guessModelFromConvention($resource) ?? $this->guessModelFromUseResourceAttribute($resource);
 
-        if ($ownModel !== null) {
-            return $ownModel;
+        if ($declared !== null) {
+            return $guessed !== null && is_a($guessed, $declared, true) ? $guessed : $declared;
         }
 
-        $inheritedModel = $this->modelFromAncestorDocblock($resource);
-
-        if ($inheritedModel !== null) {
-            return $inheritedModel;
-        }
-
-        $wrappedClass = $this->resolveClassOnProperty($resource);
-
-        if ($wrappedClass !== null && class_exists($wrappedClass) && is_a($wrappedClass, Model::class, true)) {
-            return $wrappedClass;
-        }
-
-        $guessed = $this->guessModelFromConvention($resource);
-
-        if ($guessed !== null) {
-            return $guessed;
-        }
-
-        return $this->guessModelFromUseResourceAttribute($resource);
-    }
-
-    /**
-     * Read the model named by one class's own @mixin or @extends docblock tag.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     * @return class-string<Model>|null
-     */
-    private function modelFromDocblock(ReflectionClass $resource): ?string
-    {
-        $docComment = $resource->getDocComment();
-
-        if ($docComment === false) {
-            return null;
-        }
-
-        $resolved = null;
-
-        if (preg_match('/^[\w\\\\]+/', DocblockTags::type($docComment, 'mixin') ?? '', $matches) === 1) {
-            $resolved = $this->resolveDocblockType($matches[0], $resource);
-        }
-
-        if (preg_match('/^[\w\\\\]+<([\w\\\\]+)>/', DocblockTags::type($docComment, 'extends') ?? '', $matches) === 1) {
-            $resolved = $this->resolveDocblockType($matches[1], $resource);
-        }
-
-        if ($resolved === null || ! class_exists($resolved) || ! is_a($resolved, Model::class, true)) {
-            return null;
-        }
-
-        return $resolved;
-    }
-
-    /**
-     * Find the nearest ancestor whose own docblock names a model.
-     *
-     * Runs for any resource lacking its own @mixin/@extends, not only a body-less one, so an
-     * ancestor's model is picked up before falling back to the naming convention.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     * @return class-string<Model>|null
-     */
-    private function modelFromAncestorDocblock(ReflectionClass $resource): ?string
-    {
-        $parent = $resource->getParentClass();
-
-        while ($parent !== false) {
-            $model = $this->modelFromDocblock($parent);
-
-            if ($model !== null) {
-                return $model;
-            }
-
-            $parent = $parent->getParentClass();
-        }
-
-        return null;
+        // An interface the guessed model implements, as `@mixin Arrayable` names, keeps it; a value object does not.
+        return $held === null || ($guessed !== null && array_any(
+            $held['classes'],
+            fn (string $class): bool => array_any(
+                [$class, ...$held['intersections'][$class] ?? []],
+                fn (string $member): bool => is_a($guessed, $member, true),
+            ),
+        ))
+            ? $guessed
+            : null;
     }
 
     /**

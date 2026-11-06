@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributeReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceReshapedResource;
@@ -29,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMeth
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FirstClassMapChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
@@ -40,11 +42,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnum
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperBodyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchFlagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadDeclinesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
@@ -61,6 +65,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
@@ -825,8 +830,9 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
 
     // Must stay 'enumFqcn'-tagged (not demoted): the transformer's AsEnum rewrite needs that
     // channel to render the wrapped-object array as AsEnum<typeof Role>[], not plain RoleType[].
+    // The kept Collection serializes each wrap, so a null role sends the `[]` resolve() returns.
     test('map() body that is entirely EnumResource::make() stays an array and is enumFqcn-tagged', function () {
-        expect($this->props['member_role_resources']['type'])->toBe('RoleType[]')
+        expect($this->props['member_role_resources']['type'])->toBe('(RoleType | never[])[]')
             ->and($this->props['member_role_resources']['optional'])->toBeFalse()
             ->and($this->analysis->enumResources)->toHaveKey('member_role_resources')
             ->and($this->analysis->enumResources['member_role_resources'])->toBe(Role::class)
@@ -838,7 +844,7 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     // it losslessly, AsEnum-wrapping both the array arm and the keyed Record arm.
     test('filter() before an EnumResource::make() map body stays enumFqcn-tagged', function () {
         expect($this->props['member_role_resources_filtered']['type'])
-            ->toBe('RoleType[] | Record<string, RoleType>')
+            ->toBe('(RoleType | never[])[] | Record<string, (RoleType | never[])>')
             ->and($this->analysis->enumResources)->toHaveKey('member_role_resources_filtered')
             ->and($this->analysis->enumResources['member_role_resources_filtered'])->toBe(Role::class)
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources_filtered');
@@ -849,20 +855,23 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
     // matching member_role_resources_filtered above, whose PHP shape is identical.
     test('an EnumResource-wrapped enum inside an inline array literal is substituted, not rebuilt', function () {
         expect($this->props['wrapped_filtered']['type'])
-            ->toBe('{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }');
+            ->toBe('{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }');
     });
 
-    // A string ('strtoupper') or array ([$this, 'method']) callable has no closure body to analyze.
-    test('map() with a non-closure callable argument stays unknown', function () {
-        expect($this->props['member_names_upper']['type'])->toBe('unknown')
-            ->and($this->props['member_formatted']['type'])->toBe('unknown');
+    // A string ('strtoupper') or array ([$this, 'method']) callable is called with each member, as a closure is.
+    test('map() with a string or array callable types what the callable returns', function () {
+        expect($this->props['member_names_upper']['type'])->toBe('string[]')
+            ->and($this->props['member_formatted']['type'])->toBe('string[]');
     });
 
     // PHP-Parser's CallLike::getArgs() asserts !isFirstClassCallable(), so under zend.assertions=1
     // it throws AssertionError instead of returning []; `->map(...)` must be detected before that.
-    test('map()/pluck() as a first-class callable degrades to unknown instead of throwing', function () {
-        expect($this->props['member_mapped_fcc']['type'])->toBe('unknown')
-            ->and($this->props['member_plucked_fcc']['type'])->toBe('unknown');
+    // The Closure it builds is sent as the `{}` json_encode() writes for an object with no public property.
+    test('map()/pluck() as a first-class callable publishes the Closure it builds instead of throwing', function () {
+        expect($this->props['member_mapped_fcc']['type'])->toBe('Record<string, never>')
+            ->and($this->props['member_plucked_fcc']['type'])->toBe('Record<string, never>')
+            ->and(publishedResourceKeyTypes(FirstClassMapChainResource::class, Team::class))
+            ->toBe(['mapped' => 'unknown', 'plucked' => 'unknown']);
     });
 
     test('first() as the outermost op yields the element type or null', function () {
@@ -955,7 +964,7 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
     // $variable->map() (not $this->relation->map()) with a body entirely EnumResource::make(...)
     // must stay array-shaped and enumFqcn-tagged, the same contract as the relation-chain case.
     test('local variable ->map() with an EnumResource::make() body stays array-shaped and enumFqcn-tagged', function () {
-        expect($this->props['members_via_var']['type'])->toBe('RoleType[]')
+        expect($this->props['members_via_var']['type'])->toBe('(RoleType | never[])[]')
             ->and($this->analysis->enumResources)->toHaveKey('members_via_var')
             ->and($this->analysis->enumResources['members_via_var'])->toBe(Role::class);
     });
@@ -2346,12 +2355,14 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         expect($this->analysis->directEnumFqcns)->toHaveKey('status');
     });
 
-    test('resolves nullable accessor column (notes) with null union', function () {
+    // Laravel runs the getter, which declares a non-null string, for a NULL column too.
+    test('resolves the accessor on a nullable column (notes) by its getter\'s non-null return', function () {
         $notes = collect($this->analysis->properties)->firstWhere('name', 'notes');
 
         expect($notes)->not->toBeNull()
-            ->and($notes['type'])->toBe('string | null')
-            ->and($notes['optional'])->toBeFalse();
+            ->and($notes['type'])->toBe('string')
+            ->and($notes['optional'])->toBeFalse()
+            ->and((new Order)->setRawAttributes(['notes' => null])->notes)->toBe('');
     });
 
     test('resolves write-only mutator (search_index) to unknown', function () {
@@ -2767,7 +2778,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
         $notesClosure = collect($this->analysis->properties)->firstWhere('name', 'notes_closure');
 
         expect($notesClosure)->not->toBeNull()
-            ->and($notesClosure['type'])->toBe('string | null')
+            ->and($notesClosure['type'])->toBe('string')
             ->and($notesClosure['optional'])->toBeTrue();
     });
 
@@ -5635,7 +5646,7 @@ describe('local variable bindings', function () {
         $order = new Order;
         $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
 
-        expect($this->props['shadowed']['type'])->toBe('string | null')
+        expect($this->props['shadowed']['type'])->toBe('string')
             ->and(new LocalVarResource($order)->resolve(Request::create('/'))['shadowed'])->toBe('top-level default')
             ->and(new LocalVarResource($order)->resolve(Request::create('/', 'GET', ['flag' => 1]))['shadowed'])->toBe('Ring twice');
     });
@@ -5741,7 +5752,7 @@ describe('local variable bindings — review follow-up regressions', function ()
         $order = new Order;
         $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
 
-        expect($props['early']['type'])->toBe('string | null')
+        expect($props['early']['type'])->toBe('string')
             ->and($props['late']['type'])->toBe('number')
             ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/', 'GET', ['early' => 1])))->toBe(['early' => 'Ring twice'])
             ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/')))->toBe(['late' => 3]);
@@ -7699,6 +7710,17 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
     expect($matched)->toBe(['a']);
 });
 
+// PHP passes the callback the value and the key, so `...$rest` holds the list `[$key]`, which no element's type admits.
+it('does not bind a variadic array_walk() parameter to one element', function () {
+    $types = publishedResourceKeyTypes(VariadicWalkResource::class, Post::class);
+
+    expect($types['listed'])->not->toBe('number[]')
+        ->and($types['keyed'])->not->toBe('{ a: string }')
+        ->and($types)->toBe(['listed' => 'unknown', 'keyed' => 'unknown'])
+        ->and(new VariadicWalkResource(new Post)->resolve(Request::create('/')))
+        ->toBe(['listed' => [[0], [1]], 'keyed' => ['a' => ['a']]]);
+});
+
 it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
     expect(resourceKeyTypes(ReceiverOnlySpreadResource::class, Post::class))->toBe([
         'id' => 'number',
@@ -7737,8 +7759,16 @@ test('a resource method whose own declaration is vague publishes what its return
     'a string or a number' => ['branchy', 'string | number'],
 ]);
 
-// The last two need rules of their own: a finder in this profile, keys() in a pipeline.
-test('a helper read as a value publishes what its returns hold, and two whenHas() callbacks stay unread', function (string $key, string $type) {
+// A spread reads the helper's returns as the payload's own keys, the one literal arm's key optional.
+test('a spread of a helper whose returns differ publishes the keys of each', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperSpreadResource::class), Post::class)->analyze()->properties);
+
+    expect($props->mapWithKeys(fn (array $prop): array => [$prop['name'].($prop['optional'] ? '?' : '') => $prop['type']])->all())
+        ->toBe(['id' => 'number', 'a' => 'number', 'b?' => 'string', 'slug' => 'string', 'active' => 'number']);
+});
+
+// A finder reads as a page reads it, the model it finds or null.
+test('a helper read as a value publishes what its returns hold, and a finder inside whenHas() the model it finds', function (string $key, string $type) {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
@@ -7755,6 +7785,123 @@ test('a helper read as a value publishes what its returns hold, and two whenHas(
     'a variable returned after a closure\'s own return' => ['closure_first', '{ title: string; active: number }'],
     'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
     'Str::upper(), whose conditional return is a string either way' => ['str_static', '?string'],
-    'a finder' => ['find', '?unknown'],
-    'keys()' => ['keys', '?unknown'],
+    'a finder' => ['find', '?User | null'],
+    'keys() of the attribute whenHas() passes' => ['keys', '?string[]'],
 ]);
+
+// A group that did not take part is dropped from the end of the matches, or kept as null under PREG_UNMATCHED_AS_NULL,
+// and a named group keys the matches as an object; a pattern the call computes stays unread. A mark's MARK key replaces
+// a group named MARK's on PHP 8.4 and is sent beside it on 8.5, so the JSON is compared as JSON.parse() reads it.
+it('types preg_match()\'s matches from the pattern\'s groups and its flags', function () {
+    AnalysisWarnings::reset();
+    $post = fn (string $title): Post => (new Post)->forceFill(['title' => $title]);
+    $sent = fn (string $title, array $query = []): string => (string) json_encode(sentAsJson(
+        new PregMatchFlagsResource($post($title))->resolve(Request::create('/', 'GET', $query)),
+    ));
+
+    expect(publishedResourceKeyTypes(PregMatchFlagsResource::class, Post::class))->toBe([
+        'plain' => 'string[]',
+        'plain_direct' => 'string[]',
+        'named' => '{ "0": string; first?: string; "1"?: string } | never[]',
+        'named_direct' => '{ "0": string; first?: string; "1"?: string } | never[]',
+        'named_first' => 'string | null',
+        'first_matched' => 'string',
+        'offset' => '[string, number][]',
+        'unmatched' => '(string | null)[]',
+        'named_unmatched' => '{ "0": string; first: string | null; "1": string | null; second: string | null; "2": string | null } | never[]',
+        'named_offset' => '{ "0": [string, number]; first?: [string, number]; "1"?: [string, number] } | never[]',
+        'zero_flags' => 'string[]',
+        'all' => 'string[][]',
+        'all_direct' => 'string[][]',
+        'marked' => '{ "0": [string, number]; "1"?: [string, number]; MARK?: string } | never[]',
+        'failing' => 'string[]',
+        'mark_group' => '{ "0": string; MARK?: string; "1"?: string } | never[]',
+        'mark_text' => 'string[]',
+        'computed' => 'never[]',
+    ])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The value on line 59 publishes `never[]`, an array that is always empty, because `$computed` could not be typed '
+                .'and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+        ])
+        ->and($sent('aBc'))->toBe('{"plain":["B","B"],"plain_direct":["B","B"],"named":{"0":"B","first":"B","1":"B"},'
+            .'"named_direct":{"0":"B","first":"B","1":"B"},"named_first":"B","first_matched":"B","offset":[["B",1],["B",1]],'
+            .'"unmatched":["B","B",null],"named_unmatched":{"0":"B","first":"B","1":"B","second":null,"2":null},'
+            .'"named_offset":{"0":["B",1],"first":["B",1],"1":["B",1]},"zero_flags":["B","B"],"all":[["B"],["B"]],'
+            .'"all_direct":[["B"],["B"]],"marked":{"0":["B",1],"1":["B",1],"MARK":"mk"},"failing":["B","B"],"mark_group":{"0":"B","MARK":"m","1":"B"},'
+            .'"mark_text":["B","B"],"computed":[]}')
+        ->and($sent('zzz', ['pattern' => 1]))->toBe('{"plain":[],"plain_direct":[],"named":[],"named_direct":[],"named_first":null,'
+            .'"first_matched":"none","offset":[],"unmatched":[],"named_unmatched":[],"named_offset":[],"zero_flags":[],"all":[[],[]],'
+            .'"all_direct":[[],[]],"marked":[],"failing":[],"mark_group":[],"mark_text":[],"computed":[]}');
+
+    AnalysisWarnings::reset();
+});
+
+it('reads getAttribute() and getAttributeValue() of a literal key as the property read', function () {
+    $author = new User;
+    $author->forceFill(['id' => 3, 'name' => 'Ada']);
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0, 'user_id' => 3]);
+    $post->setRelation('author', $author)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr' => 'string',
+        'attr_value' => 'string',
+        'attr_proxy' => 'string',
+        'attr_local' => 'string',
+        'attr_rel_one' => 'string',
+        'attr_accessor' => 'string | null',
+        'attr_rel_elem' => 'string | null',
+        'attr_enum' => 'StatusType',
+        'attr_relation' => 'User',
+        'attr_closure?' => 'string',
+        'attr_missing' => 'unknown',
+        'attr_value_relation' => 'unknown',
+    ])
+        ->and($sent->attr)->toBe('T')
+        ->and($sent->attr_relation->name)->toBe('Ada')
+        ->and($sent->attr_value_relation)->toBeNull()
+        ->and($sent->attr_rel_elem)->toBeNull()
+        ->and($sent->attr_missing)->toBeNull();
+});
+
+it('reads a new model\'s column and to-one relation through getAttribute() as the null Laravel sends', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0]);
+    $post->setRelation('author', new User)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr_new' => 'string | null',
+        'attr_new_relation' => 'User | null',
+        'prop_new_relation' => 'User | null',
+    ])
+        ->and([$sent->attr_new, $sent->attr_new_relation, $sent->prop_new_relation])->toBe([null, null, null]);
+});
+
+it('reads a new model\'s relation to one whose key a write set, or that has a default, without the null', function () {
+    (new User)->forceFill(['id' => 1, 'name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'x'])->save();
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'T', 'title_display' => 'T', 'status' => 0]);
+    $post->setRelation('author', new User)->setRelation('comments', new EloquentCollection);
+    $sent = sentAsJson(new AttributeReadsResource($post)->resolve(Request::create('/')));
+
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'filled_key_relation' => 'User',
+        'filled_key_attr' => 'User',
+        'default_relation' => 'User',
+        'default_attr' => 'User',
+    ])
+        ->and([$sent->filled_key_relation->name, $sent->filled_key_attr->name])->toBe(['Ada', 'Ada'])
+        ->and($sent->default_relation)->not->toBeNull()
+        ->and($sent->default_attr)->not->toBeNull();
+});
+
+it('keeps today\'s reading for a getAttribute() key that is no literal, an unpacked one and the original-value reads', function () {
+    expect(resourceKeyTypes(AttributeReadsResource::class, Post::class))->toMatchArray([
+        'attr_dynamic' => 'unknown',
+        'attr_unpacked' => 'unknown',
+        'raw_original' => 'unknown',
+        'original' => 'unknown',
+    ]);
+});

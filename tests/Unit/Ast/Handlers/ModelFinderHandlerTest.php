@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -103,6 +103,7 @@ it('types a terminal on the query each step before it hands on', function (strin
     'a when() whose callback hands the query back' => ['\\Workbench\\App\\Models\\Post::query()->when(true, fn ($q) => $q->latest())->first()', 'Post | null'],
     'a soft-delete step' => ['\\Workbench\\App\\Models\\Post::withTrashed()->count()', 'number'],
     'a relation of a found model' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->comments()->get()', 'Comment[]'],
+    'a relation of a found model by key' => ['\\Workbench\\App\\Models\\Post::find(1)->comments()->get()', 'Comment[]'],
     'a singular relation' => ['\\Workbench\\App\\Models\\Post::query()->firstOrFail()->author()->first()', 'User | null'],
     'a model forwarding a terminal it lacks to a new query' => ['\\Workbench\\App\\Models\\Post::findOrFail(1)->count()', 'number'],
     'a base query, whose rows no model casts' => ['\\Workbench\\App\\Models\\Post::query()->toBase()->get()', 'Record<string, unknown>[]'],

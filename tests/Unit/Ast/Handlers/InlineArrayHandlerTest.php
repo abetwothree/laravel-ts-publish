@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLocalModelResource;
 use PhpParser\Node\Expr;
@@ -115,10 +115,12 @@ it('resolves an inline array with a nested key and a model spread arm to an Omit
 
     $result = (new InlineArrayHandler)->resolve($array, $scope, $engine);
 
+    // The spread's keys are no string or int the literal writes, so the result marks them unnamed for array_keys().
     expect($result)->toBe([
         'type' => "Omit<User, 'note'> & { note: string }",
         'optional' => false,
         'embeddedModelFqcns' => [User::class],
+        'unnamedKeys' => true,
     ]);
 });
 

@@ -9,7 +9,20 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\AnonymousCasterCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\BlankToNullSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\InboundDualCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LowercaseInboundCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MixedGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NoInterfaceSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SelfStoppingChildGetCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastableValueReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeDelegatingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeFilterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LabelSerializeReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixedGetCastableReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
@@ -26,39 +39,69 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUlidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueKeyListedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCycleWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArraySerializePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BaseDeclaringCastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleReadingGetProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HelperCycleWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeylessTablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializeComment;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabelSerializePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralNullCycleProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MixedGetCastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NeverEndingGetPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanPropertyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SelfReadingSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SpacedPropertyTagsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DepthLimitedLaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\GaugeCardCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\PlotPoint;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WrappedLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
@@ -74,7 +117,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Facade;
 use Workbench\App\Casts\ConsignmentLegsCast;
+use Workbench\App\Casts\CoordinateCast;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Enums\Status;
@@ -861,26 +906,369 @@ test('a cast sends a NULL column as null only when it is a database type, a prim
     'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
 ]);
 
-test('a type holds a nullable column\'s null by a top-level arm, or by any null under an accessor or a non-null get()', function (?string $cast, bool $nestedHolds) {
+test('a column adds its null only when it is nullable and its type does not hold one yet', function (string $type, ?bool $nullable, ?string $cast, string $expected) {
+    expect(ModelAttributeResolver::withColumnNull($type, $nullable, $cast))->toBe($expected);
+})->with([
+    'a nullable column' => ['string', true, null, 'string | null'],
+    'a column that is not nullable' => ['string', false, null, 'string'],
+    'a column of unknown nullability' => ['string', null, null, 'string'],
+    'a type already holding the null' => ['string | null', true, null, 'string | null'],
+    'a nested null under an accessor' => ['{ a: number | null }', true, 'accessor', '{ a: number | null }'],
+]);
+
+// Laravel calls a caster's get() for a NULL column too, so a native non-null get() return never sends null.
+test('a type holds a nullable column\'s null by a top-level arm, by any null under an accessor, and always under a non-null get()', function (?string $cast, bool $nestedHolds, bool $bareHolds) {
     expect(ModelAttributeResolver::typeHoldsNull('{ a: number | null }', $cast))->toBe($nestedHolds)
         ->and(ModelAttributeResolver::typeHoldsNull('{ a: number } | null', $cast))->toBeTrue()
-        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number }', $cast))->toBeFalse();
+        ->and(ModelAttributeResolver::typeHoldsNull('{ a: number }', $cast))->toBe($bareHolds);
 })->with([
-    'no cast' => [null, false],
-    'an empty cast' => ['', false],
-    'array' => ['array', false],
-    'collection' => ['collection', false],
-    'a dated cast' => ['date:Y-m-d', false],
-    'a decimal cast' => ['decimal:2', false],
-    'an enum' => [Status::class, false],
-    'an attribute accessor' => ['attribute', true],
-    'a plain accessor' => ['accessor', true],
-    'AsCollection' => [AsCollection::class, false],
-    'AsCollection::of() a class' => [AsCollection::of(MaybeNode::class), false],
-    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false],
-    'a CastsAttributes class whose get() declares a non-null type' => [ConsignmentLegsCast::class, true],
-    'a CastsAttributes class whose get() may return null' => [GaugeCardCast::class, false],
-    'a Castable class' => [GaugeCard::class, false],
+    'no cast' => [null, false, false],
+    'an empty cast' => ['', false, false],
+    'array' => ['array', false, false],
+    'collection' => ['collection', false, false],
+    'a dated cast' => ['date:Y-m-d', false, false],
+    'a decimal cast' => ['decimal:2', false, false],
+    'an enum' => [Status::class, false, false],
+    'an attribute accessor' => ['attribute', true, false],
+    'a plain accessor' => ['accessor', true, false],
+    'AsCollection' => [AsCollection::class, false, false],
+    'AsCollection::of() a class' => [AsCollection::of(MaybeNode::class), false, false],
+    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false, false],
+    'a CastsAttributes class whose get() declares a non-null type' => [ConsignmentLegsCast::class, true, true],
+    'a CastsAttributes class with arguments whose get() declares a non-null type' => [CoordinateCast::class.':a', true, true],
+    'a CastsAttributes class whose get() may return null' => [GaugeCardCast::class, false, false],
+    'a CastsAttributes class whose get() declares mixed' => [MixedGetCast::class, false, false],
+    'a CastsInboundAttributes class, which passes a NULL through' => [LowercaseInboundCast::class, false, false],
+    'a Castable whose caster may return null' => [GaugeCard::class, false, false],
+    'a Castable whose caster\'s get() declares a non-null type' => [PlotPoint::class, true, true],
+    'a Castable whose caster is anonymous' => [AnonymousCasterCastable::class, false, false],
+    'a serializing caster whose serialize() declares nothing' => [BlankToNullSerializeCast::class, false, false],
+    'a caster that is inbound too' => [InboundDualCast::class, false, false],
+    'a serialize() method declaring nothing, without the interface' => [NoInterfaceSerializeCast::class, false, false],
+]);
+
+// Model::toArray() writes a serializing caster's serialize(), and never reads a caster that is inbound too.
+test('a nullable column cast to a class whose get() does not decide what toArray() sends keeps its null where it may be sent', function (string $column, string $type, bool $sendsNull) {
+    $sent = sentAsJson((new SerializedCastNullWarehouse)->setRawAttributes(array_fill_keys(['phone', 'coordinate_data', 'status', 'color'], null))->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializedCastNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', true],
+    'a caster that is inbound too' => ['coordinate_data', 'string | null', true],
+    'a serialize() declaring a non-null type' => ['status', 'string', false],
+    'a serialize() that may return null' => ['color', 'string | null', true],
+]);
+
+// Laravel calls a caster's serialize() method whether or not the caster implements SerializesCastableAttributes.
+// Without the interface, one whose `mixed` returns prove nothing, or a vague `array` over a get() returning an object
+// or array, leaves get() to type the value; with it, such a declaration stands.
+test('a nullable column cast to a class with a serialize() method publishes what serialize() sends', function (string $column, string $type, string $sent) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
+    $row = (new SerializeMethodWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializeMethodWarehouse::class, $column)['type'])->toBe($type)
+        ->and(json_encode($row[$column]))->toBe($sent);
+})->with([
+    'a serialize() declaring nothing, which writes null' => ['phone', 'string | null', 'null'],
+    'a serialize() declaring a non-null string over a get() returning a number' => ['coordinate_data', 'string', '"n0"'],
+    'a serialize() declaring mixed, without the interface' => ['status', '{ x: number; y: number } | null', '{"x":1,"y":2}'],
+    'a serialize() declaring mixed, with the interface, as published before' => ['color', 'unknown | null', '{"x":1,"y":2}'],
+    'a serialize() declaring array over a get() returning a value object, without the interface' => ['priority', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'a serialize() declaring array over a get() declaring a shape, without the interface' => ['manager_id', '{ a: number }', '{"a":1}'],
+    'a serialize() declaring array, with the interface, as published before' => ['primary_contact_id', 'unknown[]', '{"x":1,"y":2}'],
+]);
+
+// A vague serialize() without the interface leaves a get() returning an object or array to type the value, not a scalar
+// one, which serialize() turns into something else; an `array` then reads as a list or a record by its keys. The
+// interface keeps what its serialize() declares, unless a `mixed` one's returns prove more.
+test('a vague serialize() leaves the type to get() only without the interface and over a get() returning an object or array', function (string $column, string $type, string $sent) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id', 'secondary_contact_id'];
+    $row = (new VagueSerializeWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(VagueSerializeWarehouse::class, $column)['type'])->toBe($type)
+        ->and(json_encode($row[$column]))->toBe($sent);
+})->with([
+    'a mixed serialize() writing a string over a get() returning a number, typed by its returns' => ['phone', 'string | null', '"n0"'],
+    'an object serialize() over a get() returning a value object' => ['coordinate_data', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'a ?object serialize() over a get() returning a value object' => ['status', '{ x: number; y: number } | null', '{"x":1,"y":2}'],
+    'an array|object serialize() over a get() returning a value object' => ['color', '{ x: number; y: number }', '{"x":1,"y":2}'],
+    'an object serialize() over a get() returning a number' => ['priority', 'object', '{"v":0}'],
+    'an array serialize() writing an object over a get() returning a string' => ['manager_id', 'unknown[] | Record<string, unknown>', '{"v":""}'],
+    'an array serialize() writing a list over a get() returning a string' => ['secondary_contact_id', 'unknown[] | Record<string, unknown>', '[""]'],
+    'a Castable whose caster\'s serialize() declares mixed, with the interface' => ['primary_contact_id', 'unknown | null', '{"x":1,"y":2}'],
+]);
+
+// A serialize() that declares nothing is typed by what its returns prove, and Model::toArray() skips it for a null
+// get() value, which it sends as it is.
+test('a column cast to a class whose serialize() declares nothing publishes what its returns send', function (string $column, string $type, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'phone', 'coordinate_data'];
+    $nulls = (new SerializeBodyWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new SerializeBodyWarehouse)->setRawAttributes(array_fill_keys($columns, 'x'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SerializeBodyWarehouse::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a typed serialize() over a get() that may return null, on a not-null column' => ['name', 'string | null', 'null', '"x"'],
+    'an undeclared serialize() typed by its returns, on a nullable column' => ['phone', 'string | null', '""', '"x"'],
+    'an undeclared serialize() typed by its returns over a get() that may return null' => ['coordinate_data', 'string | null', 'null', '"x"'],
+]);
+
+// Laravel skips serialize() for a null get() value; a get() declaring no native type sends one only where its
+// `@return` or, without one, its body says it may.
+test('a not-null column cast to a class whose get() declares no type publishes null only where get() may return it', function (string $column, string $type, string $sentForNull, string $sentForValue) {
+    $columns = ['title', 'content', 'category'];
+    $nulls = (new UntypedGetSerializePost)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new UntypedGetSerializePost)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UntypedGetSerializePost::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a get() whose body proves a string' => ['title', 'string', '"s"', '"s7"'],
+    'a get() whose @return documents a number' => ['content', 'object', '{"v":0}', '{"v":7}'],
+    'a get() whose body proves nothing, which adds no null' => ['category', 'string', 'null', '"o7"'],
+]);
+
+// A get() adds a null only where its reading provably holds one. A `mixed` type, a NULL replaced, a cycle or a body the
+// engine cannot read proves none, so the type stays as get() leaves it.
+test('a not-null column cast to a class whose get() never provably returns null publishes no null', function (string $column, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active', 'is_featured'];
+    $nulls = (new NullProofProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new NullProofProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NullProofProduct::class, $column)['type'])->toBe('string')
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a get() declaring mixed, as the make:cast stub does' => ['name', '"p0"', '"p7"'],
+    'a get() documenting mixed' => ['slug', '"m"', '"m7"'],
+    'a get() replacing a NULL through ??' => ['sku', '"cd"', '"c7"'],
+    'a get() replacing an empty value through ?:' => ['price', '"ke"', '"k7"'],
+    'a get() reading the raw attribute with a default' => ['quantity', '"k0"', '"k7"'],
+    'a get() reading its own cast on another model' => ['is_active', '"gz"', '"g7"'],
+    'a get() the engine cannot read, which may send a null as before' => ['is_featured', 'null', '"o7"'],
+]);
+
+// A read that meets a cast already under way proves nothing, and a reused answer counts that cut again, so a cast's
+// type is the same whichever model is published first. A serialize() reading a nullable column keeps its null, and a
+// get() reading another model's cast reads its get(), so its own literal null stands.
+test('a cast whose reading meets itself publishes the same type whichever model is published first', function (array $models) {
+    $types = [];
+
+    foreach ($models as [$model, $column]) {
+        $types[class_basename($model).'.'.$column] = (new ModelTransformer($model))->data()->columns[$column]['type'];
+    }
+
+    ksort($types);
+    $sent = fn (string $model, mixed $value): string => json_encode((new $model)->setRawAttributes(['name' => $value])->toArray()['name']);
+
+    expect($types)->toBe([
+        'CycleReadingGetProduct.name' => 'string',
+        'CycleSerializeWarehouse.name' => 'string | null',
+        'CycleWarehouse.name' => 'string',
+        'LiteralNullCycleProduct.name' => 'string | null',
+        'UnprovenNullProduct.name' => 'string | null',
+    ])
+        ->and([$sent(CycleReadingGetProduct::class, null), $sent(CycleReadingGetProduct::class, '7')])->toBe(['"sy"', '"s7"'])
+        ->and([$sent(CycleSerializeWarehouse::class, null), $sent(CycleWarehouse::class, null)])->toBe(['"z"', '"cc"'])
+        ->and([$sent(LiteralNullCycleProduct::class, null), $sent(LiteralNullCycleProduct::class, '7')])->toBe(['null', '"l7"']);
+})->with([
+    'the models whose get() reads a cycle first' => [[
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'], [UnprovenNullProduct::class, 'name'],
+        [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
+    ]],
+    'the models whose serialize() closes a cycle first' => [[
+        [CycleSerializeWarehouse::class, 'name'], [CycleWarehouse::class, 'name'],
+        [CycleReadingGetProduct::class, 'name'], [LiteralNullCycleProduct::class, 'name'], [UnprovenNullProduct::class, 'name'],
+    ]],
+]);
+
+// Laravel sends a null value without calling serialize(), so a null get() cannot rule out stays on a type read from
+// serialize()'s body; a typed serialize() adds only a proven one. A helper's or a property's own guard is no cycle.
+test('a not-null column cast to a class whose get() returns a literal null its reading cannot prove publishes it from a body-read serialize()', function (string $column, string $type, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active', 'is_featured'];
+    $nulls = (new UnprovenNullProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new UnprovenNullProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UnprovenNullProduct::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe('null')
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a caster cycle, under an undeclared serialize()' => ['name', 'string | null', '"l7"'],
+    'a recursive helper, under an undeclared serialize()' => ['slug', 'string | null', '"r7"'],
+    'a recursive helper, under a typed serialize()' => ['sku', 'string | null', '"t7"'],
+    'two helpers calling each other, under an undeclared serialize()' => ['price', 'string | null', '"m7"'],
+    'a property fallback, under an undeclared serialize()' => ['quantity', 'string | null', '"v7"'],
+    'a body the engine cannot read, under an undeclared serialize()' => ['is_active', 'string | null', '"w7"'],
+    'a body the engine cannot read, under a typed serialize(), which adds no null' => ['is_featured', 'string', '"x7"'],
+]);
+
+// A typed serialize() takes get()'s null only from get()'s own declaration or literal returns, never from a nullable
+// value it reads elsewhere; a type read from serialize()'s body keeps that null, which get() cannot rule out.
+test('a not-null column cast to a class whose get() reads a value published with a null takes it only under a body-read serialize()', function (string $column, string $type, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active'];
+    $nulls = (new CarriedNullProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new CarriedNullProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CarriedNullProduct::class, $column)['type'])->toBe($type)
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'another model\'s accessor read through a cycle, under a typed serialize()' => ['name', 'string', '"aq"', '"a7"'],
+    'another model\'s accessor read through a cycle, under an undeclared serialize()' => ['slug', 'string | null', '"aq"', '"a7"'],
+    'a helper reading a model, under a typed serialize()' => ['sku', 'string', '"bk"', '"b7"'],
+    'a helper reading a model, under an undeclared serialize()' => ['price', 'string | null', '"bk"', '"b7"'],
+    'another model\'s accessor, under a typed serialize()' => ['quantity', 'string', '"nq"', '"n7"'],
+    'the raw value, under an undeclared serialize()' => ['is_active', 'string | null', 'null', '"r7"'],
+]);
+
+// An if/else, a switch with a default, or a try and its catch that all return leave get() no end to fall off.
+test('a not-null column cast to a class whose get() returns on every branch publishes no null under a typed serialize()', function (string $column, string $sentForNull, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku'];
+    $nulls = (new AllBranchesReturnProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new AllBranchesReturnProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AllBranchesReturnProduct::class, $column)['type'])->toBe('string')
+        ->and(json_encode($nulls[$column]))->toBe($sentForNull)
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'both arms of an if/else' => ['name', '"sz"', '"sa7"'],
+    'every case of a switch with a default' => ['slug', '"sz"', '"sa7"'],
+    'a try and its catch' => ['sku', '"sa"', '"sa7"'],
+]);
+
+test('a cast whose get() reads a value published with a null publishes the same type whichever model is published first', function (array $models) {
+    $types = [];
+
+    foreach ($models as [$model, $column]) {
+        $data = (new ModelTransformer($model))->data();
+        $types[class_basename($model).'.'.$column] = ($data->columns[$column] ?? $data->mutators[$column])['type'];
+    }
+
+    ksort($types);
+
+    expect($types)->toBe([
+        'AccessorCycleWarehouse.name' => 'string',
+        'AccessorCycleWarehouse.phone' => 'string | null',
+        'AccessorWarehouse.phone' => 'string | null',
+        'CarriedNullProduct.is_active' => 'string | null',
+        'CarriedNullProduct.name' => 'string',
+        'CarriedNullProduct.price' => 'string | null',
+        'CarriedNullProduct.quantity' => 'string',
+        'CarriedNullProduct.sku' => 'string',
+        'CarriedNullProduct.slug' => 'string | null',
+        'HelperCycleWarehouse.phone' => 'unknown | null',
+    ]);
+})->with([
+    'the product first' => [[
+        [CarriedNullProduct::class, 'name'], [CarriedNullProduct::class, 'slug'], [CarriedNullProduct::class, 'sku'],
+        [CarriedNullProduct::class, 'price'], [CarriedNullProduct::class, 'quantity'], [CarriedNullProduct::class, 'is_active'],
+        [AccessorCycleWarehouse::class, 'name'], [AccessorCycleWarehouse::class, 'phone'],
+        [HelperCycleWarehouse::class, 'phone'], [AccessorWarehouse::class, 'phone'],
+    ]],
+    'the models it reads first' => [[
+        [AccessorCycleWarehouse::class, 'name'], [AccessorCycleWarehouse::class, 'phone'],
+        [HelperCycleWarehouse::class, 'phone'], [AccessorWarehouse::class, 'phone'],
+        [CarriedNullProduct::class, 'is_active'], [CarriedNullProduct::class, 'quantity'], [CarriedNullProduct::class, 'price'],
+        [CarriedNullProduct::class, 'sku'], [CarriedNullProduct::class, 'slug'], [CarriedNullProduct::class, 'name'],
+    ]],
+]);
+
+test('a not-null column cast to a class whose get() provably returns null publishes the null it sends', function (string $column, string $sentForValue) {
+    $columns = ['name', 'slug', 'sku', 'price', 'quantity', 'is_active'];
+    $nulls = (new NullReturningGetProduct)->setRawAttributes(array_fill_keys($columns, null))->toArray();
+    $values = (new NullReturningGetProduct)->setRawAttributes(array_fill_keys($columns, '7'))->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NullReturningGetProduct::class, $column)['type'])->toBe('string | null')
+        ->and(json_encode($nulls[$column]))->toBe('null')
+        ->and(json_encode($values[$column]))->toBe($sentForValue);
+})->with([
+    'a null ternary arm' => ['name', '"t7"'],
+    'a bare return' => ['slug', '"r7"'],
+    'a fall-off' => ['sku', '"f7"'],
+    'a documented int|null' => ['price', '"d7"'],
+    'a null ternary arm under a documented mixed' => ['quantity', '"n7"'],
+    'a null ternary arm under a native mixed' => ['is_active', '"q7"'],
+]);
+
+// A read of the attribute off another model sends get()'s value, so the body is read once, never through itself; the
+// service throws past two nested reads, so a read that came back to serialize() would fail here at once.
+test('a cast whose serialize() reads the attribute it casts publishes what that read gives', function () {
+    $service = new DepthLimitedLaravelTsPublish;
+    $this->app->instance(LaravelTsPublishService::class, $service);
+    Facade::clearResolvedInstance(LaravelTsPublishService::class);
+    $sent = (new SelfReadingSerializeWarehouse)->setRawAttributes(['name' => null])->toArray()['name'];
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(SelfReadingSerializeWarehouse::class, 'name')['type'])->toBe('string')
+        ->and($service->deepest)->toBe(1)
+        ->and(json_encode($sent))->toBe('""');
+});
+
+test('a nullable column cast to a class whose get() declares a non-null type publishes no null, which Laravel never sends', function (string $column, string $type, bool $sendsNull) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'primary_contact_id', 'secondary_contact_id'];
+    $sent = sentAsJson((new CastNullWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a Castable whose caster\'s get() declares a non-null type' => ['color', '{ x: number; y: number }', false],
+    'a caster with arguments' => ['primary_contact_id', '{ lat: number; lng: number }', false],
+    'a caster declared in $casts' => ['secondary_contact_id', '{ lat: number; lng: number }', false],
+    'a CastsInboundAttributes class' => ['phone', 'LowercaseInboundCast | null', true],
+    'a get() declaring mixed' => ['coordinate_data', 'string | null', true],
+    'a Castable whose caster is anonymous, which only a call could read' => ['status', '{ label: string } | null', false],
+]);
+
+test('a NOT NULL column cast to a class adds no null', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, 'name')['type'])
+        ->toBe('{ lat: number; lng: number }');
+});
+
+test('a nullable column cast to an arrow-typed override adds its null beside the arrow, not to its return', function () {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(CastNullWarehouse::class, 'priority')['type'])
+        ->toBe('(() => string) | null');
+});
+
+// Laravel runs an accessor's getter for a NULL column too, so the getter's native return decides the null.
+test('an accessor on a nullable column takes its null from its getter\'s native return', function (string $column, string $type, bool $sendsNull) {
+    $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id', 'secondary_contact_id'];
+    $sent = sentAsJson((new AccessorNullWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AccessorNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a getter declaring ?array{a: ?int}' => ['phone', '{ a: number | null } | null', true],
+    'a getter declaring a non-null array{a: ?int}' => ['coordinate_data', '{ a: number | null }', false],
+    'a getter declaring a non-null array{a: int}' => ['status', '{ a: number }', false],
+    'a getter declaring ?array natively, its docblock leaving the null out' => ['color', '{ a: number | null } | null', true],
+    'an old-style getter declaring a non-null string' => ['priority', 'string', false],
+    'an old-style getter declaring ?int' => ['primary_contact_id', 'number | null', true],
+    'an untyped getter whose docblock declares a nested null only' => ['manager_id', '{ a: number | null }', false],
+    'an untyped getter returning the column' => ['secondary_contact_id', 'number | null', true],
+]);
+
+// toArray() runs a class cast on the key instead of the getter, and a `mixed` return declares nothing.
+test('an accessor whose native return does not decide its null keeps the looser test', function (string $column, string $type, bool $sendsNull) {
+    $sent = sentAsJson((new AccessorCastNullWarehouse)->setRawAttributes(['phone' => null, 'coordinate_data' => null])->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AccessorCastNullWarehouse::class, $column)['type'])->toBe($type)
+        ->and($sent->{$column} === null)->toBe($sendsNull);
+})->with([
+    'a non-null getter beside a class cast that reads NULL as null' => ['phone', 'string | null', true],
+    'a getter declaring mixed, whose docblock declares a nested null only' => ['coordinate_data', '{ a: number | null }', false],
+]);
+
+// Laravel counts a cast in its primitive cast types, `datetime` with or without a format, as no class cast.
+test('an accessor beside a datetime cast takes its null from its getter, which toArray() runs', function (string $column) {
+    $sent = sentAsJson((new AccessorCastNullWarehouse)->setRawAttributes([$column => null])->toArray());
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AccessorCastNullWarehouse::class, $column)['type'])->toBe('string')
+        ->and($sent->{$column})->toBe('read');
+})->with([
+    'datetime' => ['status'],
+    'datetime with a format' => ['color'],
 ]);
 
 test('a nullable column keeps its own null beside a nested null on a primitive cast or AsCollection, never on a class cast whose get() declares a non-null type', function (string $column, string $type) {
@@ -897,6 +1285,7 @@ test('a @property tag naming a @phpstan-type alias whole, inside a list or insid
     'the alias whole' => ['owner_snapshot', '{ a: number } | null'],
     'the alias inside a list' => ['tags', '{ a: number }[] | null'],
     'the alias inside a shape' => ['meta_info', '{ row: { a: number } } | null'],
+    'the alias behind a ?' => ['related_users', '{ a: number } | null'],
 ]);
 
 test('an AsArrayObject cast resolves to the array-or-record union', function () {
@@ -1539,4 +1928,164 @@ describe('ModelAttributeResolver::inspect()', function () {
 
         expect($inspector->reads)->toBe(2);
     });
+});
+
+// Laravel builds the casters castUsing() returns, so where the class it declares answers nothing, its returns do.
+test('a Castable declaring a base caster that answers nothing publishes the serializing subclass it returns', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $sent = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a', 'options' => ''])->toArray();
+    $read = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a']);
+
+    expect($resolver->resolveAttribute(BaseDeclaringCastablePost::class, 'title')['type'])->toBe('string')
+        ->and($resolver->resolveAttribute(BaseDeclaringCastablePost::class, 'options')['type'])->toBe('string | null')
+        ->and($resolver->resolveAttributeClass(BaseDeclaringCastablePost::class, 'title'))->toBe(WrappedLabel::class)
+        ->and(json_encode($sent['title']))->toBe('"a"')
+        ->and(json_encode($sent['options']))->toBe('null')
+        ->and($read->title)->toBeInstanceOf(WrappedLabel::class);
+});
+
+// abort() and a method declaring `never` throw, a match whose every arm throws cannot finish, and a while (true) only
+// a return leaves, so none of these get()s ends without a value.
+test('a get() whose body cannot run to its end adds no null under a typed serialize()', function (string $column, string $sent) {
+    $values = (new NeverEndingGetPost)->setRawAttributes(['title' => 'a', 'content' => 'a', 'category' => 'a'])->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NeverEndingGetPost::class, $column)['type'])->toBe('string')
+        ->and(json_encode($values[$column]))->toBe($sent);
+})->with([
+    'a get() ending in abort()' => ['title', '"saa"'],
+    'a get() a while (true) only a return leaves' => ['content', '"sla"'],
+    'a get() ending in a match whose every arm throws' => ['category', '"sma"'],
+]);
+
+// Model::toArray() writes serialize()'s array always, so a get() returning an enum, `mixed` or a scalar beside a class
+// does not decide the type; only a get() returning an object or array leaves it to get().
+test('an array serialize() without the interface publishes its own type over a get() returning no object or array', function (string $column, string $type, string $raw, string $sent) {
+    $row = (new ArraySerializePost)->setRawAttributes([$column => $raw])->toArray();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(ArraySerializePost::class, $column)['type'])
+        ->toBe($type)
+        ->and(json_encode($row[$column]))->toBe($sent);
+})->with([
+    'a get() returning an enum' => ['title', 'Record<string, unknown>', '1', '{"v":1}'],
+    'a get() declaring mixed, under a bare array' => ['content', 'unknown[] | Record<string, unknown>', 'x', '{"v":"x"}'],
+    'a get() returning a string or a label' => ['category', 'Record<string, unknown>', 'x', '{"v":"x"}'],
+]);
+
+// Model::toArray() calls serialize() whenever the caster has the method, but a read off the model gets get()'s value,
+// which json_encode() writes as it is; a get() declaring only `mixed` publishes what its returns prove, else as before.
+test('a cast with a serialize() method publishes serialize()\'s type for the model and get()\'s for a read off it', function (string $column, string $columnType, string $readType, string $raw, string $sent, string $read) {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $post = (new LabelSerializePost)->setRawAttributes([$column => $raw]);
+
+    expect($resolver->resolveAttribute(LabelSerializePost::class, $column)['type'])->toBe($columnType)
+        ->and($resolver->resolveAttributeValue(LabelSerializePost::class, $column)['type'])->toBe($readType)
+        ->and(json_encode($post->toArray()[$column]))->toBe($sent)
+        ->and(json_encode($post->getAttribute($column)))->toBe($read);
+})->with([
+    'a label get() without the interface' => ['title', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
+    'a label get() with the interface' => ['content', 'string', '{ text: string }', 'a', '"a"', '{"text":"a"}'],
+    'a number get() without the interface' => ['user_id', 'string', 'number', '7', '"n7"', '7'],
+    'a get() declaring mixed with the interface, as its returns prove' => ['category', 'string', '{ x: number; y: number }', '7', '"p7"', '{"x":7,"y":1}'],
+    'a get() declaring mixed without the interface, as published before' => ['status', 'string', 'unknown | null', '7', '"7"', '"7"'],
+]);
+
+test('a resource reading a serializing cast off its model publishes get()\'s type, and the model serialize()\'s', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'category' => '7', 'user_id' => '7', 'status' => '1']);
+
+    expect(resourceProps(LabelSerializeReadResource::class))->toBe([
+        'method_label' => '{ text: string }',
+        'method_label_whole' => '{ text: string }',
+        'interface_label' => '{ text: string }',
+        'interface_label_whole' => '{ text: string }',
+        'mixed_interface' => '{ x: number; y: number }',
+        'number' => 'number',
+        'mixed_method' => 'unknown | null',
+    ])->and(json_encode(LabelSerializeReadResource::make($post)->resolve()))
+        ->toBe('{"method_label":{"text":"a"},"method_label_whole":{"text":"a"},"interface_label":{"text":"b"},"interface_label_whole":{"text":"b"},"mixed_interface":{"x":7,"y":1},"number":7,"mixed_method":"1"}')
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"b"', '"user_id":"n7"');
+});
+
+// Model::toArray() writes serialize()'s value, which a resource delegating to it sends; only() reads each attribute
+// through getAttribute(), which gives get()'s value.
+test('a resource sending its model\'s toArray() publishes serialize()\'s type, and one sending only() get()\'s', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'user_id' => '7']);
+
+    expect(array_intersect_key(resourceProps(LabelSerializeDelegatingResource::class), array_flip(['title', 'content', 'user_id'])))
+        ->toBe(['title' => 'string', 'content' => 'string', 'user_id' => 'string'])
+        ->and(json_encode(array_intersect_key(LabelSerializeDelegatingResource::make($post)->resolve(), array_flip(['title', 'content', 'user_id']))))
+        ->toBe('{"title":"a","content":"b","user_id":"n7"}')
+        ->and(resourceProps(LabelSerializeOnlyResource::class))->toBe([
+            'title' => '{ text: string }',
+            'content' => '{ text: string }',
+            'user_id' => 'number',
+            'nested' => '{ title: { text: string }; user_id: number }',
+        ])
+        ->and(json_encode(LabelSerializeOnlyResource::make($post)->resolve()))
+        ->toBe('{"title":{"text":"a"},"content":{"text":"b"},"user_id":7,"nested":{"title":{"text":"a"},"user_id":7}}');
+});
+
+// A relation's only() and except() read each attribute through getAttribute() too, so the model interface, which
+// holds serialize()'s type, cannot stand for them; a filter of plain columns keeps its Pick<>.
+test('a relation\'s only() and except() over serializing casts publish get()\'s type', function () {
+    $post = (new LabelSerializePost)->setRawAttributes(['id' => 1, 'title' => 'a', 'user_id' => '7']);
+    $comment = (new LabelSerializeComment)->setRawAttributes(['id' => 3, 'post_id' => 1])->setRelation('labelPost', $post);
+
+    expect(resourceProps(LabelSerializeFilterResource::class))->toBe([
+        'rel_only' => '{ title: { text: string }; user_id: number }',
+        'rel_except' => '{ title: { text: string }; user_id: number }',
+        'rel_plain_only' => "Pick<LabelSerializePost, 'id'>",
+    ])->and(json_encode(LabelSerializeFilterResource::make($comment)->resolve()))
+        ->toBe('{"rel_only":{"title":{"text":"a"},"user_id":7},"rel_except":{"title":{"text":"a"},"user_id":7},"rel_plain_only":{"id":1}}');
+});
+
+// A Castable that is not the value hands the model the caster castUsing() builds, so a read off the model sends what
+// that caster's get() returns, never the Castable's own shape.
+test('a read of a column cast to a Castable that is not the value publishes its caster\'s get() type', function () {
+    $post = (new BaseDeclaringCastablePost)->setRawAttributes(['title' => 'a', 'content' => 'c']);
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttributeValue(BaseDeclaringCastablePost::class, 'title')['type'])->toBe('{ text: string }')
+        ->and(resourceProps(CastableValueReadResource::class))->toBe([
+            'declared_base' => '{ text: string }',
+            'declared_base_whole' => '{ text: string }',
+            'propertied' => '{ text: string }',
+        ])
+        ->and(json_encode(CastableValueReadResource::make($post)->resolve()))
+        ->toBe('{"declared_base":{"text":"a"},"declared_base_whole":{"text":"a"},"propertied":{"text":"c"}}')
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"c"');
+});
+
+// A get() declaring only `mixed` says nothing of the value, so its returns say what a read off the model sends; where
+// they prove nothing, the read keeps the column's type.
+test('a read of a column whose caster\'s get() declares only mixed publishes what its returns prove', function () {
+    $post = (new MixedGetCastablePost)->setRawAttributes(['title' => 'a', 'content' => 'b', 'category' => 'c']);
+    $columns = (new ModelTransformer(MixedGetCastablePost::class))->data()->columns;
+
+    expect(resourceProps(MixedGetCastableReadResource::class))->toBe([
+        'castable_mixed_get' => '{ text: string }',
+        'caster_mixed_get' => '{ text: string }',
+        'nested_only' => '{ title: { text: string }; content: { text: string } }',
+        'opaque_castable' => $columns['category']['type'],
+        'opaque_only' => "Pick<MixedGetCastablePost, 'category'>",
+    ])->and(json_encode(MixedGetCastableReadResource::make($post)->resolve()))->toBe(
+        '{"castable_mixed_get":{"text":"a"},"caster_mixed_get":{"text":"b"},'
+        .'"nested_only":{"title":{"text":"a"},"content":{"text":"b"}},"opaque_castable":"c","opaque_only":{"category":"c"}}',
+    )->and([$columns['title']['type'], $columns['content']['type'], $columns['category']['type']])->toBe(['string', 'string', 'string'])
+        ->and(json_encode($post->toArray()))->toContain('"title":"a"', '"content":"b"', '"category":"oc"');
+});
+
+// self:: runs the parent's own stop(), which returns, so a NULL falls off get()'s end and is sent unserialized.
+test('a get() ending in self:: a child redeclares as never still adds the null it may send', function () {
+    $model = new class extends Model
+    {
+        protected $table = 'posts';
+
+        /** @return array<string, string> */
+        protected function casts(): array
+        {
+            return ['title' => SelfStoppingChildGetCast::class];
+        }
+    };
+
+    expect(LaravelTsPublish::castToTsType(SelfStoppingChildGetCast::class)['type'])->toBe('string | null')
+        ->and(json_encode($model->setRawAttributes(['title' => null])->toArray()['title']))->toBe('null');
 });

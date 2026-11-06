@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Closure;
@@ -19,9 +20,10 @@ use PhpParser\PrettyPrinter\Standard;
  * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
- * @phpstan-type HeldWarning array{subject: string, message: string}
+ * @phpstan-type HeldWarning array{subject: string, message: string, arm?: Expr}
  *
  * @internal
  */
@@ -71,6 +73,18 @@ final class DroppedUnionArms
     public static function leftNullSince(string $type, int $dropped): bool
     {
         return $type === 'null' && self::$dropped !== $dropped;
+    }
+
+    /**
+     * The arms whose drop left a placeholder that the innermost replaceable() read under way holds a warning for.
+     *
+     * @return list<Expr>
+     */
+    public static function heldPlaceholderArms(): array
+    {
+        $innermost = array_key_last(self::$held);
+
+        return $innermost === null ? [] : array_column(self::$held[$innermost], 'arm');
     }
 
     /** Count the arms a reused analysis dropped when it was first computed, as computing it again would. */
@@ -123,7 +137,7 @@ final class DroppedUnionArms
                 $arm->getStartLine(),
                 $placeholder,
                 new Standard()->prettyPrintExpr($arm),
-            ));
+            ), $arm);
         }
 
         return $union;
@@ -148,6 +162,19 @@ final class DroppedUnionArms
             return self::warnOfPlaceholder($union, $dropped, $scope);
         }
 
+        self::warnOfLeftOut($dropped, $scope);
+
+        return $union;
+    }
+
+    /**
+     * Warn in the run output, once per arm a join left out beside typed ones, that the published type may not admit
+     * every value the read sends; a receiver's join, which publishes no type of its own, warns through this alone.
+     *
+     * @param  list<Expr>  $dropped  the arms the join left out
+     */
+    public static function warnOfLeftOut(array $dropped, AnalysisScope $scope): void
+    {
         foreach ($dropped as $arm) {
             self::warn($scope->subjectReflection->getName(), sprintf(
                 'The value on line %d leaves out `%s`, which could not be typed, so its published type may not admit '
@@ -156,18 +183,67 @@ final class DroppedUnionArms
                 new Standard()->prettyPrintExpr($arm),
             ));
         }
-
-        return $union;
     }
 
     /**
-     * Run a read whose placeholder its caller may replace, as a local's inline `@var` or a model's declared accessor
-     * type does, and let the warnings raised inside it reach the run output only where $kept says the value stands.
+     * Warn in the run output, once per object a receiver's join left out as naming no class, that the published type
+     * may not admit every value the read sends.
+     *
+     * @param  list<Expr>  $dropped  the writes the join left out
+     */
+    public static function warnOfUnnamedObject(array $dropped, AnalysisScope $scope): void
+    {
+        foreach ($dropped as $arm) {
+            self::warn($scope->subjectReflection->getName(), sprintf(
+                'The value on line %d leaves out `%s`, an object whose class could not be named, so its published type '
+                .'may not admit every value it sends. Give what it reads a return type or a `@return` docblock naming a class.',
+                $arm->getStartLine(),
+                new Standard()->prettyPrintExpr($arm),
+            ));
+        }
+    }
+
+    /**
+     * Record and warn in the run output, once each, of the writes a member read left out of a join: `$this` read as a
+     * class that does not declare the member or cannot type it, and any other write as warnOfLeftOut() words it.
+     *
+     * @param  list<LeftOutWrite>  $writes
+     */
+    public static function warnOfDeclined(array $writes, AnalysisScope $scope): void
+    {
+        foreach ($writes as $write) {
+            self::record($write['value'], $scope, 'binding-join');
+
+            if (! isset($write['readAs'])) {
+                self::warnOfLeftOut([$write['value']], $scope);
+
+                continue;
+            }
+
+            [$class, $member, $declared] = $write['readAs'];
+            self::warn($scope->subjectReflection->getName(), sprintf(
+                'The value on line %d leaves out `%s`, read as `%s`, %s, so its published type may not admit every '
+                .'value it sends. %s',
+                $write['value']->getStartLine(),
+                new Standard()->prettyPrintExpr($write['value']),
+                $class,
+                $declared ? "whose `{$member}` could not be typed" : "which does not declare `{$member}`",
+                $declared
+                    ? 'Type it, or give the local a `@var` naming a class that types it.'
+                    : 'Give the local a `@var` naming a class that declares it.',
+            ));
+        }
+    }
+
+    /**
+     * Run a read whose placeholders its caller may replace, as a local's inline `@var` or a model's declared accessor
+     * type does, and let each warning raised inside it reach the run output only where $kept says it still stands,
+     * asked with the arm whose placeholder the warning names, if it names one.
      *
      * @template TRead
      *
      * @param  Closure(): TRead  $read
-     * @param  Closure(TRead): bool  $kept
+     * @param  Closure(TRead, Expr|null): bool  $kept
      * @return TRead
      */
     public static function replaceable(Closure $read, Closure $kept): mixed
@@ -180,9 +256,9 @@ final class DroppedUnionArms
             $held = array_pop(self::$held) ?? [];
         }
 
-        if ($kept($value)) {
-            foreach ($held as $warning) {
-                self::warn($warning['subject'], $warning['message']);
+        foreach ($held as $warning) {
+            if ($kept($value, $warning['arm'] ?? null)) {
+                self::warn($warning['subject'], $warning['message'], $warning['arm'] ?? null);
             }
         }
 
@@ -196,7 +272,7 @@ final class DroppedUnionArms
      * @template TRead
      *
      * @param  Closure(): TRead  $read
-     * @param  Closure(TRead): bool  $kept  asked twice, so it must only inspect the value
+     * @param  Closure(TRead): bool  $kept  asked more than once, so it must only inspect the value
      * @return TRead
      */
     public static function provisional(Closure $read, Closure $kept): mixed
@@ -226,8 +302,11 @@ final class DroppedUnionArms
             : null;
     }
 
-    /** Hold a warning for the innermost replaceable() read under way, or add it to the run's warnings. */
-    private static function warn(string $subject, string $message): void
+    /**
+     * Hold a warning for the innermost replaceable() read under way, with the arm whose placeholder it names, or add it
+     * to the run's warnings.
+     */
+    private static function warn(string $subject, string $message, ?Expr $placeholderArm = null): void
     {
         $innermost = array_key_last(self::$held);
 
@@ -237,6 +316,7 @@ final class DroppedUnionArms
             return;
         }
 
-        self::$held[$innermost][] = ['subject' => $subject, 'message' => $message];
+        $warning = ['subject' => $subject, 'message' => $message];
+        self::$held[$innermost][] = $placeholderArm === null ? $warning : [...$warning, 'arm' => $placeholderArm];
     }
 }

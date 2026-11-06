@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Support\Opaque;
 
 /** A docblock-filled `_tag` signature on an interface that extends one whose keys the package cannot see. */
 #[TsExtends('HasPriceTag')]
@@ -37,6 +38,6 @@ final class ExtendedTagSignatureResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

@@ -14,7 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -85,7 +85,7 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($runs);
         }
 
-        $reading = $reading->entering($runs, $method, $readsCall);
+        $reading = $reading->entering($runs, $method, $readsCall)->over($class);
 
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($casesAsLiterals ? '@casesAsLiterals' : '')
             .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')
@@ -118,6 +118,7 @@ final class AstEngine
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
      * @param  Reading  $reading  how the caller's values reach the client; a call read for its value runs no filter
+     * @param  bool  $casesAsLiterals  true for the body fallback, whose plain enum cases type as the literals they send
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -129,6 +130,7 @@ final class AstEngine
         ?string $backing = null,
         ?RuntimeClass $runtime = null,
         Reading $reading = Reading::Encoded,
+        bool $casesAsLiterals = false,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -137,6 +139,7 @@ final class AstEngine
         }
 
         [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime, $reading);
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }
@@ -259,6 +262,7 @@ final class AstEngine
      * @param  class-string<Model>  $modelClass
      * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
      * @param  bool  $casesAsLiterals  true when the body fallback reads the accessor, whose cases keep their literals
+     * @param  Reading  $reading  filtered where `filter()` reaches the value the accessor's reader reads
      * @return ValueExpressionResult
      *
      * @internal
@@ -269,6 +273,7 @@ final class AstEngine
         MethodContext $context,
         bool $carriesImports = true,
         bool $casesAsLiterals = false,
+        Reading $reading = Reading::Encoded,
     ): array {
         $scope = $this->bindingsFor($context);
 
@@ -284,6 +289,7 @@ final class AstEngine
             ResourceExpressionHandlers::forModelClosures(),
             $scope,
             $context,
+            reading: $reading,
         );
 
         return $analyzer->resolve($closure);

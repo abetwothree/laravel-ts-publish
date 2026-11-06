@@ -255,6 +255,33 @@ test('counts each entry into a guard a re-entry lifted, and each reused answer t
     expect([$fresh, ...$counts])->toBe([0, 1, 1, 0]);
 });
 
+test('counts each read that meets a guard already on the stack, and each reuse of an answer that met one, past a reset', function () {
+    $memo = new AnalysisMemo;
+    $cutRead = fn (): bool => $memo->enter('guard');
+    $memo->enter('guard');
+
+    $memo->remember('cut', $cutRead);
+    $computed = $memo->cuts();
+    $memo->remember('cut', $cutRead);
+    $reused = $memo->cuts();
+    $memo->remember('whole', fn (): string => 'read');
+    $memo->leave('guard');
+    $memo->reset();
+
+    expect([$computed, $reused - $computed, $memo->cuts()])->toBe([1, 1, 2]);
+});
+
+test('counts the cuts of the guards under a key prefix alone, a reused answer replaying each', function () {
+    $memo = new AnalysisMemo;
+    $memo->enter('body:a');
+    $memo->enter('sentinel');
+    $memo->remember('k', fn (): bool => $memo->enter('body:a') || $memo->enter('sentinel'));
+    $memo->remember('k', fn (): bool => false);
+    $memo->enter('sentinel');
+
+    expect([$memo->cuts(), $memo->cuts('body:'), $memo->cuts('sentinel'), $memo->cuts('none:')])->toBe([5, 2, 3, 0]);
+});
+
 test('a seeded check reuses no answer that met its guard outside it, and drops those it computed when it ends', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;

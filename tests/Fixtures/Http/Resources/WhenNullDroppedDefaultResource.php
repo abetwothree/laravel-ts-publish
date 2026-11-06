@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A test-only resource whose annotated local holds a `whenNull()` with a default the engine cannot type.
@@ -27,6 +28,6 @@ class WhenNullDroppedDefaultResource extends JsonResource
     /** Deliberately untyped, so the default is an arm the engine cannot type. */
     public function opaqueLabel() // @phpstan-ignore missingType.return
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

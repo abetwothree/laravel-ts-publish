@@ -63,6 +63,10 @@ final class ReflectedTypeAcceptor
             $result['keepsKeys'] = true;
         }
 
+        if ($tsInfo['listKeys'] ?? false) {
+            $result['listKeys'] = true;
+        }
+
         return ($tsInfo['closedToDottedKeys'] ?? false) ? ValueResult::closeToDottedKeys($result) : $result;
     }
 }

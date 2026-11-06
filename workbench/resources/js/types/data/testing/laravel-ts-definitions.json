@@ -7196,7 +7196,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "placed_at",
@@ -9711,7 +9711,7 @@
                 },
                 {
                     "name": "coordinate_data",
-                    "type": "{ lat: number; lng: number } | null"
+                    "type": "{ lat: number; lng: number }"
                 },
                 {
                     "name": "status",
@@ -10791,6 +10791,31 @@
                     "name": "category_table_name",
                     "type": "string | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ArrayMapResource": {
+            "name": "ArrayMapResource",
+            "properties": [
+                {
+                    "name": "messages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "doubled",
+                    "type": "{ low: number; high: number }",
+                    "optional": false
+                },
+                {
+                    "name": "zipped",
+                    "type": "[string | null, number | null][]",
+                    "optional": false
+                },
+                {
+                    "name": "names",
+                    "type": "string[]",
+                    "optional": false
                 }
             ]
         },
@@ -13975,7 +14000,7 @@
                 },
                 {
                     "name": "members_via_var",
-                    "type": "AsEnum<typeof Role>[]",
+                    "type": "(AsEnum<typeof Role> | never[])[]",
                     "optional": true
                 },
                 {
@@ -15465,7 +15490,7 @@
             "properties": [
                 {
                     "name": "early",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -15530,7 +15555,7 @@
                 },
                 {
                     "name": "shadowed",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 }
             ]
@@ -15940,7 +15965,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16650,7 +16675,7 @@
                 },
                 {
                     "name": "notes_closure",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16660,7 +16685,7 @@
                 },
                 {
                     "name": "tracking",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -16815,7 +16840,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17029,7 +17054,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17149,7 +17174,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17949,6 +17974,11 @@
                 {
                     "name": "share_count",
                     "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "stats_summary",
+                    "type": "string | null",
                     "optional": false
                 },
                 {
@@ -19036,37 +19066,37 @@
                 },
                 {
                     "name": "member_role_resources",
-                    "type": "AsEnum<typeof Role>[]",
+                    "type": "(AsEnum<typeof Role> | never[])[]",
                     "optional": false
                 },
                 {
                     "name": "member_role_resources_filtered",
-                    "type": "AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>",
+                    "type": "(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>",
                     "optional": false
                 },
                 {
                     "name": "wrapped_filtered",
-                    "type": "{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }",
+                    "type": "{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }",
                     "optional": false
                 },
                 {
                     "name": "member_names_upper",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
                     "name": "member_formatted",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
                     "name": "member_mapped_fcc",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {
                     "name": "member_plucked_fcc",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {
@@ -20035,7 +20065,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -20170,7 +20200,7 @@
                 },
                 {
                     "name": "notes",
-                    "type": "string | null",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -20336,6 +20366,26 @@
                 {
                     "name": "summaries",
                     "type": "{ key: string; label: string }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StatsSummaryResource": {
+            "name": "StatsSummaryResource",
+            "properties": [
+                {
+                    "name": "views",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "shares",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "string",
                     "optional": false
                 }
             ]

@@ -8,9 +8,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EagerColumnsPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExplicitPostOverHeldStatsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PhpstanExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
 use Illuminate\Http\Request;
@@ -66,7 +73,7 @@ it('reads a property @var docblock and returns null when there is none', functio
     $reflection = new ReflectionClass(DeclaredProps::class);
 
     expect($reader->read($reflection->getProperty('tags')))
-        ->toBe(['type' => 'string[]', 'optional' => false])
+        ->toBe(['type' => 'string[]', 'optional' => false, 'listKeys' => true])
         ->and($reader->read($reflection->getProperty('id')))->toBeNull();
 });
 
@@ -103,6 +110,16 @@ it('resolves the backing model a @phpstan-extends tag names', function () {
     expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass(PhpstanExtendsResource::class)))
         ->toBe(Post::class);
 });
+
+it('keeps a guessed model the declared classes admit, and an explicit one over tags it is not', function (string $resource, ?string $model) {
+    expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass($resource)))->toBe($model);
+})->with([
+    'an interface mixin the guess implements' => [ArchivingPostResource::class, ArchivingPost::class],
+    'an interface @var the guess implements' => [BuiltPostResource::class, BuiltPost::class],
+    'an interface mixin no model implements' => [EagerColumnsPostResource::class, null],
+    'a value object the guess is not' => [SearchedPostResource::class, null],
+    '#[TsResource(model:)] over a value-object mixin' => [ExplicitPostOverHeldStatsResource::class, Post::class],
+]);
 
 it('a ResourceCollection with @mixin resolves no model', function (string $collection) {
     expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass($collection)))->toBeNull();

@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppendedPriorityWrapPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
@@ -182,6 +190,17 @@ describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
 });
 
 // The `@return` before a getter closure answers where its body types nothing, as for a resource's value closure.
+// A getter reads a vague helper's case as the literal it sends, while a wrap or a map callback reading the attribute
+// needs, and gets, the case's enum through the getter and the helper.
+test('a getter returning a vague helper\'s case types its literal, and its enum where a wrap or a map reads it', function () {
+    expect(resourceProps(HelperCaseGetterResource::class))->toBe([
+        'held' => '0',
+        'held_resource' => 'AsEnum<typeof Status>',
+        'held_old_resource' => 'AsEnum<typeof Status>',
+        'held_values' => 'StatusType[]',
+    ]);
+});
+
 describe('AccessorBodyAnalyzer for a getter its closure\'s docblock types', function () {
     test('the model publishes each getter\'s documented type, passed by name or by position', function () {
         expect(array_map(fn (array $mutator): string => $mutator['type'], (new ModelTransformer(DocumentedGetterPost::class))->data()->mutators))
@@ -297,3 +316,35 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         'the enum alone' => ['plain_state', 'StatusType'],
     ]);
 });
+
+// filter() sends a wrap an accessor builds as null where a resource's value reaches it, though the model's own JSON,
+// and a map kept as a Collection, serialize it as the `[]` resolve() returns.
+test('an accessor\'s EnumResource wrap publishes what its reader sends for a null enum', function () {
+    $post = (new WrappedPriorityPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes(WrappedPriorityPostResource::class, WrappedPriorityPost::class))->toBe([
+        'accessor' => 'PriorityType | null',
+        'accessor_kept' => '(PriorityType | never[])[]',
+        'accessor_all' => '(PriorityType | null)[]',
+    ])
+        ->and((string) new WrappedPriorityPostResource($post)->response(request())->getContent())
+        ->toBe('{"data":{"accessor":null,"accessor_kept":[[]],"accessor_all":[null]}}')
+        ->and(new ModelTransformer(WrappedPriorityPost::class)->data()->mutators['priority_wrap']['type'])
+        ->toBe('PriorityType | never[]')
+        ->and(json_encode($post->append('priority_wrap')->only('priority_wrap')))->toBe('{"priority_wrap":[]}');
+});
+
+// A resource sending its model's own array, whole, spread or merged, hands each appended wrap to filter(), which sends
+// it as null, though the model's own JSON sends `[]`.
+test('an appended accessor\'s EnumResource wrap publishes the null filter() sends through the model\'s own array', function (string $resource) {
+    $post = (new AppendedPriorityWrapPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes($resource, AppendedPriorityWrapPost::class)['priority_wrap'])->toBe('PriorityType | null')
+        ->and((string) new $resource($post)->response(request())->getContent())->toContain('"priority_wrap":null')
+        ->and(json_encode($post))->toBe('{"id":2,"priority":null,"priority_wrap":[]}');
+})->with([
+    'parent::toArray() returned whole' => [AppendedWrapParentResource::class],
+    'parent::toArray() spread' => [AppendedWrapSpreadResource::class],
+    'the model merged' => [AppendedWrapMergeResource::class],
+    'no toArray() of its own' => [AppendedWrapDelegatedResource::class],
+]);

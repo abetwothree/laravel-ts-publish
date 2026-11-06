@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use Closure;
 
@@ -40,14 +41,11 @@ enum ByReferenceEffect
     /** array_walk_recursive() writes each value below the arrays it descends, at any depth. */
     case WritesLeaves;
 
-    /** preg_match() with no flag and no named group writes the groups it captures: a list of strings. */
+    /** preg_match() and preg_match_all() write the matches their pattern and flags give, whatever the value held. */
     case WritesMatches;
 
     /** Anything else: the callee writes a value the scan does not follow. */
     case Replaces;
-
-    /** What preg_match()'s matches replace: an empty or string list, which a list of strings stands for either way. */
-    private const array MATCHES_REPLACE = ['never[]', '[]', 'string[]'];
 
     /**
      * The type a value of a type holds once the call returns, or null when the scan cannot tell: the type itself while
@@ -59,23 +57,31 @@ enum ByReferenceEffect
      * @param  Written  $written  the types the call adds, or writes into an element of the first type under a key of
      *                            the second
      * @param  list<string>  $path
+     * @param  string|null  $matches  the type of the matches the call writes, for WritesMatches
      */
-    public function left(string $type, Closure $written, array $path = [], bool $reindexed = false): ?string
-    {
+    public function left(
+        string $type,
+        Closure $written,
+        array $path = [],
+        bool $reindexed = false,
+        ?string $matches = null,
+    ): ?string {
         if ($path === []) {
-            return $this->leftWhole($type, $written, $reindexed);
+            return $this->leftWhole($type, $written, $reindexed, $matches);
         }
 
         $key = array_shift($path);
+
+        // An int key reads a nullable list's element too, which ArrayArms::listElement() declines.
         $member = TsTypeShape::memberType($type, $key)
-            ?? (is_numeric($key) ? self::listElements($type)[0] ?? null : null);
+            ?? (is_numeric($key) ? TsTypeShape::elementType($type) : null);
 
         // Whatever the call leaves in a member typed `unknown`, the type published for it still holds.
         if ($member === null || $member === 'unknown') {
             return $member === null || $this === self::Replaces ? null : $type;
         }
 
-        $left = $this->left($member, $written, $path, $reindexed);
+        $left = $this->left($member, $written, $path, $reindexed, $matches);
 
         return match (true) {
             $left === null => null,
@@ -85,25 +91,13 @@ enum ByReferenceEffect
     }
 
     /**
-     * The one element type of a list type such as `T[]`, or null for a tuple or any other type.
-     *
-     * @return list<string>|null
-     */
-    private static function listElements(string $arm): ?array
-    {
-        $element = TsTypeShape::isWrapped($arm, '[', ']') ? null : TsTypeShape::elementType($arm);
-
-        return $element === null ? null : [$element];
-    }
-
-    /**
      * A list's one element under an int key, or null for any other type.
      *
      * @return list<KeyedElement>|null
      */
     private static function listedElements(string $arm): ?array
     {
-        $element = self::listElements($arm)[0] ?? null;
+        $element = ArrayArms::listElement($arm);
 
         return $element === null ? null : [[$element, 'number']];
     }
@@ -279,7 +273,7 @@ enum ByReferenceEffect
      *
      * @param  Written  $written
      */
-    private function leftWhole(string $type, Closure $written, bool $reindexed): ?string
+    private function leftWhole(string $type, Closure $written, bool $reindexed, ?string $matches): ?string
     {
         if ($this === self::KeepsNumber) {
             return $type === 'number' ? $type : null;
@@ -287,9 +281,11 @@ enum ByReferenceEffect
 
         $arms = TsTypeShape::splitTopLevel($type, ['|']);
 
-        // A call that may not run leaves the value held, so the matches replace only one they can stand for.
+        // A call that may not run leaves the value held, so the matches replace only an empty list or one they type.
         if ($this === self::WritesMatches) {
-            return array_diff($arms, self::MATCHES_REPLACE) === [] ? 'string[]' : null;
+            return $matches !== null && array_diff($arms, ['never[]', '[]', ...TsTypeShape::splitTopLevel($matches, ['|'])]) === []
+                ? $matches
+                : null;
         }
 
         if (! array_any($arms, static fn (string $arm): bool => $arm !== 'null')) {
@@ -320,10 +316,10 @@ enum ByReferenceEffect
     {
         return match ($this) {
             self::KeepsAny => $arm,
-            self::KeepsList => self::listElements($arm) === null ? null : $arm,
+            self::KeepsList => ArrayArms::listElement($arm) === null ? null : $arm,
             self::KeepsObject => match (true) {
                 TsTypeShape::isObjectLike($arm) => $arm,
-                $reindexed && self::listElements($arm) !== null => $arm,
+                $reindexed && ArrayArms::listElement($arm) !== null => $arm,
                 // A re-indexed tuple lists its members in sorted order, never in the declared one.
                 $reindexed && $arm !== '[]' && TsTypeShape::isWrapped($arm, '[', ']') => TsTypeShape::listType(
                     array_column(self::elements($arm) ?? [], 0),

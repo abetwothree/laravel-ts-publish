@@ -182,6 +182,10 @@ final class VariableWrites
         return match ($effect) {
             ByReferenceEffect::Appends => self::appendedForm($node, $target, $path),
             ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves => self::walkedForm($node, $effect, $path, $scope),
+            ByReferenceEffect::WritesMatches => [
+                ...self::form($effect, [], $path),
+                'matches' => resolve(ByReferenceArguments::class)->matchesType($node),
+            ],
             default => self::form($effect, [], $path),
         };
     }
@@ -559,6 +563,7 @@ final class VariableWrites
     ): array {
         return [
             'effect' => $effect,
+            'matches' => null,
             'values' => $values,
             'path' => $path,
             'callback' => $callback,

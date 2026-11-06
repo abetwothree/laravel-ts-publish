@@ -1019,7 +1019,7 @@ declare global {
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -1925,7 +1925,7 @@ declare global {
             name: string;
             /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
             phone: string | null;
-            coordinate_data: { lat: number; lng: number } | null;
+            coordinate_data: { lat: number; lng: number };
             status: workbench.app.enums.StatusType | null;
             color: workbench.app.enums.ColorType | null;
             priority: workbench.app.enums.PriorityType | null;
@@ -2607,6 +2607,16 @@ declare global {
             post_table_name: string;
             category_class_name?: string | null;
             category_table_name?: string | null;
+        }
+        /**
+         * Exercises array_map(): one array keeps its keys, two arrays re-index into a list, and a callable of any form is
+         * called with each element.
+         */
+        export interface ArrayMapResource {
+            messages: string[];
+            doubled: { low: number; high: number };
+            zipped: [string | null, number | null][];
+            names: string[];
         }
         /** The other arm of the reviewable morph union ReviewResource unions over. */
         export interface ArtistResource {
@@ -3561,7 +3571,7 @@ declare global {
             week_days_when_has?: workbench.app.enums.WeekDaysType[] | null;
             week_days_when_has_default: workbench.app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: workbench.app.enums.StatusType[];
-            members_via_var?: workbench.app.enums.RoleType[];
+            members_via_var?: (workbench.app.enums.RoleType | never[])[];
             member_role_snapshot?: { role: workbench.app.enums.RoleType | null }[];
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
@@ -3939,7 +3949,7 @@ declare global {
          * that reaches it: `early` the notes and `late` the key, never the one recorded last.
          */
         export interface LocalVarGuardClauseResource {
-            early?: string | null;
+            early?: string;
             late?: number;
         }
         /**
@@ -3982,7 +3992,7 @@ declare global {
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: string | null;
+            shadowed: string;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for
@@ -4118,7 +4128,7 @@ declare global {
             total?: string;
             shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes?: string | null;
+            notes?: string;
             placed_at?: string | null;
             paid_at?: string | null;
             shipped_at?: string | null;
@@ -4371,9 +4381,9 @@ declare global {
             status_arrow?: workbench.app.enums.OrderStatusType;
             user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
-            notes_closure?: string | null;
+            notes_closure?: string;
             shipped_at?: string | null;
-            tracking?: string | null;
+            tracking?: string;
             currency_label: workbench.app.enums.CurrencyType;
             total_display: string;
         }
@@ -4418,7 +4428,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -4474,7 +4484,7 @@ declare global {
             id: number;
             status: workbench.app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             item_count: number;
             search_index: unknown;
             items: workbench.app.models.OrderItem[];
@@ -4504,7 +4514,7 @@ declare global {
             user: workbench.app.models.User;
             status: workbench.app.enums.OrderStatusType;
             total: string;
-            notes: string | null;
+            notes: string;
             search_index: unknown;
         }
         /**
@@ -4754,6 +4764,7 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            stats_summary: string | null;
             blockers: { message: string; route?: string }[];
             checks_count: string;
             loaded_checks_count?: string;
@@ -5084,13 +5095,13 @@ declare global {
             member_map_only: { id: number; role: workbench.app.enums.RoleType | null }[];
             member_emails: string[];
             member_roles: (workbench.app.enums.RoleType | null)[];
-            member_role_resources: workbench.app.enums.RoleType[];
-            member_role_resources_filtered: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType>;
-            wrapped_filtered: { roles: workbench.app.enums.RoleType[] | Record<string, workbench.app.enums.RoleType> };
-            member_names_upper: unknown;
-            member_formatted: unknown;
-            member_mapped_fcc: unknown;
-            member_plucked_fcc: unknown;
+            member_role_resources: (workbench.app.enums.RoleType | never[])[];
+            member_role_resources_filtered: (workbench.app.enums.RoleType | never[])[] | Record<string, (workbench.app.enums.RoleType | never[])>;
+            wrapped_filtered: { roles: (workbench.app.enums.RoleType | never[])[] | Record<string, (workbench.app.enums.RoleType | never[])> };
+            member_names_upper: string[];
+            member_formatted: string[];
+            member_mapped_fcc: Record<string, never>;
+            member_plucked_fcc: Record<string, never>;
             first_member: workbench.app.models.User | null;
             members_after_load: workbench.app.models.User[];
             first_member_after_load: workbench.app.models.User | null;
@@ -5399,7 +5410,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -5427,7 +5438,7 @@ declare global {
             total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
-            notes: string | null;
+            notes: string;
             placed_at: string | null;
             paid_at: string | null;
             shipped_at: string | null;
@@ -5463,6 +5474,12 @@ declare global {
             order_or_base: workbench.app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
+        }
+        /** A resource over a value object rather than a model, read through `$this->resource` and the proxy. */
+        export interface StatsSummaryResource {
+            views: number;
+            shares: number;
+            summary: string;
         }
         /** Filters itself through `$this->except()`, dropping the one accessor that names only the `#[TsType]` class. */
         export interface StockroomExceptResource {

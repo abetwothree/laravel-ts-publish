@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A test-only resource whose merge calls and spread helpers join a value the engine cannot type with a typed one: a
@@ -72,6 +73,6 @@ final class DroppedBranchJoinResource extends JsonResource
     /** Deliberately untyped. */
     public function opaqueRows()
     {
-        return $this->resource->getAttribute('tags');
+        return Opaque::value($this->resource->tags);
     }
 }

@@ -1,0 +1,207 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls;
+
+use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Scalar\String_;
+use ReflectionClass;
+use ReflectionMethod;
+
+/**
+ * The dispatch floor: Laravel-convention method-name rules for method calls no earlier handler
+ * claimed — e.g. `$request->user()->can(…)`, whose receiver is itself a MethodCall. Registered last.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
+ */
+final class KnownMethodRuleHandler implements ExpressionHandler
+{
+    use AppliesKnownMethodRules;
+    use InspectsAstNodes;
+    use InspectsResourceSubject;
+    use ParsesTsCasts;
+    use ResolvesAuthHelperCalls;
+    use ResolvesModelRelationTypes;
+
+    /**
+     * Reflections cached per bound Request subclass, so a form request's own typed helpers are
+     * read too rather than only the base `Illuminate\Http\Request` surface.
+     *
+     * @var array<class-string<Request>, ReflectionClass<Request>>
+     */
+    private static array $requestReflections = [];
+
+    /** @return list<class-string<Expr>> */
+    public function nodeClasses(): array
+    {
+        return [MethodCall::class];
+    }
+
+    /** @return ValueExpressionResult|null */
+    public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        // Claims MethodCall only: a NullsafeMethodCall every earlier claimant declines floors at unknown.
+        if ($expr instanceof MethodCall) {
+            $request = $this->requestMethodRule($expr, $scope);
+
+            if ($request !== null) {
+                return $request;
+            }
+
+            $known = $this->knownMethodRule($expr, $scope);
+
+            if ($known !== null) {
+                return $known;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Type a method call on an `Illuminate\Http\Request` receiver from the method's own signature.
+     *
+     * Gated on the receiver being a variable the scope knows holds a Request: these names
+     * (`string`, `boolean`, `user`, …) are far too common to type on the name alone.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function requestMethodRule(MethodCall $expr, AnalysisScope $scope): ?array
+    {
+        if (! $expr->name instanceof Identifier
+            || ! $expr->var instanceof Variable
+            || ! is_string($expr->var->name)
+            || ! isset($scope->requestVarNames[$expr->var->name])
+            || ! $scope->holdsBinding($expr->var)) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+
+        // Reflection reports `@return mixed` here; the configured auth model is the useful answer.
+        if ($method === 'user') {
+            return $this->authMethodResult($method);
+        }
+
+        $boundClass = $scope->requestVarNames[$expr->var->name];
+
+        // validated() lives on FormRequest and is untyped; the rules are the only source of its shape.
+        // Resolving them instantiates the form request and runs rules() — the same trade-off form
+        // requests already make, at one more call site.
+        if ($method === 'validated' && is_a($boundClass, FormRequest::class, true)) {
+            return $this->validatedKeyRule($expr, $boundClass);
+        }
+
+        // Reflecting against the bound class — not just the base Request — means a FormRequest's
+        // own typed helpers are read too. Declining on an unusable type matters: knownMethodRule()
+        // runs next. A call-site default never widens a Request type; config()'s default IS the value.
+        self::$requestReflections[$boundClass] ??= new ReflectionClass($boundClass);
+        $reflection = self::$requestReflections[$boundClass];
+
+        if (! $reflection->hasMethod($method)) {
+            return null;
+        }
+
+        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $method);
+
+        // A prop is JSON, and a bare `@return array` carries no key evidence: the `unknown[]` it
+        // derives claims a list for the string-keyed `all()`. Vagueness also covers a `| unknown` arm.
+        if (TsTypeString::isVagueTsType($tsInfo['type'])) {
+            return null;
+        }
+
+        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+    }
+
+    /**
+     * Type `$request->validated('key')` from the bound FormRequest's rules() and its own `#[TsCasts]`
+     * — the only source of validated()'s shape, since the method itself is untyped. Declines a
+     * non-literal key, a `*` segment, a key the rules never mention, or one rules() marks prohibited.
+     *
+     * @param  class-string<FormRequest>  $formRequestClass
+     * @return ValueExpressionResult|null
+     */
+    private function validatedKeyRule(MethodCall $expr, string $formRequestClass): ?array
+    {
+        $args = CallArguments::for($expr, new ReflectionMethod(FormRequest::class, 'validated'));
+        $keyArg = $args->named('key');
+        $defaultPosition = $args->positionOf('default');
+
+        if ($keyArg === null
+            || ! $keyArg->value instanceof String_
+            || ($defaultPosition !== null && $args->passedCount() > $defaultPosition)) {
+            return null;
+        }
+
+        $key = $keyArg->value->value;
+
+        // data_get() expands a `*` segment into a list of every match, so the trie node under `*`
+        // types one element, not the array this call returns.
+        if (in_array('*', explode('.', $key), true)) {
+            return null;
+        }
+
+        /** @var FormRequestRulesAnalyzer $analyzer */
+        $analyzer = resolve(Config::string('ts-publish.form_requests.analyzer_class', FormRequestRulesAnalyzer::class));
+
+        $field = $analyzer->analyzeField($formRequestClass, $key);
+
+        if ($field === null || $field->isProhibited) {
+            return null;
+        }
+
+        // FormRequestTransformer matches an override to a top-level field path, so a dotted key never
+        // takes one there; honouring it here would describe the same field two different ways.
+        $casts = str_contains($key, '.')
+            ? ['overrides' => [], 'importPaths' => [], 'optionalOverrides' => []]
+            : $this->parseTsCastsFromReflection(new ReflectionClass($formRequestClass));
+
+        $type = $casts['overrides'][$key] ?? $field->tsType;
+        $importPath = $casts['importPaths'][$key] ?? null;
+        $customImports = [];
+
+        if ($importPath !== null) {
+            $importable = TsTypeString::extractImportableTypes($type);
+
+            // A type with no importable token (`Record<string, unknown>`) must not materialise an
+            // empty list under its path.
+            if ($importable !== []) {
+                $customImports[$importPath] = $importable;
+            }
+        }
+
+        // The request's own interface renders the override and then appends ` | null` from the rule,
+        // so the suffix stays outside the override here too.
+        $optional = $casts['optionalOverrides'][$key] ?? ! $field->isRequired;
+
+        return [
+            'type' => $type.($field->isNullable ? ' | null' : ''),
+            'optional' => $optional,
+            ...($optional ? ['absentReadsNull' => true] : []),
+            ...($customImports !== [] ? ['customImports' => $customImports] : []),
+        ];
+    }
+}

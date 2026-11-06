@@ -16,6 +16,6 @@ export interface OrderSummaryResource
     user: User;
     status: OrderStatusType;
     total: string;
-    notes: string | null;
+    notes: string;
     search_index: unknown;
 }

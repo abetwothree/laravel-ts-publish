@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\SameNamedKindsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumNamesController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapOrNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineEnumKindResource;
@@ -45,6 +46,15 @@ it('aliases two same-named enums\' Kind names as it aliases their Type names', f
         'StatusKind as CrmStatusKind', 'StatusKind as WorkbenchStatusKind',
         'StatusType as CrmStatusType', 'StatusType as WorkbenchStatusType',
     ]);
+});
+
+it('aliases two same-named enums a value object\'s public-property shape holds, each with its import', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => SameNamedKindsEvent::class]);
+
+    expect($transformer->properties['kinds']['type'])->toBe('{ status: AppStatusType; crmStatus: CrmStatusType; first: boolean }')
+        ->and(array_merge(...array_values($transformer->typeImports)))
+        ->toEqualCanonicalizing(['StatusType as AppStatusType', 'StatusType as CrmStatusType'])
+        ->and(json_encode(new SameNamedKindsEvent()->kinds))->toBe('{"status":0,"crmStatus":"lead","first":true}');
 });
 
 it('sends the values and names the same-named payload types admit', function () {

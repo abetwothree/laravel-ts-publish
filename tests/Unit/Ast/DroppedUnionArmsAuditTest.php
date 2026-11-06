@@ -33,12 +33,12 @@ test('a union records the arm it leaves out, and its published type is unchanged
         $dropped = DroppedUnionArms::stop();
     }
 
-    // 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed path, 32 data_get()'s default, 33 when()'s
-    // default, 35 a match arm and 37 a `??` right operand; 39 and 49 are a parameter's join past its block, the value
-    // passed and the one written, 58 a local's branch join and 66 a merge call's. All but 28/29 resolve their own arms.
+    // 29/30 reach analyzeClosureUnion(), 32 is TernaryHandler's narrowed path, 33 data_get()'s default, 34 when()'s
+    // default, 36 a match arm and 38 a `??` right operand; 40 and 50 are a parameter's join past its block, the value
+    // passed and the one written, 59 a local's branch join and 67 a merge call's. All but 29/30 resolve their own arms.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35, 37, 39, 49, 58, 66])
+        ->and(array_column($dropped, 'line'))->toBe([29, 30, 32, 33, 34, 36, 38, 40, 50, 59, 67])
         ->and(array_column($dropped, 'site'))->toBe([
             'closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm',
             'coalesce-right', 'binding-join', 'binding-join', 'walk-branch-join', 'merge-branch-join',

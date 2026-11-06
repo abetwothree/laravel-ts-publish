@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
@@ -84,13 +85,15 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
-        $reading = $site?->reading() ?? Reading::Encoded;
+        $reading = ($site?->reading() ?? Reading::Encoded)->over($class);
+        $memo = resolve(AnalysisMemo::class);
+        $literals = ! $memo->readsCasesAsEnums();
 
-        return resolve(AnalysisMemo::class)->remember(
+        return $memo->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
                 .($runtime?->memoKey($class) ?? '').$reading->memoKey(),
-            function () use ($class, $methodName, $passed, $backing, $runtime, $reading): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading);
+            function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -139,6 +142,7 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  false while a read needs each case the body returns as its enum
      * @return ValueExpressionResult|null
      */
     private function reflectOrReadBody(
@@ -148,6 +152,7 @@ final class MethodReturnTypeResolver
         ?string $backing,
         ?RuntimeClass $runtime,
         Reading $reading,
+        bool $literals,
     ): ?array {
         $reflected = $this->reflected($class, $methodName);
 
@@ -155,9 +160,9 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading, $literals)
             ?? $this->declaredOverVagueList(
-                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $reading),
+                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals),
                 $reflected,
             )
             ?? $reflected;
@@ -202,6 +207,7 @@ final class MethodReturnTypeResolver
      * @param  ValueExpressionResult|null  $reflected
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  whether a plain enum case types as the literal it sends, as the body fallback reads it
      * @return ValueExpressionResult|null
      */
     private function bodyType(
@@ -212,6 +218,7 @@ final class MethodReturnTypeResolver
         ?string $backing,
         ?RuntimeClass $runtime,
         Reading $reading,
+        bool $literals,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -236,7 +243,7 @@ final class MethodReturnTypeResolver
                 $class,
                 $methodName,
                 $backing ?? (is_a($runs, Model::class, true) ? $runs : null),
-                casesAsLiterals: true,
+                casesAsLiterals: $literals,
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
@@ -284,6 +291,7 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  whether a plain enum case types as the literal it sends, as the body fallback reads it
      * @return ValueExpressionResult|null
      */
     private function bodyValue(
@@ -293,6 +301,7 @@ final class MethodReturnTypeResolver
         ?string $backing,
         ?RuntimeClass $runtime,
         Reading $reading,
+        bool $literals,
     ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -303,9 +312,19 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $dropped = DroppedUnionArms::dropped();
+
         try {
-            return resolve(AstEngine::class)
-                ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading);
+            // A body left only the null a dropped arm leaves is one it cannot type, so that null is never published.
+            return DroppedUnionArms::replaceable(
+                function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals, $dropped): ?array {
+                    $value = resolve(AstEngine::class)
+                        ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
+
+                    return $value !== null && DroppedUnionArms::leftNullSince($value['type'], $dropped) ? null : $value;
+                },
+                static fn (?array $value): bool => $value !== null,
+            );
         } finally {
             $memo->leave($key);
         }

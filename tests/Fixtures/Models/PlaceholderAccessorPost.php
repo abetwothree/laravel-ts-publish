@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Support\Opaque;
 
 /** A model on the `posts` table whose getter body leaves a key the `null` a dropped arm left, beside a resource. */
 class PlaceholderAccessorPost extends Model
@@ -17,7 +18,7 @@ class PlaceholderAccessorPost extends Model
     protected function authorCard(): Attribute
     {
         return Attribute::get(fn () => [
-            'author' => new UserResource($this->getAttribute('user_id')),
+            'author' => new UserResource(Opaque::value($this->user_id)),
             'note' => $this->getKey() > 0 ? json_decode('"x"') : null,
         ]);
     }

@@ -13,6 +13,7 @@ follows the folder.
 | `Mixins/` | mixins and invokables a test registers as macros on a `Macroable` class |
 | `TsPublish/` | subclasses and implementations of this package's extension points, in the folder of their parent in `src/`: a `ModelTransformer` subclass in `TsPublish/Transformers/` |
 | `Packages/InertiaUiTable/` | a stand-in for the `inertiaui/table` package, autoloaded as `InertiaUI\Table\` from `composer.json` |
+| `Packages/VendoredCasts/` | casters a test reads as a dependency's, by registering a Composer loader whose vendor directory is the folder |
 | `Ui/` | classes, traits and interfaces whose `#[TsType]` overrides join those of the workbench's `app/Packages/Ui/`, and a share middleware that reads them |
 | `Stubs/` | `.php.stub` sources a test requires or copies; never autoloaded |
 
