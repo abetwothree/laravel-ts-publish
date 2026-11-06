@@ -161,16 +161,29 @@ final class ConditionableCallHandler implements ExpressionHandler
         ExpressionEngine $engine,
     ): array {
         $unread = ['value' => ValueResult::unknown(), 'receiver' => null];
-        // The object a when() runs on is never null, as a `?->` that meets null runs no call.
-        $value = $this->isThis($object) ? $this->ownJson($receiver['type']->classes) ?? ValueResult::unknown() : $engine->resolve($object);
 
         return [
-            $this->takesPosition($callables, 0)
-                ? ['value' => [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])], 'receiver' => $receiver['type']->withShortCircuit(false)]
-                : $unread,
+            $this->takesPosition($callables, 0) ? $this->passedObject($object, $receiver, $engine) : $unread,
             $condition !== null && ! $this->calledFirst($condition) && $this->takesPosition($callables, 1)
                 ? ['value' => $engine->resolve($condition), 'receiver' => resolve(ReceiverClassResolver::class)->resolve($condition, $scope)]
                 : $unread,
+        ];
+    }
+
+    /**
+     * The object a callable is passed, read in the caller's scope with the receiver it holds; `$this` reads as its own
+     * JSON, and never as null, as a `?->` that meets null runs no call.
+     *
+     * @param  ConditionableReceiver  $receiver
+     * @return ReadArgument
+     */
+    private function passedObject(Expr $object, array $receiver, ExpressionEngine $engine): array
+    {
+        $value = $this->isThis($object) ? $this->ownJson($receiver['type']->classes) ?? ValueResult::unknown() : $engine->resolve($object);
+
+        return [
+            'value' => [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])],
+            'receiver' => $receiver['type']->withShortCircuit(false),
         ];
     }
 

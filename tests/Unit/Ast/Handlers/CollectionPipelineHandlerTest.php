@@ -51,6 +51,15 @@ test('collection pipelines keep their element types to the end of the chain', fu
         ->and($props['typed']['optional'])->toBeTrue();
 });
 
+// Collection::map() calls its callback from Laravel's own code, so PHP converts each item to a scalar parameter's type.
+test('a map callback\'s scalar parameter binds the type PHP converts each item to', function () {
+    $scope = collectionPipelineScope();
+    $result = collectionPipelineEngine($scope)->resolve(collectionPipelineExpr("collect(['5'])->map(fn (int \$v) => \$v)->all()"));
+
+    expect($result['type'])->toBe('number[]')
+        ->and(collect(['5'])->map(fn (int $v) => $v)->all())->toBe([5]);
+});
+
 test('data_get declines a wildcard key', function () {
     $scope = collectionPipelineScope();
     $expr = collectionPipelineExpr('data_get($this->comments, "*.id")');

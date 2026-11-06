@@ -72,6 +72,17 @@ use ReflectionParameter;
  */
 final class ParameterBinder
 {
+    /** The TypeScript type each PHP scalar type a parameter can declare stands for. */
+    private const array SCALAR_TYPES = [
+        'int' => 'number',
+        'float' => 'number',
+        'string' => 'string',
+        'bool' => 'boolean',
+        'true' => 'true',
+        'false' => 'false',
+        'null' => 'null',
+    ];
+
     /**
      * The class a closure parameter's type names, alone or beside `null`, with whether `null` is there: its native
      * type, else the `@param` $docComment gives it where it has none; null for any other type, or a name no class or
@@ -228,7 +239,7 @@ final class ParameterBinder
         $name = $param->var->name;
 
         if ($param->variadic) {
-            $element = $argument instanceof Expr ? $engine->resolve($argument) : $argument;
+            $element = self::coercedValue($param, $argument instanceof Expr ? $engine->resolve($argument) : $argument);
             $element = $filled ? [...$element, 'type' => TsTypeString::withoutNullArm($element['type'])] : $element;
 
             if ($element['type'] !== 'unknown') {
@@ -245,7 +256,7 @@ final class ParameterBinder
         if ($argument instanceof Expr) {
             $scope->closureParamExprBindings[$name] = $argument;
         } elseif ($argument['type'] !== 'unknown') {
-            $scope->varValueBindings[$name] = $argument;
+            $scope->varValueBindings[$name] = self::coercedValue($param, $argument);
         }
     }
 
@@ -287,7 +298,7 @@ final class ParameterBinder
             }
 
             // An element nothing types binds nothing, so the parameter's own declaration binds it.
-            $value = $argument['type'] === 'unknown' ? null : $argument;
+            $value = $argument['type'] === 'unknown' ? null : self::coercedValue($param, $argument);
             $docComment = (string) $callback->getDocComment();
             $binding = $position === 0
                 ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment, $leftOut)
@@ -324,12 +335,42 @@ final class ParameterBinder
                 return;
             }
 
-            $binding = $binder->passedBinding($argument['value'], $argument['receiver']);
+            $value = self::coercedValue($param, $argument['value']);
+            // A value PHP converts to the parameter's scalar type is no longer the object the receiver names.
+            $binding = $binder->passedBinding($value, $value === $argument['value'] ? $argument['receiver'] : null);
 
             if ($binding !== null) {
                 $binder->bindPassed([$param->var->name => $binding], $scope);
             }
         }
+    }
+
+    /**
+     * A value as a parameter of a native scalar type receives it in coercive mode, as Laravel's own code and PHP's
+     * functions call a callback: each arm the type admits kept as it is, literal included, and every other arm read as
+     * the type, which PHP converts it to, or throws on, sending nothing. Any other type, or `unknown`, keeps the value.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    public static function coercedValue(Param $param, array $value): array
+    {
+        $scalars = $value['type'] === 'unknown' ? null : self::declaredScalars($param);
+        $converted = $scalars === null ? [] : array_values(array_unique(array_diff_key($scalars, ['null' => true])));
+
+        if ($scalars === null || $converted === []) {
+            return $value;
+        }
+
+        $arms = [];
+
+        foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
+            array_push($arms, ...(self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+        }
+
+        $type = implode(' | ', array_values(array_unique($arms)));
+
+        return $type === $value['type'] ? $value : [...ValueResult::unknown(), 'type' => $type, 'optional' => false];
     }
 
     /**
@@ -705,6 +746,54 @@ final class ParameterBinder
         return array_any($resolved, static fn (array $value): bool => $value['type'] === 'unknown')
             ? ValueResult::unknown()
             : ValueResult::unionResults($resolved);
+    }
+
+    /**
+     * The TypeScript type each PHP scalar a parameter's native type names stands for, keyed by that scalar, `null`
+     * included where the type or a `= null` default admits it; null where the type names anything else, or nothing.
+     *
+     * @return array<string, string>|null
+     */
+    private static function declaredScalars(Param $param): ?array
+    {
+        $type = $param->type;
+        $members = match (true) {
+            $type instanceof Identifier => [$type],
+            $type instanceof NullableType => [$type->type, new Identifier('null')],
+            $type instanceof UnionType => $type->types,
+            default => [],
+        };
+        $scalars = self::defaultsToNull($param) ? ['null' => 'null'] : [];
+
+        foreach ($members as $member) {
+            $name = $member instanceof Identifier ? $member->toLowerString() : '';
+            $scalar = self::SCALAR_TYPES[$name] ?? null;
+
+            if ($scalar === null) {
+                return null;
+            }
+
+            $scalars[$name] = $scalar;
+        }
+
+        return $members === [] ? null : $scalars;
+    }
+
+    /**
+     * Whether a TypeScript arm is a value a parameter of those PHP scalars takes as it is: a number for `int` or
+     * `float`, a string for `string`, a boolean for `bool` or its literal for `true` and `false`, and null for `null`.
+     *
+     * @param  array<string, string>  $scalars
+     */
+    private static function fitsScalars(string $arm, array $scalars): bool
+    {
+        return match (true) {
+            $arm === 'number', is_numeric($arm) => isset($scalars['int']) || isset($scalars['float']),
+            $arm === 'string', preg_match('/^([\'"`]).*\1$/s', $arm) === 1 => isset($scalars['string']),
+            $arm === 'boolean' => isset($scalars['bool']),
+            $arm === 'true', $arm === 'false' => isset($scalars['bool']) || isset($scalars[$arm]),
+            default => isset($scalars[$arm]) && $arm === 'null',
+        };
     }
 
     /**

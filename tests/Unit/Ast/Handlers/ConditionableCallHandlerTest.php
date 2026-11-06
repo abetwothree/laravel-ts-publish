@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableCoercedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableDeclinedEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionablePayloadEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableRebindingEvent;
@@ -124,6 +125,28 @@ it('passes a callable the object and the value as the caller reads them', functi
         ->and([$pinned['value_shadow'], $pinned['rest_shadow'], $pinned['receiver_second_shadow']])->toBe([true, [true], 'n'])
         ->and([$unpinned['assigned']['post']['id'], $unpinned['looped']['post']['id'], $unpinned['referenced']['post']['id']])->toBe([7, 7, 7])
         ->and([$pinned['receiver_assigned'], $unpinned['receiver_assigned']])->toBe(['n', 'n']);
+});
+
+// Laravel's own code, which declares no strict types, calls each callable, so PHP converts the value to a scalar
+// parameter's type, and keeps one that already fits it; a value it cannot convert throws, sending nothing.
+it('binds a scalar callable parameter to the type PHP converts the passed value to', function () {
+    $sent = json_decode((string) json_encode(new ConditionableCoercedEvent(
+        (new Post)->forceFill(['id' => 7, 'is_pinned' => true]),
+    )->broadcastWith()), true);
+
+    expect(conditionableCallKeys(ConditionableCoercedEvent::class))->toBe([
+        'to_int' => 'number | { post: Post }',
+        'to_string' => 'string | { post: Post }',
+        'to_bool' => 'boolean | { post: Post }',
+        'to_nullable_int' => 'number | { post: Post }',
+        'null_to_nullable_int' => 'string | { post: Post }',
+        'int_to_float' => 'number | { post: Post }',
+        'untyped' => 'string | { post: Post }',
+        'to_int_list' => '({ post: Post } | string)[] | { post: Post }',
+        'to_int_rest' => 'number[] | { post: Post }',
+    ])->and([$sent['to_int'], $sent['to_string'], $sent['to_bool'], $sent['to_nullable_int']])->toBe([5, '5', true, 5])
+        ->and([$sent['null_to_nullable_int']['post']['id'], $sent['int_to_float'], $sent['untyped']])->toBe([7, 5, '5'])
+        ->and([$sent['to_int_list'][1], $sent['to_int_rest']])->toBe(['5', [5]]);
 });
 
 // The event's own JSON names the post, so the key that sends it imports the model.
