@@ -486,6 +486,9 @@ Overriding `resolvePhpstanTypeAlias()` or `balanceTypeDefinition()` no longer ch
 since every docblock reader looks an alias up through [`TypeAliases`](../src/Ast/Docblocks/TypeAliases.php), which has
 no replacement point. `$phpstanTypeAliasCache` and `$phpstanTypeAliasPaths` read its answers and take no write.
 
+Overriding `shapeTypeInfo()` no longer changes a value object's shape, since `shapeMemberTypes()` reads each member
+through `docblockTypeInfo()`, which carries the class behind each token. Override `shapeMemberTypes()` instead.
+
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
 `TsTypeString::typeNameOccursIn()` decides which imports a type still needs, and it counts a name wherever its token
