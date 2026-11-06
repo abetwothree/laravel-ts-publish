@@ -72,8 +72,8 @@ The helpers and the test that pins them live in these files:
   arm: which arm is an array or a keyed one, the list `array_values()` makes of an arm and `values()` of a type, the
   keys of an arm and the list `array_keys()` makes, what `array_filter()` and `array_map()` make of one, the two
   spellings of a list whose keys left `0..n-1`, the value each element of an arm holds, and the element of a one-armed
-  list. Static and
-  `@internal`; an arm walk or a list's element is read here rather than re-wrapping `TsTypeShape::elementType()`.
+  list. Static and `@internal`; an arm walk or a list's element is read here rather than re-wrapping
+  `TsTypeShape::elementType()`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 

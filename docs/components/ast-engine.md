@@ -118,17 +118,17 @@ profile, since Inertia sends a shared value as it sends a page prop. It inserts 
   to where Inertia sends its response, so a spelling the prop handler declines publishes on a page as in shared data.
   It also precedes `StaticCallHandler` and `NewResourceHandler`, which type a single resource as a nested key's value
   and a `ResourceCollection` as its element array.
-- `InertiaTableHandler` before `StaticCallHandler`, which types an Inertia UI Table (`PostTable::make()`, `new PostTable`, or a chain on
-  either) as the `TableResource<Post>` its `toArray()` sends, the model read from the table's `$resource` default or its
-  `query()`, never by instantiating it. Each call of the chain must declare it returns the table (`static`, `self`, a
-  table class, or with no native type a `@return` naming one, read against the file's use statements, or `$this`). A
-  chain past the table's own `query()` reads as that chain on `query()` of the model it queries, and past any other
-  call as the rest of the profile reads it. Where that is `unknown` on a value `InertiaPageAnalyzer` marks
-  `TYPED_AS_TABLE` (a string-keyed item of the action's first render call's props literal, the one place the reader
-  it replaced typed such a chain), the table type stands. The type is a custom import from the configured or
-  installed table package. A table naming no model falls through, to `unknown`. So a table is one more prop: the
-  render call's other props, the action's casts, a collaborator's props, shared data and a `->resolve()`d body's
-  restated keys all read it.
+- `InertiaTableHandler` before `StaticCallHandler`, which types an Inertia UI Table (`PostTable::make()`,
+  `new PostTable`, or a chain on either) as the `TableResource<Post>` its `toArray()` sends, the model read from the
+  table's `$resource` default or its `query()`, never by instantiating it. Each call of the chain must declare it
+  returns the table (`static`, `self`, a table class, or with no native type a `@return` naming one, read against the
+  file's use statements, or `$this`). A chain past the table's own `query()` reads as that chain on `query()` of the
+  model it queries, and past any other call as the rest of the profile reads it. Where that is `unknown` on a value
+  `InertiaPageAnalyzer` marks `TYPED_AS_TABLE` (a string-keyed item of the action's first render call's props literal,
+  the one place the reader it replaced typed such a chain), the table type stands. The type is a custom import from the
+  configured or installed table package. A table naming no model falls through, to `unknown`. So a table is one more
+  prop: the render call's other props, the action's casts, a collaborator's props, shared data and a `->resolve()`d
+  body's restated keys all read it.
 
 `InertiaResourcePropHandler` also types a JSON:API resource's single and collection props as their `@tolki/types`
 documents. `forInertia()` also swaps in `FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop,
@@ -201,11 +201,11 @@ Every other pair is inert: the two handlers never answer the same expression, or
 
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ConditionableCallHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `ModelFinderHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ConditionableCallHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
 | `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `ConditionableCallHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims `?->toResource()` and `?->toResourceCollection()`, which the others left `unknown`. `ConditionableCallHandler` claims only a `Conditionable` `?->when()` or `?->unless()`, which the receiver rules leave `unknown`. `ReceiverMethodCallHandler` answers every other method chain, and leaves `unknown` any chain a step of which holds no single model. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
-| `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
+| `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `ModelFinderHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class other than the subject, so it would reflect the wrapper and floor the prop at `unknown`. `ModelFinderHandler` before `StaticCallHandler`, whose last arm claims every static call on a named class and never declines one | `StaticCallHandler` declines a class expression it cannot name, such as `$record::className()`, and a call PHP sends to the subject's `__call()` that it types nothing for, such as a resource collection's `static::total()`. Those are the shapes `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
 | `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
 | `New_` | `InertiaWrapperHandler`, `NewResourceHandler` | `InertiaWrapperHandler` first where Inertia reads the value: `NewResourceHandler` reads a `new` of a class that is no resource, such as `new AlwaysProp(...)`, as `unknown`. Under `Encoded` the wrapper declines, since `json_encode()` sends the prop object as `{}` | None |
@@ -396,7 +396,8 @@ model bind in `ConditionalMethodHandler`, whose value closures read through `Res
 
 A first-class callable in a position where Laravel passes one value binds the same way:
 `CallableForms::passingOneValue()` reads it as `fn ($v) => m($v)`. A `map()` or `array_map()` callback also reads a
-function or `Class::m` string and a `[$object, 'm']` or `[Foo::class, 'm']` pair so (`CallableForms::asOneValueClosure()`).
+function or `Class::m` string and a `[$object, 'm']` or `[Foo::class, 'm']` pair so
+(`CallableForms::asOneValueClosure()`).
 
 These rules settle the cases the table leaves open:
 
@@ -512,22 +513,24 @@ whatever binds the variable by it, so a `morphTo` parameter's targets narrow and
 model-bound variable read bare publishes the subclass a proof names. A parameter a call passes `$x` to takes the proof
 in force at the call, for every read of the parameter.
 
-A test binds `$x` only when no write to it can land between the test and the end of what it narrows; a write before
-the test, such as the `foreach` assigning the value it tests before each pass, or past the block a nested proof ends
-with, is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` pins both cases. Both see an
-argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
-in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. An assignment
-through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a
-value the member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation
-of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
-ends at each. [`ThisPathWrites`] answers for a chain on `$this` by an allowlist: an assignment to it or to a chain it
-reads through, a by-reference argument or `unset()` of either, a write or `unset()` through any local, a write to a
-local bound by reference, and code no scan reads (`eval`, `include`, `extract()`, a variable variable) end its proof,
-and so does every call `safeCall()` does not know to be safe. A closure argument counts by its whole body; the first
-parameter of a helper callback handed a member of the resource reads as that member's chain (`handedMember()`). Only a
-write through the chain itself keeps it, by `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through
-`$this->resource`. An `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess
-publishes.
+A test binds `$x` only when no write to it can land between the test and the end of what it narrows; a write before the
+test, such as the `foreach` assigning the value it tests before each pass, or past the block a nested proof ends with,
+is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` pins both cases. Both see an argument a call
+passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value in some form
+([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. An assignment through a
+member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a value the
+member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation of the
+proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof ends at
+each. [`ThisPathWrites`] answers for a chain on `$this` by an allowlist: an assignment to it or to a chain it reads
+through, a by-reference argument or `unset()` of either, a write or `unset()` through any local, a write to a local
+bound by reference, a by-reference destructuring included, or to any local once code no scan reads may bind one (`eval`,
+`include`, `extract()`, a variable variable), and a write or `unset()` through another `$this` chain of a member the
+tested chain reads through (`mayShareObject()`), since two chains can hold one object, end its proof, and so does every
+call `safeCall()` does not know to be safe, a call naming the subject's own or an ancestor's class among them
+(`bindsThis()`). A closure argument counts by its whole body; the first parameter of a helper callback handed a member
+of the resource reads as that member's chain (`handedMember()`). Only a write through the chain itself keeps it, by
+`keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through `$this->resource`. An
+`if` proof on a chain no class names reads as its classes, guarded, so no conditional guess publishes.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -628,7 +631,8 @@ a by-reference parameter of a callee the scan cannot name.
 `array-key` key and an alias the file's class sees among them. An alias admits only what its definition would, spelled
 directly in the file that wrote it, so one naming an unimported global class declines. A callable inside a shape reads
 `unknown` by design, so `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the
-tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either kind keeps its list arm.
+tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either
+kind keeps its list arm.
 
 ### By-reference calls
 
@@ -895,20 +899,20 @@ a class, recorded once a read through it publishes a type), `ReceiverMemberReade
 answer), the walk's branch join (`walk-branch-join`, naming the last key write or array item the branch saw, never a
 sibling's, that it reads as `unknown`) and the join of a merge call's sides or a spread helper's returns
 (`merge-branch-join`, naming the same for each walked, literal or joined branch). `analyzeClosureUnion()` records
-because `unionResults()` receives only resolved results and cannot name the expression it drops.
-`CoalesceHandler` strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never returns
-that `null`, which the ternary union would keep. Under an Inertia reading a left with held-object flags is the
-exception: `??` returns a closure or prop object whole, so the `null` its call resolves to stays, and only a plain
-arm's `null` is replaced. In what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object
-(`heldProp`) is, since Inertia sends a callable there as `{}`, uncalled. A left the receiver resolver reads as a
-collection, its type holding no `null`, is returned whole where it is read from `$this`, an API resource's
-`$this->resource` or a call through other collections alone: `??` tests the whole read, so a relation of a to-one relation or of `first()` is null
-wherever that model is. Otherwise it unions both operands through `unionResults()`, which leaves an untyped one out.
-`applyConditionalDefault()` records a default only beside a value arm with a type.
-`BranchJoin::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
-joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
-walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole
-under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
+because `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler`
+strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never returns that `null`, which
+the ternary union would keep. Under an Inertia reading a left with held-object flags is the exception: `??` returns a
+closure or prop object whole, so the `null` its call resolves to stays, and only a plain arm's `null` is replaced. In
+what a closure returns (`AnalysisScope::$readsCallableReturn`) only a prop object (`heldProp`) is, since Inertia sends a
+callable there as `{}`, uncalled. A left the receiver resolver reads as a collection, its type holding no `null`, is
+returned whole where it is read from `$this`, an API resource's `$this->resource` or a call through other collections
+alone: `??` tests the whole read, so a relation of a to-one relation or of `first()` is null wherever that model is.
+Otherwise it unions both operands through `unionResults()`, which leaves an untyped one out. `applyConditionalDefault()`
+records a default only beside a value arm with a type. `BranchJoin::branchUnion()` unions type strings and cannot name
+the expression it drops, so the two branch joins name one through the untyped writes `ReadsReturnedVariables` notes,
+which a merge call's or a spread helper's walked, literal or joined branch keeps beside its analysis. One arm is never
+left out: `$this->resource` read whole under its own `instanceof` proof, as the proven class with no published type,
+leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused

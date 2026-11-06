@@ -135,7 +135,7 @@ An API resource's `$this->resource`: the model or value the API resource wraps, 
 _Avoid_: wrapper, resource property
 
 **Held class**:
-A class other than a model that a resource proxy is declared to hold, such as a value object named by an API resource's `@extends JsonResource<PostStats>`. An API resource declaring a class or union the guessed model is not one of has no model guessed for it; one naming an interface every model implements keeps the guess.
+A class other than a model that a resource proxy is declared to hold, such as a value object named by an API resource's `@extends JsonResource<PostStats>`. An API resource declaring one has no model guessed for it, unless the guessed model is one of the classes it names.
 _Avoid_: wrapped class, backing class
 
 **Inference**:

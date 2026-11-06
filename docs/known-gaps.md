@@ -70,12 +70,12 @@ its short class names resolve against that class's file.
 
 ### `config()` on an absent key with no default types as null
 
-`config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A
-`config('key')` or `config()->get('key')` read follows that machine's configuration, so a `.env` that differs from
-production changes the type. The package runs inside the booted app, where the live value is the only answer
-([`KnownFunctionCallHandler`](../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php)). Only an absent key types from its
-default. A key set to `null`, such as an `env()` value unset on that machine, types as `null` whatever the default. A
-typed accessor such as `config()->string('key')` types from its declared return instead.
+`config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A `config('key')`
+or `config()->get('key')` read follows that machine's configuration, so a `.env` that differs from production changes
+the type. The package runs inside the booted app, where the live value is the only answer
+([`KnownFunctionCallHandler`](../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php)). Only an absent key types from
+its default. A key set to `null`, such as an `env()` value unset on that machine, types as `null` whatever the default.
+A typed accessor such as `config()->string('key')` types from its declared return instead.
 
 ### On Laravel 12, `#[Collects]` cannot be resolved, so use the `$collects` property
 
@@ -259,6 +259,14 @@ that has an `import`.
 resource's filter walks into the array `resolve()` returns and re-indexes every value whose keys are all numeric, so a
 method value the published enum holds as `{ "1": 1, "2": 2 }` arrives as `[1, 2]`. The filter never walks into a
 resource object, so return `EnumResource::make(…)` itself and the keys arrive as the type says.
+
+### A kept `collect()` of `EnumResource` wraps, or a map building one in a helper, publishes `| null` for the `[]` sent
+
+`collect([EnumResource::make($this->role)])` kept as a `Collection`, and a kept map whose callback builds the wrap in a
+helper, such as `->map(fn (User $u) => $this->roleWrap($u))`, publish `(AsEnum<typeof Role> | null)[]`, but Laravel
+serializes a kept collection item by item, so a null enum's wrap arrives as `[]`. So does a wrap an event's static
+helper builds, and `R::make($user)->toArray(request())` read for its value. End the chain with `->all()`, which sends
+the `null` the type admits, or build the wrap inline in the callback, which publishes `| never[]`.
 
 ### A broadcast event's `EnumResource` publishes the enum's type, not `AsEnum<typeof X>`
 
@@ -512,19 +520,13 @@ Check which spelling you wrote before you assume a value is `unknown`:
   at all, even for reads before that write, unless it is an assignment through a member or key of `$x` that
   stores a constant its column holds, such as `$x->title = 'Draft'`, or names no column or relation, such as
   `$x->seen = true`. A chain of property reads on `$this`, such as `$this->imageable`, binds the same way, each
-  spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Besides a write to the
-  chain or a chain it reads through, a write or `unset()` through any local means no binding, as do a write to a local
-  bound by reference, such as `$ref = &$this->imageable`, an `eval`, `include` or `require`, `extract()`, `parse_str()`
-  with one argument, a variable variable, and any call but a known-safe one: `JsonResource`'s own helpers such as
-  `when()` or `whenLoaded()`, `can()`, `cannot()` or `canAny()` on `auth()->user()` or on `->user()` of the method's
-  own request parameter, a `Gate` check, Laravel's `route()` or `url()`, or a call whose receiver and arguments hold no
-  local, no `$this` or `$this->resource`, and no chain the test's chain reads through, such as
-  `Str::limit($this->imageable->title, 50)`. A closure given to one counts only when its whole body would: it imports
-  by value, writes no import and nothing through a variable, and makes only known-safe calls. Its own parameters hold
-  nothing of the model, except the member `whenLoaded()`, `whenHas()`, `whenCounted()`, `whenAggregated()` or
-  `whenExistsLoaded()` hands its callback, so a callback that calls on or passes on `$this->imageable` ends a proof on
-  `$this->imageable->author`. A helper given any other callable, such as `Swapper::swap(...)` or a function's name,
-  ends it too. One call outside that list between the test and a read, such as `$this->reload()`,
+  spelling apart: a test on `$this->resource->imageable` narrows no `$this->imageable` read. Anything between the test
+  and a read that may change the chain ends the proof, so the chain reads unnarrowed: a write to it or a chain it reads
+  through, a write through a local or to one bound by reference (`$ref = &$this->post`, a by-reference destructuring,
+  or any local once `extract()` or a variable variable runs), a write through another `$this` chain that sets a member
+  the tested chain reads through, since two chains can hold one object, code no scan sees, and any call outside the
+  known-safe list [`ThisPathWrites`](../src/Ast/Analysis/ThisPathWrites.php) keeps, which leaves out a call naming the
+  subject's own or an ancestor's class, as PHP runs one on `$this`. One such call, such as `$this->reload()`,
   `PostResource::make($this->resource)` or a call on a local, publishes every read of the chain unnarrowed. Trusted,
   though each may change the chain: a gate or policy callback a `Gate` or ability check runs, even one that writes the
   model; a callable another `$this` property or another class's static property holds, handed to a call that takes a
@@ -536,8 +538,8 @@ Check which spelling you wrote before you assume a value is `unknown`:
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
   on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
-  ([`TernaryHandler`](../src/Ast/Handlers/Operators/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
-  the one model a test on it leaves.
+  ([`TernaryHandler`](../src/Ast/Handlers/Operators/TernaryHandler.php)). A subject method `A` calls reads
+  `$this->resource` as the one model a test on it leaves.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
@@ -776,7 +778,22 @@ prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the bod
 Inside a collection, `$this->resource` holds the items in a `Support\Collection` or the paginator the collection was
 given. The package types its value, `first()`, `last()`, `count()`, `only()`, `except()`, the paginator's own methods
 and a member of the item `first()` or `last()` returns, such as `$this->resource->first()?->title`, not a collection
-pipeline on it. Type such a key with `#[TsCasts]`.
+pipeline on it. `$this->first()?->title` and `static::first()` on the collection itself still publish `unknown`. Type
+such a key with `#[TsCasts]`.
+
+### A resource collection that sends raw models reads an item's member through the resource its name picks
+
+Where a resource collection's `collects()` names no resource Laravel can use, it sends the raw models, but a member read
+off an item, such as `$this->resource->first()?->title`, reads through the API resource the collection's name picks,
+which forwards to the model. The two differ only where that resource declares a public property or method of the same
+name, whose type is published in place of the model's. Set `$collects` to the resource you mean, or rename the member.
+
+### A `string`-keyed collection declaration publishes a record, though numeric-string keys arrive as a list
+
+A method's declared `Collection<string, X>`, and a local's inline `@var` one, publish `Record<string, X>` from `all()`
+and the steps that keep the keys, as the declaration says. PHP turns a numeric string key such as `'1'` into an int,
+so a collection whose keys are all such strings is sent as a list. Declare `array-key` or `int|string` keys where they
+can occur, which publish `X[] | Record<string, X>`.
 
 ### A query chain past a step that provably leaves the query publishes no root-model guess
 

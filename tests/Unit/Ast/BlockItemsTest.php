@@ -390,7 +390,7 @@ it('narrows no read of a $this->prop path past a call that may replace what it r
     'a $request a variable variable names, its user()\'s can() given $this->resource' => [ImageableVariableVariableGuardResource::class],
 ]);
 
-// A local bound to the chain by reference writes the chain whenever it is written (R52).
+// A local bound to the chain by reference writes the chain whenever it is written.
 it('narrows no read of a declared $this->prop past a write to a local bound to it by reference', function () {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
     $product = new Product;
@@ -404,7 +404,7 @@ it('narrows no read of a declared $this->prop past a write to a local bound to i
 });
 
 // A whenLoaded() callback is handed the loaded member, so what it does to that member follows the rules for the member
-// itself, and a callable that is no closure written there may do anything with it (R52).
+// itself, and a callable that is no closure written there may do anything with it.
 it('narrows a nested $this->prop path past a whenLoaded() callback only where it cannot reach what the path reads through', function (string $resource, array $types, string $sent) {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
     $author = new User;
@@ -423,7 +423,7 @@ it('narrows a nested $this->prop path past a whenLoaded() callback only where it
     'a callback reading the path off the member' => [ImageableAuthorWhenLoadedReadGuardResource::class, ['k' => 'number | null', 'n' => 'string | null'], '{"k":2,"n":"Bea"}'],
 ]);
 
-// A whenLoaded() callback handed the tested chain itself may call on it, as the block may (R52).
+// A whenLoaded() callback handed the tested chain itself may call on it, as the block may.
 it('narrows a $this->prop path past a whenLoaded() callback calling on the member it tests', function () {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
     $image = new Image;
@@ -433,7 +433,7 @@ it('narrows a $this->prop path past a whenLoaded() callback calling on the membe
         ->and(json_encode(new ImageableWhenLoadedKeyGuardResource($image)->resolve(Request::create('/'))))->toBe('{"loaded":7,"k":7}');
 });
 
-// A static helper given the chain's own member, and when() given a closure reading it, cannot reach the chain (R49).
+// A static helper given the chain's own member, and when() given a closure reading it, cannot reach the chain.
 it('narrows a $this->prop path past calls that cannot reach it', function () {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
     $user = new User;
@@ -462,7 +462,7 @@ it('narrows a $this->prop path past an authorization check given $this->resource
     'inside a closure importing that parameter by value' => [ImageableUseRequestGuardResource::class],
 ]);
 
-// Only the test names the chain's class: a declared return still reads its type, a conditional guess does not (R44).
+// Only the test names the chain's class: a declared return still reads its type, a conditional guess does not.
 it('withdraws a conditional guess, not a declared return, off a $this->prop path an if proves a collection', function () {
     $comment = new Comment;
     $comment->forceFill(['id' => 5]);

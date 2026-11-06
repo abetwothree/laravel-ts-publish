@@ -55,7 +55,7 @@ reflection answers, a decline included.
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
 | `$request->user()`, and `user()` on `auth()`, the `Auth` facade, `request()`, `Auth::guard()` or `auth()->guard()` | `AuthUserResolver::model()`, when that is not `null`, for `$request->user()`. The other spellings take `AuthUserResolver::soleModel()`, that model only while no configured guard's provider names another Eloquent model, since a route's guard middleware can make any guard the default ([known gap][gap-guards]). Only the default guard is read, so a guard named on any spelling but `$request->user()`, such as `auth('admin')`, `Auth::guard('admin')` or `request()->user('admin')`, names nothing ([`ResolvesAuthHelperCalls`]) |
-| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`), `keyed` for a `string` or `array-key` key, and `guardsElement`. On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
+| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`), `keyed` for a `string`, `int|string` or `array-key` key, `stringKeyed` for a bare `string` one, and `guardsElement`. On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
 | `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare, or to an attribute scope, reads as the same call on `X::query()`, since `Model::__callStatic()` runs it on a new query (`QueryForwarding::queriesStatically()`), and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
@@ -164,7 +164,8 @@ names and the same `->` or `?->` at each step. A method call never qualifies, be
 different value from the one the test saw.
 
 When the proven arm is the tested read itself, `narrowed()` narrows each class `R` it resolves to against the tested
-classes `T` (`InstanceofNarrowing::classes()`). The first case that matches decides, whatever order the tests are written in:
+classes `T` (`InstanceofNarrowing::classes()`). The first case that matches decides, whatever order the tests are
+written in:
 
 1. `R` is a `T`, or a subtype of one: `R` stays.
 2. Some `T` is an interface unrelated to `R` by inheritance: `R` stays. A subtype of `R` may pass that test without
@@ -192,8 +193,9 @@ the test leaves of the subject, its collection's element and keys included (its 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
 holds `Post`, not every target. It narrows a `$this->prop` chain as the ternary does, inside each block it proves and
-past a guard that leaves, while every call between the test and the read is one `ThisPathWrites` knows cannot reach it. On an API resource it narrows `$this->resource` for each value inside a block it
-proves, so a collection's items read as the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
+past a guard that leaves, while every call between the test and the read is one `ThisPathWrites` knows cannot reach it.
+On an API resource it narrows `$this->resource` for each value inside a block it proves, so a collection's items read as
+the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
 
 A subject method the proven arm or block calls as a value reads its body with `$this->resource` backed by the one model
 the proof leaves: `SubjectMethodTypeResolver` passes it as `MethodReturnTypeResolver::resolve()`'s `$backing`, and the
@@ -228,8 +230,8 @@ never emitted or imported, so it can accept the classes `morphToDocblockTargets(
 
 ## Following a method's return type
 
-`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`, but a `Conditionable` `when()` or
-`unless()`, which `ConditionableCallHandler` answers before it from the same receiver. It asks
+`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`, but a `Conditionable` `when()`
+or `unless()`, which `ConditionableCallHandler` answers before it from the same receiver. It asks
 `ReceiverClassResolver::resolve()` for a call's receiver, or `resolveStaticReceiver()` for the class a static call is
 made on. `ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds and merges
 the answers. When any class declines, the whole call declines. The one exception is a resource collection's items: a
@@ -402,8 +404,10 @@ Two more read the call's own arguments:
   parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first
   token of one an arm of which reads no type (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to
   that token's type is withdrawn, so `$this->collection->random()` with no element, and
-  `$this->collection->pluck('title')->random()`, publish `unknown`, never a word of the condition. A rule's answer, a
-  body's and a bracketed type that is no conditional, such as `(int|string)[]`, stand. A guarded paginator's step
+  `$this->collection->pluck('title')->random()`, publish `unknown`, never a word of the condition. A rule's answer and
+  a bracketed type that is no conditional, such as `(int|string)[]`, stand, and so does a body's, except where the
+  first token spells a type, as `($int is true ? int : string)` does, so no body is read. Inside a callback the guard
+  leaves unread, every receiver reads this way, and an argument it passes keeps the guard. A guarded paginator's step
   that hands the paginator back, such as `through()`, publishes nothing, since its properties never spell the
   `toArray()` Laravel sends; a resource collection's own paginator keeps that reading.
 
@@ -481,21 +485,22 @@ while their siblings keep their types:
   `UiUntypedChartKindResource` pins it.
 
 The analysis sets `AnalysisScope::$casesAsLiterals`, so `ValueResolver::resolveConstantValue()` types a plain backed
-enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list literal,
-`collect()` or `cases()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and `[Status::Draft, Status::Published]`
-`(0 | 1)[]`, where the enum's type is vaguer. A literal binds no enum, so where a `map()` or `array_map()` callback reads
-nothing off one, in any caller, the array is read again with its cases as their enums
-(`BindsMapCallbacks::mappedReadingCases()`). So `$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A pure enum's
-case, which `json_encode()` cannot write, and a `JsonSerializable` enum's, whose `jsonSerialize()` it sends, type
-nothing; a case of an enum `LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's
-getter returns types the same way where the body reads the accessor whole: the getter is analyzed under the flag too,
-with memo entries of its own, so an in-place read never replays the literal. An `EnumResource` payload reads its cases
-as their enum (`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum,
-such as a cast attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry. The
-value read sets it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. While a read needs the case's
-enum, such as an `EnumResource` payload or a map callback's re-read, `AnalysisMemo::readingCasesAsEnums()` holds for its
-whole extent, so every body it reaches, however many frames deep (a helper, its shape, an accessor's getter, a macro, a
-spread), reads its cases as their enums, and each memo answer computed then is kept under a key of its own.
+enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list
+literal, `collect()` or `cases()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and
+`[Status::Draft, Status::Published]` `(0 | 1)[]`, where the enum's type is vaguer. So
+`$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A literal binds no enum, so where a `map()` or
+`array_map()` callback reads nothing off one, in any caller, the array is read again with its cases as their enums
+(`BindsMapCallbacks::mappedReadingCases()`). A pure enum's case, which `json_encode()` cannot write, and a
+`JsonSerializable` enum's, whose `jsonSerialize()` it sends, type nothing; a case of an enum
+`LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's getter returns types the same
+way where the body reads the accessor whole: the getter is analyzed under the flag too, with memo entries of its own, so
+an in-place read never replays the literal. An `EnumResource` payload reads its cases as their enum
+(`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum, such as a cast
+attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry. The value read sets
+it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. While a read needs the case's enum, such as an
+`EnumResource` payload or a map callback's re-read, `AnalysisMemo::readingCasesAsEnums()` holds for its whole extent, so
+every body it reaches, however many frames deep (a helper, its shape, an accessor's getter, a macro, a spread), reads
+its cases as their enums, and each memo answer computed then is kept under a key of its own.
 
 Attribute filters know an answer that names no token, which a reader that carries no import publishes.
 `AnalysisScope::$carriesImports` is false only for an accessor's getter read that way
@@ -559,8 +564,9 @@ publishes those classes, with the null its declaration admits, unless the class 
   its import. On an `attributeless` receiver a column adds `| null`, as Laravel reads a missing attribute, unless the
   model's new instance holds a default for it or an accessor or cast class computes it. A relation to one adds
   `| null` there too where it has no default model and a column it finds its row by was left unwritten
-  (`LoadedRelations::parentKeys()`): the foreign key, and a `morphTo()`'s type, or the local key of a `hasOne()`,
-  `morphOne()` or through relation. A relation to many sends the empty list its type admits.
+  (`LoadedRelations::parentKeys()`): the foreign key, and a `morphTo()`'s type, or the local key of a `hasOne()` or
+  `morphOne()`; a through relation's local key `ReceiverMemberReader` adds itself. A relation to many sends the empty
+  list its type admits.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
@@ -573,9 +579,9 @@ what it declines falls to the reflected property. `->value` publishes the enum's
 ±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number` and `string`. `PropertyChainHandler`'s
 wrapped-enum arm asks the same class (`EnumValueTypes::member()`).
 
-A read off a case itself, `Status::Draft->value`, publishes the literal that case sends (`EnumValueTypes::caseMember()`),
-`0` here, and so does each case arm of a ternary or `match` receiver, with `| null` for `?->`. A `match` is a receiver
-too: each arm but a `throw` resolves as a ternary's do.
+A read off a case itself, `Status::Draft->value`, publishes the literal that case sends
+(`EnumValueTypes::caseMember()`), `0` here, and so does each case arm of a ternary or `match` receiver, with `| null`
+for `?->`. A `match` is a receiver too: each arm but a `throw` resolves as a ternary's do.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read, but on a `joined`

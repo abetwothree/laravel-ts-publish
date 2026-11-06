@@ -953,7 +953,8 @@ test('a nullable column cast to a class whose get() does not decide what toArray
 ]);
 
 // Laravel calls a caster's serialize() method whether or not the caster implements SerializesCastableAttributes.
-// A serialize() declaring only `mixed`, or `array` without the interface, leaves get() to type the value.
+// Without the interface, one whose `mixed` returns prove nothing, or a vague `array` over a get() returning an object
+// or array, leaves get() to type the value; with it, such a declaration stands.
 test('a nullable column cast to a class with a serialize() method publishes what serialize() sends', function (string $column, string $type, string $sent) {
     $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id'];
     $row = (new SerializeMethodWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
@@ -970,10 +971,10 @@ test('a nullable column cast to a class with a serialize() method publishes what
     'a serialize() declaring array, with the interface, as published before' => ['primary_contact_id', 'unknown[]', '{"x":1,"y":2}'],
 ]);
 
-// A vague serialize() without the interface leaves an object get() to type the value, but not a scalar one, which
-// serialize() evidently turns into something else; an `array` then reads as a list or a record, as json_encode() writes
-// it by its keys. The interface keeps what its serialize() declares, unless a `mixed` one's returns prove more.
-test('a vague serialize() leaves the type to get() only without the interface and over a get() returning no scalar', function (string $column, string $type, string $sent) {
+// A vague serialize() without the interface leaves a get() returning an object or array to type the value, not a scalar
+// one, which serialize() turns into something else; an `array` then reads as a list or a record by its keys. The
+// interface keeps what its serialize() declares, unless a `mixed` one's returns prove more.
+test('a vague serialize() leaves the type to get() only without the interface and over a get() returning an object or array', function (string $column, string $type, string $sent) {
     $columns = ['phone', 'coordinate_data', 'status', 'color', 'priority', 'manager_id', 'primary_contact_id', 'secondary_contact_id'];
     $row = (new VagueSerializeWarehouse)->setRawAttributes(array_fill_keys($columns, null))->toArray();
 
