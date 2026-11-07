@@ -128,6 +128,11 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
+        $openShapes = array_values(array_unique(array_merge([], ...array_values($analysis->openShapes))));
+
+        if ($openShapes !== []) {
+            $result['openShapes'] = $openShapes;
+        }
 
         if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
             $result['keepsKeys'] = true;

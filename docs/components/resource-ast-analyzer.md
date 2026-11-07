@@ -147,14 +147,15 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
-- a position read `unknown`, `unknown[]` or a `Record` of `unknown` takes the member's type there, the body's `null`
-  kept, as the top of a key does, and a member that tells no more leaves the body's reading;
+- where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
+  does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`);
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
-  key or a declared `Record`'s value; a member only the declaration has follows where it is optional and goes where it
-  is required, since the body never sends it;
+  key, a declared list's element shape's, or a declared `Record`'s value or list's other element; a member only the
+  declaration has follows where it is optional or the body's shape is open, as a spread of an array it cannot read or
+  an index signature leaves it (`MethodAnalysis::$openShapes`), and goes where the body never sends it;
 - a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
-  declared arms of its kind a body arm pairs with the one whose members match it best, the discriminant literals both
-  spell first, then the keys both hold (`DeclaredTypeMerge::bestMatch()`), and stays as it is where two match alike;
+  declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
+  both spell first, then the keys both hold (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
 - the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
   within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
   member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a

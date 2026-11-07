@@ -627,14 +627,6 @@ element's class only where `array_map()` or `collect()` reads a property whose o
 parameter's, lists it as an array (`ReceiverClassResolver::elementClasses()`). Type the parameter, `fn (Recipient $r)`,
 or the key's `@return` docblock, which fills the member.
 
-### A body shape two declared shapes match alike keeps its `unknown` members
-
-A key whose `@return` declares a union of shapes, such as `list<array{type: 'a', x: int}|array{type: 'b', y: string}>`,
-fills each shape the body sends from the declared shape whose members match it best: the discriminant literals both
-spell, then the keys both hold. A body shape two declared ones match alike, as `{ v: unknown }` against
-`array{v: int, a: string}|array{v: string, b: string}`, merges with neither and keeps its `unknown` members. Send a
-key in each shape that the other declared shapes lack, or type the key with `#[TsCasts]`.
-
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.

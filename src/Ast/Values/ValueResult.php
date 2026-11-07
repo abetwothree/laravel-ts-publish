@@ -949,6 +949,15 @@ final class ValueResult
             $result['unnamedKeys'] = true;
         }
 
+        $openShapes = array_values(array_unique(array_merge([], ...array_map(
+            static fn (array $inner): array => $inner['openShapes'] ?? [],
+            $branchResults,
+        ))));
+
+        if ($openShapes !== []) {
+            $result['openShapes'] = $openShapes;
+        }
+
         // Every list arm keeps its int keys only where each branch spelling one says so.
         $lists = array_filter($branchResults, fn (array $inner): bool => ArrayArms::holdsList($inner['type']));
 

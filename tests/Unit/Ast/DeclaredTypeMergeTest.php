@@ -49,7 +49,6 @@ test('a list or a record merges its element or value, and another container kind
     'a list element' => ['{ a: unknown }[]', '{ a: number }[]', '{ a: number }[]'],
     'a grouped element' => ['({ a: unknown } | null)[]', '({ a: number } | null)[]', '({ a: number } | null)[]'],
     'a record value' => ['Record<string, { n: unknown }>', 'Record<string, { n: number }>', 'Record<string, { n: number }>'],
-    'a shape the declaration types as a list' => ['{ a: unknown }', '{ a: number }[]', '{ a: unknown }'],
     'each arm with the declared arm of its kind' => ['{ a: unknown } | unknown[]', '{ a: number } | number[]', '{ a: number } | number[]'],
     'a nullable list the declaration lists' => ['{ a: unknown }[] | null', '{ a: number }[]', '{ a: number }[] | null'],
 ]);
@@ -65,7 +64,31 @@ test('a body shape merges with the declared shape whose keys match it best, and 
     ],
     'one shape of two declared' => ['{ type: string; x: unknown }', "{ type: 'a'; x: number } | { type: 'b'; y: string }", "{ type: 'a'; x: number }"],
     'shapes told apart by the discriminant' => ["{ type: 'b'; v: unknown }", "{ type: 'a'; v: number } | { type: 'b'; v: string }", "{ type: 'b'; v: string }"],
-    'shapes that match it alike' => ['{ v: unknown }', '{ v: number; a: string } | { v: string; b: string }', '{ v: unknown }'],
+    'shapes that match it alike, each kept' => ['{ v: unknown }', '{ v: number; a: string } | { v: string; b: string }', '{ v: number } | { v: string }'],
+    'shapes alike but for a widened discriminant' => [
+        '{ type: string; value: unknown }',
+        "{ type: 'text'; value: string } | { type: 'count'; value: number }",
+        "{ type: 'text'; value: string } | { type: 'count'; value: number }",
+    ],
+]);
+
+// R13: `unknown` tells less than a vague container, which tells less than any other type; the merge takes the more.
+test('a reading takes the side that tells more of it: unknown, then a vague container, then any other type', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a vague list over unknown' => ['unknown', 'unknown[]', 'unknown[]'],
+    'a vague record over unknown beside null' => ['unknown | null', 'Record<string, unknown>', 'Record<string, unknown> | null'],
+    'a list over a vague record' => ['Record<string, unknown>', 'string[]', 'string[]'],
+    'a list over a vague declaration' => ['string[]', 'unknown[]', 'string[]'],
+    'a body\'s vague list over a declared vague record' => ['unknown[]', 'Record<string, unknown>', 'unknown[]'],
+]);
+
+// R16: a shape under a declared list of shapes merges with its element shape, and else each member with the element.
+test('a shape under a declared list merges with its element, keeping the shape', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a list of shapes' => ['{ a: unknown }', '{ a: number }[]', '{ a: number }'],
+    'a list of scalars' => ['{ a: unknown; b: unknown }', 'number[]', '{ a: number; b: number }'],
 ]);
 
 // R11: a vague container takes the declaration whole; another container kind keeps the body's and merges its contents.
@@ -81,9 +104,14 @@ test('a vague container takes the declared one, and another kind merges its cont
     'a record under a list' => ['Record<string, { n: unknown }>', '{ n: number }[]', 'Record<string, { n: number }>'],
 ]);
 
-// R12: a member only the declaration has is kept where it may be left out, and dropped where it must be sent.
-test('a member only the declaration has stays where it is optional', function () {
-    expect(mergedType('{ a: string }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; c?: string }');
+// R12 and R15: a member only the declaration has is kept where it may be left out, and dropped where it must be sent
+// from a shape whose every key the body names; a shape the body leaves open keeps it as declared.
+test('a member only the declaration has stays where it is optional or the body\'s shape is open', function () {
+    $open = new DeclaredTypeMerge([], [], ['{ a: string }']);
+
+    expect(mergedType('{ a: string }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; c?: string }')
+        ->and($open->merge(['{ a: string }', []], ['{ a: string; b: number; c?: string }', []])[0])->toBe('{ a: string; b: number; c?: string }')
+        ->and(mergedType('{ [key: string]: string; a: string }', '{ a: string; b: number }'))->toBe('{ [key: string]: string; a: string; b: number }');
 });
 
 // R7 rule 5, first bullet.

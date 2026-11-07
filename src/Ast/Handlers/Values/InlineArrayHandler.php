@@ -284,9 +284,13 @@ final class InlineArrayHandler implements ExpressionHandler
         $result = new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine));
 
         // The object names only the keys written as a string or an int, so array_keys() may find others in it.
-        return array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ($item->key instanceof String_ || $item->key instanceof Int_))
-            ? $result
-            : [...$result, 'unnamedKeys' => true];
+        if (array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ($item->key instanceof String_ || $item->key instanceof Int_))) {
+            return $result;
+        }
+
+        return TsTypeShape::members($result['type']) === null
+            ? [...$result, 'unnamedKeys' => true]
+            : [...$result, 'unnamedKeys' => true, 'openShapes' => [...$result['openShapes'] ?? [], $result['type']]];
     }
 
     /**

@@ -17,11 +17,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewStatusRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -262,6 +264,7 @@ test('a key the body types fills each unknown position inside it from the docblo
     'a nullable shape' => ['nestedArms', 'maybe', '{ a: unknown } | null', '{ a: number } | null'],
     'an unknown list element' => ['nestedLists', 'rows', 'unknown[] | string', '{ name: string | null; email: string | null }[] | string'],
     'the arm of the docblock\'s kind' => ['nestedArms', 'either', '{ a: unknown } | unknown[]', '{ a: number } | number[]'],
+    'a shape the docblock lists' => ['nestedLists', 'rows', '{ name: unknown }', '{ name: string | null }'],
 ]);
 
 test('an unknown position whose docblock member is another kind of value stays unknown', function (string $method, string $name, string $inferred, string $expected) {
@@ -271,7 +274,6 @@ test('an unknown position whose docblock member is another kind of value stays u
         ->and($analysis->customImports)->toBe([])
         ->and($analysis->inlineModelFqcns)->toBe([]);
 })->with([
-    'a shape where the docblock lists' => ['nestedLists', 'rows', '{ name: unknown }', '{ name: unknown }'],
     'a list where the docblock has a shape' => ['nestedShapes', 'nested', 'string | unknown[]', 'string | unknown[]'],
     'a shape where the docblock has a scalar' => ['nestedShapes', 'scalar', '{ a: unknown }', '{ a: unknown }'],
     'a key the docblock lacks' => ['nestedLists', 'missing', '{ a: unknown }[]', '{ a: unknown }[]'],
@@ -387,6 +389,28 @@ test('a mapped key merges with a union of shapes, another container kind and mem
         'optional' => '{ by: CrmUser; other: WorkbenchUser | null; extra?: Post }[]',
         'nested' => '{ by: CrmUser; box: { who: WorkbenchUser | null } }[]',
     ], ['Post', 'User as CrmUser', 'User as WorkbenchUser']],
+]);
+
+// R13-R16: a vague member fills a body `unknown`, a tie keeps each shape it ties with, a shape the body leaves open
+// keeps a required member only the docblock has, and a shape under a declared list of shapes merges with its element.
+test('a mapped key merges with tied shapes, an open shape, a listed shape and vague members', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'shapes the body matches alike' => [ReviewTiesResource::class, [
+        'payload' => "({ type: 'text'; value: string } | { type: 'count'; value: number })[]",
+        'kinds' => "({ type: 'text'; value: string } | { type: 'count'; value: number })[]",
+        'shared' => '({ v: number } | { v: string })[]',
+        'classes' => "({ type: 'user'; id: number; by: User } | { type: 'post'; id: number; by: Post })[]",
+    ], ['Post', 'User']],
+    'an open shape, a listed shape and vague members' => [ReviewOpenRowsResource::class, [
+        'spread' => '{ by: User; extra: string }[]',
+        'listed' => '{ by: User; m: { a: number } }[]',
+        'vague' => '{ by: User; tags: unknown[]; meta: Record<string, unknown>; raw: unknown[] }[]',
+        'box' => '{ n: number; tags: unknown[]; meta: Record<string, unknown> }',
+    ], ['User']],
 ]);
 
 // No channel can hold an override's token beside the model spelled like it, so that merge declares each token's class.
