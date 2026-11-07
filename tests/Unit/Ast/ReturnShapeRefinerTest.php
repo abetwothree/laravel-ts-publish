@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuth
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeySpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewListedShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewNamedKeysResource;
@@ -28,6 +29,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSignatureNu
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewStatusRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportedNullsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -453,6 +456,35 @@ test('a mapped key reads a shape open only where the engine cannot name its keys
     ], ['User']],
 ]);
 
+// R26-R29: an open mark moves with the value it marks, a key names one member however it is spelled, and an
+// intersection of objects merges as the one object it sends (GH-154).
+test('a mapped key keeps the open mark its value moves with and pairs keys by the name they spell', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'transports' => [ReviewTransportsResource::class, [
+        'spread' => '{ by: User; extra: string }[]',
+        'identity' => '{ by: User; extra: string }[]',
+        'collected' => '{ by: User; extra: string }[]',
+        'rebuilt' => '{ by: User; n: number; extra: string }[]',
+        'nested' => '{ subs: { a: number; b: string }[] }[]',
+    ], ['User']],
+    'transported nulls' => [ReviewTransportedNullsResource::class, [
+        'spread' => '{ tags: number[] | null }[]',
+        'identity' => '{ tags: number[] | null }[]',
+        'typedArm' => '{ tags: number | null | number[] }[]',
+    ], []],
+    'key spellings' => [ReviewKeySpellingsResource::class, [
+        'zero' => '{ 0: number; by: User }[]',
+        'nested' => '{ 1: { a: number }; by: User }[]',
+        'classed' => '{ 0: User; n: number }[]',
+        'open' => '{ 0: { a: number; b: string }; by: User }[]',
+        'twice' => '{ by: User; [key: `x_${string}`]: number | undefined | string; [key: `${string}_y`]: string | undefined | number; x_y: number | undefined | string }[]',
+    ], ['User']],
+]);
+
 // R20: the merged signature type-checks, where a member its pattern covers beside it unwidened is TS2411.
 test('a member an index signature covers publishes a type tsc accepts', function () {
     $tsc = dirname(__DIR__, 3).'/node_modules/.bin/tsc';
@@ -463,15 +495,21 @@ test('a member an index signature covers publishes a type tsc accepts', function
 
     $covered = new ResourceTransformer(ReviewSignatureNullsResource::class)->data()->properties['covered']['type'];
     $compiles = function (string $type) use ($tsc): array {
-        $file = tempnam(sys_get_temp_dir(), 'ix').'.ts';
+        // tempnam() creates the bare name it returns, which tsc never reads but the test must remove.
+        $base = (string) tempnam(sys_get_temp_dir(), 'ix');
+        $file = $base.'.ts';
         file_put_contents($file, "type User = { id: number };\nexport type Rows = {$type};\n");
         exec('cd '.escapeshellarg(dirname($file)).' && '.escapeshellarg($tsc).' --noEmit --strict --exactOptionalPropertyTypes '.escapeshellarg(basename($file)).' 2>&1', $output, $status);
         unlink($file);
+        unlink($base);
 
         return [$status, implode("\n", $output)];
     };
 
+    $twice = new ResourceTransformer(ReviewKeySpellingsResource::class)->data()->properties['twice']['type'];
+
     expect($compiles($covered))->toBe([0, ''])
+        ->and($compiles($twice))->toBe([0, ''])
         ->and($compiles('{ by: User; [key: `${string}_tag`]: number | undefined; x_tag: string }[]')[1])->toContain('TS2411');
 });
 

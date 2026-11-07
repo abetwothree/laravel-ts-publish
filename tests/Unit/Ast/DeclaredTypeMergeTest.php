@@ -92,6 +92,41 @@ test('a lone null a union kept beside an arm no rule types takes the declared ty
         ->and($merge->merge(['{ tags: null }', []], ['{ tags: unknown }', []])[0])->toBe('{ tags: null }');
 });
 
+// R27: the arm a union left out beside a typed arm and its `null` reads as the declaration, beside the body's arms.
+test('a typed arm and null a union kept beside an arm no rule types take the declared type beside them', function () {
+    $merge = new DeclaredTypeMerge([], [], [".tags\0number | null"]);
+
+    expect($merge->merge(['{ tags: number | null }', []], ['{ tags: number[] }', []])[0])->toBe('{ tags: number | null | number[] }')
+        ->and($merge->merge(['{ tags: number | null }', []], ['{ tags: number }', []])[0])->toBe('{ tags: number | null }')
+        ->and(mergedType('{ tags: number | null }', '{ tags: number[] }'))->toBe('{ tags: number | null }');
+});
+
+// R28: a member pairs with the declared member of the key it names, however either spells it.
+test('a member pairs with the declared member of the key it names, a numeric key printed as declared', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a quoted numeric key' => ['{ "0": unknown; by: string }', '{ 0: number; by: string }', '{ 0: number; by: string }'],
+    'a single-quoted optional one' => ["{ '1'?: { a: unknown } }", '{ 1: { a: number } }', '{ 1?: { a: number } }'],
+    'a quoted name' => ['{ "a": unknown }', '{ a: number }', '{ "a": number }'],
+    'a key only the declaration has' => ['{ "0": number }', '{ 0: number; 1?: string }', '{ 0: number; 1?: string }'],
+]);
+
+// R29: an intersection of objects, as a spread beside keys prints, merges as the one object it sends.
+test('an intersection of objects merges as the one object it sends', function () {
+    $open = new DeclaredTypeMerge([], [], ["[]\0Omit<{ by: unknown }, 'n'> & { n: number }"]);
+    $classes = new DeclaredTypeMerge(['User']);
+
+    expect(mergedType("Omit<{ by: unknown; n: string }, 'n'> & { n: number }", '{ by: string; n: number; extra: string }'))
+        ->toBe('{ by: string; n: number }')
+        ->and($open->merge(["(Omit<{ by: unknown }, 'n'> & { n: number })[]", []], ['{ by: string; n: number; extra: string }[]', []])[0])
+        ->toBe('{ by: string; n: number; extra: string }[]')
+        ->and(mergedType("{ n: unknown } & Omit<{ n: string }, 'n'>", '{ n: number }'))->toBe('{ n: number }')
+        ->and(mergedType("Omit<Record<string, string>, 'by'> & { by: unknown }", '{ by: number }'))
+        ->toBe("Omit<Record<string, string>, 'by'> & { by: unknown }")
+        ->and($classes->merge(["Omit<{ by: User; n: User }, 'n'> & { n: unknown }", [CrmUser::class, User::class]], ['{ by: User; n: number }', [User::class]]))
+        ->toBe(['{ by: User; n: number }', [CrmUser::class]]);
+});
+
 // R16: a shape under a declared list of shapes merges with its element shape, and else each member with the element.
 test('a shape under a declared list merges with its element, keeping the shape', function (string $body, string $declared, string $expected) {
     expect(mergedType($body, $declared))->toBe($expected);
@@ -155,6 +190,11 @@ test('a declared member an index signature covers merges with its value, which w
     ],
     'a member refining the value' => ['{ [key: string]: string }', "{ a: 'x' }", "{ [key: string]: string; a: 'x' }"],
     'a member the value widens for' => ['{ [key: string]: string }', "{ a: 'x' | null }", "{ [key: string]: string | null; a: 'x' | null }"],
+    'a member two patterns cover' => [
+        '{ [key: `x_${string}`]: number | undefined; [key: `${string}_y`]: string | undefined }',
+        '{ x_y: string }',
+        '{ [key: `x_${string}`]: number | undefined | string; [key: `${string}_y`]: string | undefined | number; x_y: number | undefined | string }',
+    ],
     'a member no pattern covers' => [
         '{ by: string; [key: `${string}_tag`]: number | undefined }',
         '{ by: string; extra: string }',

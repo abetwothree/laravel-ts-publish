@@ -109,7 +109,7 @@ final class ValueResult
      */
     public static function elementOf(array $list, string $element): array
     {
-        $value = [...self::withoutHeldObject($list), 'type' => $element, 'optional' => false];
+        $value = self::takingElementReadings([...self::withoutHeldObject($list), 'type' => $element, 'optional' => false], $list);
         unset($value['keepsKeys'], $value['absentReadsNull']);
 
         $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
@@ -445,6 +445,8 @@ final class ValueResult
      * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
      * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
+     * A union keeping a `null` beside a dropped branch is marked in `openReadings`, so a declared type can fill it.
+     *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
@@ -481,14 +483,37 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        // A `null` left beside an arm no rule types says nothing of that arm, which a declared type may fill.
-        if ($types === ['null'] && count($branchResults) < count($results)) {
-            $result['openReadings'] = [...$result['openReadings'] ?? [], "\0null"];
+        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
+
+        // A `null` kept beside an arm no rule types left out says nothing of that arm, which a declared type may fill.
+        if (count($branchResults) < count($results) && TsTypeString::hasNullArm($union['type'])) {
+            $union['openReadings'] = [...$union['openReadings'] ?? [], "\0".$union['type']];
         }
 
-        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        return $union;
+    }
 
-        return self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
+    /**
+     * A value its container holds as each element or value, taking the container's open readings one step down: each
+     * whose path leads with the container's `[]` or `{}` step, that step dropped, and none of the container's own.
+     *
+     * @param  ValueExpressionResult  $value  the element or value, its type set
+     * @param  ValueExpressionResult  $container
+     * @return ValueExpressionResult
+     */
+    public static function takingElementReadings(array $value, array $container): array
+    {
+        $readings = array_values(array_unique(array_map(
+            static fn (string $reading): string => substr($reading, 2),
+            array_filter(
+                $container['openReadings'] ?? [],
+                static fn (string $reading): bool => str_starts_with($reading, '[]') || str_starts_with($reading, '{}'),
+            ),
+        )));
+        unset($value['openReadings']);
+
+        return $readings === [] ? $value : [...$value, 'openReadings' => $readings];
     }
 
     /**

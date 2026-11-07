@@ -129,7 +129,7 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
-        $openReadings = $this->openReadings($analysis, $type);
+        $openReadings = $this->openReadings($analysis, $type, $spreadArms);
 
         if ($openReadings !== []) {
             $result['openReadings'] = $openReadings;
@@ -371,13 +371,30 @@ final class InlineObjectResult
 
     /**
      * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no
-     * name names, and each member's own, under the member's key as the object prints it.
+     * name names, each member's own, under the member's key as the object prints it, and each a spread object holds
+     * under a key no member of the literal replaces.
      *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
      * @return list<string>
      */
-    private function openReadings(MethodAnalysis $analysis, string $type): array
+    private function openReadings(MethodAnalysis $analysis, string $type, array $spreadArms): array
     {
-        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && TsTypeShape::members($type) !== null ? ["\0".$type] : [];
+        $object = TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null;
+        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && $object ? ["\0".$type] : [];
+        $replaced = array_map(
+            static fn (string $name): string => '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true),
+            array_column($analysis->properties, 'name'),
+        );
+
+        foreach ($spreadArms as $arm) {
+            array_push($paths, ...array_filter(
+                isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
+                static fn (string $path): bool => ! str_starts_with($path, "\0") && ! array_any(
+                    $replaced,
+                    static fn (string $key): bool => str_starts_with($path, $key) && in_array($path[strlen($key)], ['.', '[', '{', "\0"], true),
+                ),
+            ));
+        }
 
         foreach ($analysis->openReadings as $name => $memberPaths) {
             $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);

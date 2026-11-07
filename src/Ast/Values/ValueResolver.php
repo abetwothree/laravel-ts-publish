@@ -247,7 +247,7 @@ final class ValueResolver
 
                 // A spread copies a collection's items into this array, where a resource's filter enters each one.
                 unset($element['keepsKeys']);
-                $element = [...$element, 'type' => $elementType];
+                $element = ValueResult::takingElementReadings([...$element, 'type' => $elementType], $element);
             }
 
             $elements[] = $element;

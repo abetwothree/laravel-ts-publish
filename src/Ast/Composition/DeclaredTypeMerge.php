@@ -68,49 +68,16 @@ final readonly class DeclaredTypeMerge
      */
     public function merge(array $body, array $declared, string $at = ''): array
     {
-        $told = [self::tells($body[0]), self::tells($declared[0])];
+        // A union that left out an arm no rule types beside its `null` may hold whatever that arm held, which the
+        // declaration then types; an `unknown` it leaves unfilled is not published.
+        if (self::tells($declared[0]) > 0 && TsTypeString::hasNullArm($body[0]) && in_array($at."\0".$body[0], $this->openReadings, true)) {
+            $merged = $this->mergeReading([$body[0].' | unknown', $body[1]], $declared, $at);
+            $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($merged[0]), ['unknown']));
 
-        // A body reading only `null` tells less than a container, and than any type where it left out an untyped arm.
-        if ($body[0] === 'null' && $told[1] > 0 && ($told[1] === 1 || in_array($at."\0null", $this->openReadings, true))) {
-            return [TsTypeString::withNullArm($declared[0]), $declared[1]];
+            return $arms === [] ? $body : [implode(' | ', $arms), $merged[1]];
         }
 
-        // Where either side tells no more than its container, the side telling more is taken whole.
-        if (min($told) < 2) {
-            // `withNullArm()` appends a `null`, which spells no class, so the declared slots still line up.
-            return $told[1] > $told[0] ? [TsTypeString::withNullArmOf($body[0], $declared[0]), $declared[1]] : $body;
-        }
-
-        $bodyArms = $this->arms($body);
-        $declaredArms = $this->arms($declared);
-        $pairs = $this->pairs($bodyArms, $declaredArms);
-        $verdict = $this->verdict($bodyArms, $declaredArms, $pairs);
-
-        $merged = [];
-        $declaredAtoms = self::atoms($declaredArms);
-
-        foreach ($bodyArms as $index => $arm) {
-            if (self::kindOf($arm[0]) !== null) {
-                // A body arm several declared arms match alike merges with each, every result an arm of its own.
-                array_push($merged, ...array_merge([], ...array_map(
-                    fn (int $paired): array => $this->containerMerged($arm, $declaredArms[$paired], $at),
-                    $pairs[$index] ?? [],
-                )), ...(isset($pairs[$index]) ? [] : [$arm]));
-            } elseif ($verdict === 'declared') {
-                // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
-                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
-                array_push($merged, ...($refined === [] ? [$arm] : $refined));
-            } else {
-                array_push($merged, ...($verdict === 'unknown' && $arm[0] === 'unknown' ? $this->uncovered($bodyArms, $declaredArms, $pairs) : [$arm]));
-            }
-        }
-
-        // The arm a declaration adds, its `null` beside a body that reads none, as verdict() only takes such a one.
-        if ($verdict === 'declared') {
-            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms), false)));
-        }
-
-        return $this->joined($merged, $body);
+        return $this->mergeReading($body, $declared, $at);
     }
 
     /**
@@ -158,6 +125,14 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
+     * The key a printed member key names, so `0`, `"0"` and `'0'` are one key; an index signature as printed.
+     */
+    private static function keyName(string $key): string
+    {
+        return PrintedKey::decode($key) ?? rtrim($key, '?');
+    }
+
+    /**
      * How well two arms' members match: the literals both spell alike under one key, then the keys both hold, read
      * through a list's element or a record's value; nothing for an arm holding no object.
      *
@@ -182,6 +157,63 @@ final readonly class DeclaredTypeMerge
         $alike = array_filter($shared, static fn (string $value, string $key): bool => $literal($value) && $value === $declaredMembers[$key], ARRAY_FILTER_USE_BOTH);
 
         return [count($alike), count($shared)];
+    }
+
+    /**
+     * merge() of a reading no union left an untyped arm out of.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return Typed
+     */
+    private function mergeReading(array $body, array $declared, string $at): array
+    {
+        $told = [self::tells($body[0]), self::tells($declared[0])];
+
+        // A body reading only `null` tells less than a container.
+        if ($body[0] === 'null' && $told[1] === 1) {
+            return [TsTypeString::withNullArm($declared[0]), $declared[1]];
+        }
+
+        // Where either side tells no more than its container, the side telling more is taken whole.
+        if (min($told) < 2) {
+            // `withNullArm()` appends a `null`, which spells no class, so the declared slots still line up.
+            return $told[1] > $told[0] ? [TsTypeString::withNullArmOf($body[0], $declared[0]), $declared[1]] : $body;
+        }
+
+        $printedArms = $this->arms($body);
+        $opens = array_map(fn (array $arm): bool => $this->isOpen($at, $arm[0]), $printedArms);
+        // An intersection of objects, as a spread beside keys prints, merges as the one object it sends.
+        $bodyArms = array_map(fn (array $arm): array => $this->flattened($arm) ?? $arm, $printedArms);
+        $declaredArms = $this->arms($declared);
+        $pairs = $this->pairs($bodyArms, $declaredArms);
+        $verdict = $this->verdict($bodyArms, $declaredArms, $pairs);
+
+        $merged = [];
+        $declaredAtoms = self::atoms($declaredArms);
+
+        foreach ($bodyArms as $index => $arm) {
+            if (self::kindOf($arm[0]) !== null) {
+                // A body arm several declared arms match alike merges with each, every result an arm of its own.
+                array_push($merged, ...array_merge([], ...array_map(
+                    fn (int $paired): array => $this->containerMerged($arm, $declaredArms[$paired], $at, $opens[$index]),
+                    $pairs[$index] ?? [],
+                )), ...(isset($pairs[$index]) ? [] : [$printedArms[$index]]));
+            } elseif ($verdict === 'declared') {
+                // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
+                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
+                array_push($merged, ...($refined === [] ? [$arm] : $refined));
+            } else {
+                array_push($merged, ...($verdict === 'unknown' && $arm[0] === 'unknown' ? $this->uncovered($bodyArms, $declaredArms, $pairs) : [$arm]));
+            }
+        }
+
+        // The arm a declaration adds, its `null` beside a body that reads none, as verdict() only takes such a one.
+        if ($verdict === 'declared') {
+            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms), false)));
+        }
+
+        return $this->joined($merged, $body);
     }
 
     /**
@@ -336,9 +368,10 @@ final readonly class DeclaredTypeMerge
      *
      * @param  Typed  $body
      * @param  Typed  $declared
+     * @param  bool  $open  whether the body arm is a shape the engine cannot name every key of
      * @return list<Typed>
      */
-    private function containerMerged(array $body, array $declared, string $at): array
+    private function containerMerged(array $body, array $declared, string $at, bool $open): array
     {
         $kind = self::kindOf($declared[0]);
 
@@ -349,7 +382,7 @@ final readonly class DeclaredTypeMerge
         }
 
         if ($kind === 'object') {
-            return [$this->membersMerged($body, $declared, true, $at)];
+            return [$this->membersMerged($body, $declared, true, $at, $open)];
         }
 
         // A shape under a declared list merges with the shapes its element holds, the best matched, else each member
@@ -359,8 +392,63 @@ final readonly class DeclaredTypeMerge
         $shapes = array_keys(array_filter($parts, static fn (array $part): bool => self::kindOf($part[0]) === 'object'));
 
         return $shapes === []
-            ? [$this->membersMerged($body, $contents, false, $at)]
-            : array_map(fn (int $shape): array => $this->membersMerged($body, $parts[$shape], true, $at), $this->bestMatches($body, $parts, $shapes));
+            ? [$this->membersMerged($body, $contents, false, $at, $open)]
+            : array_map(fn (int $shape): array => $this->membersMerged($body, $parts[$shape], true, $at, $open), $this->bestMatches($body, $parts, $shapes));
+    }
+
+    /**
+     * Whether the body reads the type at a path as a shape the engine cannot name every key of, an intersection
+     * wrapped or not.
+     */
+    private function isOpen(string $at, string $type): bool
+    {
+        $inner = TsTypeShape::isWrapped($type, '(', ')') ? trim(substr($type, 1, -1)) : $type;
+
+        return in_array($at."\0".$type, $this->openReadings, true) || in_array($at."\0".$inner, $this->openReadings, true);
+    }
+
+    /**
+     * A body arm that is an intersection of objects as the one object it sends, a later part's key replacing an
+     * earlier one's as PHP's spread does; null for any other arm.
+     *
+     * @param  Typed  $arm
+     * @return Typed|null
+     */
+    private function flattened(array $arm): ?array
+    {
+        $parts = TsTypeShape::intersectedObjects($arm[0]);
+
+        if ($parts === null) {
+            return null;
+        }
+
+        /** @var array<array-key, array{string, Typed}> $members each member's key and value, by its name */
+        $members = [];
+        $from = 0;
+
+        foreach ($parts as [$object, $dropped, $part]) {
+            // An `Omit<>`'s object leads it, so its tokens lead the part's.
+            $offset = $from;
+            $from += $this->count($part);
+
+            foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
+                $keySlots = array_slice($arm[1], $offset, $this->count($key));
+                $offset += $this->count($key);
+                $valueSlots = array_slice($arm[1], $offset, $this->count($value));
+                $offset += $this->count($value);
+                $name = self::keyName($key);
+
+                if (! in_array($name, $dropped, true)) {
+                    unset($members[$name]);
+                    $members[$name] = [$key, [$value, [...$keySlots, ...$valueSlots]]];
+                }
+            }
+        }
+
+        return [
+            '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1][0], $members)).' }',
+            array_merge([], ...array_map(static fn (array $member): array => $member[1][1], array_values($members))),
+        ];
     }
 
     /**
@@ -379,9 +467,9 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * An object type with each member the body sends merged, $byKey, with the declared object's member of its key, `?`
-     * aside, else with the declared value, keeping the body's keys, order and optional flags. A member only the
-     * declaration has follows where it is optional or the shape is open at $at, and goes where the body never sends it.
+     * An object type with each member the body sends merged, $byKey, with the declared object's member of the key it
+     * names, else with the declared value, keeping the body's keys, order and optional flags. A member only the
+     * declaration has follows where it is optional or the shape is $open, and goes where the body never sends it.
      *
      * One a body index signature's pattern covers merges with that signature's value, which widens to admit it.
      *
@@ -389,7 +477,7 @@ final readonly class DeclaredTypeMerge
      * @param  Typed  $declared  the declared object, or the value every member merges with
      * @return Typed
      */
-    private function membersMerged(array $body, array $declared, bool $byKey, string $at): array
+    private function membersMerged(array $body, array $declared, bool $byKey, string $at, bool $open): array
     {
         $declaredMembers = [];
         $from = 0;
@@ -397,7 +485,7 @@ final readonly class DeclaredTypeMerge
         foreach ($byKey ? TsTypeShape::members($declared[0]) ?? [] : [] as [$key, $value]) {
             $keySlots = array_slice($declared[1], $from, $this->count($key));
             $from += $this->count($key);
-            $declaredMembers[rtrim($key, '?')] = [$key, [$value, array_slice($declared[1], $from, $this->count($value))], $keySlots];
+            $declaredMembers[self::keyName($key)] = [$key, [$value, array_slice($declared[1], $from, $this->count($value))], $keySlots];
             $from += $this->count($value);
         }
 
@@ -412,9 +500,13 @@ final readonly class DeclaredTypeMerge
             $from += $this->count($key);
             $read = [$text, array_slice($body[1], $from, $this->count($text))];
             $from += $this->count($text);
-            $fill = $value ?? $declaredMembers[rtrim($key, '?')][1] ?? null;
-            unset($declaredMembers[rtrim($key, '?')]);
-            $members[] = [$key, $fill === null ? $read : $this->merge($read, $fill, $at.'.'.rtrim($key, '?')), $keySlots];
+            $name = self::keyName($key);
+            $paired = $declaredMembers[$name] ?? null;
+            $fill = $value ?? $paired[1] ?? null;
+            unset($declaredMembers[$name]);
+            // A numeric key prints as the declaration spells it, `0` where the body quotes `"0"`.
+            $printed = $paired !== null && is_numeric($name) ? rtrim($paired[0], '?').(str_ends_with($key, '?') ? '?' : '') : $key;
+            $members[] = [$printed, $fill === null ? $read : $this->merge($read, $fill, $at.'.'.rtrim($key, '?')), $keySlots];
         }
 
         /** @var array<int, Typed> $signatures each index signature member's value, by its position */
@@ -429,17 +521,20 @@ final readonly class DeclaredTypeMerge
         foreach ($declaredMembers as $name => [$key, $text, $keySlots]) {
             $covering = array_filter(
                 array_keys($signatures),
-                static fn (int $position): bool => IndexSignatureKey::covers($members[$position][0], PrintedKey::decode($name) ?? $name),
+                static fn (int $position): bool => IndexSignatureKey::covers($members[$position][0], (string) $name),
             );
 
             if ($covering !== []) {
-                $merged = $this->merge($signatures[array_values($covering)[0]], $text, $at.'.'.$name);
+                // A key several signatures cover may be sent under any, so it reads as the union of their values.
+                $values = array_map(static fn (int $position): array => $signatures[$position], array_values($covering));
+                $read = [implode(' | ', array_column($values, 0)), array_merge([], ...array_column($values, 1))];
+                $merged = $this->merge($this->joined($this->arms($read), $read), $text, $at.'.'.$name);
                 $members[] = [$key, $merged, $keySlots];
 
                 foreach ($covering as $position) {
                     $signatures[$position] = $this->admitting($signatures[$position], $merged);
                 }
-            } elseif (str_ends_with($key, '?') || in_array($at."\0".$body[0], $this->openReadings, true)) {
+            } elseif (str_ends_with($key, '?') || $open) {
                 $members[] = [$key, $text, $keySlots];
             }
         }
