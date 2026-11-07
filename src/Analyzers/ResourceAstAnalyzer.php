@@ -374,8 +374,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
-        /** @var array<array-key, list<string>> $openShapes the open shapes any branch holds under the key */
-        $openShapes = [];
+        /** @var array<array-key, list<string>> $openReadings the readings any branch holds open under the key */
+        $openReadings = [];
 
         /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
         $declaredMap = [];
@@ -385,7 +385,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $propertyMap[$prop['name']][] = $prop;
                 $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
-                $openShapes[$prop['name']] = [...$openShapes[$prop['name']] ?? [], ...$analysis->openShapes[$prop['name']] ?? []];
+                $openReadings[$prop['name']] = [...$openReadings[$prop['name']] ?? [], ...$analysis->openReadings[$prop['name']] ?? []];
             }
 
             $channels->merge($analysis);
@@ -478,7 +478,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
         $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
-        $merged->openShapes = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openShapes));
+        $merged->openReadings = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openReadings));
         $merged->declaredTokenFqcns = $slots;
         $merged->queueSplitClasses($analyses);
 
@@ -1813,7 +1813,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         return $members !== null
             && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]))
-            && ! array_any($result['openShapes'] ?? [], static fn (string $shape): bool => str_starts_with($shape, "\0"));
+            && ! array_any($result['openReadings'] ?? [], static fn (string $shape): bool => str_starts_with($shape, "\0"));
     }
 
     /**

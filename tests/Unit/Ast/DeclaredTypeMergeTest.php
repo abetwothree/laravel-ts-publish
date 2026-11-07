@@ -85,6 +85,13 @@ test('a reading takes the side that tells more of it: unknown, then a vague cont
     'a lone null over any other type' => ['null', 'string', 'null'],
 ]);
 
+test('a lone null a union kept beside an arm no rule types takes the declared type beside it', function () {
+    $merge = new DeclaredTypeMerge([], [], [".tags\0null"]);
+
+    expect($merge->merge(['{ tags: null; n: null }', []], ['{ tags: number[]; n: number }', []])[0])->toBe('{ tags: number[] | null; n: null }')
+        ->and($merge->merge(['{ tags: null }', []], ['{ tags: unknown }', []])[0])->toBe('{ tags: null }');
+});
+
 // R16: a shape under a declared list of shapes merges with its element shape, and else each member with the element.
 test('a shape under a declared list merges with its element, keeping the shape', function (string $body, string $declared, string $expected) {
     expect(mergedType($body, $declared))->toBe($expected);

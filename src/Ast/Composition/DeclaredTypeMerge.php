@@ -35,13 +35,14 @@ final readonly class DeclaredTypeMerge
     /**
      * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
-     * @param  list<string>  $openShapes  each object the body holds keys of it cannot name: its path from the position
-     *                                    merged, in `.key`, `[]` and `{}` steps, then a NUL and the object's type
+     * @param  list<string>  $openReadings  each reading the body leaves open: an object holding keys it cannot name, or a
+     *                                      `null` a union kept beside an arm no rule types; its path in `.key`, `[]` and
+     *                                      `{}` steps from the position merged, a NUL, and its type
      */
     public function __construct(
         private array $names,
         private array $bodyWraps = [],
-        private array $openShapes = [],
+        private array $openReadings = [],
     ) {}
 
     /**
@@ -63,15 +64,15 @@ final readonly class DeclaredTypeMerge
      *
      * @param  Typed  $body
      * @param  Typed  $declared
-     * @param  string  $at  the position's path, as $openShapes spells it
+     * @param  string  $at  the position's path, as $openReadings spells it
      * @return Typed
      */
     public function merge(array $body, array $declared, string $at = ''): array
     {
         $told = [self::tells($body[0]), self::tells($declared[0])];
 
-        // A body reading only `null`, as a ternary leaves one beside an arm no rule types, tells less than a container.
-        if ($body[0] === 'null' && $told[1] === 1) {
+        // A body reading only `null` tells less than a container, and than any type where it left out an arm no rule types.
+        if ($body[0] === 'null' && $told[1] > 0 && ($told[1] === 1 || in_array($at."\0null", $this->openReadings, true))) {
             return [TsTypeString::withNullArm($declared[0]), $declared[1]];
         }
 
@@ -439,7 +440,7 @@ final readonly class DeclaredTypeMerge
                 foreach ($covering as $position) {
                     $signatures[$position] = $this->admitting($signatures[$position], $merged);
                 }
-            } elseif (str_ends_with($key, '?') || in_array($at."\0".$body[0], $this->openShapes, true)) {
+            } elseif (str_ends_with($key, '?') || in_array($at."\0".$body[0], $this->openReadings, true)) {
                 $members[] = [$key, $text, $keySlots];
             }
         }

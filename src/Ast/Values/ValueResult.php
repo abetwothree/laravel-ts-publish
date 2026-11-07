@@ -481,6 +481,11 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
+        // A `null` left beside an arm no rule types says nothing of that arm, which a declared type may fill.
+        if ($types === ['null'] && count($branchResults) < count($results)) {
+            $result['openReadings'] = [...$result['openReadings'] ?? [], "\0null"];
+        }
+
         $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
 
         return self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
@@ -494,15 +499,15 @@ final class ValueResult
      * @param  ValueExpressionResult  $container  the container's own result, its type set
      * @return ValueExpressionResult
      */
-    public static function holdingOpenShapes(array $held, array $container, string ...$steps): array
+    public static function holdingOpenReadings(array $held, array $container, string ...$steps): array
     {
         $paths = array_merge([], ...array_map(
-            static fn (string $step): array => array_map(static fn (string $path): string => $step.$path, $held['openShapes'] ?? []),
+            static fn (string $step): array => array_map(static fn (string $path): string => $step.$path, $held['openReadings'] ?? []),
             $steps,
         ));
-        unset($container['openShapes']);
+        unset($container['openReadings']);
 
-        return $paths === [] ? $container : [...$container, 'openShapes' => array_values(array_unique($paths))];
+        return $paths === [] ? $container : [...$container, 'openReadings' => array_values(array_unique($paths))];
     }
 
     /**
@@ -968,13 +973,13 @@ final class ValueResult
             $result['unnamedKeys'] = true;
         }
 
-        $openShapes = array_values(array_unique(array_merge([], ...array_map(
-            static fn (array $inner): array => $inner['openShapes'] ?? [],
+        $openReadings = array_values(array_unique(array_merge([], ...array_map(
+            static fn (array $inner): array => $inner['openReadings'] ?? [],
             $branchResults,
         ))));
 
-        if ($openShapes !== []) {
-            $result['openShapes'] = $openShapes;
+        if ($openReadings !== []) {
+            $result['openReadings'] = $openReadings;
         }
 
         // Every list arm keeps its int keys only where each branch spelling one says so.

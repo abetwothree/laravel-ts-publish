@@ -433,6 +433,7 @@ test('a mapped key reads a shape open only where the engine cannot name its keys
         'helper' => '{ by: User; extra: string }[]',
         'box' => '{ id: number; by: User }',
         'keyed' => '{ count: number; by: User }',
+        'either' => '({ by: User; n?: number; extra: string } | { by: User; n: number })[]',
     ], ['User']],
     'listed shapes, signatures and a lone null' => [ReviewListedShapesResource::class, [
         'nullable' => '{ m: { a: number } }[]',
@@ -441,6 +442,8 @@ test('a mapped key reads a shape open only where the engine cannot name its keys
         'top' => '{ a: number; b: number }',
         'vagueNull' => '{ tags: unknown[] | null }[]',
         'covered' => '{ by: User; [key: `${string}_tag`]: number | undefined; x_tag: number | undefined }[]',
+        'listNull' => '{ tags: number[] | null }[]',
+        'literalNull' => '{ tags: null }[]',
     ], ['User']],
 ]);
 

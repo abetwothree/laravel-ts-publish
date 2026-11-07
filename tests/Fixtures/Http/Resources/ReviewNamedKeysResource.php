@@ -27,7 +27,8 @@ final class ReviewNamedKeysResource extends JsonResource
      *     collision: list<array{inner: array{a: int, b: string}, other: array{a: int, b: string}}>,
      *     tagged: list<array{by: CrmUser, extra: string}>, merged: list<array{by: CrmUser, n: int, extra: string}>,
      *     written: list<array{by: CrmUser, n: int, extra: string}>, helper: list<array{by: CrmUser, extra: string}>,
-     *     box: array{by: CrmUser, id: int, extra: string}, keyed: array{by: CrmUser, count: int, extra: string}}
+     *     box: array{by: CrmUser, id: int, extra: string}, keyed: array{by: CrmUser, count: int, extra: string},
+     *     either: list<array{by: CrmUser, n?: int, extra: string}>}
      */
     public function toArray(Request $request): array
     {
@@ -48,6 +49,10 @@ final class ReviewNamedKeysResource extends JsonResource
             'helper' => array_map(fn (ReviewRow $r) => $this->looseRow($r), $this->resource->rows),
             'box' => [...$this->boxCommon(), 'by' => $this->resource->author],
             'keyed' => [self::KEY => count($rows), 'by' => $this->resource->author],
+            'either' => array_map(
+                fn ($r) => $r->n > 0 ? [...$r->loose, 'by' => $r->author] : ['by' => $r->author, 'n' => $r->n],
+                $this->resource->rows,
+            ),
         ];
     }
 

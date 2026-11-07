@@ -144,7 +144,7 @@ final class ReturnShapeRefiner
             ValueResult::enumTypeName($written),
             'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
         );
-        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openShapes[$name] ?? [])->merge(
+        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openReadings[$name] ?? [])->merge(
             [$read, $this->readSlots($analysis, $name, $read, $names)],
             [$member['type'], array_column(TokenSlots::declaredTokens($member['type'], $declaredSlots, $names), 'slot')],
         );

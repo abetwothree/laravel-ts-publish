@@ -485,7 +485,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         return $body === null || $body['type'] === 'unknown'
             ? null
-            : ValueResult::holdingOpenShapes($body, [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false], '[]');
+            : ValueResult::holdingOpenReadings($body, [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false], '[]');
     }
 
     /**

@@ -129,10 +129,10 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
-        $openShapes = $this->openShapes($analysis, $type);
+        $openReadings = $this->openReadings($analysis, $type);
 
-        if ($openShapes !== []) {
-            $result['openShapes'] = $openShapes;
+        if ($openReadings !== []) {
+            $result['openReadings'] = $openReadings;
         }
 
         if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
@@ -370,16 +370,16 @@ final class InlineObjectResult
     }
 
     /**
-     * Each object this one holds whose keys the engine cannot all name, as its path, a NUL and its type: itself, where
-     * its analysis holds a key no name names, and each member's own, under the member's key as the object prints it.
+     * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no name
+     * names, and each member's own, under the member's key as the object prints it.
      *
      * @return list<string>
      */
-    private function openShapes(MethodAnalysis $analysis, string $type): array
+    private function openReadings(MethodAnalysis $analysis, string $type): array
     {
         $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && TsTypeShape::members($type) !== null ? ["\0".$type] : [];
 
-        foreach ($analysis->openShapes as $name => $memberPaths) {
+        foreach ($analysis->openReadings as $name => $memberPaths) {
             $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);
             array_push($paths, ...array_map(static fn (string $path): string => '.'.$key.$path, $memberPaths));
         }

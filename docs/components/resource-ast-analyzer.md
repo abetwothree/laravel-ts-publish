@@ -152,7 +152,7 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
   key, a declared list's element shape's, or a declared `Record`'s value or list's other element; a member only the
   declaration has follows where it is optional or the body's shape is open, as a spread of an array it cannot read or
-  an index signature leaves it (`MethodAnalysis::$openShapes`), and goes where the body never sends it;
+  an index signature leaves it (`MethodAnalysis::$openReadings`), and goes where the body never sends it;
 - a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
   both spell first, then the keys both hold (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;

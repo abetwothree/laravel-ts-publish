@@ -122,12 +122,12 @@ class MethodAnalysis
     public array $closedToDottedKeys = [];
 
     /**
-     * Property name => each object its value holds whose keys the engine cannot all name (ValueResult `openShapes`): its
-     * path in `.key`, `[]` and `{}` steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
+     * Property name => each reading its value leaves open (ValueResult `openReadings`): its path in `.key`, `[]` and `{}`
+     * steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
      *
      * @var array<array-key, list<string>>
      */
-    public array $openShapes = [];
+    public array $openReadings = [];
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -230,10 +230,10 @@ class MethodAnalysis
             unset($this->closedToDottedKeys[$name]);
         }
 
-        if (($result['openShapes'] ?? []) === []) {
-            unset($this->openShapes[$name]);
+        if (($result['openReadings'] ?? []) === []) {
+            unset($this->openReadings[$name]);
         } else {
-            $this->openShapes[$name] = $result['openShapes'];
+            $this->openReadings[$name] = $result['openReadings'];
         }
 
         $this->dispatchFqcnResults(
@@ -288,7 +288,7 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openShapes`
+     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings`
      * replace-merge, the source winning, a key it sets with none losing its own; the inline maps append undeduped, as
      * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      */
@@ -316,14 +316,14 @@ class MethodAnalysis
                 unset($this->declaredTokenFqcns[$property['name']]);
             }
 
-            unset($this->closedToDottedKeys[$property['name']], $this->openShapes[$property['name']]);
+            unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
         $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
-        $this->openShapes = array_replace($this->openShapes, $source->openShapes);
+        $this->openReadings = array_replace($this->openReadings, $source->openReadings);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
@@ -376,7 +376,7 @@ class MethodAnalysis
         $this->heldObjectKeys = $source->heldObjectKeys;
         $this->leftOutValues = $source->leftOutValues;
         $this->closedToDottedKeys = $source->closedToDottedKeys;
-        $this->openShapes = $source->openShapes;
+        $this->openReadings = $source->openReadings;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -738,7 +738,7 @@ class MethodAnalysis
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
-        $this->openShapes = TopLevelRenumbering::rekey($this->openShapes, $names);
+        $this->openReadings = TopLevelRenumbering::rekey($this->openReadings, $names);
     }
 
     /**
