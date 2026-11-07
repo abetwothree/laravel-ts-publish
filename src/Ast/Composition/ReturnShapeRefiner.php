@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
 /**
@@ -137,13 +138,25 @@ final class ReturnShapeRefiner
             ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
             ...$analysis->multiEnumResourceFqcns[$name] ?? [],
         ];
+        $written = $this->writtenWrap($analysis, $name);
+        $read = $written === null ? $type : TsTypeString::substituteEnumType(
+            $type,
+            ValueResult::enumTypeName($written),
+            'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
+        );
         [$merged, $slots] = new DeclaredTypeMerge($names, $wraps)->merge(
-            [$type, $this->readSlots($analysis, $name, $type, $names)],
+            [$read, $this->readSlots($analysis, $name, $read, $names)],
             [$member['type'], array_column(TokenSlots::declaredTokens($member['type'], $declaredSlots, $names), 'slot')],
         );
 
-        if ($merged === $type) {
+        if ($merged === $read) {
             return [$type, [], null];
+        }
+
+        // The publisher's rewrite would wrap every bare token of the enum, a bare one the member fills included.
+        if ($written !== null) {
+            unset($analysis->enumResources[$name], $analysis->enumResourceArmShapes[$name]);
+            $analysis->inlineEnumResourceFqcns[$name] = [$written, ...$analysis->inlineEnumResourceFqcns[$name] ?? []];
         }
 
         $imports = $this->importsSpelled($member['customImports'], $merged);
@@ -157,6 +170,22 @@ final class ReturnShapeRefiner
             'customImports' => $imports,
             'tokenFqcns' => $this->ownSlots($merged, $slots, $names),
         ]];
+    }
+
+    /**
+     * The one enum a key wraps in an `EnumResource` and spells bare at its top, which the publisher rewrites as
+     * `AsEnum<typeof …>` with the tolki package on; null for a key wrapping none, several, or one it reads bare too.
+     *
+     * @return class-string|null
+     */
+    private function writtenWrap(MethodAnalysis $analysis, string $name): ?string
+    {
+        $wrapped = $analysis->enumResources[$name] ?? null;
+
+        return $wrapped === null || ($analysis->directEnumFqcns[$name] ?? null) === $wrapped
+            || isset($analysis->multiEnumResourceFqcns[$name]) || ! Config::boolean('ts-publish.enums.use_tolki_package')
+            ? null
+            : $wrapped;
     }
 
     /**

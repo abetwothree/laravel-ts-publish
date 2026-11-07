@@ -152,12 +152,17 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
   key; a list merges its element and a `Record` its value, and another container kind keeps the body's;
 - the other arms decide by subtyping: the member's arms where each is within one of the body's, as `'a' | 'b'` is
-  within `string`, or where all but its `null` are and the body's are not within the member's; else the body's, with
-  an `unknown` arm taking the member's arms no other body arm covers (`DeclaredTypeMerge::armWithin()`).
+  within `string`, or where all but its `null` are and the body's are not within the member's, and only where every
+  arm the body reads keeps one of the member's within it, so a member never drops the body's `null` or a class of a
+  union; else the body's, with an `unknown` arm taking the member's arms no other body arm covers
+  (`DeclaredTypeMerge::armWithin()`).
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
-`EnumResource` never equals the bare enum. The merged classes are queued on the key's channels in print order, as a
+`EnumResource` never equals the bare enum. With the tolki package on, a key's one top-level wrap reads as the
+`AsEnum<typeof …>` the publisher writes, and a key the merge changes keeps it written so, on its inline wrap channel,
+since the publisher's rewrite would wrap a bare token of that enum the member fills too
+(`ReturnShapeRefiner::writtenWrap()`). The merged classes are queued on the key's channels in print order, as a
 body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
 override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
 `provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types

@@ -64,8 +64,17 @@ test('a declared type within the body\'s reading refines it', function (string $
     'literals of a nullable scalar' => ['string | null', "'a' | 'b' | null", "'a' | 'b' | null"],
     'a literal of a nullable number' => ['number | null', '1 | null', '1 | null'],
     'a boolean literal' => ['boolean', 'true', 'true'],
-    'literals of a scalar the body reads beside null' => ['string | null', "'a' | 'b'", "'a' | 'b'"],
     'the same arms in another order' => ['string | null', 'null | string', 'null | string'],
+]);
+
+// R9: a declaration within the reading that leaves out an arm the body reads would stop admitting what it sends.
+test('a declared type that leaves out an arm the body reads keeps the body\'s reading', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'the body\'s null' => ['string | null', 'string', 'string | null'],
+    'literals of a scalar the body reads beside null' => ['string | null', "'a' | 'b'", 'string | null'],
+    'one of the body\'s scalars' => ['string | number', "'a'", 'string | number'],
+    'a literal beside null of another scalar' => ['string | number', "'a' | null", 'string | number'],
 ]);
 
 // R7 rule 5, second bullet.
@@ -103,7 +112,7 @@ test('classes compare by the class behind each token, never by spelling', functi
     $merge = new DeclaredTypeMerge(['User', 'Post']);
 
     expect($merge->merge(['User', [CrmUser::class]], ['User | null', [User::class]]))->toBe(['User', [CrmUser::class]])
-        ->and($merge->merge(['User | null', [User::class]], ['User', [User::class]]))->toBe(['User', [User::class]])
+        ->and($merge->merge(['User | Post', [User::class, Post::class]], ['User', [User::class]]))->toBe(['User | Post', [User::class, Post::class]])
         ->and($merge->merge(['User', [User::class]], ['Post', [Post::class]]))->toBe(['User', [User::class]]);
 });
 
@@ -134,8 +143,8 @@ test('a literal is within its scalar, null only within null, and a wrapped enum 
         ->and(DeclaredTypeMerge::armWithin('string', 'unknown'))->toBeFalse()
         ->and(mergedType('null', 'string'))->toBe('null')
         ->and(mergedType('string', 'null'))->toBe('string')
-        ->and($plain->merge(['StatusType | null', [Status::class]], ['StatusType', [Status::class]]))->toBe(['StatusType', [Status::class]])
-        ->and($wraps->merge(['StatusType | null', [Status::class]], ['StatusType', [Status::class]]))->toBe(['StatusType | null', [Status::class]]);
+        ->and($plain->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | \'a\'', [Status::class]])
+        ->and($wraps->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | string', [Status::class]]);
 });
 
 test('a wrapped enum beside a list keeps the body\'s arm and merges the list', function () {

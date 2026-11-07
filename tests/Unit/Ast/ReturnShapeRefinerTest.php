@@ -13,9 +13,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRow
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewStatusRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
@@ -375,6 +377,16 @@ test('a merge naming an override spelled like a class the key holds declares the
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
 });
 
+// With the tolki rewrite off no wrap is written as `AsEnum`, so the wrap and the rows' bare status publish alike.
+test('an enum a key wraps, filled bare in its rows, publishes bare with the tolki rewrite off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+    $data = new ResourceTransformer(ReviewStatusRowsResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))
+        ->toBe(['subject' => 'StatusType | { s: StatusType }[]'])
+        ->and(array_merge(...array_values($data->typeImports)))->toBe(['StatusType']);
+});
+
 // Every position of a typed key merges with the @return member there, beside two classes the body spells by one name,
 // an enum it wraps, or slots a helper's @return declared; a wrapped enum keeps the body's arm (GH-154).
 test('a key merges with its @return member at every position, whatever classes or wraps the body holds', function (string $resource, array $expected, array $imports) {
@@ -420,10 +432,18 @@ test('a mapped key merges with its @return member by class identity, member by m
         'subject' => 'AsEnum<typeof Status> | { by: CrmUser; other: WorkbenchUser | null }[]',
     ], ['User as CrmUser', 'User as WorkbenchUser']],
     'literals beside null' => [ReviewLiteralsResource::class, [
-        'union' => "{ k: 'a' | 'b'; j: 'a' | 'b' | null; by: User }[]",
+        'union' => "{ k: string | null; j: 'a' | 'b' | null; by: User }[]",
         'besideNull' => "{ k: 'a' | null; n: 1 | null; by: User }[]",
         'top' => "'rows' | null",
     ], ['User']],
+    'an enum the key wraps, filled bare in its rows' => [ReviewStatusRowsResource::class, [
+        'subject' => 'AsEnum<typeof Status> | { s: StatusType }[]',
+    ], ['StatusType']],
+    'a member that leaves out an arm the body reads' => [ReviewKeptArmsResource::class, [
+        'summary' => 'string | null',
+        'subject' => 'User | Post',
+        'notes' => '{ note: string | null }[]',
+    ], ['Post', 'User']],
 ]);
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
@@ -464,7 +484,7 @@ test('a scalar the body reads takes the @return docblock\'s literals of that sca
     'a whole key' => ['top', 'string', "'a' | 'b'"],
     'another scalar\'s literal' => ['mismatched', '{ n: number }', '{ n: number }'],
     'a literal the body reads' => ['kept', "{ kind: 'Admin' }", "{ kind: 'Admin' }"],
-    'a union the body reads' => ['kept', '{ kind: string | null }', "{ kind: 'User' }"],
+    'a union the body reads' => ['kept', '{ kind: string | null }', '{ kind: string | null }'],
     'a literal beside null' => ['nullable', 'string', "'a' | null"],
 ]);
 

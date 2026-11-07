@@ -125,8 +125,8 @@ final readonly class DeclaredTypeMerge
 
     /**
      * Which side decides the arms no container pairs: the declared ones where they are within the body's, with or
-     * without a `null` beside them, the body's where they are within the declared ones or neither is, and the declared
-     * arms no other body arm covers in place of a body arm left `unknown`.
+     * without a `null` beside them, and leave out none of the body's; else the body's, an `unknown` arm of which takes
+     * the declared arms no other body arm covers.
      *
      * @param  list<Typed>  $bodyArms
      * @param  list<Typed>  $declaredArms
@@ -140,11 +140,14 @@ final readonly class DeclaredTypeMerge
         $leftUnknown = in_array('unknown', array_column($bodyAtoms, 0), true);
         $declaredBesideNull = array_values(array_filter($declaredAtoms, static fn (array $arm): bool => $arm[0] !== 'null'));
 
+        // A declaration leaving out an arm the body reads would stop admitting a value the body sends.
+        $keepsBody = $this->keeps($bodyAtoms, $declaredAtoms);
+
         return match (true) {
             $bodyAtoms === [] || $declaredAtoms === [] => $leftUnknown && $this->uncovered($bodyArms, $declaredArms, $pairs) !== [] ? 'unknown' : 'body',
-            $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
+            $keepsBody && $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
             $this->within($bodyAtoms, $declaredAtoms, true) => 'body',
-            ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
+            $keepsBody && ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
             $leftUnknown => 'unknown',
             default => 'body',
         };
@@ -162,6 +165,20 @@ final readonly class DeclaredTypeMerge
         return array_all($arms, fn (array $arm): bool => array_any(
             $of,
             fn (array $other): bool => self::armWithin($this->identity($arm, $armsAreBody), $this->identity($other, ! $armsAreBody)),
+        ));
+    }
+
+    /**
+     * Whether each body arm keeps a declared arm within it, so taking the declared arms leaves out none the body reads.
+     *
+     * @param  list<Typed>  $bodyArms
+     * @param  list<Typed>  $declaredArms
+     */
+    private function keeps(array $bodyArms, array $declaredArms): bool
+    {
+        return array_all($bodyArms, fn (array $arm): bool => array_any(
+            $declaredArms,
+            fn (array $declared): bool => self::armWithin($this->identity($declared, false), $this->identity($arm, true)),
         ));
     }
 
