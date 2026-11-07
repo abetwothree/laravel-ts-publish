@@ -432,7 +432,7 @@ test('a mapped key merges with its @return member by class identity, member by m
         'subject' => 'AsEnum<typeof Status> | { by: CrmUser; other: WorkbenchUser | null }[]',
     ], ['User as CrmUser', 'User as WorkbenchUser']],
     'literals beside null' => [ReviewLiteralsResource::class, [
-        'union' => "{ k: string | null; j: 'a' | 'b' | null; by: User }[]",
+        'union' => "{ k: 'a' | 'b' | null; j: 'a' | 'b' | null; by: User }[]",
         'besideNull' => "{ k: 'a' | null; n: 1 | null; by: User }[]",
         'top' => "'rows' | null",
     ], ['User']],
@@ -484,7 +484,7 @@ test('a scalar the body reads takes the @return docblock\'s literals of that sca
     'a whole key' => ['top', 'string', "'a' | 'b'"],
     'another scalar\'s literal' => ['mismatched', '{ n: number }', '{ n: number }'],
     'a literal the body reads' => ['kept', "{ kind: 'Admin' }", "{ kind: 'Admin' }"],
-    'a union the body reads' => ['kept', '{ kind: string | null }', '{ kind: string | null }'],
+    'a union the body reads' => ['kept', '{ kind: string | null }', "{ kind: 'User' | null }"],
     'a literal beside null' => ['nullable', 'string', "'a' | null"],
 ]);
 

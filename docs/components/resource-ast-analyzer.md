@@ -151,11 +151,11 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   leaves the body's reading;
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
   key; a list merges its element and a `Record` its value, and another container kind keeps the body's;
-- the other arms decide by subtyping: the member's arms where each is within one of the body's, as `'a' | 'b'` is
-  within `string`, or where all but its `null` are and the body's are not within the member's, and only where every
-  arm the body reads keeps one of the member's within it, so a member never drops the body's `null` or a class of a
-  union; else the body's, with an `unknown` arm taking the member's arms no other body arm covers
-  (`DeclaredTypeMerge::armWithin()`).
+- the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
+  within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
+  member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
+  union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
+  body arm covers (`DeclaredTypeMerge::armWithin()`).
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an

@@ -64,17 +64,18 @@ test('a declared type within the body\'s reading refines it', function (string $
     'literals of a nullable scalar' => ['string | null', "'a' | 'b' | null", "'a' | 'b' | null"],
     'a literal of a nullable number' => ['number | null', '1 | null', '1 | null'],
     'a boolean literal' => ['boolean', 'true', 'true'],
-    'the same arms in another order' => ['string | null', 'null | string', 'null | string'],
+    'the same arms in another order' => ['string | null', 'null | string', 'string | null'],
 ]);
 
-// R9: a declaration within the reading that leaves out an arm the body reads would stop admitting what it sends.
-test('a declared type that leaves out an arm the body reads keeps the body\'s reading', function (string $body, string $declared, string $expected) {
+// R9 and R9a: each body arm the declaration refines takes its refinement, and each it leaves out stays, so a
+// declaration never stops admitting what the body sends.
+test('a declared type refines the body\'s arms one by one, keeping each it leaves out', function (string $body, string $declared, string $expected) {
     expect(mergedType($body, $declared))->toBe($expected);
 })->with([
     'the body\'s null' => ['string | null', 'string', 'string | null'],
-    'literals of a scalar the body reads beside null' => ['string | null', "'a' | 'b'", 'string | null'],
-    'one of the body\'s scalars' => ['string | number', "'a'", 'string | number'],
-    'a literal beside null of another scalar' => ['string | number', "'a' | null", 'string | number'],
+    'literals of a scalar the body reads beside null' => ['string | null', "'a' | 'b'", "'a' | 'b' | null"],
+    'one of the body\'s scalars' => ['string | number', "'a'", "'a' | number"],
+    'a literal beside null of another scalar' => ['string | number', "'a' | null", "'a' | number | null"],
 ]);
 
 // R7 rule 5, second bullet.

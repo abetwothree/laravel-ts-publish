@@ -9,8 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
  * Merges the body's reading of a position with the type a method's `@return` docblock declares there, giving every
- * position an answer: a reading left `unknown` takes the declaration, a shape keeps the members the body sends, a
- * list or record merges its element or value, and a declaration within the reading refines it, else the reading stays.
+ * position an answer: a reading left `unknown` takes the declaration, a shape keeps the members the body sends, a list
+ * or record merges its element or value, and a declaration within the reading refines it arm by arm, else it stays.
  *
  * Each side is a type beside the class behind each token of the names in play, in print order, so classes compare by
  * identity, never by spelling, and an enum the body wraps in an `EnumResource` is never that enum.
@@ -71,18 +71,23 @@ final readonly class DeclaredTypeMerge
         $verdict = $this->verdict($bodyArms, $declaredArms, $pairs);
 
         $merged = [];
-        $atomsPlaced = false;
+        $declaredAtoms = self::atoms($declaredArms);
 
         foreach ($bodyArms as $index => $arm) {
             if (self::kindOf($arm[0]) !== null) {
                 $merged[] = isset($pairs[$index]) ? $this->containerMerged($arm, $declaredArms[$pairs[$index]]) : $arm;
             } elseif ($verdict === 'declared') {
-                // The declared arms take the place of the body's first; the body's others go.
-                array_push($merged, ...($atomsPlaced ? [] : self::atoms($declaredArms)));
-                $atomsPlaced = true;
+                // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
+                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
+                array_push($merged, ...($refined === [] ? [$arm] : $refined));
             } else {
                 array_push($merged, ...($verdict === 'unknown' && $arm[0] === 'unknown' ? $this->uncovered($bodyArms, $declaredArms, $pairs) : [$arm]));
             }
+        }
+
+        // The arm a declaration adds, its `null` beside a body that reads none, as verdict() only takes such a one.
+        if ($verdict === 'declared') {
+            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms), false)));
         }
 
         return $this->joined($merged, $body);
@@ -124,9 +129,9 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * Which side decides the arms no container pairs: the declared ones where they are within the body's, with or
-     * without a `null` beside them, and leave out none of the body's; else the body's, an `unknown` arm of which takes
-     * the declared arms no other body arm covers.
+     * Which side decides the arms no container pairs: the declared ones, arm by arm, where they are within the body's,
+     * with or without a `null` beside them; else the body's, an `unknown` arm of which takes the declared arms no other
+     * body arm covers.
      *
      * @param  list<Typed>  $bodyArms
      * @param  list<Typed>  $declaredArms
@@ -140,14 +145,11 @@ final readonly class DeclaredTypeMerge
         $leftUnknown = in_array('unknown', array_column($bodyAtoms, 0), true);
         $declaredBesideNull = array_values(array_filter($declaredAtoms, static fn (array $arm): bool => $arm[0] !== 'null'));
 
-        // A declaration leaving out an arm the body reads would stop admitting a value the body sends.
-        $keepsBody = $this->keeps($bodyAtoms, $declaredAtoms);
-
         return match (true) {
             $bodyAtoms === [] || $declaredAtoms === [] => $leftUnknown && $this->uncovered($bodyArms, $declaredArms, $pairs) !== [] ? 'unknown' : 'body',
-            $keepsBody && $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
+            $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
             $this->within($bodyAtoms, $declaredAtoms, true) => 'body',
-            $keepsBody && ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
+            ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
             $leftUnknown => 'unknown',
             default => 'body',
         };
@@ -165,20 +167,6 @@ final readonly class DeclaredTypeMerge
         return array_all($arms, fn (array $arm): bool => array_any(
             $of,
             fn (array $other): bool => self::armWithin($this->identity($arm, $armsAreBody), $this->identity($other, ! $armsAreBody)),
-        ));
-    }
-
-    /**
-     * Whether each body arm keeps a declared arm within it, so taking the declared arms leaves out none the body reads.
-     *
-     * @param  list<Typed>  $bodyArms
-     * @param  list<Typed>  $declaredArms
-     */
-    private function keeps(array $bodyArms, array $declaredArms): bool
-    {
-        return array_all($bodyArms, fn (array $arm): bool => array_any(
-            $declaredArms,
-            fn (array $declared): bool => self::armWithin($this->identity($declared, false), $this->identity($arm, true)),
         ));
     }
 
