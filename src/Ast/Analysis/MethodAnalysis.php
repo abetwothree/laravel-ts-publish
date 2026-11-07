@@ -122,8 +122,8 @@ class MethodAnalysis
     public array $closedToDottedKeys = [];
 
     /**
-     * Property name => the path, from its value, of each object the value holds whose keys the engine cannot all name
-     * (ValueResult `openShapes`): `.key`, `[]` and `{}` steps. A merge takes the source's; a join keeps every branch's.
+     * Property name => each object its value holds whose keys the engine cannot all name (ValueResult `openShapes`): its
+     * path in `.key`, `[]` and `{}` steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
      *
      * @var array<array-key, list<string>>
      */

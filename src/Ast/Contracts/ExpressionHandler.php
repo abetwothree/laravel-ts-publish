@@ -63,8 +63,8 @@ use PhpParser\Node\Expr;
  * so a read of one throws or gives the member, as preg_match()'s matches leave out the groups that did not take part.
  *
  * `unnamedKeys` says the value is an array literal holding a key its object type leaves out: one read at runtime,
- * spread in, numbered past a keyless item, or written as any expression but a string or an int. `openShapes` lists the
- * path from the value, in `.key`, `[]` and `{}` steps, of each object it holds whose keys the engine cannot all name.
+ * spread in, numbered past a keyless item, or written as any expression but a string or an int. `openShapes` lists each
+ * object the value holds whose keys the engine cannot all name: its path in `.key`, `[]` and `{}` steps, a NUL, its type.
  *
  * `listKeys` says each list arm of the type is keyed by ints, as a list literal, a `list<T>` and a collection's items
  * are; a list without it may be PHPDoc's `T[]` or a native `array`, keyed by anything.

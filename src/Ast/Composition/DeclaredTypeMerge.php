@@ -35,8 +35,8 @@ final readonly class DeclaredTypeMerge
     /**
      * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
-     * @param  list<string>  $openShapes  the path of each object the body holds keys of it cannot name, as `.key`, `[]`
-     *                                    and `{}` steps from the position merged: a member, a list element, a record value
+     * @param  list<string>  $openShapes  each object the body holds keys of it cannot name: its path from the position
+     *                                    merged, in `.key`, `[]` and `{}` steps, then a NUL and the object's type
      */
     public function __construct(
         private array $names,
@@ -439,7 +439,7 @@ final readonly class DeclaredTypeMerge
                 foreach ($covering as $position) {
                     $signatures[$position] = $this->admitting($signatures[$position], $merged);
                 }
-            } elseif (str_ends_with($key, '?') || in_array($at, $this->openShapes, true)) {
+            } elseif (str_ends_with($key, '?') || in_array($at."\0".$body[0], $this->openShapes, true)) {
                 $members[] = [$key, $text, $keySlots];
             }
         }

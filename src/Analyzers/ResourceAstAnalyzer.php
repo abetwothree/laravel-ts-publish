@@ -374,7 +374,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
-        /** @var array<array-key, list<string>> $openShapes the object types any branch holds open under the key */
+        /** @var array<array-key, list<string>> $openShapes the open shapes any branch holds under the key */
         $openShapes = [];
 
         /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
@@ -1813,7 +1813,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         return $members !== null
             && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]))
-            && ! in_array('', $result['openShapes'] ?? [], true);
+            && ! array_any($result['openShapes'] ?? [], static fn (string $shape): bool => str_starts_with($shape, "\0"));
     }
 
     /**

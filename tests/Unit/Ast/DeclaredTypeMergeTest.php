@@ -122,16 +122,18 @@ test('a vague container takes the declared one, and another kind merges its cont
 // R12, R15 and R19: a member only the declaration has is kept where it may be left out, and dropped where it must be
 // sent from a shape whose every key the body names; a shape open at its path keeps it as declared.
 test('a member only the declaration has stays where it is optional or the body\'s shape is open at its path', function () {
-    $open = new DeclaredTypeMerge([], [], ['']);
-    $inner = new DeclaredTypeMerge([], [], ['.inner']);
-    $elements = new DeclaredTypeMerge([], [], ['[]']);
+    $open = new DeclaredTypeMerge([], [], ["\0{ a: string }"]);
+    $inner = new DeclaredTypeMerge([], [], [".inner\0{ a: number }"]);
+    $elements = new DeclaredTypeMerge([], [], ["[]\0{ a: string }", "[]\0{ b: string }"]);
     $shapes = ['{ inner: { a: number }; other: { a: number } }', []];
 
     expect(mergedType('{ a: string }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; c?: string }')
         ->and($open->merge(['{ a: string }', []], ['{ a: string; b: number; c?: string }', []])[0])->toBe('{ a: string; b: number; c?: string }')
         ->and($inner->merge($shapes, ['{ inner: { a: number; b: string }; other: { a: number; b: string } }', []])[0])
         ->toBe('{ inner: { a: number; b: string }; other: { a: number } }')
-        ->and($elements->merge(['{ a: string }[]', []], ['{ a: string; b: number }[]', []])[0])->toBe('{ a: string; b: number }[]');
+        ->and($elements->merge(['{ a: string }[]', []], ['{ a: string; b: number }[]', []])[0])->toBe('{ a: string; b: number }[]')
+        ->and($elements->merge(['({ a: string } | { c: string })[]', []], ['({ a: string; b: number } | { c: string; b: number })[]', []])[0])
+        ->toBe('({ a: string; b: number } | { c: string })[]');
 });
 
 // R20: a declared member a body index signature's pattern covers merges with that signature's value, which widens to

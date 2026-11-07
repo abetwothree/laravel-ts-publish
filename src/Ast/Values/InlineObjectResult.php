@@ -370,14 +370,14 @@ final class InlineObjectResult
     }
 
     /**
-     * The path of each object this one holds whose keys the engine cannot all name: itself, where its analysis holds a
-     * key no name names, and each member's own, under the member's key as the object prints it.
+     * Each object this one holds whose keys the engine cannot all name, as its path, a NUL and its type: itself, where
+     * its analysis holds a key no name names, and each member's own, under the member's key as the object prints it.
      *
      * @return list<string>
      */
     private function openShapes(MethodAnalysis $analysis, string $type): array
     {
-        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && TsTypeShape::members($type) !== null ? [''] : [];
+        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && TsTypeShape::members($type) !== null ? ["\0".$type] : [];
 
         foreach ($analysis->openShapes as $name => $memberPaths) {
             $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);

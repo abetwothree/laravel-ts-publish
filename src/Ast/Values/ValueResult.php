@@ -487,8 +487,8 @@ final class ValueResult
     }
 
     /**
-     * A value its container holds as each element or value, its open shapes' paths moved under the container's step
-     * for it: `[]` for a list element, `{}` for a record value.
+     * A value its container holds as each element or value, its open shapes' paths, which lead each entry, moved under
+     * the container's step for it: `[]` for a list element, `{}` for a record value.
      *
      * @param  ValueExpressionResult  $held  the element or value
      * @param  ValueExpressionResult  $container  the container's own result, its type set
