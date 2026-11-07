@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RecipientElementsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ArchivingPost;
@@ -62,6 +63,7 @@ use Workbench\App\Models\RosterSlot;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
+use Workbench\App\ValueObjects\MailRecipient;
 use Workbench\App\ValueObjects\PostStats;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -76,6 +78,36 @@ function postScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
 }
+
+// A list is no object, so resolve() names nothing for it; its declaration names what each element holds (GH-154).
+describe('ReceiverClassResolver::elementClasses()', function () {
+    test('names the class a property read declares its list\'s elements as', function (string $php, ?array $expected) {
+        $scope = new AnalysisScope(new ReflectionClass(RecipientElementsResource::class));
+
+        expect(resolve(ReceiverClassResolver::class)->elementClasses(receiverExpr($php), $scope)?->classes)->toBe($expected);
+    })->with([
+        'a promoted @var on what $resource holds' => ['$this->resource->recipients', [MailRecipient::class]],
+        'a plain @var on what $resource holds' => ['$this->resource->copied', [MailRecipient::class]],
+        'a nullsafe read' => ['$this->resource?->recipients', [MailRecipient::class]],
+        'a member JsonResource forwards' => ['$this->recipients', [MailRecipient::class]],
+        'the subject\'s own array<string, X>' => ['$this->byEmail', [MailRecipient::class]],
+        'the subject\'s own nullable X[]' => ['$this->backups', [MailRecipient::class]],
+        'a list of ints' => ['$this->counts', null],
+        'a property naming one class' => ['$this->resource', null],
+        'a property its class lacks' => ['$this->resource->missing', null],
+        'a method call' => ['$this->nameOf(1)', null],
+        'a variable' => ['$recipients', null],
+    ]);
+
+    test('guards a list another API resource forwards to, as a member read through it is', function () {
+        $scope = new AnalysisScope(new ReflectionClass(RecipientElementsResource::class));
+        $resolver = resolve(ReceiverClassResolver::class);
+        $forwarded = '(new \\Workbench\\App\\Http\\Resources\\UndocumentedRecipientsResource(null))->recipients';
+
+        expect($resolver->elementClasses(receiverExpr($forwarded), $scope))->toEqual(ReceiverType::of(MailRecipient::class)->asGuarded())
+            ->and($resolver->elementClasses(receiverExpr('$this->resource->recipients'), $scope)?->guarded)->toBeFalse();
+    });
+});
 
 describe('ReceiverClassResolver::resolve()', function () {
     test('an enum-cast attribute holds its enum', function () {

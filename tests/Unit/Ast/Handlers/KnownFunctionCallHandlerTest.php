@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectPipelineRootsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RecipientElementsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -24,9 +25,13 @@ use Random\Randomizer;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ArrayMapResource;
+use Workbench\App\Http\Resources\DocumentedRecipientsResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\UndocumentedRecipientsResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\ValueObjects\MailRecipient;
+use Workbench\App\ValueObjects\RecipientList;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 
 /**
@@ -39,6 +44,17 @@ function knownFunctionCallType(string $php, string $resource = PostResource::cla
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
     return new ResourceAstAnalyzer(new ReflectionClass($resource), Post::class)->resolve($expr)['type'];
+}
+
+/**
+ * The type one expression resolves to through RecipientElementsResource, which no model backs, as none backs a
+ * resource over a value object: its undeclared members forward to the RecipientList it holds.
+ */
+function recipientElementsType(string $php): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(RecipientElementsResource::class))->resolve($expr)['type'];
 }
 
 /**
@@ -224,6 +240,48 @@ it('publishes array_map() outside a resource with the keys json_encode() writes'
         .'"gap_keyed_literal":{"1":"A","3":"B"},"two_arrays_string_keyed":[2,4]}',
     );
 });
+
+// A parameter declaring no type holds an element of the array, so it reads as the class the array's property declares
+// its elements as, as a parameter declaring that class would (GH-154).
+it('binds an untyped array_map() or map() parameter to the class a property declares its elements as', function (string $php, string $expected) {
+    expect(recipientElementsType($php))->toBe($expected);
+})->with([
+    'promoted @var list' => ["array_map(fn (\$r) => ['name' => \$r->name], \$this->resource->recipients)", '{ name: string | null }[]'],
+    'plain @var list' => ['array_map(fn ($r) => $r->email, $this->resource->copied)', '(string | null)[]'],
+    'function closure' => ['array_map(function ($r) { return $r->name; }, $this->resource->recipients)', '(string | null)[]'],
+    'a member JsonResource forwards' => ['array_map(fn ($r) => $r->name, $this->recipients)', '(string | null)[]'],
+    'the subject\'s own array<string, X>' => ['array_map(fn ($r) => $r->email, $this->byEmail)', 'Record<string, string | null>'],
+    'the subject\'s own nullable X[]' => ['array_map(fn ($r) => $r->name, $this->backups)', '(string | null)[]'],
+    'collect()->map()->all()' => ['collect($this->resource->recipients)->map(fn ($r) => $r->name)->all()', '(string | null)[]'],
+    'method callable' => ["array_map([\$this, 'nameOf'], \$this->resource->recipients)", '(string | null)[]'],
+    'first-class method' => ['array_map($this->nameOf(...), $this->resource->recipients)', '(string | null)[]'],
+    'two arrays' => [
+        "array_map(fn (\$a, \$b) => ['a' => \$a->name, 'b' => \$b->email], \$this->resource->recipients, \$this->resource->copied)",
+        '{ a: string | null; b: string | null }[]',
+    ],
+]);
+
+it('keeps the class a callback parameter declares, and binds no class for a list of scalars', function (string $php, string $expected) {
+    expect(recipientElementsType($php))->toBe($expected);
+})->with([
+    'a native type' => ['array_map(fn (\\Workbench\\App\\ValueObjects\\MailRecipient $r) => $r->name, $this->resource->recipients)', '(string | null)[]'],
+    'a list of ints' => ['array_map(fn ($n) => $n * 2, $this->counts)', 'number[]'],
+]);
+
+it('publishes the workbench recipients as the JSON the resource sends, with or without a @return docblock', function (string $resource) {
+    $list = new RecipientList([new MailRecipient('Ann', 'ann@example.com')]);
+    $list->copied = [new MailRecipient(email: 'bob@example.com')];
+    $item = '{ name: string | null; email: string | null }[]';
+
+    expect(analyzedKeyTypes($resource))->toBe(['recipients' => $item, 'copied' => $item, 'typed' => $item])
+        ->and(json_encode(new $resource($list)->resolve(Request::create('/'))))->toBe(
+            '{"recipients":[{"name":"Ann","email":"ann@example.com"}],"copied":[{"name":null,"email":"bob@example.com"}],'
+            .'"typed":[{"name":"Ann","email":"ann@example.com"}]}',
+        );
+})->with([
+    'documented' => [DocumentedRecipientsResource::class],
+    'undocumented' => [UndocumentedRecipientsResource::class],
+]);
 
 it('publishes the workbench array_map() keys as the JSON the resource sends', function () {
     $post = new Post;

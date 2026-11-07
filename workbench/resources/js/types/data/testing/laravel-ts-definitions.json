@@ -13821,12 +13821,12 @@
             "properties": [
                 {
                     "name": "recipients",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "copied",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
@@ -21350,12 +21350,12 @@
             "properties": [
                 {
                     "name": "recipients",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "copied",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {

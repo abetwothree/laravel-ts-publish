@@ -384,7 +384,7 @@ model bind in `ConditionalMethodHandler`, whose value closures read through `Res
 
 | Writer | Laravel passes | First parameter bound to |
 | --- | --- | --- |
-| `BindsMapCallbacks::resolveArrayCallback()`, for every `map()` and `array_map()` | `($value, $key)`, or one element of each array | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value, and nothing for an element nothing types. The second holds the key only where the caller passes one |
+| `BindsMapCallbacks::resolveArrayCallback()`, for every `map()` and `array_map()` | `($value, $key)`, or one element of each array | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value, and nothing for an element nothing types, beside the classes a property's `@var list<X>` declares its array's elements as, in `varDeclaredBindings`, where the parameter declares no class. The second holds the key only where the caller passes one |
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |

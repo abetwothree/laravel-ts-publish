@@ -617,6 +617,14 @@ this way, `toAttributes()`'s own `@return` included. A value has no channel for 
 beside an override spelled like it, in the same object or a nested one, would publish as that model; the fix is such a
 channel. Spread the helper at the top level, or type the key with an import-aware `#[TsCasts]`.
 
+### An untyped `map()` or `array_map()` parameter takes its element's class only from a property's `@var`
+
+`array_map(fn ($r) => ['name' => $r->name], $this->recipients())`, where `recipients()` declares
+`@return list<Recipient>`, publishes `{ name: unknown }[]`, and so does a local an inline `@var list<Recipient>`
+declares. A parameter declaring no type binds a list element's class only where the array is a property read whose own
+`@var`, or promoted constructor parameter's, names it (`ReceiverClassResolver::elementClasses()`). Type the parameter,
+`fn (Recipient $r)`.
+
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.

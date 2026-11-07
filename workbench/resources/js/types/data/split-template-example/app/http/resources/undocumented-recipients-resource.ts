@@ -6,7 +6,7 @@
  */
 export interface UndocumentedRecipientsResource
 {
-    recipients: { name: unknown; email: unknown }[];
-    copied: { name: unknown; email: unknown }[];
+    recipients: { name: string | null; email: string | null }[];
+    copied: { name: string | null; email: string | null }[];
     typed: { name: string | null; email: string | null }[];
 }

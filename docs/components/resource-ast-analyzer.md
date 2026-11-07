@@ -556,7 +556,9 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
   write out holds. Its parameter binds to the model the receiver resolver names for `$arg`, or that its value
   carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
   `AnalysisScope::$varValueBindings`, and an element nothing types not at all, so the parameter's declaration binds.
-  All bind through one binder, as
+  A parameter declaring no class also binds, in `$varDeclaredBindings`, the classes a property's `@var list<X>`,
+  `X[]` or `array<K, X>` declares its elements as (`ReceiverClassResolver::elementClasses()`), so `$r->name` reads
+  `X::$name`. All bind through one binder, as
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
 - **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
   `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a

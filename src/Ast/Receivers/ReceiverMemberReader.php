@@ -154,22 +154,32 @@ final class ReceiverMemberReader
             };
         }
 
-        DependencyRecorder::recordClass($class);
+        $declared = self::publicProperty($class, $name);
 
-        // An interface declares a property too, as PHP 8.4 lets an intersection's interface member do.
-        if (! DeclaredClasses::isValueClass($class) || ! property_exists($class, $name)) {
+        return $declared === null ? null : ReceiverType::declared(DeclaredClasses::propertyType($declared[1], $declared[0], $class));
+    }
+
+    /**
+     * What each element of the array `<receiver>->name` holds on one class is declared as: a public property's
+     * `@var list<X>`, on what a proxy forwards to too; null for a model, whose elements bind by the model they are.
+     */
+    public static function elementClasses(string $class, string $name): ?ReceiverType
+    {
+        if (is_a($class, Model::class, true)) {
             return null;
         }
 
-        $subject = new ReflectionClass($class);
-        $property = $subject->getProperty($name);
+        $forwarded = ProxyDeclaration::forwarded($class, $name, false);
 
-        // A non-public property read from outside goes to __get(), not to the declaration.
-        if (! $property->isPublic() || $property->isStatic()) {
-            return null;
+        if ($forwarded !== null) {
+            return $name !== 'resource' && count($forwarded->classes) === 1
+                ? self::elementClasses($forwarded->memberOwner($forwarded->classes[0], $name, false), $name)?->asGuarded()
+                : null;
         }
 
-        return ReceiverType::declared(DeclaredClasses::propertyType($property, $subject, $class));
+        $declared = self::publicProperty($class, $name);
+
+        return $declared === null ? null : ReceiverType::declared(DeclaredClasses::propertyElementType($declared[1], $declared[0], $class));
     }
 
     /**
@@ -311,6 +321,27 @@ final class ReceiverMemberReader
         $default = property_exists($relation, 'withDefault') && (bool) new ReflectionProperty($relation, 'withDefault')->getValue($relation);
 
         return ! $default && ($keys === null || array_diff($keys, $filled) !== []);
+    }
+
+    /**
+     * The public instance property `<receiver>->name` reads on one class, beside the class, which a read from outside
+     * reaches; null where the class declares none, a non-public one going to __get() instead.
+     *
+     * @return array{ReflectionClass<object>, ReflectionProperty}|null
+     */
+    private static function publicProperty(string $class, string $name): ?array
+    {
+        DependencyRecorder::recordClass($class);
+
+        // An interface declares a property too, as PHP 8.4 lets an intersection's interface member do.
+        if (! DeclaredClasses::isValueClass($class) || ! property_exists($class, $name)) {
+            return null;
+        }
+
+        $subject = new ReflectionClass($class);
+        $property = $subject->getProperty($name);
+
+        return $property->isPublic() && ! $property->isStatic() ? [$subject, $property] : null;
     }
 
     /**
