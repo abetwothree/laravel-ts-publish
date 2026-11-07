@@ -148,11 +148,13 @@ only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
 - where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
-  does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`);
+  does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
+  only `null` takes a vague member, or any member where a union kept that `null` beside an arm no rule types;
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
-  key, a declared list's element shape's, or a declared `Record`'s value or list's other element; a member only the
-  declaration has follows where it is optional or the body's shape is open, as a spread of an array it cannot read or
-  an index signature leaves it (`MethodAnalysis::$openReadings`), and goes where the body never sends it;
+  key, the best matched shape of a declared list's element, or a declared `Record`'s value or list's other element,
+  as fits it best (`DeclaredTypeMerge::acrossFromShape()`). A member only the declaration has merges with a body index
+  signature whose pattern covers it, which widens to admit it; else it follows where it is optional or the shape is
+  open, and goes where the body never sends it;
 - a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
   both spell first, then the keys both hold (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
@@ -161,6 +163,13 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
   union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
   body arm covers (`DeclaredTypeMerge::armWithin()`).
+
+A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
+or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
+walk an unnameable write (`$holdsUnreadKeys`). `InlineObjectResult::of()` records such an object as its path in the
+value, in `.key`, `[]` and `{}` steps, beside its type, so two of one text stay apart; `array_map()`, a collection's
+`map()` and a list literal move it under their element (`ValueResult::holdingOpenReadings()`), and it reaches the key
+as `MethodAnalysis::$openReadings`, as a `null` a union kept beside an arm no rule types does.
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
