@@ -55,6 +55,16 @@ final class ReturnShapeFixture
     }
 
     /**
+     * A model beside an override spelled like it, inside a shape a body may type in part.
+     *
+     * @return array{pair: array{a: User, b: Person}}
+     */
+    public function overrideBesideModel(): array
+    {
+        return [];
+    }
+
+    /**
      * Members for keys the body reads vague; `mixed` is vague itself.
      *
      * @return array{list: list<string>, record: array<string, int>, vague: mixed, precise: int}

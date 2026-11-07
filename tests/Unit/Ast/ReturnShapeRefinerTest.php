@@ -331,6 +331,19 @@ test('a fill naming a class another class of the key is spelled like queues the 
         ->and($analysis->inlineModelFqcns)->toBe(['owned' => [CrmUser::class, User::class]]);
 });
 
+test('a fill printed before the class the body reads by its name requeues both in print order', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'reviewers', 'type' => '{ other: unknown; by: User }[]', 'optional' => false, 'description' => ''],
+    ]);
+    $analysis->inlineModelFqcns = ['reviewers' => [CrmUser::class]];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+
+    expect($analysis->properties[0]['type'])->toBe('{ other: User | null; by: User }[]')
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class, CrmUser::class]]);
+});
+
 test('a key the body types beside a fill naming a same-named class publishes each class under its own alias', function (string $resource, array $expected) {
     $data = new ResourceTransformer($resource)->data();
 
@@ -346,6 +359,21 @@ test('a key the body types beside a fill naming a same-named class publishes eac
         'clash' => '{ by: WorkbenchUser; other: CrmUser | null }[]',
     ]],
 ]);
+
+// No channel can hold an override's token beside the model spelled like it, so that merge declares each token's class.
+test('a merge naming an override spelled like a class the key holds declares the class behind each token', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'pair', 'type' => '{ a: User; b: unknown }', 'optional' => false, 'description' => ''],
+    ]);
+    $analysis->inlineModelFqcns = ['pair' => [User::class]];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overrideBesideModel'));
+
+    expect($analysis->properties[0]['type'])->toBe('{ a: User; b: User }')
+        ->and($analysis->declaredTokenFqcns)->toBe(['pair' => [User::class, null]])
+        ->and($analysis->inlineModelFqcns)->toBe(['pair' => [User::class]])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
+});
 
 // Every position of a typed key merges with the @return member there, beside two classes the body spells by one name,
 // an enum it wraps, or slots a helper's @return declared; a wrapped enum keeps the body's arm (GH-154).
