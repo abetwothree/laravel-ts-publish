@@ -35,9 +35,8 @@ final readonly class DeclaredTypeMerge
     /**
      * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
-     * @param  list<string>  $openReadings  each reading the body leaves open: an object holding keys it cannot name, or a
-     *                                      `null` a union kept beside an arm no rule types; its path in `.key`, `[]` and
-     *                                      `{}` steps from the position merged, a NUL, and its type
+     * @param  list<string>  $openReadings  each reading the body leaves open, as ValueResult `openReadings` spells it:
+     *                                      its path from the position merged, a NUL, and its type
      */
     public function __construct(
         private array $names,
@@ -71,7 +70,7 @@ final readonly class DeclaredTypeMerge
     {
         $told = [self::tells($body[0]), self::tells($declared[0])];
 
-        // A body reading only `null` tells less than a container, and than any type where it left out an arm no rule types.
+        // A body reading only `null` tells less than a container, and than any type where it left out an untyped arm.
         if ($body[0] === 'null' && $told[1] > 0 && ($told[1] === 1 || in_array($at."\0null", $this->openReadings, true))) {
             return [TsTypeString::withNullArm($declared[0]), $declared[1]];
         }

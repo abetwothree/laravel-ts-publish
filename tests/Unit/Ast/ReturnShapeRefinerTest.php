@@ -19,10 +19,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewListedShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewNamedKeysResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewShapesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSignatureNullsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewStatusRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResource;
@@ -423,23 +425,27 @@ test('a mapped key reads a shape open only where the engine cannot name its keys
     expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
         ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
 })->with([
-    'named and unnamed keys' => [ReviewNamedKeysResource::class, [
+    'named keys' => [ReviewNamedKeysResource::class, [
         'spreadHelper' => '{ id: number; by: User }[]',
         'constKey' => '{ count: number; by: User }[]',
-        'collision' => '{ inner: { a: number; b: string }; other: { a: number } }[]',
         'tagged' => '{ by: User; [key: `${string}_tag`]: number | undefined }[]',
-        'merged' => '{ by: User; n: number }[]',
-        'written' => '{ by: User; n: number; extra: string }[]',
-        'helper' => '{ by: User; extra: string }[]',
         'box' => '{ id: number; by: User }',
         'keyed' => '{ count: number; by: User }',
+    ], ['User']],
+    'open and closed keys' => [ReviewOpenKeysResource::class, [
+        'collision' => '{ inner: { a: number; b: string }; other: { a: number } }[]',
+        'merged' => '{ by: User; n: number }[]',
+        'helper' => '{ by: User; extra: string }[]',
+        'written' => '{ by: User; n: number; extra: string }[]',
         'either' => '({ by: User; n?: number; extra: string } | { by: User; n: number })[]',
     ], ['User']],
-    'listed shapes, signatures and a lone null' => [ReviewListedShapesResource::class, [
+    'listed shapes' => [ReviewListedShapesResource::class, [
         'nullable' => '{ m: { a: number } }[]',
         'either' => '{ m: { a: number } }[]',
         'recordOrList' => '{ m: { a: number } }[]',
         'top' => '{ a: number; b: number }',
+    ], []],
+    'signatures and lone nulls' => [ReviewSignatureNullsResource::class, [
         'vagueNull' => '{ tags: unknown[] | null }[]',
         'covered' => '{ by: User; [key: `${string}_tag`]: number | undefined; x_tag: number | undefined }[]',
         'listNull' => '{ tags: number[] | null }[]',
@@ -455,7 +461,7 @@ test('a member an index signature covers publishes a type tsc accepts', function
         $this->markTestSkipped('tsc is not installed');
     }
 
-    $covered = new ResourceTransformer(ReviewListedShapesResource::class)->data()->properties['covered']['type'];
+    $covered = new ResourceTransformer(ReviewSignatureNullsResource::class)->data()->properties['covered']['type'];
     $compiles = function (string $type) use ($tsc): array {
         $file = tempnam(sys_get_temp_dir(), 'ix').'.ts';
         file_put_contents($file, "type User = { id: number };\nexport type Rows = {$type};\n");

@@ -370,8 +370,8 @@ final class InlineObjectResult
     }
 
     /**
-     * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no name
-     * names, and each member's own, under the member's key as the object prints it.
+     * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no
+     * name names, and each member's own, under the member's key as the object prints it.
      *
      * @return list<string>
      */

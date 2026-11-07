@@ -122,8 +122,8 @@ class MethodAnalysis
     public array $closedToDottedKeys = [];
 
     /**
-     * Property name => each reading its value leaves open (ValueResult `openReadings`): its path in `.key`, `[]` and `{}`
-     * steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
+     * Property name => each reading its value leaves open (ValueResult `openReadings`): its path in `.key`, `[]` and
+     * `{}` steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
      *
      * @var array<array-key, list<string>>
      */
