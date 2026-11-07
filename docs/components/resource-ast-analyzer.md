@@ -151,8 +151,11 @@ body typed stays. A class the fill names joins the key's inline channels as a cl
 (`MethodAnalysis::queueEmbeddedClasses()`), so the key stays a value the body typed, with no declared slots. Where a
 name would then stand for two classes, such as a body's CRM `User` beside the member's app `User`, the fill declares the
 class behind each token instead, as a whole key's fill does: a body token takes the class the key's channels hold under
-its name, a filled one the member's slot (`ReturnShapeRefiner::declaredFill()`). The analyzed `share()` or `provide()`
-itself fills no position, since its analyzer lays that docblock over every key it types
+its name, a filled one the member's slot (`ReturnShapeRefiner::declaredFill()`). A key neither fill can type whole, as
+where its body already spells two classes by one name or carries its own enum wrap or declared slots, takes the member
+whole, as a key no rule types does, where the member spells every position the key types as the key does and no slots
+are declared; otherwise it stays as the body reads it (`ReturnShapeRefiner::wholeFill()`). The analyzed `share()` or
+`provide()` itself fills no position, since its analyzer lays that docblock over every key it types
 (`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads fills, as neither analyzer reads the helper's
 own `@return`.
 
@@ -162,7 +165,8 @@ token a class stands behind left to that class (`LaravelTsPublish::shapeMemberFo
 resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
 the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
 `merge()` carries them, and a nested literal or local that folds them into a value reads every such key with no class
-(`InlineObjectResult::readFillsClassLess()`), as before the fill. `mergeReturnBranches()` joins a declared text's arms
+(`InlineObjectResult::readFillsClassLess()`), a token the body typed beside a position fill's included, as a key no
+rule types read before its fill. `mergeReturnBranches()` joins a declared text's arms
 whole, past the branches it drops, so a branch spelling none of the text's own names joins beside it:
 `User | User | string`, its slots `[null, User]`. Every joined arm takes one slot per token of the joined names, a
 literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the

@@ -109,6 +109,8 @@ final class ReturnShapeRefiner
      * fills them: each class the fill names queued on the key's channels as one its body names, beside the custom
      * imports its names need, or, where a name stands for two classes, declared token by token (declaredFill()).
      *
+     * A key that neither fill types whole takes the member whole (wholeFill()), else stays as the body reads it.
+     *
      * @param  ShapeTypeInfo|null  $doc
      * @return array{string, TypesImportMap, ShapeTypeInfo|null} the type, the imports it brings, and a fill to lay over
      *                                                           the key's channels as a cast is
@@ -137,14 +139,14 @@ final class ReturnShapeRefiner
             [...TokenSlots::namesOf('classes', $classes), ...$overrides],
             [...TokenSlots::namesOf('classes', $queued), ...$safeOverrides],
         ));
-        $declared = $blocked === [] ? null : $this->declaredFill($analysis, $name, $type, $member, $held);
+        if ($blocked !== []) {
+            $declared = $this->declaredFill($analysis, $name, $type, $member, $held)
+                ?? $this->wholeFill($analysis, $name, $type, $member);
 
-        if ($declared !== null) {
-            return [$declared['type'], [], $declared];
+            return $declared === null ? [$type, [], null] : [$declared['type'], [], $declared];
         }
 
-        $fills = static fn (string $fill): bool => ! array_any($blocked, static fn (string $blockedName): bool => TsTypeString::typeNameOccursIn($blockedName, $fill));
-        [$filled] = new UnknownPositions([], [], [], $fills)->filled($type, $member['type'], []);
+        [$filled] = new UnknownPositions([], [], [], static fn (string $fill): bool => true)->filled($type, $member['type'], []);
 
         if ($filled === $type) {
             return [$type, [], null];
@@ -157,6 +159,23 @@ final class ReturnShapeRefiner
         )));
 
         return [$filled, $this->importsSpelled($member['customImports'], $filled), null];
+    }
+
+    /**
+     * The member whole, its `null` kept, where no fill can type each position the key leaves `unknown`, as a key no
+     * rule types takes it: only where the member spells every position the key types as the key does, so it overwrites
+     * no type the body resolved, and the key holds no slots another docblock declared.
+     *
+     * @param  ShapeTypeInfo  $member
+     * @return ShapeTypeInfo|null
+     */
+    private function wholeFill(MethodAnalysis $analysis, string $name, string $type, array $member): ?array
+    {
+        [$filled] = new UnknownPositions([], [], [], static fn (string $fill): bool => true)->filled($type, $member['type'], []);
+
+        return isset($analysis->declaredTokenFqcns[$name]) || TsTypeString::withoutNullArm($filled) !== TsTypeString::withoutNullArm($member['type'])
+            ? null
+            : [...$member, 'type' => TsTypeString::withNullArmOf($type, $member['type'])];
     }
 
     /**

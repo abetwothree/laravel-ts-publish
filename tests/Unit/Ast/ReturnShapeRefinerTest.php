@@ -5,9 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthorEditorRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
@@ -334,6 +339,31 @@ test('a key the body types beside a fill naming a same-named class publishes eac
     'the app author beside a CRM user' => [ReversedClashAuthorsResource::class, [
         'clash' => '{ by: WorkbenchUser; other: CrmUser | null }[]',
     ]],
+]);
+
+// Where a position cannot fill, as beside two classes the body spells by one name or an enum it wraps, the key takes
+// its whole @return type, as a key no rule types does; a key a helper's @return already declared stays (GH-154).
+test('a key whose positions cannot all fill publishes the whole @return type, or what a helper already declared', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'two classes the body spells by one name' => [AuthorEditorRowsResource::class, [
+        'rows' => '{ by: CrmUser; ed: WorkbenchUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'a wrapped enum beside the list' => [StatusOrRowsResource::class, [
+        'subject' => 'StatusType | { by: CrmUser; other: WorkbenchUser | null }[]',
+    ], ['StatusType', 'User as CrmUser', 'User as WorkbenchUser']],
+    'a helper\'s whole fill' => [DeclaredHelperRowsResource::class, [
+        'rows' => '{ by: User; other: unknown }[]',
+    ], ['User']],
+    'a helper\'s position fill' => [ClashHelperRowsResource::class, [
+        'rows' => '{ by: CrmUser; ed: WorkbenchUser; other: unknown }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'a helper\'s fill spread inside a literal' => [NestedHelperSpreadResource::class, [
+        'payload' => '{ rows: { by: unknown; other: unknown }[] }',
+    ], []],
 ]);
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
