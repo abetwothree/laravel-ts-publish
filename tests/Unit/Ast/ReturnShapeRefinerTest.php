@@ -13,10 +13,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRow
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewStatusRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
@@ -360,6 +363,30 @@ test('a key the body types beside a fill naming a same-named class publishes eac
     'the app author beside a CRM user' => [ReversedClashAuthorsResource::class, [
         'clash' => '{ by: WorkbenchUser; other: CrmUser | null }[]',
     ]],
+]);
+
+// R10-R12: a body arm pairs with the declared shape whose keys match it best, another container kind merges its
+// contents, a vague one takes the declaration, and a member the body never sends stays only where declared optional.
+test('a mapped key merges with a union of shapes, another container kind and members the body never sends', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'a union of shapes' => [ReviewShapesResource::class, [
+        'either' => "({ type: 'a'; by: CrmUser; x: number } | { type: 'b'; y: string })[]",
+        'one' => "{ type: 'a'; by: CrmUser; x: number }[]",
+        'maybe' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'another container kind' => [ReviewContainersResource::class, [
+        'keyed' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+        'rows' => '{ m: { a: number; b: number }; meta: string[]; loose: Record<string, string> }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'members the body never sends' => [ReviewExtrasResource::class, [
+        'required' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+        'optional' => '{ by: CrmUser; other: WorkbenchUser | null; extra?: Post }[]',
+        'nested' => '{ by: CrmUser; box: { who: WorkbenchUser | null } }[]',
+    ], ['Post', 'User as CrmUser', 'User as WorkbenchUser']],
 ]);
 
 // No channel can hold an override's token beside the model spelled like it, so that merge declares each token's class.
