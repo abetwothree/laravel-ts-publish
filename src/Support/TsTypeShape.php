@@ -150,7 +150,9 @@ final class TsTypeShape
      */
     public static function intersectedObjects(string $type): ?array
     {
-        $parts = self::splitTopLevel(self::isWrapped($type, '(', ')') ? trim(substr($type, 1, -1)) : $type, ['&']);
+        $parts = str_contains($type, '&')
+            ? self::splitTopLevel(self::isWrapped($type, '(', ')') ? trim(substr($type, 1, -1)) : $type, ['&'])
+            : [];
 
         if (count($parts) < 2) {
             return null;

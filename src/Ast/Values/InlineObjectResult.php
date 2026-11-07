@@ -379,16 +379,21 @@ final class InlineObjectResult
      */
     private function openReadings(MethodAnalysis $analysis, string $type, array $spreadArms): array
     {
-        $object = TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null;
-        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && $object ? ["\0".$type] : [];
-        $replaced = array_map(
-            static fn (string $name): string => '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true),
-            array_column($analysis->properties, 'name'),
-        );
+        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys)
+            && (TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null);
+        $paths = $open ? ["\0".$type] : [];
+        $spread = array_merge([], ...array_map(
+            static fn (array $arm): array => isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
+            $spreadArms,
+        ));
 
-        foreach ($spreadArms as $arm) {
+        if ($spread !== []) {
+            $replaced = array_map(
+                static fn (string $name): string => '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true),
+                array_column($analysis->properties, 'name'),
+            );
             array_push($paths, ...array_filter(
-                isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
+                $spread,
                 static fn (string $path): bool => ! str_starts_with($path, "\0") && ! array_any(
                     $replaced,
                     static fn (string $key): bool => str_starts_with($path, $key) && in_array($path[strlen($key)], ['.', '[', '{', "\0"], true),
