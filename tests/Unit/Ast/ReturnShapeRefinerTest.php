@@ -6,8 +6,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use Illuminate\Http\Request;
+use Workbench\App\Http\Resources\RecipientSettingsResource;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
+use Workbench\App\ValueObjects\MailRecipient;
+use Workbench\App\ValueObjects\RecipientList;
 
 /**
  * @param  list<array{name: string, type: string, optional?: bool}>  $properties
@@ -215,4 +220,104 @@ test('an already-optional property stays optional when the shape does not say so
     $props = collect(refinedAnalysis([['name' => 'known', 'type' => 'unknown', 'optional' => true]], 'shaped')->properties)->keyBy('name');
 
     expect($props['known'])->toMatchArray(['type' => 'string', 'optional' => true]);
+});
+
+// Where the body types a key but leaves a member, an element or a record value unknown, the docblock's member at that
+// position fills it; every position the body types keeps the body's type, as the whole key does (GH-154).
+test('a key the body types fills each unknown position inside it from the docblock', function (string $method, string $name, string $inferred, string $expected) {
+    $analysis = refinedAnalysis([['name' => $name, 'type' => $inferred]], $method);
+
+    expect($analysis->properties[0]['type'])->toBe($expected)
+        ->and($analysis->declaredTokenFqcns)->toBe([]);
+})->with([
+    'list elements\' members' => ['nestedLists', 'rows', '{ name: unknown; email: unknown }[]', '{ name: string | null; email: string | null }[]'],
+    'one member the body types' => ['nestedLists', 'rows', '{ name: string; email: unknown }[]', '{ name: string; email: string | null }[]'],
+    'an optional member' => ['nestedLists', 'rows', '{ name?: unknown; email: string }[]', '{ name?: string | null; email: string }[]'],
+    'a member the docblock lacks' => ['nestedLists', 'rows', '{ name: unknown; extra: unknown }[]', '{ name: string | null; extra: unknown }[]'],
+    'a nullable list' => ['nestedLists', 'rows', '{ name: unknown; email: string }[] | null', '{ name: string | null; email: string }[] | null'],
+    'a grouped element' => ['nestedLists', 'rows', '({ name: unknown; email: string } | null)[]', '({ name: string | null; email: string } | null)[]'],
+    'a record value' => ['nestedLists', 'byKey', 'Record<string, { n: unknown }>', 'Record<string, { n: number }>'],
+    'a nested shape' => ['nestedShapes', 'nested', '{ inner: { a: unknown; b: number } }', '{ inner: { a: number; b: number } }'],
+    'a nullable shape' => ['nestedArms', 'maybe', '{ a: unknown } | null', '{ a: number } | null'],
+    'an unknown list element' => ['nestedLists', 'rows', 'unknown[] | string', '{ name: string | null; email: string | null }[] | string'],
+    'the arm of the docblock\'s kind' => ['nestedArms', 'either', '{ a: unknown } | unknown[]', '{ a: number } | number[]'],
+]);
+
+test('an unknown position whose docblock member is another kind of value stays unknown', function (string $method, string $name, string $inferred, string $expected) {
+    $analysis = refinedAnalysis([['name' => $name, 'type' => $inferred]], $method);
+
+    expect($analysis->properties[0]['type'])->toBe($expected)
+        ->and($analysis->customImports)->toBe([])
+        ->and($analysis->inlineModelFqcns)->toBe([]);
+})->with([
+    'a shape where the docblock lists' => ['nestedLists', 'rows', '{ name: unknown }', '{ name: unknown }'],
+    'a list where the docblock has a shape' => ['nestedShapes', 'nested', 'string | unknown[]', 'string | unknown[]'],
+    'a shape where the docblock has a scalar' => ['nestedShapes', 'scalar', '{ a: unknown }', '{ a: unknown }'],
+    'a key the docblock lacks' => ['nestedLists', 'missing', '{ a: unknown }[]', '{ a: unknown }[]'],
+]);
+
+// A key with no channel of its own takes the fill's classes as a whole key's fill does; beside a channel the body
+// records, whose slots no fill can line up with, a position naming a class stays unknown.
+test('an unknown position whose member names a class fills with its import where the key has no channel', function () {
+    $analysis = refinedAnalysis([['name' => 'owned', 'type' => '{ owner: unknown; n: unknown }[]']], 'nestedClasses');
+    $overridden = refinedAnalysis([['name' => 'nested', 'type' => '{ panel: unknown; n: string }']], 'overridden');
+    $reordered = refinedAnalysis([['name' => 'pair', 'type' => '{ second: unknown; first: unknown }']], 'nestedClasses');
+
+    expect($analysis->properties[0]['type'])->toBe('{ owner: User; n: number }[]')
+        ->and($analysis->declaredTokenFqcns)->toBe(['owned' => [User::class]])
+        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [User::class]])
+        ->and($reordered->properties[0]['type'])->toBe('{ second: Post | null; first: User }')
+        ->and($reordered->declaredTokenFqcns)->toBe(['pair' => [Post::class, User::class]])
+        ->and($overridden->properties[0]['type'])->toBe('{ panel: UiNode; n: string }')
+        ->and($overridden->customImports)->toBe(['@js/types/ui' => ['UiNode']])
+        ->and($overridden->declaredTokenFqcns)->toBe([]);
+});
+
+test('an unknown position whose member names a class stays unknown beside a channel the body records', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'owned', 'type' => '{ owner: unknown; n: unknown; post: Post }[]', 'optional' => false, 'description' => ''],
+    ]);
+    $analysis->inlineModelFqcns = ['owned' => [Post::class]];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+
+    expect($analysis->properties[0]['type'])->toBe('{ owner: unknown; n: number; post: Post }[]')
+        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [Post::class]])
+        ->and($analysis->declaredTokenFqcns)->toBe([]);
+});
+
+// share() and a metadata provider's provide() lay their docblock over every key it types, so a position fill could only
+// move a key's channels, as a model's would let a metadata companion import it.
+test('a caller that lays the docblock over every key itself fills no position inside a key the body types, but a vague key', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'owned', 'type' => '{ owner: unknown; n: unknown }[]', 'optional' => false, 'description' => ''],
+        ['name' => 'pair', 'type' => 'unknown', 'optional' => false, 'description' => ''],
+    ]);
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'), fillsPositions: false);
+
+    expect(array_column($analysis->properties, 'type', 'name'))
+        ->toBe(['owned' => '{ owner: unknown; n: unknown }[]', 'pair' => '{ first: User; second: Post | null }'])
+        ->and($analysis->inlineModelFqcns)->not->toHaveKey('owned');
+});
+
+test('an array<string, V> return fills each unknown position inside every key from V', function () {
+    $analysis = refinedAnalysis([
+        ['name' => 'a', 'type' => '{ n: unknown }'],
+        ['name' => 'b', 'type' => '{ n: string }'],
+    ], 'nestedRecord');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['a' => '{ n: number }', 'b' => '{ n: string }']);
+});
+
+test('a workbench resource\'s @return fills the member a cache read leaves unknown, and the body types the rest', function () {
+    config()->set('cache.default', 'array');
+    cache()->put('mail.settings.ann@example.com', ['digest' => true]);
+    $list = new RecipientList([new MailRecipient('Ann', 'ann@example.com'), new MailRecipient('Bob')]);
+
+    expect(analyzedKeyTypes(RecipientSettingsResource::class))->toBe([
+        'recipients' => '{ name: string | null; settings: { digest: boolean } | null }[]',
+    ])->and(json_encode(new RecipientSettingsResource($list)->resolve(Request::create('/'))))->toBe(
+        '{"recipients":[{"name":"Ann","settings":{"digest":true}},{"name":"Bob","settings":null}]}',
+    );
 });

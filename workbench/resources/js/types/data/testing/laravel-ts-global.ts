@@ -5072,6 +5072,13 @@ declare global {
             post_title_via_resource: string | null;
         }
         /**
+         * Maps a value object's recipients to each one's cached settings, a read no rule types, under a `toArray()` `@return`
+         * docblock that types it (GH-154): the docblock fills that member alone, and the body types the name.
+         */
+        export interface RecipientSettingsResource {
+            recipients: { name: string | null; settings: { digest: boolean } | null }[];
+        }
+        /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its
          * result, whose enumFqcns/classFqcns keys no dispatcher reads — so both properties emitted a token
          * with no import (TS2304). The reflection now goes through acceptReflectedTypeInfo() like every other

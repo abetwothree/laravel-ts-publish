@@ -61,6 +61,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
@@ -933,7 +934,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, fillsPositions: ! $this->docblockOutranksBody());
 
         if (! $this->isInertiaShare($method)) {
             $this->applyTsCastsFromMethod($method, $analysis);
@@ -1417,7 +1418,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false, fillsPositions: ! $this->docblockOutranksBody());
 
         // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
         if (! $this->isInertiaShare($ownMethod)) {
@@ -2236,6 +2237,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             && is_subclass_of($this->scope->subjectReflection->getName(), 'Inertia\\Middleware')
                 ? $this->scope->subjectReflection->getMethod('share')->getDeclaringClass()->getName()
                 : '';
+    }
+
+    /**
+     * Whether the caller lays the analyzed method's `@return` over every key it types, outranking the body, as
+     * InertiaSharedDataAnalyzer does for a middleware's share() and ModelMetadataAnalyzer for a provider's provide().
+     */
+    private function docblockOutranksBody(): bool
+    {
+        return $this->sharedDataShareClass() !== ''
+            || ($this->methodName === 'provide' && $this->scope->subjectReflection->implementsInterface(ModelMetadataProvider::class));
     }
 
     /**

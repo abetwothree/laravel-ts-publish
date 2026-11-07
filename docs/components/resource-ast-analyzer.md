@@ -145,6 +145,12 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 `'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
 only an exact `unknown`.
 
+In a key the body typed, each position it left `unknown`, a member, an element or a record value, takes the member's
+type at that position, matched arm by arm to the one arm of its kind (`ReturnShapeRefiner::filledPositions()`); every
+position the body typed stays. A position naming a class fills, with its slots, only in a key that holds no class
+channel and spells no such name. `share()` and a metadata provider's `provide()` fill no position, since their analyzers
+lay the docblock over every key it types (`ResourceAstAnalyzer::docblockOutranksBody()`).
+
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
 token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
