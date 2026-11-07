@@ -97,7 +97,8 @@ final class ReturnShapeFixture
     /**
      * Members naming models, in print order apart from the order a body may spell them in.
      *
-     * @return array{owned: list<array{owner: User, n: int}>, pair: array{first: User, second: Post|null}}
+     * @return array{owned: list<array{owner: User, n: int}>, pair: array{first: User, second: Post|null},
+     *     reviewers: list<array{by: User, other: User|null}>}
      */
     public function nestedClasses(): array
     {

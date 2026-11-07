@@ -934,7 +934,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, fillsPositions: ! $this->docblockOutranksBody());
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
 
         if (! $this->isInertiaShare($method)) {
             $this->applyTsCastsFromMethod($method, $analysis);
@@ -2240,8 +2240,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether the caller lays the analyzed method's `@return` over every key it types, outranking the body, as
+     * Whether the caller lays the analyzed method's own `@return` over every key it types, outranking the body, as
      * InertiaSharedDataAnalyzer does for a middleware's share() and ModelMetadataAnalyzer for a provider's provide().
+     * A helper either spreads is refined by its own `@return`, which neither caller reads.
      */
     private function docblockOutranksBody(): bool
     {

@@ -7,12 +7,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use Closure;
 use ReflectionMethod;
 
 /**
@@ -23,9 +23,7 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type Slots from TokenSlots
- *
- * @phpstan-type Filled = array{string, Slots}
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -78,7 +76,8 @@ final class ReturnShapeRefiner
                     $property['fillType'] = $property['type'];
                 }
             } elseif (! $isSignature && $fillsPositions) {
-                [$property['type'], $resolved] = $this->filledPositions($property['type'], $doc, $analysis->hasFqcnChannel($name));
+                [$property['type'], $brought] = $this->filledPositions($analysis, $name, $property['type'], $doc);
+                $imports[] = $brought;
             }
 
             if ($resolved !== null) {
@@ -106,204 +105,93 @@ final class ReturnShapeRefiner
     }
 
     /**
-     * A key the body typed, each `unknown` position in it filled from the member $doc gives it, beside the fill to lay
-     * over the key's channels where it spells a class or a name the member's imports bring.
-     *
-     * Such a position fills only in a key with no channel spelling no such name, as no slot of the body records one.
+     * A key the body typed, each `unknown` position in it filled from the member $doc gives it, as UnknownPositions
+     * fills them, each class the fill names queued on the key's channels as one its body names, beside the custom
+     * imports the names it spells need. A name the key cannot give one class alone fills no position.
      *
      * @param  ShapeTypeInfo|null  $doc
-     * @return array{string, ShapeTypeInfo|null}
+     * @return array{string, TypesImportMap}
      */
-    private function filledPositions(string $type, ?array $doc, bool $hasChannel): array
+    private function filledPositions(MethodAnalysis $analysis, string $name, string $type, ?array $doc): array
     {
         $member = $doc === null || ! TsTypeString::typeNameOccursIn('unknown', $type) ? null : LaravelTsPublish::shapeMemberForKey($doc);
 
         if ($member === null) {
-            return [$type, null];
+            return [$type, []];
         }
 
-        $slots = $member['tokenFqcns'] ?? [];
-        $own = TokenSlots::namesOf('classes', array_values(array_unique(array_filter($slots))));
-        $names = [...$own, ...ImportMaps::localNames($member['customImports'])];
-        $spells = fn (string $text): bool => array_any($names, fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $text));
-        $named = ! $hasChannel && ! $spells($type);
+        $classes = array_values(array_unique(array_filter($member['tokenFqcns'] ?? [])));
+        $overrides = ImportMaps::localNames($member['customImports']);
+        $held = $analysis->channelFqcns($name);
+        $queued = array_values(array_filter(
+            $classes,
+            fn (string $class): bool => $this->queuesBeside($class, $classes, $overrides, $held, $type),
+        ));
+        $heldNames = TokenSlots::namesOf('classes', $held);
+        $safeOverrides = array_values(array_filter(
+            $overrides,
+            static fn (string $override): bool => ! in_array($override, $heldNames, true) && ! TokenSlots::readsName($override, $type),
+        ));
+        $blocked = array_values(array_diff(
+            [...TokenSlots::namesOf('classes', $classes), ...$overrides],
+            [...TokenSlots::namesOf('classes', $queued), ...$safeOverrides],
+        ));
+        $filled = UnknownPositions::filled(
+            $type,
+            $member['type'],
+            static fn (string $fill): bool => ! array_any($blocked, static fn (string $blockedName): bool => TsTypeString::typeNameOccursIn($blockedName, $fill)),
+        );
 
-        [$filled, $filledSlots] = $this->unknownsFilled($type, [$member['type'], $slots], $own, fn (string $fill): bool => $named || ! $spells($fill));
-
-        // A literal spelled like a class can leave a part's share of the slots short, so its tokens would misalign.
-        if ($named && $spells($filled) && $this->tokenCount($own, $filled) !== count($filledSlots)) {
-            [$filled] = $this->unknownsFilled($type, [$member['type'], $slots], $own, fn (string $fill): bool => ! $spells($fill));
+        if ($filled === $type) {
+            return [$type, []];
         }
 
-        return match (true) {
-            $filled === $type => [$type, null],
-            ! $named || ! $spells($filled) => [$filled, null],
-            default => [$filled, [
-                'type' => $filled,
-                'customImports' => $member['customImports'],
-                ...($filledSlots === [] ? [] : ['tokenFqcns' => $filledSlots]),
-            ]],
-        };
+        $analysis->queueEmbeddedClasses($name, array_values(array_filter(
+            $queued,
+            static fn (string $class): bool => ! in_array($class, $held, true)
+                && array_any(TokenSlots::namesOf('classes', [$class]), static fn (string $spelled): bool => TokenSlots::readsName($spelled, $filled)),
+        )));
+
+        $brought = [];
+
+        foreach ($member['customImports'] as $path => $names) {
+            $spelled = array_values(array_filter($names, static fn (string $import): bool => TokenSlots::readsName(ImportMaps::localName($import), $filled)));
+
+            if ($spelled !== []) {
+                $brought[$path] = $spelled;
+            }
+        }
+
+        return [$filled, $brought];
     }
 
     /**
-     * $type with each position it holds as `unknown`, a whole value, a member, an element or a record value, taken
-     * from $declared at that position where $fills admits it, beside the slots of the parts taken, in print order.
+     * Whether a class a fill names can join a key's channels, which give each name one class: one of a kind with a
+     * channel, whose names no other class or override of the member, nor any other class or text of the key, spells.
      *
-     * An arm takes the one arm of $declared, `null` aside, of its own kind: an object, a list or a Record.
-     *
-     * @param  Filled  $declared  a type, beside the slot of each token of $own it spells
-     * @param  list<string>  $own
-     * @param  Closure(string): bool  $fills
-     * @return Filled
+     * @param  class-string  $class
+     * @param  list<class-string>  $classes  every class the member names
+     * @param  list<string>  $overrides  the names the member's own imports bring
+     * @param  list<class-string>  $held  the classes on the key's channels
      */
-    private function unknownsFilled(string $type, array $declared, array $own, Closure $fills): array
+    private function queuesBeside(string $class, array $classes, array $overrides, array $held, string $type): bool
     {
-        if (TsTypeString::isUnknownOnly($type)) {
-            return ! TsTypeString::isUnknownOnly($declared[0]) && $fills($declared[0])
-                ? [TsTypeString::withNullArmOf($type, $declared[0]), $declared[1]]
-                : [$type, []];
+        if (! MethodAnalysis::queuesEmbedded($class)) {
+            return false;
         }
 
-        $declaredArms = [];
-        $at = 0;
+        foreach (TokenSlots::namesOf('classes', [$class]) as $spelled) {
+            $others = array_filter([...$classes, ...$held], static fn (string $other): bool => $other !== $class);
+            $holdsIt = in_array($class, $held, true);
 
-        foreach (TsTypeString::splitTopLevelUnion($declared[0]) as $arm) {
-            $count = $this->tokenCount($own, $arm);
-            $declaredArms = $arm === 'null' ? $declaredArms : [...$declaredArms, [$arm, array_slice($declared[1], $at, $count)]];
-            $at += $count;
+            if (in_array($spelled, [...$overrides, ...TokenSlots::namesOf('classes', array_values($others))], true)
+                || (! $holdsIt && TokenSlots::readsName($spelled, $type))
+            ) {
+                return false;
+            }
         }
 
-        $arms = TsTypeString::splitTopLevelUnion($type);
-
-        if (count($arms) > 1) {
-            $filled = array_map(function (string $arm) use ($declaredArms, $own, $fills): array {
-                $match = $this->armOfKind($arm, $declaredArms);
-
-                return $match === null ? [$arm, []] : $this->unknownsFilled($arm, $match, $own, $fills);
-            }, $arms);
-            $texts = array_column($filled, 0);
-
-            return $texts === $arms ? [$type, []] : [implode(' | ', $texts), array_merge([], ...array_column($filled, 1))];
-        }
-
-        $match = $this->armOfKind($type, $declaredArms);
-
-        return match (true) {
-            $match === null || ! TsTypeString::typeNameOccursIn('unknown', $type) => [$type, []],
-            TsTypeShape::members($type) !== null => $this->membersFilled($type, $match, $own, $fills),
-            TsTypeShape::recordArguments($type) !== null => $this->recordFilled($type, $match, $own, $fills),
-            default => $this->elementFilled($type, $match, $own, $fills),
-        };
-    }
-
-    /**
-     * An object type with each member's `unknown` positions filled from $declared's member of that key, `?` aside.
-     *
-     * @param  Filled  $declared
-     * @param  list<string>  $own
-     * @param  Closure(string): bool  $fills
-     * @return Filled
-     */
-    private function membersFilled(string $object, array $declared, array $own, Closure $fills): array
-    {
-        $declaredMembers = [];
-        $at = 0;
-
-        foreach (TsTypeShape::members($declared[0]) ?? [] as [$key, $value]) {
-            $at += $this->tokenCount($own, $key);
-            $count = $this->tokenCount($own, $value);
-            $declaredMembers[rtrim($key, '?')] = [$value, array_slice($declared[1], $at, $count)];
-            $at += $count;
-        }
-
-        $members = [];
-        $slots = [];
-        $changed = false;
-
-        foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
-            $fill = $declaredMembers[rtrim($key, '?')] ?? null;
-            [$filled, $filledSlots] = $fill === null ? [$value, []] : $this->unknownsFilled($value, $fill, $own, $fills);
-            $changed = $changed || $filled !== $value;
-            $members[] = $key.': '.$filled;
-            array_push($slots, ...$filledSlots);
-        }
-
-        return $changed ? ['{ '.implode('; ', $members).' }', $slots] : [$object, []];
-    }
-
-    /**
-     * A `Record<K, V>` with V's `unknown` positions filled from $declared's value.
-     *
-     * @param  Filled  $declared
-     * @param  list<string>  $own
-     * @param  Closure(string): bool  $fills
-     * @return Filled
-     */
-    private function recordFilled(string $record, array $declared, array $own, Closure $fills): array
-    {
-        [$key, $value] = TsTypeShape::recordArguments($record) ?? ['', ''];
-        [$declaredKey, $declaredValue] = TsTypeShape::recordArguments($declared[0]) ?? ['', 'unknown'];
-        $valueSlots = array_slice($declared[1], $this->tokenCount($own, $declaredKey));
-        [$filled, $slots] = $this->unknownsFilled($value, [$declaredValue, $valueSlots], $own, $fills);
-
-        return $filled === $value ? [$record, []] : ['Record<'.$key.', '.$filled.'>', $slots];
-    }
-
-    /**
-     * A `T[]` list with T's `unknown` positions filled from $declared's element.
-     *
-     * @param  Filled  $declared
-     * @param  list<string>  $own
-     * @param  Closure(string): bool  $fills
-     * @return Filled
-     */
-    private function elementFilled(string $list, array $declared, array $own, Closure $fills): array
-    {
-        $element = (string) TsTypeShape::elementType($list);
-        [$filled, $slots] = $this->unknownsFilled($element, [(string) TsTypeShape::elementType($declared[0]), $declared[1]], $own, $fills);
-
-        return $filled === $element ? [$list, []] : [TsTypeShape::postfixOperand($filled).'[]', $slots];
-    }
-
-    /**
-     * The one arm of $arms of $arm's kind, an object, a `T[]` list or a Record; null where none or several are, or
-     * $arm is of none of those kinds.
-     *
-     * @param  list<Filled>  $arms
-     * @return Filled|null
-     */
-    private function armOfKind(string $arm, array $arms): ?array
-    {
-        $kind = $this->kindOf($arm);
-        $matches = $kind === null ? [] : array_values(array_filter($arms, fn (array $other): bool => $this->kindOf($other[0]) === $kind));
-
-        return count($matches) === 1 ? $matches[0] : null;
-    }
-
-    /**
-     * Whether one arm is an object literal, a Record or a `T[]` list; null for any other arm.
-     *
-     * @return 'object'|'record'|'list'|null
-     */
-    private function kindOf(string $arm): ?string
-    {
-        return match (true) {
-            TsTypeShape::members($arm) !== null => 'object',
-            TsTypeShape::recordArguments($arm) !== null => 'record',
-            $arm !== '[]' && str_ends_with($arm, '[]') && TsTypeShape::elementType($arm) !== null => 'list',
-            default => null,
-        };
-    }
-
-    /**
-     * How many slots a part of a declared type takes: one per token of $own it spells, as TokenSlots reads them.
-     *
-     * @param  list<string>  $own
-     */
-    private function tokenCount(array $own, string $text): int
-    {
-        return $own === [] ? 0 : count(TokenSlots::tokens('classes', $own, $text));
+        return true;
     }
 
     /**

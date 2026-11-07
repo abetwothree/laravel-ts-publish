@@ -160,6 +160,14 @@ class MethodAnalysis
     ) {}
 
     /**
+     * Whether a class has an inline channel a key can queue it on: an enum, a model or an API resource.
+     */
+    public static function queuesEmbedded(string $fqcn): bool
+    {
+        return enum_exists($fqcn) || is_a($fqcn, Model::class, true) || is_a($fqcn, JsonResource::class, true);
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,
@@ -412,6 +420,28 @@ class MethodAnalysis
             array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
         );
         $this->listSplitEnumResources($branches);
+    }
+
+    /**
+     * Queue classes a key's text spells inside its value, as addProperty() queues an embedded class: on the key's
+     * inline channel of its kind, and keyed by itself. A class of no such kind is left out.
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    public function queueEmbeddedClasses(string $name, array $fqcns): void
+    {
+        foreach ($fqcns as $fqcn) {
+            if (enum_exists($fqcn)) {
+                $this->inlineEnumFqcns[$name][] = $fqcn;
+                $this->directEnumFqcns[$fqcn] = $fqcn;
+            } elseif (is_a($fqcn, Model::class, true)) {
+                $this->inlineModelFqcns[$name][] = $fqcn;
+                $this->modelFqcns[$fqcn] = $fqcn;
+            } elseif (is_a($fqcn, JsonResource::class, true)) {
+                $this->inlineResourceFqcns[$name][] = $fqcn;
+                $this->nestedResources[$fqcn] = $fqcn;
+            }
+        }
     }
 
     /**

@@ -146,10 +146,13 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 In a key the body typed, each position it left `unknown`, a member, an element or a record value, takes the member's
-type at that position, matched arm by arm to the one arm of its kind (`ReturnShapeRefiner::filledPositions()`); every
-position the body typed stays. A position naming a class fills, with its slots, only in a key that holds no class
-channel and spells no such name. `share()` and a metadata provider's `provide()` fill no position, since their analyzers
-lay the docblock over every key it types (`ResourceAstAnalyzer::docblockOutranksBody()`).
+type at that position, matched arm by arm to the one arm of its kind (`UnknownPositions::filled()`); every position the
+body typed stays. A class the fill names joins the key's inline channels as a class its body names does
+(`MethodAnalysis::queueEmbeddedClasses()`), so the key stays a value the body typed, with no declared slots. A name the
+key would then give two classes, such as a body's `User` beside the member's other `User`, fills no position
+(`ReturnShapeRefiner::queuesBeside()`). The analyzed `share()` or `provide()` itself fills no position, since its
+analyzer lays that docblock over every key it types (`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either
+spreads fills, as neither analyzer reads the helper's own `@return`.
 
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each

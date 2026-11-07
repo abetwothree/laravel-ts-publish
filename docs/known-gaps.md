@@ -621,16 +621,10 @@ channel. Spread the helper at the top level, or type the key with an import-awar
 
 `array_map(fn ($r) => ['name' => $r->name], $this->recipients())`, where `recipients()` declares
 `@return list<Recipient>`, publishes `{ name: unknown }[]`, and so does a local an inline `@var list<Recipient>`
-declares. A parameter declaring no type binds a list element's class only where the array is a property read whose own
-`@var`, or promoted constructor parameter's, names it (`ReceiverClassResolver::elementClasses()`). Type the parameter,
-`fn (Recipient $r)`, or the key's `@return` docblock, which fills the member.
-
-### A docblock fills a class into a position of a typed key only where the body names no class there
-
-Under `@return array{rows: list<array{post: PostResource, by: User}>}`, a body that types `rows` as
-`{ post: unknown; by: User }[]` keeps `post: unknown`: the key already holds the body's `User`, and a fill's class needs
-a slot beside it the body never recorded (`ReturnShapeRefiner::filledPositions()`). A position naming no class fills in
-any key. Type the member in the body, or the key with an import-aware `#[TsCasts]`.
+declares, or `->map()` on a `@var Collection<int, Recipient>` property. A parameter declaring no type binds a list
+element's class only where `array_map()` or `collect()` reads a property whose own `@var`, or promoted constructor
+parameter's, lists it as an array (`ReceiverClassResolver::elementClasses()`). Type the parameter, `fn (Recipient $r)`,
+or the key's `@return` docblock, which fills the member.
 
 ### An open shape publishes only its named keys
 

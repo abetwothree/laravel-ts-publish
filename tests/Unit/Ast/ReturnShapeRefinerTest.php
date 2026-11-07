@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\RecipientSettingsResource;
@@ -13,6 +14,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
 use Workbench\App\ValueObjects\MailRecipient;
 use Workbench\App\ValueObjects\RecipientList;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * @param  list<array{name: string, type: string, optional?: bool}>  $properties
@@ -256,34 +258,70 @@ test('an unknown position whose docblock member is another kind of value stays u
     'a key the docblock lacks' => ['nestedLists', 'missing', '{ a: unknown }[]', '{ a: unknown }[]'],
 ]);
 
-// A key with no channel of its own takes the fill's classes as a whole key's fill does; beside a channel the body
-// records, whose slots no fill can line up with, a position naming a class stays unknown.
-test('an unknown position whose member names a class fills with its import where the key has no channel', function () {
+// A class a fill names joins the key's channels as a class the body names inside its value does, so the key stays a
+// value the body typed, beside the classes the body already queued (GH-154).
+test('an unknown position whose member names a class fills with its import', function () {
     $analysis = refinedAnalysis([['name' => 'owned', 'type' => '{ owner: unknown; n: unknown }[]']], 'nestedClasses');
     $overridden = refinedAnalysis([['name' => 'nested', 'type' => '{ panel: unknown; n: string }']], 'overridden');
     $reordered = refinedAnalysis([['name' => 'pair', 'type' => '{ second: unknown; first: unknown }']], 'nestedClasses');
 
     expect($analysis->properties[0]['type'])->toBe('{ owner: User; n: number }[]')
-        ->and($analysis->declaredTokenFqcns)->toBe(['owned' => [User::class]])
         ->and($analysis->inlineModelFqcns)->toBe(['owned' => [User::class]])
+        ->and($analysis->modelFqcns)->toBe([User::class => User::class])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
         ->and($reordered->properties[0]['type'])->toBe('{ second: Post | null; first: User }')
-        ->and($reordered->declaredTokenFqcns)->toBe(['pair' => [Post::class, User::class]])
+        ->and($reordered->inlineModelFqcns['pair'])->toEqualCanonicalizing([Post::class, User::class])
         ->and($overridden->properties[0]['type'])->toBe('{ panel: UiNode; n: string }')
         ->and($overridden->customImports)->toBe(['@js/types/ui' => ['UiNode']])
-        ->and($overridden->declaredTokenFqcns)->toBe([]);
+        ->and($overridden->inlineModelFqcns)->toBe([]);
 });
 
-test('an unknown position whose member names a class stays unknown beside a channel the body records', function () {
-    $analysis = new MethodAnalysis(properties: [
-        ['name' => 'owned', 'type' => '{ owner: unknown; n: unknown; post: Post }[]', 'optional' => false, 'description' => ''],
-    ]);
-    $analysis->inlineModelFqcns = ['owned' => [Post::class]];
+test('an unknown position whose member names a class fills beside the classes the body queued', function (string $name, string $inferred, string $expected, array $queued) {
+    $analysis = new MethodAnalysis(properties: [['name' => $name, 'type' => $inferred, 'optional' => false, 'description' => '']]);
+    $analysis->inlineModelFqcns = [$name => [Post::class]];
 
     resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
 
-    expect($analysis->properties[0]['type'])->toBe('{ owner: unknown; n: number; post: Post }[]')
-        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [Post::class]])
+    expect($analysis->properties[0]['type'])->toBe($expected)
+        ->and($analysis->inlineModelFqcns)->toBe([$name => $queued])
         ->and($analysis->declaredTokenFqcns)->toBe([]);
+})->with([
+    'another class' => ['owned', '{ owner: unknown; n: unknown; post: Post }[]', '{ owner: User; n: number; post: Post }[]', [Post::class, User::class]],
+    'the class the body names' => ['reviewers', '{ by: Post; other: unknown }[]', '{ by: Post; other: User | null }[]', [Post::class, User::class]],
+]);
+
+test('an unknown position whose member names the class the body already queued fills with no new channel', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'reviewers', 'type' => '{ by: User; other: unknown }[]', 'optional' => false, 'description' => ''],
+    ]);
+    $analysis->inlineModelFqcns = ['reviewers' => [User::class]];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+
+    expect($analysis->properties[0]['type'])->toBe('{ by: User; other: User | null }[]')
+        ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class]]);
+});
+
+// Two classes one name spells cannot share a key whose channels hold one class per name.
+test('a fill never queues a class beside another class the key spells with the same name', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'owned', 'type' => '{ by: User; owner: unknown; n: unknown }[]', 'optional' => false, 'description' => ''],
+    ]);
+    $analysis->inlineModelFqcns = ['owned' => [CrmUser::class]];
+
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+
+    expect($analysis->properties[0]['type'])->toContain('n: number')
+        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [CrmUser::class]])
+        ->and($analysis->modelFqcns)->toBe([]);
+});
+
+test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
+    expect(analyzedKeyTypes(AuthoredRowsResource::class))->toBe([
+        'statuses' => '{ by: User; status: StatusType }[]',
+        'typed' => '{ by: User; status: StatusType }[]',
+        'reviewers' => '{ by: User; other: User | null }[]',
+    ])->and(analyzedImportNames(AuthoredRowsResource::class))->toContain('StatusType', 'User');
 });
 
 // share() and a metadata provider's provide() lay their docblock over every key it types, so a position fill could only

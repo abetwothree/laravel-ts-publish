@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProv
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DeclaredLocalMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocumentedSpreadHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
@@ -44,6 +45,12 @@ function analyzeMetadataTypesFor(string $providerClass, array $payloadKeys): Mod
 {
     return resolve(ModelMetadataAnalyzer::class)->analyze($providerClass, $payloadKeys);
 }
+
+// provide()'s own docblock is laid over its keys by the analyzer, but a spread helper's is read only by the refiner.
+test('a helper spread into provide() fills a member its own @return types where its body leaves it unknown', function () {
+    expect(analyzeMetadataTypesFor(DocumentedSpreadHelperMetadataProvider::class, ['recipients'])->types)
+        ->toBe(['recipients' => '{ name: string; settings: { digest: boolean } | null }[]']);
+});
 
 test('binds the Model parameter so its Laravel-typed method calls infer', function () {
     $analysis = analyzeMetadataTypesFor(BoundModelMetadataProvider::class, ['table', 'keyName', 'routeKeyName', 'morphClass']);
