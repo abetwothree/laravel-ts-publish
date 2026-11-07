@@ -64,7 +64,8 @@ class RunnerForSource extends BaseRunner
     }
 
     /**
-     * Resolve the configured source to a class and generate the matching TypeScript output.
+     * Resolve the configured source to a class and generate the matching TypeScript output, rendering each template
+     * from its source as it is on disk.
      *
      * Starts from a clean slate, so an earlier run in the same process leaks nothing into this one.
      */
@@ -72,96 +73,98 @@ class RunnerForSource extends BaseRunner
     {
         $this->resetRunState();
 
-        $fqcn = $this->resolveSourceToFqcn();
+        $this->renderingViewsFromSource(function (): void {
+            $fqcn = $this->resolveSourceToFqcn();
 
-        // An interface can compose, and a trait's or interface's override can decide a composed class's module.
-        if (! class_exists($fqcn) && ! interface_exists($fqcn) && ! trait_exists($fqcn)) {
-            throw new InvalidArgumentException("Class does not exist: {$fqcn}");
-        }
-
-        $reflection = new ReflectionClass($fqcn);
-
-        // An enum names no model, nor does the class-type module a trait or interface republishes. Any other class may,
-        // and reads the same published set a full run does.
-        if (! $reflection->isEnum() && ! $reflection->isInterface() && ! $reflection->isTrait()
-            && ($this->shouldPublishModels || Config::boolean('ts-publish.models.enabled', false))
-        ) {
-            $this->buildModelMorphTargetMap();
-        }
-
-        if ($this->validateEnum($reflection)) {
-            if (! $this->shouldPublishEnums) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: enums are disabled");
+            // An interface can compose, and a trait's or interface's override can decide a composed class's module.
+            if (! class_exists($fqcn) && ! interface_exists($fqcn) && ! trait_exists($fqcn)) {
+                throw new InvalidArgumentException("Class does not exist: {$fqcn}");
             }
 
-            $this->generateEnum($fqcn);
-        } elseif ($this->validateModel($reflection)) {
-            /** @var ModelsCollector $modelCollector */
-            $modelCollector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+            $reflection = new ReflectionClass($fqcn);
 
-            /** @var ModelMetadataCollector $metadataCollector */
-            $metadataCollector = resolve(Config::string(
-                'ts-publish.model_metadata.collector_class',
-                ModelMetadataCollector::class,
-            ));
-
-            $publishModel = $this->shouldPublishModels && $modelCollector->allows($fqcn);
-            // A model published on demand is outside the collected list, and a full run writes it no companion.
-            $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->collect()->contains($fqcn);
-
-            if (! $publishModel && ! $publishMetadata) {
-                $modelReason = $this->shouldPublishModels ? 'are excluded by filters' : 'are disabled';
-                $metadataReason = $this->shouldPublishModelMetadata ? 'is excluded by filters' : 'is disabled';
-
-                throw new InvalidArgumentException(
-                    "Nothing to publish for {$fqcn}: models {$modelReason}; model metadata {$metadataReason}",
-                );
+            // An enum names no model, nor does the class-type module a trait or interface republishes. Any other class
+            // may, and reads the same published set a full run does.
+            if (! $reflection->isEnum() && ! $reflection->isInterface() && ! $reflection->isTrait()
+                && ($this->shouldPublishModels || Config::boolean('ts-publish.models.enabled', false))
+            ) {
+                $this->buildModelMorphTargetMap();
             }
 
-            if ($publishModel) {
-                $this->generateModel($fqcn);
-            }
+            if ($this->validateEnum($reflection)) {
+                if (! $this->shouldPublishEnums) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: enums are disabled");
+                }
 
-            if ($publishMetadata) {
-                $this->generateModelMetadata($fqcn);
-            }
-        } elseif ($this->validateResource($reflection)) {
-            if (! $this->shouldPublishResources) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: resources are disabled");
-            }
+                $this->generateEnum($fqcn);
+            } elseif ($this->validateModel($reflection)) {
+                /** @var ModelsCollector $modelCollector */
+                $modelCollector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
-            $this->generateResource($fqcn);
-        } elseif ($this->validateController($reflection)) {
-            if (! $this->shouldPublishRoutes) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: routes are disabled");
+                /** @var ModelMetadataCollector $metadataCollector */
+                $metadataCollector = resolve(Config::string(
+                    'ts-publish.model_metadata.collector_class',
+                    ModelMetadataCollector::class,
+                ));
+
+                $publishModel = $this->shouldPublishModels && $modelCollector->allows($fqcn);
+                // A model published on demand is outside the collected list, and a full run writes it no companion.
+                $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->collect()->contains($fqcn);
+
+                if (! $publishModel && ! $publishMetadata) {
+                    $modelReason = $this->shouldPublishModels ? 'are excluded by filters' : 'are disabled';
+                    $metadataReason = $this->shouldPublishModelMetadata ? 'is excluded by filters' : 'is disabled';
+
+                    throw new InvalidArgumentException(
+                        "Nothing to publish for {$fqcn}: models {$modelReason}; model metadata {$metadataReason}",
+                    );
+                }
+
+                if ($publishModel) {
+                    $this->generateModel($fqcn);
+                }
+
+                if ($publishMetadata) {
+                    $this->generateModelMetadata($fqcn);
+                }
+            } elseif ($this->validateResource($reflection)) {
+                if (! $this->shouldPublishResources) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: resources are disabled");
+                }
+
+                $this->generateResource($fqcn);
+            } elseif ($this->validateController($reflection)) {
+                if (! $this->shouldPublishRoutes) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: routes are disabled");
+                }
+
+                $this->generateRoute($fqcn);
+            } elseif ($this->validateFormRequest($reflection)) {
+                if (! $this->shouldPublishFormRequests) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: form requests are disabled");
+                }
+
+                $this->generateFormRequest($fqcn);
+            } elseif ($this->validateBroadcastEvent($reflection)) {
+                if (! $this->shouldPublishBroadcastEvents) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: broadcast events are disabled");
+                }
+
+                $this->generateBroadcastEvent($fqcn);
+            } else {
+                $composed = $this->composedClassesDecidedBy($reflection);
+
+                if ($composed === []) {
+                    throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
+                }
+
+                if (! $this->shouldPublishClassTypes) {
+                    throw new InvalidArgumentException("Nothing to publish for {$fqcn}: class types are disabled");
+                }
+
+                $this->generateClassTypes($composed);
             }
-
-            $this->generateRoute($fqcn);
-        } elseif ($this->validateFormRequest($reflection)) {
-            if (! $this->shouldPublishFormRequests) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: form requests are disabled");
-            }
-
-            $this->generateFormRequest($fqcn);
-        } elseif ($this->validateBroadcastEvent($reflection)) {
-            if (! $this->shouldPublishBroadcastEvents) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: broadcast events are disabled");
-            }
-
-            $this->generateBroadcastEvent($fqcn);
-        } else {
-            $composed = $this->composedClassesDecidedBy($reflection);
-
-            if ($composed === []) {
-                throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, broadcast event, or composed class: {$fqcn}");
-            }
-
-            if (! $this->shouldPublishClassTypes) {
-                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: class types are disabled");
-            }
-
-            $this->generateClassTypes($composed);
-        }
+        });
     }
 
     /**

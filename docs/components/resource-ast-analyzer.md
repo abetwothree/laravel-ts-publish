@@ -31,7 +31,8 @@ These are the classes a change to resource analysis usually touches:
 | [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
+| [`DeclaredTypeMerge`](../../src/Ast/Composition/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
 | [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
@@ -122,10 +123,10 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
-- **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
-  vague, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
-  after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
+- **The body, merged with `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills a key the body left
+  vague and merges one it typed, so a docblock only refines what the body sends. `applyTsCastsFromMethod()` then
+  applies the method's own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both
+  can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
@@ -145,14 +146,56 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 `'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
 only an exact `unknown`.
 
+A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
+- where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
+  does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
+  only `null` takes a vague member, or any member where a union kept that `null` beside an arm no rule types;
+- a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member of the
+  key it names (`0`, `"0"` and `'0'` are one key, printed as declared), the best matched shape of a declared list's
+  element, or a declared `Record`'s value or list's other element, as fits it best
+  (`DeclaredTypeMerge::acrossFromShape()`). An intersection of objects, as a spread beside keys prints, merges as the
+  one object it sends (`TsTypeShape::intersectedObjects()`). A member only the declaration has merges with the union of
+  the values of every body index signature whose pattern covers it, each widening to admit it; else it follows where
+  it is optional or the shape is open, and goes where the body never sends it;
+- a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
+  declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
+  both spell first, then the keys both hold (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
+- the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
+  within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
+  member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
+  union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
+  body arm covers (`DeclaredTypeMerge::armWithin()`).
+
+A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
+or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
+walk an unnameable write (`$holdsUnreadKeys`). `InlineObjectResult::of()` records such an object as its path in the
+value, in `.key`, `[]` and `{}` steps, beside its type, so two of one text stay apart. `array_map()`, a collection's
+`map()` and a list literal's items move it under their element (`ValueResult::holdingOpenReadings()`); taking an
+element, as a list literal's spread or a bound callback parameter does, moves it back out
+(`ValueResult::takingElementReadings()`); and a spread object's marks follow into the literal it spreads into. The
+mark reaches the key as `MethodAnalysis::$openReadings`, as a `null` a union kept beside an arm no rule types does.
+
+Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
+or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
+`EnumResource` never equals the bare enum. With the tolki package on, a key's one top-level wrap reads as the
+`AsEnum<typeof …>` the publisher writes, and a key the merge changes keeps it written so, on its inline wrap channel,
+since the publisher's rewrite would wrap a bare token of that enum the member fills too
+(`ReturnShapeRefiner::writtenWrap()`). The merged classes are queued on the key's channels in print order, as a
+body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
+override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
+`provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types
+(`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads merges, as neither analyzer reads the helper's
+own `@return`.
+
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
 token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
 resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
 the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
 `merge()` carries them, and a nested literal or local that folds them into a value reads every such key with no class
-(`InlineObjectResult::readFillsClassLess()`), as before the fill. `mergeReturnBranches()` joins a declared text's arms
-whole, past the branches it drops, so a branch spelling none of the text's own names joins beside it:
+(`InlineObjectResult::readFillsClassLess()`), as a key no rule types read before its fill. `mergeReturnBranches()`
+joins a declared text's arms whole, past the branches it drops, so a branch spelling none of the text's own names
+joins beside it:
 `User | User | string`, its slots `[null, User]`. Every joined arm takes one slot per token of the joined names, a
 literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the
 slots against the whole text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as
@@ -556,7 +599,9 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
   write out holds. Its parameter binds to the model the receiver resolver names for `$arg`, or that its value
   carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
   `AnalysisScope::$varValueBindings`, and an element nothing types not at all, so the parameter's declaration binds.
-  All bind through one binder, as
+  A parameter declaring no class also binds, in `$varDeclaredBindings`, the classes a property's `@var list<X>`,
+  `X[]` or `array<K, X>` declares its elements as (`ReceiverClassResolver::elementClasses()`), so `$r->name` reads
+  `X::$name`. All bind through one binder, as
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
 - **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
   `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a

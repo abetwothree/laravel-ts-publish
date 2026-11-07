@@ -48,6 +48,7 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\MailRecipient;
 use Workbench\App\ValueObjects\PostStats;
 
 /**
@@ -701,6 +702,57 @@ test('binds a callback parameter to a collection element: its model, a concrete 
         ->and($bound(null, null, '/** @param \\Workbench\\App\\Models\\Post $p */ fn ($p) => $p'))->toBe($binding(Post::class))
         ->and($bound(null, null, '/** @param \\Workbench\\App\\Models\\Post|null $p */ fn ($p) => $p'))->toBeNull()
         ->and($bound(Comment::class, null, '/** @param \\Workbench\\App\\Models\\Comment $c */ fn ($c) => $c', guardsElement: true))->toBe($binding(Comment::class));
+});
+
+// The class an array declares its elements as binds only a parameter declaring none, beside the element's value, and is
+// guarded where the array was read off a guarded receiver. A model the element carries binds as the model instead.
+test('binds a callback parameter declaring no type to the class its array declares its elements as', function () {
+    $scope = new AnalysisScope(new ReflectionClass(SelfTypedHelpers::class), SelfTypedHelpers::class);
+    $element = ['type' => '{ name: string | null; email: string | null }', 'optional' => false];
+    $recipient = ReceiverType::of(MailRecipient::class);
+    $bound = fn (string $closure, ?ReceiverType $declared, ?string $model = null): ?array => ParameterBinder::elementBinding(
+        $model,
+        $element,
+        parameterBinderClosure($closure)->params[0],
+        $scope,
+        docComment: (string) parameterBinderClosure($closure)->getDocComment(),
+        declaredElement: $declared,
+    );
+    $binding = fn (?array $classes, ?string $guard = null): array => [
+        'model' => null,
+        'classes' => $classes,
+        'elementModel' => null,
+        'value' => $element,
+        'unsaved' => false,
+        'refines' => false,
+        'declaredOnly' => false,
+        'guard' => $guard,
+    ];
+
+    expect($bound('fn ($r) => $r', $recipient))->toBe($binding([MailRecipient::class]))
+        ->and($bound('function ($r) { return $r; }', $recipient->asGuarded()))->toBe($binding([MailRecipient::class], 'guarded'))
+        ->and($bound('fn (\\Workbench\\App\\ValueObjects\\MailRecipient $r) => $r', $recipient))->toBe($binding(null))
+        ->and($bound('/** @param \\Workbench\\App\\ValueObjects\\MailRecipient $r */ fn ($r) => $r', $recipient))->toBe($binding(null))
+        ->and($bound('fn ($r) => $r', ReceiverType::of(Comment::class)))->toBe($binding(null))
+        ->and($bound('fn ($r) => $r', null))->toBe($binding(null))
+        ->and($bound('fn ($c) => $c', $recipient, Comment::class))->toBe([...$binding(null), 'model' => Comment::class, 'value' => null]);
+});
+
+test('binds each array\'s element class to the callback parameter at its position', function () {
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    $element = ['type' => '{ name: string | null; email: string | null }', 'optional' => false];
+
+    ParameterBinder::bindCallbackArguments(
+        parameterBinderClosure('fn ($first, $second) => $first'),
+        [$element, $element],
+        $scope,
+        parameterBinderEngine($scope),
+        elements: true,
+        declaredElements: [1 => ReceiverType::of(MailRecipient::class)],
+    );
+
+    expect($scope->varDeclaredBindings)->toBe(['second' => [MailRecipient::class]])
+        ->and($scope->varValueBindings)->toBe(['first' => $element, 'second' => $element]);
 });
 
 test('binds a callback parameter at each position to the value its caller passes there', function () {

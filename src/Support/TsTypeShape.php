@@ -12,7 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
  *
  * Understands exactly the syntax the metadata pipeline emits: inline object literals and index signatures,
  * Record<K, V>, T[] / readonly T[] / Array<T> / ReadonlyArray<T>, tuples, and top-level unions with null.
- * Intersections and arrow-function types are opaque.
+ * Arrow-function types are opaque, and an intersection reads only as intersectedObjects() reads one.
  *
  * Every reader nests and splits as TypeScanner reads the type, so a string or template literal is read whole.
  *
@@ -139,6 +139,41 @@ final class TsTypeShape
         }
 
         return $members;
+    }
+
+    /**
+     * Each part of a type that is an intersection of object literals, each maybe `Omit<>`'d against quoted keys or an
+     * object literal's `keyof`, as the object, the names of the keys it drops and the part as printed; null for any
+     * other type.
+     *
+     * @return list<array{string, list<string>, string}>|null
+     */
+    public static function intersectedObjects(string $type): ?array
+    {
+        $parts = str_contains($type, '&')
+            ? self::splitTopLevel(self::isWrapped($type, '(', ')') ? trim(substr($type, 1, -1)) : $type, ['&'])
+            : [];
+
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $objects = [];
+
+        foreach ($parts as $part) {
+            $omit = str_starts_with($part, 'Omit<') && self::isWrapped(substr($part, 4), '<', '>')
+                ? self::splitTopLevel(substr($part, 5, -1), [','])
+                : [$part];
+            $dropped = count($omit) === 2 ? self::omittedKeys($omit[1]) : [];
+
+            if (count($omit) > 2 || $dropped === null || self::members($omit[0]) === null) {
+                return null;
+            }
+
+            $objects[] = [$omit[0], $dropped, $part];
+        }
+
+        return $objects;
     }
 
     /**
@@ -281,6 +316,32 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * The names of the keys an `Omit<>` drops, each a quoted key or an object literal's `keyof`; null for any other.
+     *
+     * @return list<string>|null
+     */
+    private static function omittedKeys(string $keys): ?array
+    {
+        $names = [];
+
+        foreach (self::splitTopLevel($keys, ['|']) as $arm) {
+            $members = str_starts_with($arm, 'keyof ') ? self::members(trim(substr($arm, 6))) : null;
+            $quoted = in_array($arm[0], ['"', "'"], true) ? PrintedKey::decode($arm) : null;
+
+            if ($members === null && $quoted === null) {
+                return null;
+            }
+
+            array_push($names, ...($members === null ? [(string) $quoted] : array_map(
+                static fn (array $member): string => PrintedKey::decode($member[0]) ?? rtrim($member[0], '?'),
+                $members,
+            )));
+        }
+
+        return $names;
     }
 
     /**

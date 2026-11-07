@@ -256,7 +256,13 @@ it('falls through to a right arm that names two models sharing a name with a mem
 
     $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => $pair]);
+    // The `null` kept beside the untyped left arm marks the union open to a declared type (GH-154).
+    expect($result)->toBe([
+        'type' => 'User | User | null',
+        'optional' => false,
+        'embeddedModelFqcns' => $pair,
+        'openReadings' => ["\0User | User | null"],
+    ]);
 });
 
 it('falls through to a left arm that names two models sharing a name with a member for each, less its null', function () {

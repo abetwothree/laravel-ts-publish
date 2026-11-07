@@ -645,6 +645,35 @@ final class ReceiverClassResolver
     }
 
     /**
+     * What each element of the array a property read holds is declared as, by the property's `@var list<X>`, `X[]` or
+     * `array<K, X>` on every class the receiver may be, guarded as a member read through it is; null for any other
+     * expression, or a class declaring no such list. A list is no object, so resolve() names nothing for one.
+     */
+    public function elementClasses(Expr $array, AnalysisScope $scope): ?ReceiverType
+    {
+        if ((! $array instanceof PropertyFetch && ! $array instanceof NullsafePropertyFetch) || ! $array->name instanceof Identifier) {
+            return null;
+        }
+
+        $name = $array->name->toString();
+        $onThis = $array->var instanceof Variable && $array->var->name === 'this';
+
+        if ($onThis && $scope->thisMemberClass($name, false)->hasProperty($name)) {
+            return $this->ownPropertyElements($name, $scope);
+        }
+
+        $receiver = $onThis ? $this->forwardedHolder($scope) : $this->resolve($array->var, $scope);
+
+        return $receiver === null ? null : $this->carried($receiver, $this->mergeEach(
+            $receiver,
+            $name,
+            false,
+            fn (string $class): ?ReceiverType => ReceiverMemberReader::elementClasses($receiver->memberOwner($class, $name, false), $name),
+            false,
+        ));
+    }
+
+    /**
      * Warn of each write a receiver's join left out, once a read through it publishes a type: one no rule types, an
      * object no class names, and `$this` read as a class that cannot answer the member. A scalar, an array or `null`
      * holds no object a member read could answer, so it is left out quietly.
@@ -1156,11 +1185,7 @@ final class ReceiverClassResolver
      */
     private function forwardedMember(string $name, AnalysisScope $scope): ?ReceiverType
     {
-        $held = match (true) {
-            $scope->hasResourceProxy() => $this->proxyHeld($scope),
-            $scope->modelClass !== null => ReceiverType::of($scope->modelClass),
-            default => null,
-        };
+        $held = $this->forwardedHolder($scope);
 
         return $held === null ? null : $this->merge(
             array_map(
@@ -1169,6 +1194,32 @@ final class ReceiverClassResolver
             ),
             false,
         );
+    }
+
+    /**
+     * What `$this` forwards a member it does not declare to: what `$this->resource` holds, else the scope's model.
+     */
+    private function forwardedHolder(AnalysisScope $scope): ?ReceiverType
+    {
+        return match (true) {
+            $scope->hasResourceProxy() => $this->proxyHeld($scope),
+            $scope->modelClass !== null => ReceiverType::of($scope->modelClass),
+            default => null,
+        };
+    }
+
+    /**
+     * What each element of a property the subject declares is declared as, read from inside, so at any visibility, as
+     * fromThisProperty() reads the property itself.
+     */
+    private function ownPropertyElements(string $name, AnalysisScope $scope): ?ReceiverType
+    {
+        $owner = $scope->thisMemberClass($name, false);
+        $property = $owner->getProperty($name);
+
+        return $property->isStatic() || FrameworkClasses::is(DeclaringFile::ofProperty($property, $owner)->getName())
+            ? null
+            : ReceiverType::declared(DeclaredClasses::propertyElementType($property, $owner, $scope->runtime->class->getName()));
     }
 
     /**

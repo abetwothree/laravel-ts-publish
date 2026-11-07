@@ -91,48 +91,53 @@ class Runner extends BaseRunner
         $this->forgetRetainedGenerators();
     }
 
+    /**
+     * Publish every enabled feature, rendering each template from its source as it is on disk.
+     */
     public function run(): void
     {
         $this->resetRunState();
 
-        /** @var BarrelWriter $barrelWriter */
-        $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
-        $this->barrelWriter = $barrelWriter;
+        $this->renderingViewsFromSource(function (): void {
+            /** @var BarrelWriter $barrelWriter */
+            $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
+            $this->barrelWriter = $barrelWriter;
 
-        // Validated before any file is written, so a broken provider fails before the run leaves a half-built tree.
-        if ($this->shouldPublishModelMetadata) {
-            $this->validateModelMetadataConfiguration();
-        } elseif ($this->shouldPublishModels) {
-            $this->validateModelMetadataTransformer();
-        }
+            // Validated before any file is written, so a broken provider fails before the run leaves a half-built tree.
+            if ($this->shouldPublishModelMetadata) {
+                $this->validateModelMetadataConfiguration();
+            } elseif ($this->shouldPublishModels) {
+                $this->validateModelMetadataTransformer();
+            }
 
-        $this->generateEnums();
-        $this->generateModels();
-        $this->generateModelMetadata();
-        $this->generateModelBarrels();
-        $this->generateResources();
-        $this->generateInertiaConfig();
-        $this->generateFormRequests();
-        $this->generateBroadcastChannels();
-        $this->generateBroadcastEvents();
-        $this->generateRoutes();
+            $this->generateEnums();
+            $this->generateModels();
+            $this->generateModelMetadata();
+            $this->generateModelBarrels();
+            $this->generateResources();
+            $this->generateInertiaConfig();
+            $this->generateFormRequests();
+            $this->generateBroadcastChannels();
+            $this->generateBroadcastEvents();
+            $this->generateRoutes();
 
-        $this->retainSkippedGenerators();
-        $this->warnOfSharedComposedNames();
-        // After retaining: a skipped feature's cached files import composed modules this phase still writes.
-        $this->generateClassTypes();
-        $this->warnOfCollidingPublishedNames();
-        $this->generateGlobals();
-        $this->generateViteEnv();
-        $this->generateJson();
-        $this->generateWatcherJson();
+            $this->retainSkippedGenerators();
+            $this->warnOfSharedComposedNames();
+            // After retaining: a skipped feature's cached files import composed modules this phase still writes.
+            $this->generateClassTypes();
+            $this->warnOfCollidingPublishedNames();
+            $this->generateGlobals();
+            $this->generateViteEnv();
+            $this->generateJson();
+            $this->generateWatcherJson();
 
-        $manifest = $this->manifest;
+            $manifest = $this->manifest;
 
-        if ($manifest !== null) {
-            $this->keepSkippedFeatureEntries($manifest);
-            $manifest->save();
-        }
+            if ($manifest !== null) {
+                $this->keepSkippedFeatureEntries($manifest);
+                $manifest->save();
+            }
+        });
     }
 
     /**

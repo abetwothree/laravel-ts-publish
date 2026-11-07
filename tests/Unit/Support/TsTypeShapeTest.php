@@ -238,6 +238,27 @@ describe('members', function () {
     ]);
 });
 
+describe('intersectedObjects', function () {
+    test('reads each object of an intersection beside the keys its Omit<> drops', function (string $type, ?array $parts) {
+        expect(TsTypeShape::intersectedObjects($type))->toBe($parts);
+    })->with([
+        'a spread beside a key' => [
+            "Omit<{ by: User }, 'n'> & { n: number }",
+            [['{ by: User }', ['n'], "Omit<{ by: User }, 'n'>"], ['{ n: number }', [], '{ n: number }']],
+        ],
+        'between parentheses' => ['({ a: string } & { b: number })', [['{ a: string }', [], '{ a: string }'], ['{ b: number }', [], '{ b: number }']]],
+        'an object literal\'s keyof and a quoted number' => [
+            "Omit<{ id: number }, \"0\" | keyof { id: number; 'x y': string }> & {}",
+            [['{ id: number }', ['0', 'id', 'x y'], "Omit<{ id: number }, \"0\" | keyof { id: number; 'x y': string }>"], ['{}', [], '{}']],
+        ],
+        'a named arm' => ["Omit<PostResource, 'n'> & { n: number }", null],
+        'a Record arm' => ["Omit<Record<string, string>, 'by'> & { by: User }", null],
+        'a named keyof' => ['Omit<{ id: number }, keyof PostResource> & { n: number }', null],
+        'one object' => ['{ a: string }', null],
+        'a union' => ['{ a: string } | { b: number }', null],
+    ]);
+});
+
 describe('holdsKeyedObject', function () {
     test('answers whether an object literal or a number-keyed Record sits anywhere in the type', function (string $type, bool $holds) {
         expect(TsTypeShape::holdsKeyedObject($type))->toBe($holds);

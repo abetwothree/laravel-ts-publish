@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RecipientElementsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractEntry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Commentable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HasLabel;
@@ -14,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\LabeledHolder;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\ValueObjects\MailRecipient;
+use Workbench\App\ValueObjects\RecipientList;
 
 test('a class-like is a class, an interface, a trait or an enum', function (string $fqcn, bool $expected) {
     expect(DeclaredClasses::isClassLike($fqcn))->toBe($expected);
@@ -60,6 +63,38 @@ test('a collection generic spells its kind of key and the concrete model it list
     'two collections' => ['Collection<int, Comment>|Collection<int, Post>', null],
     'no generic' => ['Collection', null],
     'a list after the bracket' => ['Collection<int, Comment>[]', null],
+]);
+
+test('a docblock array spells the type of its one list\'s elements', function (string $type, ?string $expected) {
+    expect(DeclaredClasses::listedElement($type))->toBe($expected);
+})->with([
+    'a list' => ['list<MailRecipient>', 'MailRecipient'],
+    'a non-empty list' => ['non-empty-list<MailRecipient>', 'MailRecipient'],
+    'an array with a key' => ['array<string, MailRecipient>', 'MailRecipient'],
+    'an array with no key' => ['array<MailRecipient>', 'MailRecipient'],
+    'an iterable' => ['iterable<int, MailRecipient>', 'MailRecipient'],
+    'a suffix' => ['MailRecipient[]', 'MailRecipient'],
+    'a grouped union suffix' => ['(MailRecipient|null)[]', 'MailRecipient|null'],
+    'a nullable list' => ['?list<MailRecipient>', 'MailRecipient'],
+    'a list beside null' => ['list<MailRecipient>|null', 'MailRecipient'],
+    'a nested list' => ['list<list<MailRecipient>>', 'list<MailRecipient>'],
+    'a collection' => ['Collection<int, MailRecipient>', null],
+    'two lists' => ['list<MailRecipient>|list<Post>', null],
+    'a shape' => ['array{a: MailRecipient}', null],
+    'a bare list' => ['list', null],
+    'three arguments' => ['array<int, string, MailRecipient>', null],
+]);
+
+test('a property declares the classes its list holds, by its own @var or a promoted one', function (string $class, string $property, ?array $expected) {
+    $reflection = new ReflectionProperty($class, $property);
+
+    expect(DeclaredClasses::propertyElementType($reflection, new ReflectionClass($class), $class))->toBe($expected);
+})->with([
+    'a promoted @var' => [RecipientList::class, 'recipients', ['classes' => [MailRecipient::class], 'intersections' => []]],
+    'a plain @var' => [RecipientList::class, 'copied', ['classes' => [MailRecipient::class], 'intersections' => []]],
+    'a nullable suffix' => [RecipientElementsResource::class, 'backups', ['classes' => [MailRecipient::class], 'intersections' => []]],
+    'a list of ints' => [RecipientElementsResource::class, 'counts', null],
+    'an array of anything' => [RecipientElementsResource::class, 'additional', null],
 ]);
 
 test('a native type names one class, static read as the receiver and self as the declarer', function (?ReflectionType $type, ?string $expected) {
