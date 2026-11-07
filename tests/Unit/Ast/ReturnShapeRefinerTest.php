@@ -13,6 +13,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRow
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -203,6 +207,7 @@ test('an array<string, V> return fills every unknown property with V', function 
         ->and($props['b']['type'])->toBe('boolean');
 });
 
+// A named key's `unknown` arm merges with V as any typed key's does (GH-154).
 test('an array<string, V> return fills an untyped index signature with V, keeping its | undefined', function () {
     $props = collect(refinedAnalysis([
         ['name' => '[key: `${string}_tag`]', 'type' => 'unknown | undefined'],
@@ -210,7 +215,7 @@ test('an array<string, V> return fills an untyped index signature with V, keepin
     ], 'record')->properties)->keyBy('name');
 
     expect($props['[key: `${string}_tag`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false])
-        ->and($props['named']['type'])->toBe('unknown | undefined');
+        ->and($props['named']['type'])->toBe('string | undefined');
 });
 
 test('an index signature with any other value, or under an array{...} shape, is left alone', function () {
@@ -311,9 +316,9 @@ test('an unknown position whose member names the class the body already queued f
         ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class]]);
 });
 
-// A key spelling two classes by one name takes the slot of each token, as a whole key's fill does, so the publisher
-// aliases each class apart (GH-154).
-test('a fill naming a class another class of the key is spelled like declares the class behind each token', function () {
+// A key spelling two classes by one name queues the class behind each token in print order, as a body spelling both
+// does, so the publisher aliases each class apart (GH-154).
+test('a fill naming a class another class of the key is spelled like queues the class behind each token', function () {
     $analysis = new MethodAnalysis(properties: [
         ['name' => 'owned', 'type' => '{ by: User; owner: unknown; n: unknown }[]', 'optional' => false, 'description' => ''],
     ]);
@@ -322,7 +327,7 @@ test('a fill naming a class another class of the key is spelled like declares th
     resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
 
     expect($analysis->properties[0]['type'])->toBe('{ by: User; owner: User; n: number }[]')
-        ->and($analysis->declaredTokenFqcns)->toBe(['owned' => [CrmUser::class, User::class]])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
         ->and($analysis->inlineModelFqcns)->toBe(['owned' => [CrmUser::class, User::class]]);
 });
 
@@ -342,9 +347,9 @@ test('a key the body types beside a fill naming a same-named class publishes eac
     ]],
 ]);
 
-// Where a position cannot fill, as beside two classes the body spells by one name or an enum it wraps, the key takes
-// its whole @return type, as a key no rule types does; a key a helper's @return already declared stays (GH-154).
-test('a key whose positions cannot all fill publishes the whole @return type, or what a helper already declared', function (string $resource, array $expected, array $imports) {
+// Every position of a typed key merges with the @return member there, beside two classes the body spells by one name,
+// an enum it wraps, or slots a helper's @return declared; a wrapped enum keeps the body's arm (GH-154).
+test('a key merges with its @return member at every position, whatever classes or wraps the body holds', function (string $resource, array $expected, array $imports) {
     $data = new ResourceTransformer($resource)->data();
 
     expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
@@ -354,17 +359,43 @@ test('a key whose positions cannot all fill publishes the whole @return type, or
         'rows' => '{ by: CrmUser; ed: WorkbenchUser; other: WorkbenchUser | null }[]',
     ], ['User as CrmUser', 'User as WorkbenchUser']],
     'a wrapped enum beside the list' => [StatusOrRowsResource::class, [
-        'subject' => 'StatusType | { by: CrmUser; other: WorkbenchUser | null }[]',
-    ], ['StatusType', 'User as CrmUser', 'User as WorkbenchUser']],
+        'subject' => 'AsEnum<typeof Status> | { by: CrmUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
     'a helper\'s whole fill' => [DeclaredHelperRowsResource::class, [
-        'rows' => '{ by: User; other: unknown }[]',
-    ], ['User']],
+        'rows' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
     'a helper\'s position fill' => [ClashHelperRowsResource::class, [
-        'rows' => '{ by: CrmUser; ed: WorkbenchUser; other: unknown }[]',
+        'rows' => '{ by: CrmUser; ed: WorkbenchUser; other: WorkbenchUser | null }[]',
     ], ['User as CrmUser', 'User as WorkbenchUser']],
     'a helper\'s fill spread inside a literal' => [NestedHelperSpreadResource::class, [
-        'payload' => '{ rows: { by: unknown; other: unknown }[] }',
-    ], []],
+        'payload' => '{ rows: { by: CrmUser; other: WorkbenchUser | null }[] }',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+]);
+
+// R7's cells: a member the docblock swaps, widens, reorders or leaves out, beside cache reads only it types (GH-154).
+test('a mapped key merges with its @return member by class identity, member by member', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'swapped, widened and reordered members' => [ReviewRowsResource::class, [
+        'swapped' => '{ by: CrmUser; ed: WorkbenchUser; other: WorkbenchUser | null }[]',
+        'wider' => '{ by: CrmUser; ed: WorkbenchUser; t: string; other: WorkbenchUser | null }[]',
+        'reordered' => '{ by: CrmUser; ed: WorkbenchUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'members only the @return types' => [ReviewPartialRowsResource::class, [
+        'partial' => '{ by: CrmUser; ed: WorkbenchUser; p: Post; n: number; other: WorkbenchUser | null }[]',
+        'partialWider' => '{ by: CrmUser; ed: WorkbenchUser; t: string; p: Post; n: number; other: WorkbenchUser | null }[]',
+    ], ['Post', 'User as CrmUser', 'User as WorkbenchUser']],
+    'a wrapped enum beside reordered members' => [ReviewSubjectResource::class, [
+        'subject' => 'AsEnum<typeof Status> | { by: CrmUser; other: WorkbenchUser | null }[]',
+    ], ['User as CrmUser', 'User as WorkbenchUser']],
+    'literals beside null' => [ReviewLiteralsResource::class, [
+        'union' => "{ k: 'a' | 'b'; j: 'a' | 'b' | null; by: User }[]",
+        'besideNull' => "{ k: 'a' | null; n: 1 | null; by: User }[]",
+        'top' => "'rows' | null",
+    ], ['User']],
 ]);
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
@@ -390,9 +421,9 @@ test('a caller that lays the docblock over every key itself fills no position in
         ->and($analysis->inlineModelFqcns)->not->toHaveKey('owned');
 });
 
-// A bare scalar the body reads takes the docblock's literals of that scalar, which the body widened; a literal, a union
-// or another scalar's literal keeps the body's reading (GH-154).
-test('a bare scalar the body reads takes the @return docblock\'s literals of that scalar', function (string $name, string $inferred, string $expected) {
+// A scalar the body reads takes the docblock's literals of it, which the body widened, a `null` beside them included; a
+// literal or another scalar's literal keeps the body's reading (GH-154).
+test('a scalar the body reads takes the @return docblock\'s literals of that scalar', function (string $name, string $inferred, string $expected) {
     $analysis = refinedAnalysis([['name' => $name, 'type' => $inferred]], 'literals');
 
     expect($analysis->properties[0]['type'])->toBe($expected);
@@ -405,8 +436,8 @@ test('a bare scalar the body reads takes the @return docblock\'s literals of tha
     'a whole key' => ['top', 'string', "'a' | 'b'"],
     'another scalar\'s literal' => ['mismatched', '{ n: number }', '{ n: number }'],
     'a literal the body reads' => ['kept', "{ kind: 'Admin' }", "{ kind: 'Admin' }"],
-    'a union the body reads' => ['kept', '{ kind: string | null }', '{ kind: string | null }'],
-    'a literal beside null' => ['nullable', 'string', 'string'],
+    'a union the body reads' => ['kept', '{ kind: string | null }', "{ kind: 'User' }"],
+    'a literal beside null' => ['nullable', 'string', "'a' | null"],
 ]);
 
 test('a callback\'s widened literal takes the @return docblock\'s literal beside the classes the body types', function () {
