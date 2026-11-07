@@ -147,10 +147,14 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
-- a position read `unknown` takes the member's type there, the body's `null` kept, and a member that is `unknown`
-  leaves the body's reading;
+- a position read `unknown`, `unknown[]` or a `Record` of `unknown` takes the member's type there, the body's `null`
+  kept, as the top of a key does, and a member that tells no more leaves the body's reading;
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
-  key; a list merges its element and a `Record` its value, and another container kind keeps the body's;
+  key or a declared `Record`'s value; a member only the declaration has follows where it is optional and goes where it
+  is required, since the body never sends it;
+- a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
+  declared arms of its kind a body arm pairs with the one whose members match it best, the discriminant literals both
+  spell first, then the keys both hold (`DeclaredTypeMerge::bestMatch()`), and stays as it is where two match alike;
 - the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
   within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
   member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
