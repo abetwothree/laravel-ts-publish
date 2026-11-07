@@ -65,6 +65,8 @@ use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -473,6 +475,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
         $merged->readsCompletely = $channels->readsCompletely;
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
+        $merged->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
         $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
         $merged->openShapes = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openShapes));
@@ -1634,6 +1637,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $analysis->merge($parentAnalysis);
                 } else {
                     UnreadSpreads::record();
+                    $analysis->holdsUnnamedKeys = true;
                 }
 
                 continue;
@@ -1649,6 +1653,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $analysis->merge($filterAnalysis);
                 } else {
                     UnreadSpreads::record();
+                    $analysis->holdsUnnamedKeys = true;
                 }
 
                 continue;
@@ -1699,6 +1704,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
                 } else {
                     UnreadSpreads::record();
+                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($item->value);
                 }
 
                 continue;
@@ -1722,6 +1728,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
 
                 $mergeResult = $this->analyzeMergeExpression($item->value);
+                $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($item->unpack && ! $this->spreadsClosedShape($item->value));
 
                 // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
                 $mergeResult->dropKeysHeldBy($analysis);
@@ -1733,6 +1740,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             if ($item->key === null) {
                 if ($item->unpack) {
                     UnreadSpreads::record();
+                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($item->value);
                 }
 
                 continue;
@@ -1741,6 +1749,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $keyName = $this->resolveKeyName($item->key, $this->scope);
 
             if ($keyName === null) {
+                $analysis->holdsUnnamedKeys = true;
+
                 continue;
             }
 
@@ -1790,6 +1800,20 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $filtering = $this->nestedAnalyzer($this->scope->subjectReflection, $this->methodName, $model);
 
         return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
+    }
+
+    /**
+     * Whether a spread's value reads as a closed shape, every key of which the engine names: an object type, its `null`
+     * aside as spreading `null` sets no key, holding no index signature and no shape left open.
+     */
+    private function spreadsClosedShape(Expr $expr): bool
+    {
+        $result = $this->analyzeValueExpression($expr);
+        $members = TsTypeShape::members(TsTypeString::withoutNullArm($result['type']));
+
+        return $members !== null
+            && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]))
+            && ! in_array('', $result['openShapes'] ?? [], true);
     }
 
     /**

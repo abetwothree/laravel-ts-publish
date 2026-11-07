@@ -16,7 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuth
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewListedShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
@@ -412,6 +414,57 @@ test('a mapped key merges with tied shapes, an open shape, a listed shape and va
         'box' => '{ n: number; tags: unknown[]; meta: Record<string, unknown> }',
     ], ['User']],
 ]);
+
+// R19-R22: a shape is open only where the engine cannot name its keys; a key a signature covers merges into it; a shape
+// pairs with the declared container that fits it; and a lone `null` yields to a vague member (GH-154).
+test('a mapped key reads a shape open only where the engine cannot name its keys', function (string $resource, array $expected, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing($imports);
+})->with([
+    'named and unnamed keys' => [ReviewNamedKeysResource::class, [
+        'spreadHelper' => '{ id: number; by: User }[]',
+        'constKey' => '{ count: number; by: User }[]',
+        'collision' => '{ inner: { a: number; b: string }; other: { a: number } }[]',
+        'tagged' => '{ by: User; [key: `${string}_tag`]: number | undefined }[]',
+        'merged' => '{ by: User; n: number }[]',
+        'written' => '{ by: User; n: number; extra: string }[]',
+        'helper' => '{ by: User; extra: string }[]',
+        'box' => '{ id: number; by: User }',
+        'keyed' => '{ count: number; by: User }',
+    ], ['User']],
+    'listed shapes, signatures and a lone null' => [ReviewListedShapesResource::class, [
+        'nullable' => '{ m: { a: number } }[]',
+        'either' => '{ m: { a: number } }[]',
+        'recordOrList' => '{ m: { a: number } }[]',
+        'top' => '{ a: number; b: number }',
+        'vagueNull' => '{ tags: unknown[] | null }[]',
+        'covered' => '{ by: User; [key: `${string}_tag`]: number | undefined; x_tag: number | undefined }[]',
+    ], ['User']],
+]);
+
+// R20: the merged signature type-checks, where a member its pattern covers beside it unwidened is TS2411.
+test('a member an index signature covers publishes a type tsc accepts', function () {
+    $tsc = dirname(__DIR__, 3).'/node_modules/.bin/tsc';
+
+    if (! is_executable($tsc)) {
+        $this->markTestSkipped('tsc is not installed');
+    }
+
+    $covered = new ResourceTransformer(ReviewListedShapesResource::class)->data()->properties['covered']['type'];
+    $compiles = function (string $type) use ($tsc): array {
+        $file = tempnam(sys_get_temp_dir(), 'ix').'.ts';
+        file_put_contents($file, "type User = { id: number };\nexport type Rows = {$type};\n");
+        exec('cd '.escapeshellarg(dirname($file)).' && '.escapeshellarg($tsc).' --noEmit --strict --exactOptionalPropertyTypes '.escapeshellarg(basename($file)).' 2>&1', $output, $status);
+        unlink($file);
+
+        return [$status, implode("\n", $output)];
+    };
+
+    expect($compiles($covered))->toBe([0, ''])
+        ->and($compiles('{ by: User; [key: `${string}_tag`]: number | undefined; x_tag: string }[]')[1])->toContain('TS2411');
+});
 
 // No channel can hold an override's token beside the model spelled like it, so that merge declares each token's class.
 test('a merge naming an override spelled like a class the key holds declares the class behind each token', function () {

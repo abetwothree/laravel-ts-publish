@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 
 /**
  * Merges the body's reading of a position with the type a method's `@return` docblock declares there, giving every
@@ -27,13 +29,14 @@ final readonly class DeclaredTypeMerge
     /** The arms that tell nothing of a value but its container: read as `unknown`, as the top of a key reads them. */
     private const array VAGUE = ['unknown', 'unknown[]', 'Record<string, unknown>', 'Record<number, unknown>', 'Record<string | number, unknown>'];
 
-    /** The declared container kinds a body container of another kind pairs with, merging its contents with theirs. */
-    private const array PAIRS_ACROSS = ['list' => ['record'], 'object' => ['record', 'list'], 'record' => ['list']];
+    /** The declared container kind a body list or record of the other kind pairs with, merging its contents with it. */
+    private const array PAIRS_ACROSS = ['list' => 'record', 'record' => 'list'];
 
     /**
      * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
-     * @param  list<string>  $openShapes  the object types the body reads with keys it cannot name, as a spread puts in
+     * @param  list<string>  $openShapes  the path of each object the body holds keys of it cannot name, as `.key`, `[]`
+     *                                    and `{}` steps from the position merged: a member, a list element, a record value
      */
     public function __construct(
         private array $names,
@@ -60,11 +63,17 @@ final readonly class DeclaredTypeMerge
      *
      * @param  Typed  $body
      * @param  Typed  $declared
+     * @param  string  $at  the position's path, as $openShapes spells it
      * @return Typed
      */
-    public function merge(array $body, array $declared): array
+    public function merge(array $body, array $declared, string $at = ''): array
     {
         $told = [self::tells($body[0]), self::tells($declared[0])];
+
+        // A body reading only `null`, as a ternary leaves one beside an arm no rule types, tells less than a container.
+        if ($body[0] === 'null' && $told[1] === 1) {
+            return [TsTypeString::withNullArm($declared[0]), $declared[1]];
+        }
 
         // Where either side tells no more than its container, the side telling more is taken whole.
         if (min($told) < 2) {
@@ -83,10 +92,10 @@ final readonly class DeclaredTypeMerge
         foreach ($bodyArms as $index => $arm) {
             if (self::kindOf($arm[0]) !== null) {
                 // A body arm several declared arms match alike merges with each, every result an arm of its own.
-                array_push($merged, ...array_map(
-                    fn (int $at): array => $this->containerMerged($arm, $declaredArms[$at]),
+                array_push($merged, ...array_merge([], ...array_map(
+                    fn (int $paired): array => $this->containerMerged($arm, $declaredArms[$paired], $at),
                     $pairs[$index] ?? [],
-                ), ...(isset($pairs[$index]) ? [] : [$arm]));
+                )), ...(isset($pairs[$index]) ? [] : [$arm]));
             } elseif ($verdict === 'declared') {
                 // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
                 $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
@@ -241,7 +250,8 @@ final readonly class DeclaredTypeMerge
 
     /**
      * Each body container arm's index beside the indexes of the declared arms it merges with: the one of its kind, or
-     * of several those whose members match it best, else the one of a kind PAIRS_ACROSS pairs it with.
+     * of several those whose members match it best; else, for a shape, acrossFromShape(), and for a list or record,
+     * those of the kind PAIRS_ACROSS names, matched alike.
      *
      * @param  list<Typed>  $bodyArms
      * @param  list<Typed>  $declaredArms
@@ -258,12 +268,13 @@ final readonly class DeclaredTypeMerge
                 continue;
             }
 
-            $same = array_keys(array_filter($declaredArms, static fn (array $declared): bool => self::kindOf($declared[0]) === $kind));
-            $across = array_keys(array_filter($declaredArms, static fn (array $declared): bool => in_array(self::kindOf($declared[0]), self::PAIRS_ACROSS[$kind], true)));
+            $ofKind = static fn (string $wanted): array => array_keys(array_filter($declaredArms, static fn (array $declared): bool => self::kindOf($declared[0]) === $wanted));
+            $same = $ofKind($kind);
+            $across = $kind === 'object' ? [] : $ofKind(self::PAIRS_ACROSS[$kind]);
             $match = match (true) {
-                count($same) === 1 => $same,
-                count($same) > 1 => $this->bestMatches($arm, $declaredArms, $same),
-                count($across) === 1 => $across,
+                $same !== [] => $this->bestMatches($arm, $declaredArms, $same),
+                $kind === 'object' => $this->acrossFromShape($arm, $declaredArms, $ofKind('list'), $ofKind('record')),
+                $across !== [] => $this->bestMatches($arm, $declaredArms, $across),
                 default => [],
             };
 
@@ -273,6 +284,32 @@ final readonly class DeclaredTypeMerge
         }
 
         return $pairs;
+    }
+
+    /**
+     * The declared lists or records a body shape with no declared shape beside it merges with, the best fit first: a
+     * list whose element holds a shape sharing a key with it, else a record, else any list.
+     *
+     * @param  Typed  $arm
+     * @param  list<Typed>  $declaredArms
+     * @param  list<int>  $lists
+     * @param  list<int>  $records
+     * @return list<int>
+     */
+    private function acrossFromShape(array $arm, array $declaredArms, array $lists, array $records): array
+    {
+        $shapeScore = fn (int $list): array => max([[0, 0], ...array_map(
+            static fn (string $part): array => self::kindOf($part) === 'object' ? self::matchOf($arm[0], $part) : [0, 0],
+            TsTypeString::splitTopLevelUnion((string) TsTypeShape::elementType($declaredArms[$list][0])),
+        )]);
+        $scores = array_map($shapeScore, $lists);
+        $best = $scores === [] ? [0, 0] : max($scores);
+
+        return match (true) {
+            $best[1] > 0 => array_map(static fn (int $at): int => $lists[$at], array_keys($scores, $best, true)),
+            $records !== [] => $records,
+            default => $lists,
+        };
     }
 
     /**
@@ -294,23 +331,36 @@ final readonly class DeclaredTypeMerge
 
     /**
      * A body container arm merged with the declared arm it pairs with: an object member by member with a declared
-     * object or a declared list's element object, else each member with a declared record's value or list's element; a
-     * list by element and a record by value, either with a declared list's or record's.
+     * object or each best matched shape of a declared list's element, else each member with a declared record's value
+     * or list's element; a list by element and a record by value, either with a declared list's or record's.
      *
      * @param  Typed  $body
      * @param  Typed  $declared
-     * @return Typed
+     * @return list<Typed>
      */
-    private function containerMerged(array $body, array $declared): array
+    private function containerMerged(array $body, array $declared, string $at): array
     {
-        $contents = self::kindOf($declared[0]) === 'object' ? $declared : $this->contents($declared);
-        $byKey = self::kindOf($declared[0]) === 'object' || (self::kindOf($declared[0]) === 'list' && self::kindOf($contents[0]) === 'object');
+        $kind = self::kindOf($declared[0]);
 
-        return match (self::kindOf($body[0])) {
-            'object' => $this->membersMerged($body, $contents, $byKey),
-            'record' => $this->valueMerged($body, $contents),
-            default => $this->elementMerged($body, $contents),
-        };
+        if (self::kindOf($body[0]) !== 'object') {
+            return [self::kindOf($body[0]) === 'record'
+                ? $this->valueMerged($body, $this->contents($declared), $at)
+                : $this->elementMerged($body, $this->contents($declared), $at)];
+        }
+
+        if ($kind === 'object') {
+            return [$this->membersMerged($body, $declared, true, $at)];
+        }
+
+        // A shape under a declared list merges with the shapes its element holds, the best matched, else each member
+        // with the whole element, as with a record's value.
+        $contents = $this->contents($declared);
+        $parts = $kind === 'list' ? $this->arms($contents) : [];
+        $shapes = array_keys(array_filter($parts, static fn (array $part): bool => self::kindOf($part[0]) === 'object'));
+
+        return $shapes === []
+            ? [$this->membersMerged($body, $contents, false, $at)]
+            : array_map(fn (int $shape): array => $this->membersMerged($body, $parts[$shape], true, $at), $this->bestMatches($body, $parts, $shapes));
     }
 
     /**
@@ -331,52 +381,98 @@ final readonly class DeclaredTypeMerge
     /**
      * An object type with each member the body sends merged, $byKey, with the declared object's member of its key, `?`
      * aside, else with the declared value, keeping the body's keys, order and optional flags. A member only the
-     * declaration has follows where it is optional or the body's shape is open, and goes where the body never sends it.
+     * declaration has follows where it is optional or the shape is open at $at, and goes where the body never sends it.
+     *
+     * One a body index signature's pattern covers merges with that signature's value, which widens to admit it.
      *
      * @param  Typed  $body
      * @param  Typed  $declared  the declared object, or the value every member merges with
      * @return Typed
      */
-    private function membersMerged(array $body, array $declared, bool $byKey): array
+    private function membersMerged(array $body, array $declared, bool $byKey, string $at): array
     {
         $declaredMembers = [];
-        $at = 0;
+        $from = 0;
 
         foreach ($byKey ? TsTypeShape::members($declared[0]) ?? [] : [] as [$key, $value]) {
-            $keySlots = array_slice($declared[1], $at, $this->count($key));
-            $at += $this->count($key);
-            $declaredMembers[rtrim($key, '?')] = [$key, [$value, array_slice($declared[1], $at, $this->count($value))], $keySlots];
-            $at += $this->count($value);
+            $keySlots = array_slice($declared[1], $from, $this->count($key));
+            $from += $this->count($key);
+            $declaredMembers[rtrim($key, '?')] = [$key, [$value, array_slice($declared[1], $from, $this->count($value))], $keySlots];
+            $from += $this->count($value);
         }
 
         $value = $byKey ? null : $declared;
+
+        /** @var list<array{string, Typed, Slots}> $members each member's printed key, value and key slots */
         $members = [];
-        // A spread of an array it cannot read, or an index signature, may put any declared key in the shape.
-        $open = in_array($body[0], $this->openShapes, true)
-            || array_any(TsTypeShape::members($body[0]) ?? [], static fn (array $member): bool => str_starts_with($member[0], '['));
-        $slots = [];
-        $at = 0;
+        $from = 0;
 
         foreach (TsTypeShape::members($body[0]) ?? [] as [$key, $text]) {
-            array_push($slots, ...array_slice($body[1], $at, $this->count($key)));
-            $at += $this->count($key);
-            $read = [$text, array_slice($body[1], $at, $this->count($text))];
-            $at += $this->count($text);
+            $keySlots = array_slice($body[1], $from, $this->count($key));
+            $from += $this->count($key);
+            $read = [$text, array_slice($body[1], $from, $this->count($text))];
+            $from += $this->count($text);
             $fill = $value ?? $declaredMembers[rtrim($key, '?')][1] ?? null;
             unset($declaredMembers[rtrim($key, '?')]);
-            [$merged, $valueSlots] = $fill === null ? $read : $this->merge($read, $fill);
-            $members[] = $key.': '.$merged;
-            array_push($slots, ...$valueSlots);
+            $members[] = [$key, $fill === null ? $read : $this->merge($read, $fill, $at.'.'.rtrim($key, '?')), $keySlots];
         }
 
-        foreach ($declaredMembers as [$key, [$text, $valueSlots], $keySlots]) {
-            if ($open || str_ends_with($key, '?')) {
-                $members[] = $key.': '.$text;
-                array_push($slots, ...$keySlots, ...$valueSlots);
+        /** @var array<int, Typed> $signatures each index signature member's value, by its position */
+        $signatures = [];
+
+        foreach ($members as $position => [$key, $read]) {
+            if (IndexSignatureKey::is($key)) {
+                $signatures[$position] = $read;
             }
         }
 
-        return ['{ '.implode('; ', $members).' }', $slots];
+        foreach ($declaredMembers as $name => [$key, $text, $keySlots]) {
+            $covering = array_filter(
+                array_keys($signatures),
+                static fn (int $position): bool => IndexSignatureKey::covers($members[$position][0], PrintedKey::decode($name) ?? $name),
+            );
+
+            if ($covering !== []) {
+                $merged = $this->merge($signatures[array_values($covering)[0]], $text, $at.'.'.$name);
+                $members[] = [$key, $merged, $keySlots];
+
+                foreach ($covering as $position) {
+                    $signatures[$position] = $this->admitting($signatures[$position], $merged);
+                }
+            } elseif (str_ends_with($key, '?') || in_array($at, $this->openShapes, true)) {
+                $members[] = [$key, $text, $keySlots];
+            }
+        }
+
+        $printed = array_map(
+            static fn (array $member, int $position): array => [$member[0], $signatures[$position] ?? $member[1], $member[2]],
+            $members,
+            array_keys($members),
+        );
+
+        return [
+            '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1][0], $printed)).' }',
+            array_merge([], ...array_map(static fn (array $member): array => [...$member[2], ...$member[1][1]], $printed)),
+        ];
+    }
+
+    /**
+     * An index signature's value with each arm of a member it covers that none of its arms admits, so TypeScript
+     * finds the member assignable to it.
+     *
+     * @param  Typed  $signature
+     * @param  Typed  $member
+     * @return Typed
+     */
+    private function admitting(array $signature, array $member): array
+    {
+        $arms = $this->arms($signature);
+        $added = array_values(array_filter($this->arms($member), fn (array $arm): bool => ! $this->within([$arm], $arms, false)));
+
+        return $added === [] ? $signature : [
+            implode(' | ', array_column([...$arms, ...$added], 0)),
+            array_merge([], ...array_column([...$arms, ...$added], 1)),
+        ];
     }
 
     /**
@@ -386,11 +482,11 @@ final readonly class DeclaredTypeMerge
      * @param  Typed  $contents
      * @return Typed
      */
-    private function valueMerged(array $body, array $contents): array
+    private function valueMerged(array $body, array $contents, string $at): array
     {
         [$key, $value] = TsTypeShape::recordArguments($body[0]) ?? ['', ''];
         $keySlots = array_slice($body[1], 0, $this->count($key));
-        [$text, $slots] = $this->merge([$value, array_slice($body[1], count($keySlots))], $contents);
+        [$text, $slots] = $this->merge([$value, array_slice($body[1], count($keySlots))], $contents, $at.'{}');
 
         return ['Record<'.$key.', '.$text.'>', [...$keySlots, ...$slots]];
     }
@@ -402,9 +498,9 @@ final readonly class DeclaredTypeMerge
      * @param  Typed  $contents
      * @return Typed
      */
-    private function elementMerged(array $body, array $contents): array
+    private function elementMerged(array $body, array $contents, string $at): array
     {
-        [$text, $slots] = $this->merge([(string) TsTypeShape::elementType($body[0]), $body[1]], $contents);
+        [$text, $slots] = $this->merge([(string) TsTypeShape::elementType($body[0]), $body[1]], $contents, $at.'[]');
 
         return [TsTypeShape::postfixOperand($text).'[]', $slots];
     }

@@ -80,6 +80,12 @@ class MethodAnalysis
     public bool $holdsUnreadKeys = false;
 
     /**
+     * Whether a key these hold may be one no name the engine reads names: a key no literal or constant names, or a
+     * spread of a value that is no closed shape. An inline object of them holds keys a docblock may name, set or not.
+     */
+    public bool $holdsUnnamedKeys = false;
+
+    /**
      * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
      * where an override spells that name, recorded by CastChannels::fit(): a share() docblock entry's at publish time,
      * and a key ReturnShapeRefiner fills from a method's `@return` when the analysis reads it.
@@ -116,8 +122,8 @@ class MethodAnalysis
     public array $closedToDottedKeys = [];
 
     /**
-     * Property name => the object types its value holds whose keys the body cannot all name, as a spread of an array
-     * it cannot read leaves them (ValueResult `openShapes`). A merge takes the source's; a join keeps every branch's.
+     * Property name => the path, from its value, of each object the value holds whose keys the engine cannot all name
+     * (ValueResult `openShapes`): `.key`, `[]` and `{}` steps. A merge takes the source's; a join keeps every branch's.
      *
      * @var array<array-key, list<string>>
      */
@@ -284,13 +290,14 @@ class MethodAnalysis
      *
      * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openShapes`
      * replace-merge, the source winning, a key it sets with none losing its own; the inline maps append undeduped, as
-     * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
+     * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
+        $this->holdsUnnamedKeys = $this->holdsUnnamedKeys || $source->holdsUnnamedKeys;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
@@ -351,6 +358,7 @@ class MethodAnalysis
         $this->properties = $source->properties;
         $this->readsCompletely = $source->readsCompletely;
         $this->holdsUnreadKeys = $source->holdsUnreadKeys;
+        $this->holdsUnnamedKeys = $source->holdsUnnamedKeys;
         $this->enumResources = $source->enumResources;
         $this->nestedResources = $source->nestedResources;
         $this->customImports = $source->customImports;

@@ -81,6 +81,8 @@ test('a reading takes the side that tells more of it: unknown, then a vague cont
     'a list over a vague record' => ['Record<string, unknown>', 'string[]', 'string[]'],
     'a list over a vague declaration' => ['string[]', 'unknown[]', 'string[]'],
     'a body\'s vague list over a declared vague record' => ['unknown[]', 'Record<string, unknown>', 'unknown[]'],
+    'a vague list over a lone null' => ['null', 'unknown[]', 'unknown[] | null'],
+    'a lone null over any other type' => ['null', 'string', 'null'],
 ]);
 
 // R16: a shape under a declared list of shapes merges with its element shape, and else each member with the element.
@@ -89,6 +91,19 @@ test('a shape under a declared list merges with its element, keeping the shape',
 })->with([
     'a list of shapes' => ['{ a: unknown }', '{ a: number }[]', '{ a: number }'],
     'a list of scalars' => ['{ a: unknown; b: unknown }', 'number[]', '{ a: number; b: number }'],
+    'a list of shapes beside null' => ['{ a: unknown }', '({ a: number } | null)[]', '{ a: number }'],
+    'a list of two shapes' => ['{ a: unknown }', '({ a: number } | { b: string })[]', '{ a: number }'],
+]);
+
+// R21: a shape against declared containers of other kinds pairs with the best fit: a list holding a shape that shares
+// a key with it, else a record, else any list.
+test('a shape pairs with the declared container that fits it best', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a record or a list' => ['{ a: unknown }', 'Record<string, number> | number[]', '{ a: number }'],
+    'a record or a list, a member typed' => ['{ a: unknown; b: number }', 'Record<string, number> | number[]', '{ a: number; b: number }'],
+    'a record or a list of a matching shape' => ['{ a: unknown }', 'Record<string, string> | { a: number }[]', '{ a: number }'],
+    'a list of a shape sharing no key, or a record' => ['{ a: unknown }', '{ z: number }[] | Record<string, string>', '{ a: string }'],
 ]);
 
 // R11: a vague container takes the declaration whole; another container kind keeps the body's and merges its contents.
@@ -104,15 +119,39 @@ test('a vague container takes the declared one, and another kind merges its cont
     'a record under a list' => ['Record<string, { n: unknown }>', '{ n: number }[]', 'Record<string, { n: number }>'],
 ]);
 
-// R12 and R15: a member only the declaration has is kept where it may be left out, and dropped where it must be sent
-// from a shape whose every key the body names; a shape the body leaves open keeps it as declared.
-test('a member only the declaration has stays where it is optional or the body\'s shape is open', function () {
-    $open = new DeclaredTypeMerge([], [], ['{ a: string }']);
+// R12, R15 and R19: a member only the declaration has is kept where it may be left out, and dropped where it must be
+// sent from a shape whose every key the body names; a shape open at its path keeps it as declared.
+test('a member only the declaration has stays where it is optional or the body\'s shape is open at its path', function () {
+    $open = new DeclaredTypeMerge([], [], ['']);
+    $inner = new DeclaredTypeMerge([], [], ['.inner']);
+    $elements = new DeclaredTypeMerge([], [], ['[]']);
+    $shapes = ['{ inner: { a: number }; other: { a: number } }', []];
 
     expect(mergedType('{ a: string }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; c?: string }')
         ->and($open->merge(['{ a: string }', []], ['{ a: string; b: number; c?: string }', []])[0])->toBe('{ a: string; b: number; c?: string }')
-        ->and(mergedType('{ [key: string]: string; a: string }', '{ a: string; b: number }'))->toBe('{ [key: string]: string; a: string; b: number }');
+        ->and($inner->merge($shapes, ['{ inner: { a: number; b: string }; other: { a: number; b: string } }', []])[0])
+        ->toBe('{ inner: { a: number; b: string }; other: { a: number } }')
+        ->and($elements->merge(['{ a: string }[]', []], ['{ a: string; b: number }[]', []])[0])->toBe('{ a: string; b: number }[]');
 });
+
+// R20: a declared member a body index signature's pattern covers merges with that signature's value, which widens to
+// admit it, so TypeScript finds every member assignable to the signature (TS2411).
+test('a declared member an index signature covers merges with its value, which widens to admit it', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a stale member' => [
+        '{ by: string; [key: `${string}_tag`]: number | undefined }',
+        '{ by: string; x_tag: string }',
+        '{ by: string; [key: `${string}_tag`]: number | undefined; x_tag: number | undefined }',
+    ],
+    'a member refining the value' => ['{ [key: string]: string }', "{ a: 'x' }", "{ [key: string]: string; a: 'x' }"],
+    'a member the value widens for' => ['{ [key: string]: string }', "{ a: 'x' | null }", "{ [key: string]: string | null; a: 'x' | null }"],
+    'a member no pattern covers' => [
+        '{ by: string; [key: `${string}_tag`]: number | undefined }',
+        '{ by: string; extra: string }',
+        '{ by: string; [key: `${string}_tag`]: number | undefined }',
+    ],
+]);
 
 // R7 rule 5, first bullet.
 test('a declared type within the body\'s reading refines it', function (string $body, string $declared, string $expected) {

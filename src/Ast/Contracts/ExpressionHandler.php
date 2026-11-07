@@ -64,7 +64,7 @@ use PhpParser\Node\Expr;
  *
  * `unnamedKeys` says the value is an array literal holding a key its object type leaves out: one read at runtime,
  * spread in, numbered past a keyless item, or written as any expression but a string or an int. `openShapes` lists the
- * object types, at any depth of the value, of such literals.
+ * path from the value, in `.key`, `[]` and `{}` steps, of each object it holds whose keys the engine cannot all name.
  *
  * `listKeys` says each list arm of the type is keyed by ints, as a list literal, a `list<T>` and a collection's items
  * are; a list without it may be PHPDoc's `T[]` or a native `array`, keyed by anything.

@@ -96,7 +96,7 @@ trait BindsMapCallbacks
         $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));
 
         // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
-        return [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false];
+        return ValueResult::holdingOpenShapes($body, [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false], '[]', '{}');
     }
 
     /**

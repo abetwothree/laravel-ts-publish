@@ -487,6 +487,25 @@ final class ValueResult
     }
 
     /**
+     * A value its container holds as each element or value, its open shapes' paths moved under the container's step
+     * for it: `[]` for a list element, `{}` for a record value.
+     *
+     * @param  ValueExpressionResult  $held  the element or value
+     * @param  ValueExpressionResult  $container  the container's own result, its type set
+     * @return ValueExpressionResult
+     */
+    public static function holdingOpenShapes(array $held, array $container, string ...$steps): array
+    {
+        $paths = array_merge([], ...array_map(
+            static fn (string $step): array => array_map(static fn (string $path): string => $step.$path, $held['openShapes'] ?? []),
+            $steps,
+        ));
+        unset($container['openShapes']);
+
+        return $paths === [] ? $container : [...$container, 'openShapes' => array_values(array_unique($paths))];
+    }
+
+    /**
      * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
      *
      * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union

@@ -263,7 +263,12 @@ final class ValueResolver
 
         unset($union['listKeys']);
 
-        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
+        return ValueResult::holdingOpenShapes($union, [
+            ...$union,
+            'type' => ValueResult::arrayWrapType($union['type']),
+            'optional' => false,
+            ...($listed ? ['listKeys' => true] : []),
+        ], '[]');
     }
 
     /**

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -128,7 +129,7 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
-        $openShapes = array_values(array_unique(array_merge([], ...array_values($analysis->openShapes))));
+        $openShapes = $this->openShapes($analysis, $type);
 
         if ($openShapes !== []) {
             $result['openShapes'] = $openShapes;
@@ -366,6 +367,24 @@ final class InlineObjectResult
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * The path of each object this one holds whose keys the engine cannot all name: itself, where its analysis holds a
+     * key no name names, and each member's own, under the member's key as the object prints it.
+     *
+     * @return list<string>
+     */
+    private function openShapes(MethodAnalysis $analysis, string $type): array
+    {
+        $paths = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && TsTypeShape::members($type) !== null ? [''] : [];
+
+        foreach ($analysis->openShapes as $name => $memberPaths) {
+            $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);
+            array_push($paths, ...array_map(static fn (string $path): string => '.'.$key.$path, $memberPaths));
+        }
+
+        return array_values(array_unique($paths));
     }
 
     /**
