@@ -76,7 +76,7 @@ final class ReturnShapeRefiner
                     $property['fillType'] = $property['type'];
                 }
             } elseif (! $isSignature && $fillsPositions) {
-                [$property['type'], $brought] = $this->filledPositions($analysis, $name, $property['type'], $doc);
+                [$property['type'], $brought, $resolved] = $this->filledPositions($analysis, $name, $property['type'], $doc);
                 $imports[] = $brought;
             }
 
@@ -106,18 +106,19 @@ final class ReturnShapeRefiner
 
     /**
      * A key the body typed, each `unknown` position in it filled from the member $doc gives it, as UnknownPositions
-     * fills them, each class the fill names queued on the key's channels as one its body names, beside the custom
-     * imports the names it spells need. A name the key cannot give one class alone fills no position.
+     * fills them: each class the fill names queued on the key's channels as one its body names, beside the custom
+     * imports its names need, or, where a name stands for two classes, declared token by token (declaredFill()).
      *
      * @param  ShapeTypeInfo|null  $doc
-     * @return array{string, TypesImportMap}
+     * @return array{string, TypesImportMap, ShapeTypeInfo|null} the type, the imports it brings, and a fill to lay over
+     *                                                           the key's channels as a cast is
      */
     private function filledPositions(MethodAnalysis $analysis, string $name, string $type, ?array $doc): array
     {
         $member = $doc === null || ! TsTypeString::typeNameOccursIn('unknown', $type) ? null : LaravelTsPublish::shapeMemberForKey($doc);
 
         if ($member === null) {
-            return [$type, []];
+            return [$type, [], null];
         }
 
         $classes = array_values(array_unique(array_filter($member['tokenFqcns'] ?? [])));
@@ -136,14 +137,17 @@ final class ReturnShapeRefiner
             [...TokenSlots::namesOf('classes', $classes), ...$overrides],
             [...TokenSlots::namesOf('classes', $queued), ...$safeOverrides],
         ));
-        $filled = UnknownPositions::filled(
-            $type,
-            $member['type'],
-            static fn (string $fill): bool => ! array_any($blocked, static fn (string $blockedName): bool => TsTypeString::typeNameOccursIn($blockedName, $fill)),
-        );
+        $declared = $blocked === [] ? null : $this->declaredFill($analysis, $name, $type, $member, $held);
+
+        if ($declared !== null) {
+            return [$declared['type'], [], $declared];
+        }
+
+        $fills = static fn (string $fill): bool => ! array_any($blocked, static fn (string $blockedName): bool => TsTypeString::typeNameOccursIn($blockedName, $fill));
+        [$filled] = new UnknownPositions([], [], [], $fills)->filled($type, $member['type'], []);
 
         if ($filled === $type) {
-            return [$type, []];
+            return [$type, [], null];
         }
 
         $analysis->queueEmbeddedClasses($name, array_values(array_filter(
@@ -152,17 +156,65 @@ final class ReturnShapeRefiner
                 && array_any(TokenSlots::namesOf('classes', [$class]), static fn (string $spelled): bool => TokenSlots::readsName($spelled, $filled)),
         )));
 
-        $brought = [];
+        return [$filled, $this->importsSpelled($member['customImports'], $filled), null];
+    }
 
-        foreach ($member['customImports'] as $path => $names) {
-            $spelled = array_values(array_filter($names, static fn (string $import): bool => TokenSlots::readsName(ImportMaps::localName($import), $filled)));
+    /**
+     * The fill of a key whose name stands for two classes, declaring the class behind each token as a whole key's fill
+     * does: a body token takes the class the key's channels hold under its name, and a filled one the member's slot.
+     *
+     * Null where a body name stands for two classes, or the key holds declared slots or a wrap a cast's fit would drop.
+     *
+     * @param  ShapeTypeInfo  $member
+     * @param  list<class-string>  $held  the classes on the key's channels
+     * @return ShapeTypeInfo|null
+     */
+    private function declaredFill(MethodAnalysis $analysis, string $name, string $type, array $member, array $held): ?array
+    {
+        if (isset($analysis->declaredTokenFqcns[$name]) || isset($analysis->enumResources[$name])
+            || isset($analysis->enumResourceArmShapes[$name]) || isset($analysis->multiEnumResourceFqcns[$name])
+        ) {
+            return null;
+        }
 
-            if ($spelled !== []) {
-                $brought[$path] = $spelled;
+        $bodyClasses = [];
+
+        foreach ($held as $class) {
+            foreach (TokenSlots::namesOf('classes', [$class]) as $spelled) {
+                if (($bodyClasses[$spelled] ?? $class) !== $class) {
+                    return null;
+                }
+
+                $bodyClasses[$spelled] = $class;
             }
         }
 
-        return [$filled, $brought];
+        $slots = $member['tokenFqcns'] ?? [];
+        $own = TokenSlots::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        $names = array_values(array_unique([...array_keys($bodyClasses), ...$own]));
+        [$filled, $classes] = new UnknownPositions($names, $own, $bodyClasses, static fn (string $fill): bool => true)
+            ->filled($type, $member['type'], $slots);
+        $tokens = $names === [] ? [] : TokenSlots::tokens('classes', $names, $filled);
+
+        // A literal spelled like a class can leave a part's share of the slots short, so its tokens would misalign.
+        if ($filled === $type || count($tokens) !== count($classes)) {
+            return null;
+        }
+
+        $declaredNames = TokenSlots::namesOf('classes', array_values(array_unique(array_filter($classes))));
+        $declaredSlots = [];
+
+        foreach ($tokens as $index => [$token]) {
+            if (in_array($token, $declaredNames, true)) {
+                $declaredSlots[] = $classes[$index];
+            }
+        }
+
+        return [
+            'type' => $filled,
+            'customImports' => $this->importsSpelled($member['customImports'], $filled),
+            ...($declaredSlots === [] ? [] : ['tokenFqcns' => $declaredSlots]),
+        ];
     }
 
     /**
@@ -192,6 +244,27 @@ final class ReturnShapeRefiner
         }
 
         return true;
+    }
+
+    /**
+     * The custom imports among $imports whose names a filled type reads.
+     *
+     * @param  TypesImportMap  $imports
+     * @return TypesImportMap
+     */
+    private function importsSpelled(array $imports, string $filled): array
+    {
+        $spelled = [];
+
+        foreach ($imports as $path => $names) {
+            $read = array_values(array_filter($names, static fn (string $import): bool => TokenSlots::readsName(ImportMaps::localName($import), $filled)));
+
+            if ($read !== []) {
+                $spelled[$path] = $read;
+            }
+        }
+
+        return $spelled;
     }
 
     /**

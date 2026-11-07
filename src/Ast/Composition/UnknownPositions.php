@@ -12,108 +12,75 @@ use Closure;
  * Fills the `unknown` positions a type holds, a whole value, an object member, a list element or a record value, from a
  * declared type at the same position; every position the type itself types stays as it is.
  *
+ * Beside the result it gives the class behind each token of $names, in print order: a filled part's from the declared
+ * type's slots, any other part's from the class the body holds under that name.
+ *
+ * @phpstan-import-type Slots from TokenSlots
+ *
+ * @phpstan-type Filled = array{string, Slots}
+ *
  * @internal
  */
-final class UnknownPositions
+final readonly class UnknownPositions
 {
+    /**
+     * @param  list<string>  $names  the names whose every token the result gives a class, or null
+     * @param  list<string>  $declaredOwn  the names whose tokens take the declared type's slots, one each
+     * @param  array<string, class-string>  $bodyClasses  the class behind each name's token in a part the body typed
+     * @param  Closure(string): bool  $fills  whether a part of the declared type may fill a position
+     */
+    public function __construct(
+        private array $names,
+        private array $declaredOwn,
+        private array $bodyClasses,
+        private Closure $fills,
+    ) {}
+
     /**
      * $type with each position it holds as `unknown` taken from $declared at that position where $fills admits it. An
      * arm takes the one arm of $declared, `null` aside, of its own kind: an object, a `T[]` list or a Record.
      *
-     * @param  Closure(string): bool  $fills
+     * @param  Slots  $slots  the class behind each token of the declared own names $declared spells
+     * @return Filled
      */
-    public static function filled(string $type, string $declared, Closure $fills): string
+    public function filled(string $type, string $declared, array $slots): array
     {
         if (TsTypeString::isUnknownOnly($type)) {
-            return ! TsTypeString::isUnknownOnly($declared) && $fills($declared) ? TsTypeString::withNullArmOf($type, $declared) : $type;
+            return ! TsTypeString::isUnknownOnly($declared) && ($this->fills)($declared)
+                ? [TsTypeString::withNullArmOf($type, $declared), $this->declaredSlots($declared, $slots)]
+                : $this->body($type);
         }
 
-        $declaredArms = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
+        $declaredArms = [];
+        $at = 0;
+
+        foreach (TsTypeString::splitTopLevelUnion($declared) as $arm) {
+            $count = $this->ownCount($arm);
+            $declaredArms = $arm === 'null' ? $declaredArms : [...$declaredArms, [$arm, array_slice($slots, $at, $count)]];
+            $at += $count;
+        }
+
         $arms = TsTypeString::splitTopLevelUnion($type);
 
         if (count($arms) > 1) {
-            $filled = array_map(static function (string $arm) use ($declaredArms, $fills): string {
-                $match = self::armOfKind($arm, $declaredArms);
+            $parts = array_map(function (string $arm) use ($declaredArms): array {
+                $match = $this->armOfKind($arm, $declaredArms);
 
-                return $match === null ? $arm : self::filled($arm, $match, $fills);
+                return $match === null ? $this->body($arm) : $this->filled($arm, $match[0], $match[1]);
             }, $arms);
+            $texts = array_column($parts, 0);
 
-            return $filled === $arms ? $type : implode(' | ', $filled);
+            return $texts === $arms ? $this->body($type) : [implode(' | ', $texts), array_merge([], ...array_column($parts, 1))];
         }
 
-        $match = self::armOfKind($type, $declaredArms);
+        $match = $this->armOfKind($type, $declaredArms);
 
         return match (true) {
-            $match === null || ! TsTypeString::typeNameOccursIn('unknown', $type) => $type,
-            TsTypeShape::members($type) !== null => self::membersFilled($type, $match, $fills),
-            TsTypeShape::recordArguments($type) !== null => self::recordFilled($type, $match, $fills),
-            default => self::elementFilled($type, $match, $fills),
+            $match === null || ! TsTypeString::typeNameOccursIn('unknown', $type) => $this->body($type),
+            TsTypeShape::members($type) !== null => $this->membersFilled($type, $match),
+            TsTypeShape::recordArguments($type) !== null => $this->recordFilled($type, $match),
+            default => $this->elementFilled($type, $match),
         };
-    }
-
-    /**
-     * An object type with each member's `unknown` positions filled from $declared's member of that key, `?` aside.
-     *
-     * @param  Closure(string): bool  $fills
-     */
-    private static function membersFilled(string $object, string $declared, Closure $fills): string
-    {
-        $declaredMembers = [];
-
-        foreach (TsTypeShape::members($declared) ?? [] as [$key, $value]) {
-            $declaredMembers[rtrim($key, '?')] = $value;
-        }
-
-        $members = [];
-        $changed = false;
-
-        foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
-            $fill = $declaredMembers[rtrim($key, '?')] ?? null;
-            $filled = $fill === null ? $value : self::filled($value, $fill, $fills);
-            $changed = $changed || $filled !== $value;
-            $members[] = $key.': '.$filled;
-        }
-
-        return $changed ? '{ '.implode('; ', $members).' }' : $object;
-    }
-
-    /**
-     * A `Record<K, V>` with V's `unknown` positions filled from $declared's value.
-     *
-     * @param  Closure(string): bool  $fills
-     */
-    private static function recordFilled(string $record, string $declared, Closure $fills): string
-    {
-        [$key, $value] = TsTypeShape::recordArguments($record) ?? ['', ''];
-        $filled = self::filled($value, TsTypeShape::recordArguments($declared)[1] ?? 'unknown', $fills);
-
-        return $filled === $value ? $record : 'Record<'.$key.', '.$filled.'>';
-    }
-
-    /**
-     * A `T[]` list with T's `unknown` positions filled from $declared's element.
-     *
-     * @param  Closure(string): bool  $fills
-     */
-    private static function elementFilled(string $list, string $declared, Closure $fills): string
-    {
-        $element = (string) TsTypeShape::elementType($list);
-        $filled = self::filled($element, (string) TsTypeShape::elementType($declared), $fills);
-
-        return $filled === $element ? $list : TsTypeShape::postfixOperand($filled).'[]';
-    }
-
-    /**
-     * The one arm of $arms of $arm's kind; null where none or several are, or $arm is of no kind kindOf() reads.
-     *
-     * @param  list<string>  $arms
-     */
-    private static function armOfKind(string $arm, array $arms): ?string
-    {
-        $kind = self::kindOf($arm);
-        $matches = $kind === null ? [] : array_values(array_filter($arms, static fn (string $other): bool => self::kindOf($other) === $kind));
-
-        return count($matches) === 1 ? $matches[0] : null;
     }
 
     /**
@@ -129,5 +96,132 @@ final class UnknownPositions
             $arm !== '[]' && str_ends_with($arm, '[]') && TsTypeShape::elementType($arm) !== null => 'list',
             default => null,
         };
+    }
+
+    /**
+     * An object type with each member's `unknown` positions filled from $declared's member of that key, `?` aside.
+     *
+     * @param  Filled  $declared
+     * @return Filled
+     */
+    private function membersFilled(string $object, array $declared): array
+    {
+        $declaredMembers = [];
+        $at = 0;
+
+        foreach (TsTypeShape::members($declared[0]) ?? [] as [$key, $value]) {
+            $at += $this->ownCount($key);
+            $count = $this->ownCount($value);
+            $declaredMembers[rtrim($key, '?')] = [$value, array_slice($declared[1], $at, $count)];
+            $at += $count;
+        }
+
+        $members = [];
+        $slots = [];
+        $changed = false;
+
+        foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
+            $fill = $declaredMembers[rtrim($key, '?')] ?? null;
+            [$filled, $valueSlots] = $fill === null ? $this->body($value) : $this->filled($value, $fill[0], $fill[1]);
+            $changed = $changed || $filled !== $value;
+            $members[] = $key.': '.$filled;
+            array_push($slots, ...$this->bodySlots($key), ...$valueSlots);
+        }
+
+        return $changed ? ['{ '.implode('; ', $members).' }', $slots] : $this->body($object);
+    }
+
+    /**
+     * A `Record<K, V>` with V's `unknown` positions filled from $declared's value.
+     *
+     * @param  Filled  $declared
+     * @return Filled
+     */
+    private function recordFilled(string $record, array $declared): array
+    {
+        [$key, $value] = TsTypeShape::recordArguments($record) ?? ['', ''];
+        [$declaredKey, $declaredValue] = TsTypeShape::recordArguments($declared[0]) ?? ['', 'unknown'];
+        [$filled, $slots] = $this->filled($value, $declaredValue, array_slice($declared[1], $this->ownCount($declaredKey)));
+
+        return $filled === $value ? $this->body($record) : ['Record<'.$key.', '.$filled.'>', [...$this->bodySlots($key), ...$slots]];
+    }
+
+    /**
+     * A `T[]` list with T's `unknown` positions filled from $declared's element.
+     *
+     * @param  Filled  $declared
+     * @return Filled
+     */
+    private function elementFilled(string $list, array $declared): array
+    {
+        $element = (string) TsTypeShape::elementType($list);
+        [$filled, $slots] = $this->filled($element, (string) TsTypeShape::elementType($declared[0]), $declared[1]);
+
+        return $filled === $element ? $this->body($list) : [TsTypeShape::postfixOperand($filled).'[]', $slots];
+    }
+
+    /**
+     * The one arm of $arms of $arm's kind; null where none or several are, or $arm is of no kind kindOf() reads.
+     *
+     * @param  list<Filled>  $arms
+     * @return Filled|null
+     */
+    private function armOfKind(string $arm, array $arms): ?array
+    {
+        $kind = self::kindOf($arm);
+        $matches = $kind === null ? [] : array_values(array_filter($arms, static fn (array $other): bool => self::kindOf($other[0]) === $kind));
+
+        return count($matches) === 1 ? $matches[0] : null;
+    }
+
+    /**
+     * A part the body typed, beside the class behind each token of $names it spells.
+     *
+     * @return Filled
+     */
+    private function body(string $text): array
+    {
+        return [$text, $this->bodySlots($text)];
+    }
+
+    /**
+     * The class behind each token of $names a part the body typed spells: the class the body holds under that name
+     * where the token is read, else null.
+     *
+     * @return Slots
+     */
+    private function bodySlots(string $text): array
+    {
+        return array_map(
+            fn (array $token): ?string => $token[2] ? $this->bodyClasses[$token[0]] ?? null : null,
+            $this->names === [] ? [] : TokenSlots::tokens('classes', $this->names, $text),
+        );
+    }
+
+    /**
+     * The class behind each token of $names a part of the declared type spells: its slot for a token of a declared own
+     * name, else null.
+     *
+     * @param  Slots  $slots
+     * @return Slots
+     */
+    private function declaredSlots(string $text, array $slots): array
+    {
+        $at = 0;
+        $read = [];
+
+        foreach ($this->names === [] ? [] : TokenSlots::tokens('classes', $this->names, $text) as [$token]) {
+            $read[] = in_array($token, $this->declaredOwn, true) ? $slots[$at++] ?? null : null;
+        }
+
+        return $read;
+    }
+
+    /**
+     * How many slots a part of the declared type takes: one per token of a declared own name it spells.
+     */
+    private function ownCount(string $text): int
+    {
+        return $this->declaredOwn === [] ? 0 : count(TokenSlots::tokens('classes', $this->declaredOwn, $text));
     }
 }

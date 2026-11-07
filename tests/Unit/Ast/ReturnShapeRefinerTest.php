@@ -6,7 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\RecipientSettingsResource;
 use Workbench\App\Models\Post;
@@ -302,8 +305,9 @@ test('an unknown position whose member names the class the body already queued f
         ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class]]);
 });
 
-// Two classes one name spells cannot share a key whose channels hold one class per name.
-test('a fill never queues a class beside another class the key spells with the same name', function () {
+// A key spelling two classes by one name takes the slot of each token, as a whole key's fill does, so the publisher
+// aliases each class apart (GH-154).
+test('a fill naming a class another class of the key is spelled like declares the class behind each token', function () {
     $analysis = new MethodAnalysis(properties: [
         ['name' => 'owned', 'type' => '{ by: User; owner: unknown; n: unknown }[]', 'optional' => false, 'description' => ''],
     ]);
@@ -311,10 +315,26 @@ test('a fill never queues a class beside another class the key spells with the s
 
     resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
 
-    expect($analysis->properties[0]['type'])->toContain('n: number')
-        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [CrmUser::class]])
-        ->and($analysis->modelFqcns)->toBe([]);
+    expect($analysis->properties[0]['type'])->toBe('{ by: User; owner: User; n: number }[]')
+        ->and($analysis->declaredTokenFqcns)->toBe(['owned' => [CrmUser::class, User::class]])
+        ->and($analysis->inlineModelFqcns)->toBe(['owned' => [CrmUser::class, User::class]]);
 });
+
+test('a key the body types beside a fill naming a same-named class publishes each class under its own alias', function (string $resource, array $expected) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+        ->and(array_merge(...array_values($data->typeImports)))->toEqualCanonicalizing(['User as CrmUser', 'User as WorkbenchUser']);
+})->with([
+    'a CRM author beside the app user' => [ClashingAuthorsResource::class, [
+        'clash' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+        'typed' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+        'unread' => '{ by: CrmUser; other: WorkbenchUser | null }[]',
+    ]],
+    'the app author beside a CRM user' => [ReversedClashAuthorsResource::class, [
+        'clash' => '{ by: WorkbenchUser; other: CrmUser | null }[]',
+    ]],
+]);
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
     expect(analyzedKeyTypes(AuthoredRowsResource::class))->toBe([
