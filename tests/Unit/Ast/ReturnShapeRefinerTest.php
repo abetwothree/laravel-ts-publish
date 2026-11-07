@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
@@ -387,6 +388,33 @@ test('a caller that lays the docblock over every key itself fills no position in
     expect(array_column($analysis->properties, 'type', 'name'))
         ->toBe(['owned' => '{ owner: unknown; n: unknown }[]', 'pair' => '{ first: User; second: Post | null }'])
         ->and($analysis->inlineModelFqcns)->not->toHaveKey('owned');
+});
+
+// A bare scalar the body reads takes the docblock's literals of that scalar, which the body widened; a literal, a union
+// or another scalar's literal keeps the body's reading (GH-154).
+test('a bare scalar the body reads takes the @return docblock\'s literals of that scalar', function (string $name, string $inferred, string $expected) {
+    $analysis = refinedAnalysis([['name' => $name, 'type' => $inferred]], 'literals');
+
+    expect($analysis->properties[0]['type'])->toBe($expected);
+})->with([
+    'string, number and boolean' => [
+        'kinds',
+        '{ kind: string; n: number; flag: boolean; other: unknown }',
+        "{ kind: 'User' | 'Post'; n: 1 | 2; flag: true; other: number }",
+    ],
+    'a whole key' => ['top', 'string', "'a' | 'b'"],
+    'another scalar\'s literal' => ['mismatched', '{ n: number }', '{ n: number }'],
+    'a literal the body reads' => ['kept', "{ kind: 'Admin' }", "{ kind: 'Admin' }"],
+    'a union the body reads' => ['kept', '{ kind: string | null }', '{ kind: string | null }'],
+    'a literal beside null' => ['nullable', 'string', 'string'],
+]);
+
+test('a callback\'s widened literal takes the @return docblock\'s literal beside the classes the body types', function () {
+    $data = new ResourceTransformer(LiteralKindRowsResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))
+        ->toBe(['rows' => "{ kind: 'User'; by: User; other: unknown }[]"])
+        ->and(array_merge(...array_values($data->typeImports)))->toBe(['User']);
 });
 
 test('an array<string, V> return fills each unknown position inside every key from V', function () {

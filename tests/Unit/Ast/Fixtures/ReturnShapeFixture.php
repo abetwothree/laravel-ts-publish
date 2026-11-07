@@ -114,6 +114,17 @@ final class ReturnShapeFixture
     }
 
     /**
+     * Literals beside the scalars a body may read where it widens them, and the controls that keep the body's reading.
+     *
+     * @return array{kinds: array{kind: 'User'|'Post', n: 1|2, flag: true, other: int}, mismatched: array{n: '1'},
+     *     kept: array{kind: 'User'}, top: 'a'|'b', nullable: 'a'|null}
+     */
+    public function literals(): array
+    {
+        return [];
+    }
+
+    /**
      * @return array<string, string>|array<string, int>
      */
     public function records(): array

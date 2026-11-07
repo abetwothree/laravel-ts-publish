@@ -6,11 +6,11 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use Closure;
 
 /**
  * Fills the `unknown` positions a type holds, a whole value, an object member, a list element or a record value, from a
- * declared type at the same position; every position the type itself types stays as it is.
+ * declared type at the same position, and narrows a bare scalar to the declared literals of that scalar, which a body
+ * widens; every other position the type itself types stays as it is.
  *
  * Beside the result it gives the class behind each token of $names, in print order: a filled part's from the declared
  * type's slots, any other part's from the class the body holds under that name.
@@ -27,28 +27,31 @@ final readonly class UnknownPositions
      * @param  list<string>  $names  the names whose every token the result gives a class, or null
      * @param  list<string>  $declaredOwn  the names whose tokens take the declared type's slots, one each
      * @param  array<string, class-string>  $bodyClasses  the class behind each name's token in a part the body typed
-     * @param  Closure(string): bool  $fills  whether a part of the declared type may fill a position
      */
     public function __construct(
         private array $names,
         private array $declaredOwn,
         private array $bodyClasses,
-        private Closure $fills,
     ) {}
 
     /**
-     * $type with each position it holds as `unknown` taken from $declared at that position where $fills admits it. An
-     * arm takes the one arm of $declared, `null` aside, of its own kind: an object, a `T[]` list or a Record.
+     * $type with each position it holds as `unknown`, or as a bare scalar $declared spells as literals of, taken from
+     * $declared at that position. An arm takes the one arm of $declared, `null` aside, of its own kind: an object, a
+     * `T[]` list or a Record.
      *
      * @param  Slots  $slots  the class behind each token of the declared own names $declared spells
      * @return Filled
      */
     public function filled(string $type, string $declared, array $slots): array
     {
+        if (self::narrows($type, $declared)) {
+            return [$declared, $this->declaredSlots($declared, $slots)];
+        }
+
         if (TsTypeString::isUnknownOnly($type)) {
-            return ! TsTypeString::isUnknownOnly($declared) && ($this->fills)($declared)
-                ? [TsTypeString::withNullArmOf($type, $declared), $this->declaredSlots($declared, $slots)]
-                : $this->body($type);
+            return TsTypeString::isUnknownOnly($declared)
+                ? $this->body($type)
+                : [TsTypeString::withNullArmOf($type, $declared), $this->declaredSlots($declared, $slots)];
         }
 
         $declaredArms = [];
@@ -76,11 +79,27 @@ final readonly class UnknownPositions
         $match = $this->armOfKind($type, $declaredArms);
 
         return match (true) {
-            $match === null || ! TsTypeString::typeNameOccursIn('unknown', $type) => $this->body($type),
+            $match === null => $this->body($type),
             TsTypeShape::members($type) !== null => $this->membersFilled($type, $match),
             TsTypeShape::recordArguments($type) !== null => $this->recordFilled($type, $match),
             default => $this->elementFilled($type, $match),
         };
+    }
+
+    /**
+     * Whether a type is a bare scalar each arm of a declared type spells a literal of, as `'a' | 'b'` does `string`:
+     * a narrower reading of the same values, never one of another scalar or beside `null`.
+     */
+    private static function narrows(string $type, string $declared): bool
+    {
+        $literal = match ($type) {
+            'string' => static fn (string $arm): bool => strlen($arm) >= 2 && in_array($arm[0], ['"', "'"], true) && $arm[-1] === $arm[0],
+            'number' => static fn (string $arm): bool => is_numeric($arm),
+            'boolean' => static fn (string $arm): bool => in_array($arm, ['true', 'false'], true),
+            default => null,
+        };
+
+        return $literal !== null && array_all(TsTypeString::splitTopLevelUnion($declared), $literal);
     }
 
     /**

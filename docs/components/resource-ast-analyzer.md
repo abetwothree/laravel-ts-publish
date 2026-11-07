@@ -146,18 +146,19 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 In a key the body typed, each position it left `unknown`, a member, an element or a record value, takes the member's
-type at that position, matched arm by arm to the one arm of its kind (`UnknownPositions::filled()`); every position the
-body typed stays. A class the fill names joins the key's inline channels as a class its body names does
-(`MethodAnalysis::queueEmbeddedClasses()`), so the key stays a value the body typed, with no declared slots. Where a
-name would then stand for two classes, such as a body's CRM `User` beside the member's app `User`, the fill declares the
-class behind each token instead, as a whole key's fill does: a body token takes the class the key's channels hold under
-its name, a filled one the member's slot (`ReturnShapeRefiner::declaredFill()`). A key neither fill can type whole, as
-where its body already spells two classes by one name or carries its own enum wrap or declared slots, takes the member
-whole, as a key no rule types does, where the member spells every position the key types as the key does and no slots
-are declared; otherwise it stays as the body reads it (`ReturnShapeRefiner::wholeFill()`). The analyzed `share()` or
-`provide()` itself fills no position, since its analyzer lays that docblock over every key it types
-(`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads fills, as neither analyzer reads the helper's
-own `@return`.
+type at that position, matched arm by arm to the one arm of its kind (`UnknownPositions::filled()`), and a position it
+reads as a bare `string`, `number` or `boolean` takes the member's literals of that same scalar, which the body widened;
+every other position the body typed stays. A class the fill names joins the key's inline channels as a class its body
+names does (`MethodAnalysis::queueEmbeddedClasses()`), so the key stays a value the body typed, with no declared slots.
+Where a name would then stand for two classes, such as a body's CRM `User` beside the member's app `User`, the fill
+declares the class behind each token instead, as a whole key's fill does: a body token takes the class the key's
+channels hold under its name, a filled one the member's slot (`ReturnShapeRefiner::declaredFill()`). A key neither fill
+can type whole, as where its body already spells two classes by one name or carries its own enum wrap or declared slots,
+takes the member whole, as a key no rule types does, where the member spells every position the key types as the key
+does and no slots are declared; otherwise it stays as the body reads it (`ReturnShapeRefiner::wholeFill()`). The
+analyzed `share()` or `provide()` itself fills no position, since its analyzer lays that docblock over every key it
+types (`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads fills, as neither analyzer reads the
+helper's own `@return`.
 
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each

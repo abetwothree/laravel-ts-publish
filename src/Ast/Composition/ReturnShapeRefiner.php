@@ -29,6 +29,9 @@ use ReflectionMethod;
  */
 final class ReturnShapeRefiner
 {
+    /** The types a position fill reads past: `unknown`, which it fills, and the scalars it narrows to literals. */
+    private const array FILLABLE = ['unknown', 'string', 'number', 'boolean'];
+
     /**
      * Fill each key the body left vague, its `null` kept, from the method's own `@return array{...}` shape or
      * `array<string, V>` value, queue the classes the fill names as a cast's are, and mark a `key?:` key optional.
@@ -117,7 +120,8 @@ final class ReturnShapeRefiner
      */
     private function filledPositions(MethodAnalysis $analysis, string $name, string $type, ?array $doc): array
     {
-        $member = $doc === null || ! TsTypeString::typeNameOccursIn('unknown', $type) ? null : LaravelTsPublish::shapeMemberForKey($doc);
+        $fillable = array_any(self::FILLABLE, static fn (string $fillable): bool => TsTypeString::typeNameOccursIn($fillable, $type));
+        $member = $doc === null || ! $fillable ? null : LaravelTsPublish::shapeMemberForKey($doc);
 
         if ($member === null) {
             return [$type, [], null];
@@ -139,17 +143,17 @@ final class ReturnShapeRefiner
             [...TokenSlots::namesOf('classes', $classes), ...$overrides],
             [...TokenSlots::namesOf('classes', $queued), ...$safeOverrides],
         ));
-        if ($blocked !== []) {
-            $declared = $this->declaredFill($analysis, $name, $type, $member, $held)
-                ?? $this->wholeFill($analysis, $name, $type, $member);
-
-            return $declared === null ? [$type, [], null] : [$declared['type'], [], $declared];
-        }
-
-        [$filled] = new UnknownPositions([], [], [], static fn (string $fill): bool => true)->filled($type, $member['type'], []);
+        [$filled] = new UnknownPositions([], [], [])->filled($type, $member['type'], []);
 
         if ($filled === $type) {
             return [$type, [], null];
+        }
+
+        if (array_any($blocked, fn (string $blockedName): bool => $this->readCount($blockedName, $filled) > $this->readCount($blockedName, $type))) {
+            $declared = $this->declaredFill($analysis, $name, $type, $member, $held)
+                ?? $this->wholeFill($analysis, $name, $type, $member, $filled);
+
+            return $declared === null ? [$type, [], null] : [$declared['type'], [], $declared];
         }
 
         $analysis->queueEmbeddedClasses($name, array_values(array_filter(
@@ -169,10 +173,8 @@ final class ReturnShapeRefiner
      * @param  ShapeTypeInfo  $member
      * @return ShapeTypeInfo|null
      */
-    private function wholeFill(MethodAnalysis $analysis, string $name, string $type, array $member): ?array
+    private function wholeFill(MethodAnalysis $analysis, string $name, string $type, array $member, string $filled): ?array
     {
-        [$filled] = new UnknownPositions([], [], [], static fn (string $fill): bool => true)->filled($type, $member['type'], []);
-
         return isset($analysis->declaredTokenFqcns[$name]) || TsTypeString::withoutNullArm($filled) !== TsTypeString::withoutNullArm($member['type'])
             ? null
             : [...$member, 'type' => TsTypeString::withNullArmOf($type, $member['type'])];
@@ -211,8 +213,7 @@ final class ReturnShapeRefiner
         $slots = $member['tokenFqcns'] ?? [];
         $own = TokenSlots::namesOf('classes', array_values(array_unique(array_filter($slots))));
         $names = array_values(array_unique([...array_keys($bodyClasses), ...$own]));
-        [$filled, $classes] = new UnknownPositions($names, $own, $bodyClasses, static fn (string $fill): bool => true)
-            ->filled($type, $member['type'], $slots);
+        [$filled, $classes] = new UnknownPositions($names, $own, $bodyClasses)->filled($type, $member['type'], $slots);
         $tokens = $names === [] ? [] : TokenSlots::tokens('classes', $names, $filled);
 
         // A literal spelled like a class can leave a part's share of the slots short, so its tokens would misalign.
@@ -263,6 +264,14 @@ final class ReturnShapeRefiner
         }
 
         return true;
+    }
+
+    /**
+     * How many tokens of a name a type reads, outside its literals.
+     */
+    private function readCount(string $name, string $type): int
+    {
+        return count(array_filter(TokenSlots::tokens('classes', [$name], $type), static fn (array $token): bool => $token[2]));
     }
 
     /**
