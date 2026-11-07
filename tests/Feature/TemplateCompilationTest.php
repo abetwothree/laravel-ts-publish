@@ -146,16 +146,17 @@ test('with the cache on, the rebuild renders the new template and a later cached
     // The template's hash moves the cache header, so this run rebuilds and caches what it renders.
     writeCaseTemplate('override', $this->views, 'v2');
     touch($template, time() - 3600);
-
-    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
-        ->and(file_get_contents($this->enumFile))->toStartWith("// v2\n");
-
     $compiler = countingBladeCompiler();
 
     expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
         ->and(file_get_contents($this->enumFile))->toStartWith("// v2\n")
-        // Served from the cache: a hit never renders the enum template.
-        ->and($compiler->compiles[$template] ?? 0)->toBe(0);
+        // The rebuild renders the template, so the counter is shown to see its compiles under this key.
+        ->and($compiler->compiles[$template] ?? 0)->toBe(1);
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($this->enumFile))->toStartWith("// v2\n")
+        // Served from the cache: a hit never renders the enum template, so it compiles no more.
+        ->and($compiler->compiles[$template] ?? 0)->toBe(1);
 });
 
 test('a run compiles each template it renders once, however many times it renders it', function () {
