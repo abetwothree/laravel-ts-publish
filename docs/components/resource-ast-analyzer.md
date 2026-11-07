@@ -31,7 +31,8 @@ These are the classes a change to resource analysis usually touches:
 | [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left vague, filled from the method's own `@return` |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
+| [`DeclaredTypeMerge`](../../src/Ast/Composition/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
 | [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
@@ -122,10 +123,10 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
-- **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
-  vague, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
-  after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
+- **The body, merged with `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills a key the body left
+  vague and merges one it typed, so a docblock only refines what the body sends. `applyTsCastsFromMethod()` then
+  applies the method's own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both
+  can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
@@ -145,20 +146,23 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 `'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
 only an exact `unknown`.
 
-In a key the body typed, each position it left `unknown`, a member, an element or a record value, takes the member's
-type at that position, matched arm by arm to the one arm of its kind (`UnknownPositions::filled()`), and a position it
-reads as a bare `string`, `number` or `boolean` takes the member's literals of that same scalar, which the body widened;
-every other position the body typed stays. A class the fill names joins the key's inline channels as a class its body
-names does (`MethodAnalysis::queueEmbeddedClasses()`), so the key stays a value the body typed, with no declared slots.
-Where a name would then stand for two classes, such as a body's CRM `User` beside the member's app `User`, the fill
-declares the class behind each token instead, as a whole key's fill does: a body token takes the class the key's
-channels hold under its name, a filled one the member's slot (`ReturnShapeRefiner::declaredFill()`). A key neither fill
-can type whole, as where its body already spells two classes by one name or carries its own enum wrap or declared slots,
-takes the member whole, as a key no rule types does, where the member spells every position the key types as the key
-does and no slots are declared; otherwise it stays as the body reads it (`ReturnShapeRefiner::wholeFill()`). The
-analyzed `share()` or `provide()` itself fills no position, since its analyzer lays that docblock over every key it
-types (`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads fills, as neither analyzer reads the
-helper's own `@return`.
+A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
+- a position read `unknown` takes the member's type there, the body's `null` kept, and a member that is `unknown`
+  leaves the body's reading;
+- a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member's of its
+  key; a list merges its element and a `Record` its value, and another container kind keeps the body's;
+- the other arms decide by subtyping: the member's arms where each is within one of the body's, as `'a' | 'b'` is
+  within `string`, or where all but its `null` are and the body's are not within the member's; else the body's, with
+  an `unknown` arm taking the member's arms no other body arm covers (`DeclaredTypeMerge::armWithin()`).
+
+Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
+or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
+`EnumResource` never equals the bare enum. The merged classes are queued on the key's channels in print order, as a
+body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
+override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
+`provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types
+(`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads merges, as neither analyzer reads the helper's
+own `@return`.
 
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
@@ -166,9 +170,9 @@ token a class stands behind left to that class (`LaravelTsPublish::shapeMemberFo
 resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
 the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
 `merge()` carries them, and a nested literal or local that folds them into a value reads every such key with no class
-(`InlineObjectResult::readFillsClassLess()`), a token the body typed beside a position fill's included, as a key no
-rule types read before its fill. `mergeReturnBranches()` joins a declared text's arms
-whole, past the branches it drops, so a branch spelling none of the text's own names joins beside it:
+(`InlineObjectResult::readFillsClassLess()`), as a key no rule types read before its fill. `mergeReturnBranches()`
+joins a declared text's arms whole, past the branches it drops, so a branch spelling none of the text's own names
+joins beside it:
 `User | User | string`, its slots `[null, User]`. Every joined arm takes one slot per token of the joined names, a
 literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the
 slots against the whole text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as

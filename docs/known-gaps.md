@@ -605,17 +605,18 @@ the key with an import-aware `#[TsCasts]`.
 
 ### A docblock fill spread inside a nested literal keeps no class
 
-A key a spread helper's or props helper's `@return array{…}` fills keeps the class behind each token only where the
-helper is spread at the top level of `toArray()` or of an Inertia page's props. Spread inside a nested literal, a local
-or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads with no class: each leaf naming a
-model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a
-literal's text stays. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, and `array{k: User}` to
-`{ k: unknown }`, as before fills carried classes. An enum-only or API-resource-only fill folds the same way,
-`array{s: Status}` to `{ s: unknown }`, as does each arm of a ternary of spreads,
-`$c ? [...$this->a()] : [...$this->b()]`. A JSON:API resource's attributes are one value too, so a fill there reads
-this way, `toAttributes()`'s own `@return` included. A value has no channel for the class behind each token, so a model
-beside an override spelled like it, in the same object or a nested one, would publish as that model; the fix is such a
-channel. Spread the helper at the top level, or type the key with an import-aware `#[TsCasts]`.
+A key a spread helper's or props helper's `@return array{…}` fills whole, as one its body left vague, keeps the class
+behind each token only where the helper is spread at the top level of `toArray()` or of an Inertia page's props; a key
+its body typed merges with the member onto its channels, and keeps its classes anywhere. Spread inside a nested literal,
+a local or a helper read as a value, such as `'meta' => [...$this->fill()]`, the fill reads with no class: each leaf
+naming a model, an enum or an API resource publishes `unknown`, at any depth, and an override's or a literal's text
+stays. `array{n: Person, m: User}` folds to `{ n: User; m: unknown }`, and `array{k: User}` to `{ k: unknown }`, as
+before fills carried classes. An enum-only or API-resource-only fill folds the same way, `array{s: Status}` to `{ s:
+unknown }`, as does each arm of a ternary of spreads, `$c ? [...$this->a()] : [...$this->b()]`. A JSON:API resource's
+attributes are one value too, so a fill there reads this way, `toAttributes()`'s own `@return` included. A value has no
+channel for the class behind each token, so a model beside an override spelled like it, in the same object or a nested
+one, would publish as that model; the fix is such a channel. Spread the helper at the top level, or type the key with an
+import-aware `#[TsCasts]`.
 
 ### An untyped `map()` or `array_map()` parameter takes its element's class only from a property's `@var`
 

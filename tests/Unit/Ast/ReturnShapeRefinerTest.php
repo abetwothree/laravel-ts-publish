@@ -239,7 +239,7 @@ test('an already-optional property stays optional when the shape does not say so
 });
 
 // Where the body types a key but leaves a member, an element or a record value unknown, the docblock's member at that
-// position fills it; every position the body types keeps the body's type, as the whole key does (GH-154).
+// position fills it; a position the body types keeps its reading unless the member refines it (GH-154).
 test('a key the body types fills each unknown position inside it from the docblock', function (string $method, string $name, string $inferred, string $expected) {
     $analysis = refinedAnalysis([['name' => $name, 'type' => $inferred]], $method);
 
@@ -406,8 +406,8 @@ test('a key the body types with a model takes the @return member\'s enum or mode
     ])->and(analyzedImportNames(AuthoredRowsResource::class))->toContain('StatusType', 'User');
 });
 
-// share() and a metadata provider's provide() lay their docblock over every key it types, so a position fill could only
-// move a key's channels, as a model's would let a metadata companion import it.
+// share() and a metadata provider's provide() lay their docblock over every key it types, so a merge could only move a
+// key's channels, as a model's would let a metadata companion import it.
 test('a caller that lays the docblock over every key itself fills no position inside a key the body types, but a vague key', function () {
     $analysis = new MethodAnalysis(properties: [
         ['name' => 'owned', 'type' => '{ owner: unknown; n: unknown }[]', 'optional' => false, 'description' => ''],
