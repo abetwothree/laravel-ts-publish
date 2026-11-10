@@ -1493,13 +1493,17 @@ declare global {
         }
         /**
          * When a shift's window opens (a NOT NULL column) and closes (a nullable one), both through one serializing cast
-         * whose `get()` is nullable (GH-154).
+         * whose `get()` is nullable, and when its break starts (NOT NULL) and ends (nullable) through a Castable built on that
+         * cast, beside a plain string label (GH-154).
          */
         export interface ShiftWindow {
             // Columns
             id: number;
+            label: string;
             opens_at: string | null;
             closes_at: string | null;
+            break_starts_at: string | null;
+            break_ends_at: string | null;
             created_at: string | null;
             updated_at: string | null;
         }
@@ -1663,6 +1667,64 @@ declare global {
             products: Product[];
             products_count: number;
             products_exists: boolean;
+        }
+        /** An image whose undocumented accessor maps its cast metadata with an arm no rule types (GH-154). */
+        export interface TaggedImage {
+            // Columns
+            id: number;
+            imageable_type: string;
+            imageable_id: number;
+            url: string;
+            alt_text: string | null;
+            disk: string;
+            path: string;
+            mime_type: string;
+            size_bytes: number;
+            width: number | null;
+            height: number | null;
+            sort_order: number;
+            metadata: unknown[] | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** One entry per metadata item: a value no rule types, or null. */
+            tag_lists: null[];
+            /** Human-readable file size */
+            size_for_humans: string;
+            /** Whether the image is landscape orientation */
+            is_landscape: boolean;
+            /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
+            aspect_ratio: string | null;
+            extension: string | null;
+            /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+            size: number;
+            flexible_id: string | number | null;
+            optional_label: string | null;
+            status_from_docblock: app.enums.StatusType | null;
+            /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+            shirt_size: app.enums.SizeType;
+            uploader_from_docblock: User | null;
+            config_from_docblock: MenuSettingsType;
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
+            uploaders_from_docblock: User[] | Record<string, User>;
+            uploaders_from_docblock_int: User[];
+            uploaders_from_docblock_string: Record<string, User>;
+            tree_from_docblock: { label: string; child: unknown[] };
+            price_from_docblock: { amount: number; currency: string };
+            label_from_docblock: Record<string, never>;
+            no_docblock_accessor: null;
+            wrong_format_docblock: string | null;
+            positive_int_accessor: number;
+            numeric_string_accessor: string;
+            // Relations
+            /** Polymorphic parent (Product, Post, User, etc.) */
+            imageable: unknown;
+            imageable_count: number;
+            imageable_exists: boolean;
+            reviewable: crm.models.User | User | null;
+            reviewable_count: number;
+            reviewable_exists: boolean;
         }
         export interface TaskAssignment {
             // Columns
@@ -2766,6 +2828,12 @@ declare global {
             price_float: number;
             user_bio?: string | null;
         }
+        /** Spreads a custom parent's `toArray()` that drops an arm beside a string, under a `@return` typing both (GH-154). */
+        export interface BoundaryReadingsResource {
+            tags: string[];
+            id: number;
+            extra: boolean;
+        }
         /**
          * Regression fixture: mergeReturnBranches() unions inlineModelFqcns per property key across branches.
          * Deduping that union collapses Warehouse::regionalHub()'s real per-occurrence multiplicity, so once
@@ -2882,6 +2950,13 @@ declare global {
         export interface BulletinWrappedResource {
             list: app.models.Comment[];
             owned_by: app.models.User;
+        }
+        /**
+         * Spreads a helper's keys and then an array that overrides one of them, where PHP keeps the later key (GH-154): the
+         * byline's `author` is the title string, not the helper's recipient.
+         */
+        export interface BylineResource {
+            byline: Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } };
         }
         /**
          * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
@@ -3389,6 +3464,19 @@ declare global {
             author_name?: string;
         }
         /**
+         * Maps contacts where the body cannot type every arm or key the `toArray()` `@return` docblock declares (GH-154): a
+         * value with no type beside typed arms, a spread of an array with no element type, a branch that spreads one,
+         * out-of-order int keys, and a value with no type beside a member the docblock declares more loosely than the body.
+         */
+        export interface DeclaredGapsResource {
+            scores: { score: number | null }[];
+            contacts: ({ email: string | null } | null)[];
+            rows: { name: string | null; locale: string }[];
+            branches: { name: string | null; locale: string }[];
+            pairs: unknown[][];
+            summary: { label: string; count: number | null };
+        }
+        /**
          * An inline `@var` types a local only where the engine's reading of the assigned value is vague: a value it cannot
          * read, or a lone `null` left once an arm it cannot type dropped. Any other reading stands, a closure parameter
          * reassigned under a tag takes its new value, and a tag with a form the package cannot read binds nothing.
@@ -3437,6 +3525,16 @@ declare global {
             scalar: string;
             author: app.models.User;
             opaque_name?: string;
+        }
+        /**
+         * Reads a sheet whose members the body types less than the `toArray()` `@return` docblock does (GH-154): a docblock
+         * list with a `mixed` member, a map over an array with no element type, and array_filter() of a literal holding a
+         * value with no type.
+         */
+        export interface DeclaredReadingsResource {
+            entries: { label: string | null }[];
+            labels: { label: string | null }[];
+            flags: { note?: string; weight?: number };
         }
         /**
          * Reads helpers that add keys to the array they are passed through each call path: a container instance, a static
@@ -3806,6 +3904,11 @@ declare global {
             to_immutable: string;
             user_key: unknown;
         }
+        /** Undocumented helpers that drop an arm, one spread and one read as a value, under a `@return` typing them (GH-154). */
+        export interface HelperReadingsResource {
+            rows: { name: string }[];
+            sections: { items: { t: number[] }[] };
+        }
         /** Same morphTo union, reached through the model-delegated analysis rather than an array literal. */
         export interface ImageDelegatedResource {
             id: number;
@@ -3904,6 +4007,15 @@ declare global {
         export interface InlineArrayFqcnResource {
             id: number;
             payload?: { address: Address; items_loaded?: app.models.OrderItem[] } | null;
+        }
+        /** Joins where one branch writes a value no rule types, under a `@return` member typing both branches (GH-154). */
+        export interface JoinReadingsResource {
+            params: { t: string }[];
+            walks: { k: string }[];
+            spreads: { k: string; id: number }[];
+            relays: { k?: string; id: number }[];
+            receivers: { name: string }[];
+            named: { name: string }[];
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
@@ -4034,6 +4146,11 @@ declare global {
             id: number;
             first_item_name?: string;
             total?: string;
+        }
+        /** A recipient's name and email, the resource arm ValueSpreadsResource spreads (GH-154). */
+        export interface MailRecipientResource {
+            name: string | null;
+            email: string | null;
         }
         /**
          * Regression pin: `$this->map->only([...])` must route through the relation-filter guard, not
@@ -4250,6 +4367,13 @@ declare global {
             id: number;
             branch_active?: boolean;
             wrapped_history_or_scalar?: app.enums.StatusType[] | app.enums.StatusType;
+        }
+        /**
+         * A resource declared through `@mixin` to hold a reading sheet, whose docblock list has a `mixed` member the
+         * `toArray()` `@return` docblock types (GH-154).
+         */
+        export interface MixinReadingsResource {
+            entries: { label: string | null }[];
         }
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
@@ -4567,6 +4691,11 @@ declare global {
             [key: `${string}_tag`]: string | undefined;
             [key: `${string}\\unit`]: string | undefined;
             id: number;
+        }
+        /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
+        export interface PlaceholderReadingsResource {
+            fills: { f: never[] }[];
+            pairs: unknown[][];
         }
         /**
          * Exercises a morphTo reached through a relation filter, where the union lands inside an inline shape.
@@ -5236,6 +5365,11 @@ declare global {
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
+        /** Tags each row with a value no rule types or a string; BoundaryReadingsResource spreads it as its parent (GH-154). */
+        export interface RowTagsResource {
+            tags: string[];
+            id: number;
+        }
         /**
          * The model-side twin of DealEnumTrioResource: two User models sharing a basename, read across a
          * ternary so mergeUnion() builds the queue aliasPropertyType() consumes positionally. A ternary is
@@ -5318,6 +5452,13 @@ declare global {
             handover_note: string | null;
             next_bell: string;
             checked_at: string | null;
+        }
+        /**
+         * Reads a plain string column through `getAttribute()` under a `toArray()` `@return` docblock that names the values it
+         * holds (GH-154).
+         */
+        export interface ShiftWindowResource {
+            label: 'early' | 'late';
         }
         /**
          * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a
@@ -5624,6 +5765,11 @@ declare global {
             products_count?: number;
             posts?: PostResource[];
             products?: ProductResource[];
+        }
+        /** Reads a model's undocumented accessor that maps a cast array, under a `@return` typing it (GH-154). */
+        export interface TaggedImageResource {
+            tag_lists: null[];
+            url: string;
         }
         /**
          * Represents a user loaded through a team's belongsToMany pivot.
@@ -5936,6 +6082,15 @@ declare global {
             names: string[];
             count_or_since: number | string;
             translated: unknown;
+        }
+        /** Spreads a value that writes a key again, after a helper or a key and before a resource arm (GH-154). */
+        export interface ValueSpreadsResource {
+            helper_then_value: Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            key_then_value: Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } };
+            helper_then_optional: Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
+            key_then_arm: Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } };
+            by: { name: string | null; email: string | null };
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {

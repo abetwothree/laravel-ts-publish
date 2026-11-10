@@ -12,8 +12,11 @@ return new class extends Migration
     {
         Schema::create('shift_windows', function (Blueprint $table) {
             $table->id();
+            $table->string('label');
             $table->time('opens_at');
             $table->time('closes_at')->nullable();
+            $table->time('break_starts_at');
+            $table->time('break_ends_at')->nullable();
             $table->timestamps();
         });
     }

@@ -138,6 +138,8 @@ export * from './supplier';
 export * from './supplier_meta';
 export * from './tag';
 export * from './tag_meta';
+export * from './tagged-image';
+export * from './tagged-image_meta';
 export * from './task-assignment';
 export * from './task-assignment_meta';
 export * from './task-owner';
