@@ -68,6 +68,7 @@ export * from './strict-task-assignment';
 export * from './subscribed-team';
 export * from './supplier';
 export * from './tag';
+export * from './tagged-image';
 export * from './task-assignment';
 export * from './task-owner';
 export * from './team';

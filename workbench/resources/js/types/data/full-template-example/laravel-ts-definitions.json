@@ -8989,6 +8989,191 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\TaggedImage": {
+            "name": "TaggedImage",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "imageable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "imageable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "url",
+                    "type": "string"
+                },
+                {
+                    "name": "alt_text",
+                    "type": "string | null"
+                },
+                {
+                    "name": "disk",
+                    "type": "string"
+                },
+                {
+                    "name": "path",
+                    "type": "string"
+                },
+                {
+                    "name": "mime_type",
+                    "type": "string"
+                },
+                {
+                    "name": "size_bytes",
+                    "type": "number"
+                },
+                {
+                    "name": "width",
+                    "type": "number | null"
+                },
+                {
+                    "name": "height",
+                    "type": "number | null"
+                },
+                {
+                    "name": "sort_order",
+                    "type": "number"
+                },
+                {
+                    "name": "metadata",
+                    "type": "unknown[] | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "tag_lists",
+                    "type": "null[]"
+                },
+                {
+                    "name": "size_for_humans",
+                    "type": "string"
+                },
+                {
+                    "name": "is_landscape",
+                    "type": "boolean"
+                },
+                {
+                    "name": "aspect_ratio",
+                    "type": "string | null"
+                },
+                {
+                    "name": "extension",
+                    "type": "string | null"
+                },
+                {
+                    "name": "size",
+                    "type": "number"
+                },
+                {
+                    "name": "flexible_id",
+                    "type": "string | number | null"
+                },
+                {
+                    "name": "optional_label",
+                    "type": "string | null"
+                },
+                {
+                    "name": "status_from_docblock",
+                    "type": "StatusType | null"
+                },
+                {
+                    "name": "shirt_size",
+                    "type": "SizeType"
+                },
+                {
+                    "name": "uploader_from_docblock",
+                    "type": "ModelsUser | null"
+                },
+                {
+                    "name": "config_from_docblock",
+                    "type": "MenuSettingsType"
+                },
+                {
+                    "name": "data_from_docblock",
+                    "type": "{ recordedAt?: string; title: string; weight: number | null }"
+                },
+                {
+                    "name": "nested_optional_key_from_docblock",
+                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }"
+                },
+                {
+                    "name": "uploaders_from_docblock",
+                    "type": "ModelsUser[] | Record<string, ModelsUser>"
+                },
+                {
+                    "name": "uploaders_from_docblock_int",
+                    "type": "ModelsUser[]"
+                },
+                {
+                    "name": "uploaders_from_docblock_string",
+                    "type": "Record<string, ModelsUser>"
+                },
+                {
+                    "name": "tree_from_docblock",
+                    "type": "{ label: string; child: unknown[] }"
+                },
+                {
+                    "name": "price_from_docblock",
+                    "type": "{ amount: number; currency: string }"
+                },
+                {
+                    "name": "label_from_docblock",
+                    "type": "Record<string, never>"
+                },
+                {
+                    "name": "no_docblock_accessor",
+                    "type": "null"
+                },
+                {
+                    "name": "wrong_format_docblock",
+                    "type": "string | null"
+                },
+                {
+                    "name": "positive_int_accessor",
+                    "type": "number"
+                },
+                {
+                    "name": "numeric_string_accessor",
+                    "type": "string"
+                },
+                {
+                    "name": "imageable",
+                    "type": "unknown"
+                },
+                {
+                    "name": "reviewable",
+                    "type": "CrmUser | ModelsUser | null"
+                },
+                {
+                    "name": "imageable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "imageable_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "reviewable_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\TaskAssignment": {
             "name": "TaskAssignment",
             "properties": [
@@ -11272,6 +11457,26 @@
                     "name": "user_bio",
                     "type": "string | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BoundaryReadingsResource": {
+            "name": "BoundaryReadingsResource",
+            "properties": [
+                {
+                    "name": "tags",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "extra",
+                    "type": "boolean",
+                    "optional": false
                 }
             ]
         },
@@ -14727,6 +14932,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\HelperReadingsResource": {
+            "name": "HelperReadingsResource",
+            "properties": [
+                {
+                    "name": "rows",
+                    "type": "{ name: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "sections",
+                    "type": "{ items: { t: number[] }[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ImageDelegatedResource": {
             "name": "ImageDelegatedResource",
             "properties": [
@@ -15004,6 +15224,41 @@
                     "name": "payload",
                     "type": "{ address: Address; items_loaded?: OrderItem[] } | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JoinReadingsResource": {
+            "name": "JoinReadingsResource",
+            "properties": [
+                {
+                    "name": "params",
+                    "type": "{ t: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "walks",
+                    "type": "{ k: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "spreads",
+                    "type": "{ k: string; id: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "relays",
+                    "type": "{ k?: string; id: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "receivers",
+                    "type": "{ name: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "named",
+                    "type": "{ name: unknown }[]",
+                    "optional": false
                 }
             ]
         },
@@ -15714,6 +15969,21 @@
                     "name": "total",
                     "type": "string",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MailRecipientResource": {
+            "name": "MailRecipientResource",
+            "properties": [
+                {
+                    "name": "name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "email",
+                    "type": "string | null",
+                    "optional": false
                 }
             ]
         },
@@ -17412,6 +17682,21 @@
                 {
                     "name": "id",
                     "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PlaceholderReadingsResource": {
+            "name": "PlaceholderReadingsResource",
+            "properties": [
+                {
+                    "name": "fills",
+                    "type": "{ f: never[] }[]",
+                    "optional": false
+                },
+                {
+                    "name": "pairs",
+                    "type": "unknown[][]",
                     "optional": false
                 }
             ]
@@ -19592,6 +19877,21 @@
             "name": "RoutableResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\RowTagsResource": {
+            "name": "RowTagsResource",
+            "properties": [
+                {
+                    "name": "tags",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SameBasenameModelTrioResource": {
             "name": "SameBasenameModelTrioResource",
             "properties": [
@@ -20912,6 +21212,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TaggedImageResource": {
+            "name": "TaggedImageResource",
+            "properties": [
+                {
+                    "name": "tag_lists",
+                    "type": "null[]",
+                    "optional": false
+                },
+                {
+                    "name": "url",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\TeamMemberResource": {
             "name": "TeamMemberResource",
             "properties": [
@@ -21863,6 +22178,41 @@
                 {
                     "name": "translated",
                     "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ValueSpreadsResource": {
+            "name": "ValueSpreadsResource",
+            "properties": [
+                {
+                    "name": "helper_then_value",
+                    "type": "Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "key_then_value",
+                    "type": "Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_then_optional",
+                    "type": "Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "value_then_arm",
+                    "type": "Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource",
+                    "optional": false
+                },
+                {
+                    "name": "key_then_arm",
+                    "type": "Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "{ name: string | null; email: string | null }",
                     "optional": false
                 }
             ]

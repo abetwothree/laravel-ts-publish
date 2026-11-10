@@ -1686,6 +1686,64 @@ declare global {
             products_count: number;
             products_exists: boolean;
         }
+        /** An image whose undocumented accessor maps its cast metadata with an arm no rule types (GH-154). */
+        export interface TaggedImage {
+            // Columns
+            id: number;
+            imageable_type: string;
+            imageable_id: number;
+            url: string;
+            alt_text: string | null;
+            disk: string;
+            path: string;
+            mime_type: string;
+            size_bytes: number;
+            width: number | null;
+            height: number | null;
+            sort_order: number;
+            metadata: unknown[] | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** One entry per metadata item: a value no rule types, or null. */
+            tag_lists: null[];
+            /** Human-readable file size */
+            size_for_humans: string;
+            /** Whether the image is landscape orientation */
+            is_landscape: boolean;
+            /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
+            aspect_ratio: string | null;
+            extension: string | null;
+            /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+            size: number;
+            flexible_id: string | number | null;
+            optional_label: string | null;
+            status_from_docblock: workbench.app.enums.StatusType | null;
+            /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+            shirt_size: workbench.app.enums.SizeType;
+            uploader_from_docblock: User | null;
+            config_from_docblock: MenuSettingsType;
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
+            uploaders_from_docblock: User[] | Record<string, User>;
+            uploaders_from_docblock_int: User[];
+            uploaders_from_docblock_string: Record<string, User>;
+            tree_from_docblock: { label: string; child: unknown[] };
+            price_from_docblock: { amount: number; currency: string };
+            label_from_docblock: Record<string, never>;
+            no_docblock_accessor: null;
+            wrong_format_docblock: string | null;
+            positive_int_accessor: number;
+            numeric_string_accessor: string;
+            // Relations
+            /** Polymorphic parent (Product, Post, User, etc.) */
+            imageable: unknown;
+            imageable_count: number;
+            imageable_exists: boolean;
+            reviewable: workbench.crm.models.User | User | null;
+            reviewable_count: number;
+            reviewable_exists: boolean;
+        }
         export interface TaskAssignment {
             // Columns
             id: number;
@@ -2770,6 +2828,12 @@ declare global {
             price_float: number;
             user_bio?: string | null;
         }
+        /** Spreads a custom parent's `toArray()` that drops an arm beside a string, under a `@return` typing both (GH-154). */
+        export interface BoundaryReadingsResource {
+            tags: string[];
+            id: number;
+            extra: boolean;
+        }
         /**
          * Regression fixture: mergeReturnBranches() unions inlineModelFqcns per property key across branches.
          * Deduping that union collapses Warehouse::regionalHub()'s real per-occurrence multiplicity, so once
@@ -3840,6 +3904,11 @@ declare global {
             to_immutable: string;
             user_key: unknown;
         }
+        /** Undocumented helpers that drop an arm, one spread and one read as a value, under a `@return` typing them (GH-154). */
+        export interface HelperReadingsResource {
+            rows: { name: unknown }[];
+            sections: { items: { t: number[] }[] };
+        }
         /** Same morphTo union, reached through the model-delegated analysis rather than an array literal. */
         export interface ImageDelegatedResource {
             id: number;
@@ -3938,6 +4007,15 @@ declare global {
         export interface InlineArrayFqcnResource {
             id: number;
             payload?: { address: Address; items_loaded?: workbench.app.models.OrderItem[] } | null;
+        }
+        /** Joins where one branch writes a value no rule types, under a `@return` member typing both branches (GH-154). */
+        export interface JoinReadingsResource {
+            params: { t: string }[];
+            walks: { k: string }[];
+            spreads: { k: string; id: unknown }[];
+            relays: { k?: string; id: unknown }[];
+            receivers: { name: unknown }[];
+            named: { name: unknown }[];
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
@@ -4068,6 +4146,11 @@ declare global {
             id: number;
             first_item_name?: string;
             total?: string;
+        }
+        /** A recipient's name and email, the resource arm ValueSpreadsResource spreads (GH-154). */
+        export interface MailRecipientResource {
+            name: string | null;
+            email: string | null;
         }
         /**
          * Regression pin: `$this->map->only([...])` must route through the relation-filter guard, not
@@ -4608,6 +4691,11 @@ declare global {
             [key: `${string}_tag`]: string | undefined;
             [key: `${string}\\unit`]: string | undefined;
             id: number;
+        }
+        /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
+        export interface PlaceholderReadingsResource {
+            fills: { f: never[] }[];
+            pairs: unknown[][];
         }
         /**
          * Exercises a morphTo reached through a relation filter, where the union lands inside an inline shape.
@@ -5270,6 +5358,11 @@ declare global {
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
+        /** Tags each row with a value no rule types or a string; BoundaryReadingsResource spreads it as its parent (GH-154). */
+        export interface RowTagsResource {
+            tags: string[];
+            id: number;
+        }
         /**
          * The model-side twin of DealEnumTrioResource: two User models sharing a basename, read across a
          * ternary so mergeUnion() builds the queue aliasPropertyType() consumes positionally. A ternary is
@@ -5666,6 +5759,11 @@ declare global {
             posts?: PostResource[];
             products?: ProductResource[];
         }
+        /** Reads a model's undocumented accessor that maps a cast array, under a `@return` typing it (GH-154). */
+        export interface TaggedImageResource {
+            tag_lists: null[];
+            url: string;
+        }
         /**
          * Represents a user loaded through a team's belongsToMany pivot.
          *
@@ -5977,6 +6075,15 @@ declare global {
             names: string[];
             count_or_since: number | string;
             translated: unknown;
+        }
+        /** Spreads a value that writes a key again, after a helper or a key and before a resource arm (GH-154). */
+        export interface ValueSpreadsResource {
+            helper_then_value: Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            key_then_value: Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } };
+            helper_then_optional: Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
+            key_then_arm: Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } };
+            by: { name: string | null; email: string | null };
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {

@@ -6,6 +6,8 @@ declare(strict_types=1);
 // untypable. A new entry is a real gap — type the arm instead of adding it here.
 
 return [
+    // Deliberate (GH-154): the parent's arm has no type, and BoundaryReadingsResource's `@return` types it.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\RowTagsResource', 'line' => 20, 'expression' => 'cache(\'k\')', 'site' => 'ternary-narrowed'],
     // Deliberate: the left arm is an undefined model attribute, as that fixture's own comment says.
     ['subject' => 'Workbench\\App\\Http\\Resources\\ClassConstantResource', 'line' => 43, 'expression' => '$this->totally_unmapped_field', 'site' => 'coalesce-left'],
     // Deliberate (GH-154): each arm is a value with no type that the resource's `@return` docblock types.
@@ -22,15 +24,27 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 87, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 92, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 98, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    // Deliberate (GH-154): each arm has no type in an undocumented helper whose caller's `@return` types it.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\HelperReadingsResource', 'line' => 34, 'expression' => '$r->x', 'site' => 'coalesce-left'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\HelperReadingsResource', 'line' => 42, 'expression' => 'cache(\'k\')', 'site' => 'ternary-narrowed'],
+    // Deliberate (GH-154): each is a join's branch writing a value with no type that the `@return` member types.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 35, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 44, 'expression' => 'cache(\'k\')', 'site' => 'walk-branch-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 81, 'expression' => 'cache(\'k\')', 'site' => 'merge-branch-join'],
     // Deliberate: each default reads opaqueTotal(), untyped so that a merge call's join leaves that side out, as that
     // fixture's own comments say.
     ['subject' => 'Workbench\\App\\Http\\Resources\\MergeDefaultResource', 'line' => 63, 'expression' => '$this->opaqueTotal()', 'site' => 'merge-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\MergeDefaultResource', 'line' => 66, 'expression' => '$this->opaqueTotal()', 'site' => 'merge-branch-join'],
+    // Deliberate (GH-154): each arm has no type and leaves an empty list or a null the `@return` member types.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\PlaceholderReadingsResource', 'line' => 27, 'expression' => 'cache(\'k\')', 'site' => 'ternary-narrowed'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\PlaceholderReadingsResource', 'line' => 28, 'expression' => '$r->hint', 'site' => 'ternary-narrowed'],
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],
     // Deliberate: baseModel() declares the framework's Model, which no generated file exports.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 69, 'expression' => '\\Workbench\\App\\Services\\UrlService::baseModel()', 'site' => 'ternary-narrowed'],
+    // Deliberate (GH-154): the accessor's arm has no type, and TaggedImageResource's `@return` types its key.
+    ['subject' => 'Workbench\\App\\Models\\TaggedImage', 'line' => 21, 'expression' => 'cache(\'t\')', 'site' => 'closure-union'],
     // Deliberate: keys per recording site, each dropping `$this->opaqueValue()`, a method whose return type is
     // deliberately absent. These eleven stay permanently — they prove each site fires.
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 29, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
