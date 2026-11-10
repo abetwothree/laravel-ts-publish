@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\DeclaredTypeMerge;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredTypeMerge;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;

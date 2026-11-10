@@ -617,3 +617,57 @@ it("lists the names each class on a property's channels publishes under, and non
         ->and($analysis->channelNames('wrapped'))->toBe(['UiTone', 'UiToneType', 'UiToneKind'])
         ->and($analysis->channelNames('none'))->toBe([]);
 });
+
+it('names the inline channel each class is queued on, and none for a class of no such kind', function (string $fqcn, ?string $kind) {
+    expect(MethodAnalysis::channelKind($fqcn))->toBe($kind)
+        ->and(MethodAnalysis::queuesEmbedded($fqcn))->toBe($kind !== null);
+})->with([
+    'an enum' => ['Workbench\App\Enums\Status', 'enums'],
+    'a model' => ['Workbench\App\Models\User', 'models'],
+    'an API resource' => ['Workbench\App\Http\Resources\PostResource', 'resources'],
+    'a resource collection' => ['Workbench\App\Http\Resources\SupplierCollection', 'resources'],
+    'any other class' => ['Carbon\Carbon', null],
+]);
+
+it('lists a key\'s classes outside its inline queues, and the enums it wraps at its top', function () {
+    $analysis = new MethodAnalysis(
+        enumResources: ['k' => 'Workbench\App\Enums\Status'],
+        nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
+        directEnumFqcns: ['k' => 'Workbench\App\Enums\Role'],
+        modelFqcns: ['k' => 'Workbench\App\Models\User'],
+        inlineEnumFqcns: ['k' => ['Workbench\App\Enums\Season']],
+        inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
+        multiEnumResourceFqcns: ['k' => ['Workbench\App\Enums\Priority']],
+        inlineEnumResourceFqcns: ['k' => ['Workbench\App\Enums\UiTone']],
+    );
+
+    expect($analysis->singleChannelFqcns('k'))->toBe([
+        'Workbench\App\Enums\Status',
+        'Workbench\App\Enums\Role',
+        'Workbench\App\Enums\Priority',
+        'Workbench\App\Models\User',
+        'Workbench\App\Http\Resources\PostResource',
+    ])->and($analysis->topWrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority'])
+        ->and($analysis->wrappedEnumFqcns('k'))->toBe([
+            'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
+        ])
+        ->and($analysis->singleChannelFqcns('none'))->toBe([]);
+});
+
+it('replaces a key\'s inline queues with the classes requeued, each keyed by itself too', function () {
+    $analysis = new MethodAnalysis(
+        inlineEnumFqcns: ['k' => ['Workbench\App\Enums\Season'], 'other' => ['Workbench\App\Enums\Season']],
+        inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
+        inlineResourceFqcns: ['k' => ['Workbench\App\Http\Resources\PostResource']],
+    );
+
+    $analysis->requeueInline('k', ['Workbench\App\Enums\Role', 'Workbench\App\Models\User']);
+
+    expect($analysis->inlineEnumFqcns)->toBe([
+        'other' => ['Workbench\App\Enums\Season'],
+        'k' => ['Workbench\App\Enums\Role'],
+    ])->and($analysis->inlineModelFqcns)->toBe(['k' => ['Workbench\App\Models\User']])
+        ->and($analysis->inlineResourceFqcns)->toBe([])
+        ->and($analysis->directEnumFqcns)->toBe(['Workbench\App\Enums\Role' => 'Workbench\App\Enums\Role'])
+        ->and($analysis->modelFqcns)->toBe(['Workbench\App\Models\User' => 'Workbench\App\Models\User']);
+});

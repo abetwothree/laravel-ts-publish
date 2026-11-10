@@ -15,7 +15,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | --- | --- |
 | `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
 | `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
-| `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
+| `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included, and merging a key with its method's `@return` (`ReturnShape/`) |
 | `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |

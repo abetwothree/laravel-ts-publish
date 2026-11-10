@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
@@ -428,14 +429,7 @@ final readonly class DeclaredTypeMerge
 
         foreach ($parts as [$object, $dropped, $part]) {
             // An `Omit<>`'s object leads it, so its tokens lead the part's.
-            $offset = $from;
-            $from += $this->count($part);
-
-            foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
-                $keySlots = array_slice($arm[1], $offset, $this->count($key));
-                $offset += $this->count($key);
-                $valueSlots = array_slice($arm[1], $offset, $this->count($value));
-                $offset += $this->count($value);
+            foreach ($this->memberSlots([$object, $arm[1]], $from) as [$key, $value, $keySlots, $valueSlots]) {
                 $name = self::keyName($key);
 
                 if (! in_array($name, $dropped, true)) {
@@ -443,12 +437,34 @@ final readonly class DeclaredTypeMerge
                     $members[$name] = [$key, [$value, [...$keySlots, ...$valueSlots]]];
                 }
             }
+
+            $from += $this->count($part);
         }
 
         return [
             '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1][0], $members)).' }',
             array_merge([], ...array_map(static fn (array $member): array => $member[1][1], array_values($members))),
         ];
+    }
+
+    /**
+     * Each member of an object type beside its key's and its value's share of the slots, which start at $from.
+     *
+     * @param  Typed  $object
+     * @return list<array{string, string, Slots, Slots}> each member's printed key, value, key slots and value slots
+     */
+    private function memberSlots(array $object, int $from = 0): array
+    {
+        $members = [];
+
+        foreach (TsTypeShape::members($object[0]) ?? [] as [$key, $value]) {
+            $keySlots = array_slice($object[1], $from, $this->count($key));
+            $from += $this->count($key);
+            $members[] = [$key, $value, $keySlots, array_slice($object[1], $from, $this->count($value))];
+            $from += $this->count($value);
+        }
+
+        return $members;
     }
 
     /**
@@ -480,26 +496,18 @@ final readonly class DeclaredTypeMerge
     private function membersMerged(array $body, array $declared, bool $byKey, string $at, bool $open): array
     {
         $declaredMembers = [];
-        $from = 0;
 
-        foreach ($byKey ? TsTypeShape::members($declared[0]) ?? [] : [] as [$key, $value]) {
-            $keySlots = array_slice($declared[1], $from, $this->count($key));
-            $from += $this->count($key);
-            $declaredMembers[self::keyName($key)] = [$key, [$value, array_slice($declared[1], $from, $this->count($value))], $keySlots];
-            $from += $this->count($value);
+        foreach ($byKey ? $this->memberSlots($declared) : [] as [$key, $value, $keySlots, $valueSlots]) {
+            $declaredMembers[self::keyName($key)] = [$key, [$value, $valueSlots], $keySlots];
         }
 
         $value = $byKey ? null : $declared;
 
         /** @var list<array{string, Typed, Slots}> $members each member's printed key, value and key slots */
         $members = [];
-        $from = 0;
 
-        foreach (TsTypeShape::members($body[0]) ?? [] as [$key, $text]) {
-            $keySlots = array_slice($body[1], $from, $this->count($key));
-            $from += $this->count($key);
-            $read = [$text, array_slice($body[1], $from, $this->count($text))];
-            $from += $this->count($text);
+        foreach ($this->memberSlots($body) as [$key, $text, $keySlots, $valueSlots]) {
+            $read = [$text, $valueSlots];
             $name = self::keyName($key);
             $paired = $declaredMembers[$name] ?? null;
             $fill = $value ?? $paired[1] ?? null;

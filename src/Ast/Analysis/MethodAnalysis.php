@@ -178,7 +178,22 @@ class MethodAnalysis
      */
     public static function queuesEmbedded(string $fqcn): bool
     {
-        return enum_exists($fqcn) || is_a($fqcn, Model::class, true) || is_a($fqcn, JsonResource::class, true);
+        return self::channelKind($fqcn) !== null;
+    }
+
+    /**
+     * The kind of inline channel a class is queued on: an enum's, a model's or an API resource's; null for any other.
+     *
+     * @return 'enums'|'models'|'resources'|null
+     */
+    public static function channelKind(string $fqcn): ?string
+    {
+        return match (true) {
+            enum_exists($fqcn) => 'enums',
+            is_a($fqcn, Model::class, true) => 'models',
+            is_a($fqcn, JsonResource::class, true) => 'resources',
+            default => null,
+        };
     }
 
     /**
@@ -455,17 +470,31 @@ class MethodAnalysis
     public function queueEmbeddedClasses(string $name, array $fqcns): void
     {
         foreach ($fqcns as $fqcn) {
-            if (enum_exists($fqcn)) {
+            $kind = self::channelKind($fqcn);
+
+            if ($kind === 'enums') {
                 $this->inlineEnumFqcns[$name][] = $fqcn;
                 $this->directEnumFqcns[$fqcn] = $fqcn;
-            } elseif (is_a($fqcn, Model::class, true)) {
+            } elseif ($kind === 'models') {
                 $this->inlineModelFqcns[$name][] = $fqcn;
                 $this->modelFqcns[$fqcn] = $fqcn;
-            } elseif (is_a($fqcn, JsonResource::class, true)) {
+            } elseif ($kind === 'resources') {
                 $this->inlineResourceFqcns[$name][] = $fqcn;
                 $this->nestedResources[$fqcn] = $fqcn;
             }
         }
+    }
+
+    /**
+     * Replace a key's inline queues with classes its text spells inside its value, queued as queueEmbeddedClasses()
+     * queues them.
+     *
+     * @param  list<class-string>  $inline
+     */
+    public function requeueInline(string $name, array $inline): void
+    {
+        unset($this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name]);
+        $this->queueEmbeddedClasses($name, $inline);
     }
 
     /**
@@ -542,6 +571,21 @@ class MethodAnalysis
     }
 
     /**
+     * The classes behind a property's type tokens that no inline queue holds, in channelFqcns() order.
+     *
+     * @return list<class-string>
+     */
+    public function singleChannelFqcns(string $name): array
+    {
+        return [
+            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
+            ...$this->channelClasses($name, $this->directEnumFqcns, $this->multiEnumResourceFqcns),
+            ...(isset($this->modelFqcns[$name]) ? [$this->modelFqcns[$name]] : []),
+            ...(isset($this->nestedResources[$name]) ? [$this->nestedResources[$name]] : []),
+        ];
+    }
+
+    /**
      * Every class on any import channel behind a type's tokens, a self-keyed embedded class's too, once each.
      *
      * @return list<class-string>
@@ -581,10 +625,17 @@ class MethodAnalysis
      */
     public function wrappedEnumFqcns(string $name): array
     {
-        return [
-            ...$this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns),
-            ...$this->inlineEnumResourceFqcns[$name] ?? [],
-        ];
+        return [...$this->topWrappedEnumFqcns($name), ...$this->inlineEnumResourceFqcns[$name] ?? []];
+    }
+
+    /**
+     * The enums a property's value wraps in an `EnumResource` at its top, leaving out those its inline objects wrap.
+     *
+     * @return list<class-string>
+     */
+    public function topWrappedEnumFqcns(string $name): array
+    {
+        return $this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns);
     }
 
     /**

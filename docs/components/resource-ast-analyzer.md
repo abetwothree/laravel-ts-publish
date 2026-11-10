@@ -31,8 +31,8 @@ These are the classes a change to resource analysis usually touches:
 | [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
-| [`DeclaredTypeMerge`](../../src/Ast/Composition/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShape/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
+| [`DeclaredTypeMerge`](../../src/Ast/Composition/ReturnShape/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
 | [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |

@@ -11,6 +11,7 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
+use Workbench\Crm\Models\User as CrmUser;
 
 test('declaredTokens() gives each own name\'s token the next slot, an unread one\'s too, and another name\'s none', function () {
     $tokens = TokenSlots::declaredTokens("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']);
@@ -25,6 +26,23 @@ test('declaredTokens() gives each own name\'s token the next slot, an unread one
 
 test('declaredTokens() reads no token where the slots hold no class and no other name is asked for', function () {
     expect(TokenSlots::declaredTokens('User | Post', []))->toBe([]);
+});
+
+test('declaredSlots() gives the slot declaredTokens() gives each token', function () {
+    expect(TokenSlots::declaredSlots("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']))
+        ->toBe([null, null, User::class, null])
+        ->and(TokenSlots::declaredSlots('User | Post', [], []))->toBe([]);
+});
+
+test('queueRead() gives each token the next class the queue spells it with, the last covering the rest', function () {
+    expect(TokenSlots::queueRead([User::class, CrmUser::class], 'User | Post | User | User', ['User', 'Post']))
+        ->toBe([User::class, null, CrmUser::class, CrmUser::class])
+        ->and(TokenSlots::queueRead([User::class], 'User', []))->toBe([]);
+});
+
+test('ownSlots() keeps the slot of each token of a name its slots hold a class of', function () {
+    expect(TokenSlots::ownSlots('{ a: User; b: Post }', [null, Post::class], ['User', 'Post']))->toBe([Post::class])
+        ->and(TokenSlots::ownSlots('User | Post', [User::class, null], ['User', 'Post']))->toBe([User::class]);
 });
 
 test('declaredArms() gives each top-level arm the slots its own names\' tokens take, in order, and those names', function () {

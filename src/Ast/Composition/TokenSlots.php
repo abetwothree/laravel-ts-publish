@@ -42,6 +42,61 @@ final class TokenSlots
     }
 
     /**
+     * The slot declaredTokens() gives each token of a declaration's own names and of `$names` in a text.
+     *
+     * @param  Slots  $declared
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    public static function declaredSlots(string $text, array $declared, array $names): array
+    {
+        return array_column(self::declaredTokens($text, $declared, $names), 'slot');
+    }
+
+    /**
+     * The class a queue of classes, as a key's channels list them, gives each token of $names a text spells, as the
+     * publisher's aliasing walk hands them out; null for a token of a name the queue holds no class of.
+     *
+     * @param  list<class-string>  $queue
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    public static function queueRead(array $queue, string $text, array $names): array
+    {
+        $spellings = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
+        $slots = [];
+
+        foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as [$token]) {
+            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
+            $slots[] = $next[0] ?? null;
+        }
+
+        return $slots;
+    }
+
+    /**
+     * The slots a merged key declares: the class behind each token of the names of the classes it holds, null for an
+     * override spelled like one, as a whole key's fill declares them.
+     *
+     * @param  Slots  $slots
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    public static function ownSlots(string $text, array $slots, array $names): array
+    {
+        $own = self::ownNames($slots);
+        $declared = [];
+
+        foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as $index => [$token]) {
+            if (in_array($token, $own, true)) {
+                $declared[] = $slots[$index] ?? null;
+            }
+        }
+
+        return $declared;
+    }
+
+    /**
      * A declaration's type with each token a class stands behind blanked, leaving the names its imports must bring.
      *
      * @param  Slots  $slots
