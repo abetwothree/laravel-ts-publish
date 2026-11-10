@@ -32,10 +32,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportedNullsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusWrapBesideBareRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\RecipientSettingsResource;
+use Workbench\App\Http\Resources\WrapsBesideFilledRowsResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
@@ -595,6 +597,35 @@ test('a mapped key merges with its @return member by class identity, member by m
         'subject' => 'User | Post',
         'notes' => '{ note: string | null }[]',
     ], ['Post', 'User']],
+]);
+
+// A wrap the publisher writes as `AsEnum` imports its enum's const, so each bare token the fill writes beside it needs
+// the enum's type import, two wraps as one (GH-154).
+test('a bare enum the @return fills beside two enum wraps keeps its type import', function (string $resource, string $expected, array $types, array $values) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe(['subject' => $expected])
+        ->and($data->typeImports)->toBe($types)
+        ->and($data->valueImports)->toBe($values);
+})->with([
+    'two wraps' => [
+        WrapsBesideFilledRowsResource::class,
+        'AsEnum<typeof Status> | AsEnum<typeof Role> | { status: StatusType; role: RoleType }[]',
+        ['../../enums' => ['RoleType', 'StatusType']],
+        ['../../enums' => ['Role', 'Status']],
+    ],
+    'one wrap' => [
+        ReviewStatusRowsResource::class,
+        'AsEnum<typeof Status> | { s: StatusType }[]',
+        ['../../../../../../workbench/app/enums' => ['StatusType']],
+        ['../../../../../../workbench/app/enums' => ['Status']],
+    ],
+    'a wrap beside the same enum bare' => [
+        StatusWrapBesideBareRowsResource::class,
+        'AsEnum<typeof Status> | { s: StatusType }[]',
+        ['../../../../../../workbench/app/enums' => ['StatusType']],
+        ['../../../../../../workbench/app/enums' => ['Status']],
+    ],
 ]);
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {

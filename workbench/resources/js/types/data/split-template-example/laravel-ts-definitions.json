@@ -22577,6 +22577,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\WrapsBesideFilledRowsResource": {
+            "name": "WrapsBesideFilledRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Role> | { status: StatusType; role: RoleType }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\Blog\\Http\\Resources\\ApiArticleResource": {
             "name": "ApiArticleResource",
             "properties": [

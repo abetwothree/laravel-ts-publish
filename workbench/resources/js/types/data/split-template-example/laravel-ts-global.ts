@@ -6195,6 +6195,10 @@ declare global {
             status_label?: string;
             appended_status_label?: string | number;
         }
+        /** Wraps a post's status or its author's role, else sends rows only the `@return` types with both enums bare (GH-154). */
+        export interface WrapsBesideFilledRowsResource {
+            subject: app.enums.StatusType | app.enums.RoleType | { status: app.enums.StatusType; role: app.enums.RoleType }[];
+        }
     }
     export namespace app.http.resources.admin {
         export interface Store {

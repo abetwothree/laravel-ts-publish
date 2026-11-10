@@ -110,6 +110,26 @@ final class ReturnShapeRefiner
     }
 
     /**
+     * The classes with one entry of each of $taken left out, the first where several match.
+     *
+     * @param  list<class-string>  $classes
+     * @param  list<class-string>  $taken
+     * @return list<class-string>
+     */
+    private static function withoutOneOfEach(array $classes, array $taken): array
+    {
+        foreach ($taken as $class) {
+            $at = array_search($class, $classes, true);
+
+            if ($at !== false) {
+                unset($classes[$at]);
+            }
+        }
+
+        return array_values($classes);
+    }
+
+    /**
      * A key the body typed, merged with the member $doc gives it position by position (DeclaredTypeMerge), the body's
      * classes read as the publisher reads the key and the member's from its slots.
      *
@@ -204,8 +224,8 @@ final class ReturnShapeRefiner
 
     /**
      * Queue the classes a merged key names on its channels so the publisher reads each token's class from them, as it
-     * reads a body's: each new class appended after the ones the key holds, else every class in print order after the
-     * single entries that lead each name's queue.
+     * reads a body's: each class no channel imports appended after the ones the key holds, else every class in print
+     * order after the single entries that lead each name's queue.
      *
      * False, with no channel touched, where neither reads it so, as for an override spelled like a class beside it.
      *
@@ -221,7 +241,15 @@ final class ReturnShapeRefiner
         );
         $classes = array_values(array_filter($expected));
         $held = $analysis->channelFqcns($name);
-        $added = array_values(array_unique(array_diff($classes, $held)));
+        // Several wraps the tolki rewrite spells as `AsEnum`, one top arm each, bring only their enums' consts, so a
+        // bare token of an enum past its own arm still needs a channel that imports its type.
+        $wraps = Config::boolean('ts-publish.enums.use_tolki_package')
+            ? ($analysis->multiEnumResourceFqcns[$name] ?? [])
+            : [];
+        $added = array_values(array_unique(array_diff(
+            self::withoutOneOfEach($classes, $wraps),
+            self::withoutOneOfEach($held, $wraps),
+        )));
 
         if (TokenSlots::queueRead([...$held, ...$added], $text, $names) === $expected) {
             $analysis->queueEmbeddedClasses($name, $added);

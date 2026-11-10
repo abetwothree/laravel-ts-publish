@@ -276,3 +276,4 @@ export * from './warehouse-review-appended-resource';
 export * from './warehouse-review-has-resource';
 export * from './warehouse-settings-resource';
 export * from './when-has-value-resource';
+export * from './wraps-beside-filled-rows-resource';
