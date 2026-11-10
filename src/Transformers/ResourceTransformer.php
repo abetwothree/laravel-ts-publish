@@ -699,8 +699,10 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops a key's enum-resource records when its type holds none of their enums' type names, and moves each enum to
-     * its inline wraps. Left in place, they make rewriteEnumResourceTypes() throw or import each enum for nothing.
+     * Drops a key's enum-resource records when its type holds none of their enums' type names, or several wraps' when
+     * its leading arms are not theirs, and moves each enum to its inline wraps. Left in place, they would lead the
+     * key's alias queue, and make rewriteEnumResourceTypes() throw or import each enum for nothing.
+     *
      * This reads $enumFqcnMap before pruneOverriddenEnumImports() removes the entries no type holds.
      *
      * @return $this
@@ -727,7 +729,8 @@ class ResourceTransformer extends CoreTransformer
                 $wraps[] = $single;
             }
 
-            if ($several !== [] && ! array_any($several, $holdsTypeName)) {
+            // A later spread replaces the key but not its wrap channel, and its type may still spell a wrapped name.
+            if ($several !== [] && ! $this->leadsWithWraps($type, $several)) {
                 unset($this->multiEnumResourceProperties[$property]);
                 array_push($wraps, ...$several);
             }
@@ -1370,8 +1373,9 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The top wraps lead, as MethodAnalysis::channelFqcns() queues them: their arms print first. The inline lists
-        // go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
+        // The top wraps lead, as MethodAnalysis::channelFqcns() queues them; leadsWithWraps() left only those whose
+        // arms lead the type. The inline lists go models first, then resources: InlineObjectResult::sharedNames()
+        // relies on that order.
         foreach ([
             $this->multiEnumResourceProperties,
             $this->propertyModelFqcnsList,
@@ -1470,5 +1474,19 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $respelled.substr($type, $from);
+    }
+
+    /**
+     * Whether a type's leading non-null top arms are the wrapped enums' type names in order, once each as the union
+     * folds two that share a name: the arms rewriteEnumResourceTypes() spells as several wraps.
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    private function leadsWithWraps(string $type, array $fqcns): bool
+    {
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+        $names = array_values(array_unique(array_map(fn (string $fqcn): string => $this->enumFqcnMap[$fqcn], $fqcns)));
+
+        return array_slice($arms, 0, count($names)) === $names;
     }
 }

@@ -112,11 +112,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoWrapsBesideAliasedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnreadCallbackRelaysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
@@ -1941,12 +1943,55 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
 
     test('the publisher queues the wraps first, as the analysis does', function () {
         $transformer = new ResourceTransformer(WrapsBesideAliasedRowsResource::class);
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(WrapsBesideAliasedRowsResource::class), $transformer->modelClass)->analyze();
 
         $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
 
-        expect($merged['subject'])->toBe([Status::class, Role::class, CrmStatus::class, Status::class])
-            ->and($merged['crm_subject'])->toBe([CrmStatus::class, Role::class, Status::class, CrmStatus::class]);
+        expect($merged['subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('subject'))
+            ->and($merged['crm_subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('crm_subject'));
     });
+
+    test('two wraps with no @return spell each top arm by its own enum', function (bool $tolki, array $types, array $expected) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(TwoWrapsBesideAliasedKeyResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+            ->and($data->typeImports)->toBe($types);
+    })->with([
+        'tolki on' => [
+            true,
+            ['../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'], '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType']],
+            [
+                'subject' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
+                'crm' => 'CrmStatusType',
+                'crm_subject' => 'AsEnum<typeof CrmStatus> | AsEnum<typeof Role>',
+                'app' => 'WorkbenchStatusType',
+            ],
+        ],
+        'tolki off' => [
+            false,
+            ['../../../../../../workbench/app/enums' => ['RoleType', 'StatusType as WorkbenchStatusType'], '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType']],
+            [
+                'subject' => 'WorkbenchStatusType | RoleType',
+                'crm' => 'CrmStatusType',
+                'crm_subject' => 'CrmStatusType | RoleType',
+                'app' => 'WorkbenchStatusType',
+            ],
+        ],
+    ]);
+
+    // A later spread replaces the wrapping key, but the merge keeps its wrap channel: it must not lead the alias queue.
+    test('a key a later spread replaces reads its own enums, not the wraps it replaced', function (bool $tolki) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(SpreadOverTwoWrapsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'subject' => '{ c: CrmStatusType }',
+            'rows' => '{ c: CrmStatusType; s: WorkbenchStatusType }[]',
+        ])->and($data->valueImports)->toBe([]);
+    })->with(['tolki on' => [true], 'tolki off' => [false]]);
 });
 
 describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', function () {
