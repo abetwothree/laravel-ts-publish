@@ -230,6 +230,11 @@ class LaravelTsPublish
     private bool $readsCastValue = false;
 
     /**
+     * Whether a serialize() type takes no null from get(), as on a NOT NULL column; see columnCastToTsType().
+     */
+    private bool $omitsGetNull = false;
+
+    /**
      * Set something to do when the publish command runs, using a callback Closure
      */
     public static function callCommandUsing(Closure $resolver): void
@@ -588,14 +593,20 @@ class LaravelTsPublish
      */
     public function castValueToTsType(string $cast): array
     {
-        $reads = $this->readsCastValue;
-        $this->readsCastValue = true;
+        return $this->readingCast(true, null, fn (): array => $this->castToTsType($cast));
+    }
 
-        try {
-            return $this->castToTsType($cast);
-        } finally {
-            $this->readsCastValue = $reads;
-        }
+    /**
+     * Resolve castToTsType() for a column: on a NOT NULL one ($nullable false), whose get() Laravel never hands a NULL,
+     * a serialize() type takes no null from get(); a nullable column, or none, reads as castToTsType() does.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function columnCastToTsType(string $cast, ?bool $nullable): array
+    {
+        return $nullable === false
+            ? $this->readingCast(null, true, fn (): array => $this->castToTsType($cast))
+            : $this->castToTsType($cast);
     }
 
     /**
@@ -3557,17 +3568,9 @@ class LaravelTsPublish
         $infos = $this->castersValueTypes(CastCasters::declared($castable))
             ?? $this->castersValueTypes(CastCasters::returned($castable));
 
-        if ($infos !== null) {
-            return $this->mergeTypeScriptInfos($infos);
-        }
-
-        $this->readsCastValue = false;
-
-        try {
-            return $this->castableSerializedTypes($cast);
-        } finally {
-            $this->readsCastValue = true;
-        }
+        return $infos === null
+            ? $this->readingCast(false, null, fn (): ?array => $this->castableSerializedTypes($cast))
+            : $this->mergeTypeScriptInfos($infos);
     }
 
     /**
@@ -3682,7 +3685,8 @@ class LaravelTsPublish
 
     /**
      * A serialize() reading with a `null` arm where get() returns null, which Model::toArray() sends without calling
-     * serialize(): where get() provably does, or, when its reading proves neither, as $unproven says.
+     * serialize(): where get() provably does, or, when its reading proves neither, as $unproven says. None for a NOT
+     * NULL column, under columnCastToTsType().
      *
      * @param  class-string  $caster
      * @param  TypeScriptTypeInfo  $types
@@ -3690,6 +3694,10 @@ class LaravelTsPublish
      */
     private function withGetNull(string $caster, array $types, bool $unproven): array
     {
+        if ($this->omitsGetNull) {
+            return $types;
+        }
+
         return ($this->getReturnsNull($caster) ?? $unproven)
             ? [...$types, 'type' => TsTypeString::withNullArm($types['type'])]
             : $types;
@@ -3763,12 +3771,34 @@ class LaravelTsPublish
                 return null;
             }
 
+            // A nested read answers for its own column and reading, so neither flag reaches it or the memo it fills.
             try {
-                return DroppedUnionArms::provisional($read, $kept);
+                return $this->readingCast(false, false, fn (): mixed => DroppedUnionArms::provisional($read, $kept));
             } finally {
                 $memo->leave($key);
             }
         });
+    }
+
+    /**
+     * Runs a cast read under the cast-reading flags given, keeping one given as null as it is, then restores both.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    private function readingCast(?bool $readsValue, ?bool $omitsGetNull, Closure $read): mixed
+    {
+        [$reads, $omits] = [$this->readsCastValue, $this->omitsGetNull];
+        $this->readsCastValue = $readsValue ?? $reads;
+        $this->omitsGetNull = $omitsGetNull ?? $omits;
+
+        try {
+            return $read();
+        } finally {
+            [$this->readsCastValue, $this->omitsGetNull] = [$reads, $omits];
+        }
     }
 
     /**

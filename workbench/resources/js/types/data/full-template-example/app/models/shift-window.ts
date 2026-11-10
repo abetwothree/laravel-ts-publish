@@ -10,9 +10,9 @@ export interface ShiftWindow
     // Columns
     id: number;
     label: string;
-    opens_at: string | null;
+    opens_at: string;
     closes_at: string | null;
-    break_starts_at: string | null;
+    break_starts_at: string;
     break_ends_at: string | null;
     created_at: string | null;
     updated_at: string | null;

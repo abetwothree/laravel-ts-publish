@@ -267,11 +267,9 @@ class ModelAttributeResolver
         }
 
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::castToTsType($cast);
+            $tsInfo = LaravelTsPublish::columnCastToTsType($cast, $attr['nullable']);
 
-            $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
-
-            return $this->appendNullable($tsInfo, $attr['nullable'], $cast);
+            return $this->castAttributeType($ctx['reflection'], $attr, $tsInfo);
         }
 
         if ($attr['type'] === null || $attr['type'] === '') {
@@ -313,16 +311,15 @@ class ModelAttributeResolver
 
         $tsInfo = LaravelTsPublish::castValueToTsType((string) $attr['cast']);
 
-        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type.
+        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type, read with no
+        // column, so a NOT NULL one keeps get()'s null here.
         if (TsTypeString::isUnknownOnly($tsInfo['type'])
             && array_all($casters ?? [], static fn (string $caster): bool => is_a($caster, SerializesCastableAttributes::class, true))
         ) {
-            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+            $tsInfo = LaravelTsPublish::castToTsType((string) $attr['cast']);
         }
 
-        $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
-
-        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
+        return $this->castAttributeType($ctx['reflection'], $attr, $tsInfo);
     }
 
     /**
@@ -1979,6 +1976,21 @@ class ModelAttributeResolver
     private static function serializes(string $caster): bool
     {
         return method_exists($caster, 'serialize');
+    }
+
+    /**
+     * A cast attribute's type: its cast's reading, refined by the model's `@property` tag, with the column's null.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @param  AttributeInfo  $attr
+     * @param  TypeScriptTypeInfo  $tsInfo
+     * @return TypeScriptTypeInfo
+     */
+    private function castAttributeType(ReflectionClass $reflection, array $attr, array $tsInfo): array
+    {
+        $tsInfo = $this->refineWithPropertyDocblock($reflection, $attr['name'], $tsInfo);
+
+        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
     }
 
     /**

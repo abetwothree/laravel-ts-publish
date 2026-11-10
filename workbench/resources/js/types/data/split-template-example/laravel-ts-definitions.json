@@ -8505,7 +8505,7 @@
                 },
                 {
                     "name": "opens_at",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "closes_at",
@@ -8513,7 +8513,7 @@
                 },
                 {
                     "name": "break_starts_at",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "break_ends_at",

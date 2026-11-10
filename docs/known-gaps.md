@@ -1015,6 +1015,11 @@ model is left out, since the type published for that member may hold a null the 
 a null held in a local, as in `$out = null; … return $out;`, and one returned from a body the engine cannot read or
 that reads its cast back through itself.
 
+On a NOT NULL column, a class or `Castable` cast publishes `serialize()`'s type with no `| null` from `get()`, since
+the column never holds a NULL. A `get()` that maps a stored value to null, as one turning `''` into `null` does, still
+sends that null, which the type leaves out; a `null` that `serialize()` itself declares or returns stays. An API
+resource reading the attribute off the model keeps its `| null`.
+
 ### An `array`, `collection` or `AsCollection` cast publishes a list, though an object payload is sent as an object
 
 `'settings' => 'array'` publishes `unknown[]`, as do `collection`, `AsCollection` and their encrypted forms, but a
