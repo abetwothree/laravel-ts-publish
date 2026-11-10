@@ -184,6 +184,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressExtendsResource;
 use Workbench\App\Http\Resources\AddressMixinResource;
@@ -259,6 +260,7 @@ use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserExceptResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Http\Resources\WrapsBesideAliasedRowsResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStore;
 use Workbench\App\Models\Comment;
@@ -277,6 +279,7 @@ use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
 use Workbench\App\ValueObjects\PostStats;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\DealEnumInlineResource;
 use Workbench\Crm\Http\Resources\DealEnumTrioResource;
 use Workbench\Crm\Http\Resources\DealResource;
@@ -1904,6 +1907,45 @@ describe('ResourceTransformer mergePropertyFqcnMaps() overlap guard', function (
         // Without the guard the accessor pass re-adds its own [CrmUser, User] ahead of the inline
         // entries, producing a 4-entry queue for what is really 2 occurrences and misaligning the prefix.
         expect($merged['last_user_activity_by'])->toBe([User::class, CrmUser::class]);
+    });
+});
+
+// The analysis queues a key's top wraps ahead of the bare enums the @return fills, so the publisher must read them in
+// that order too, or a bare token takes the other same-named enum's alias (GH-154).
+describe('ResourceTransformer two enum wraps beside bare enums that share a name', function () {
+    test('each bare token spells its own enum and the wraps keep theirs', function (bool $tolki, array $types, array $values, string $subject, string $crmSubject) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(WrapsBesideAliasedRowsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))
+            ->toBe(['subject' => $subject, 'crm_subject' => $crmSubject])
+            ->and($data->typeImports)->toBe($types)
+            ->and($data->valueImports)->toBe($values);
+    })->with([
+        'tolki on' => [
+            true,
+            ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['StatusType as WorkbenchStatusType']],
+            ['../../../crm/enums' => ['Status as CrmStatus'], '../../enums' => ['Role', 'Status as WorkbenchStatus']],
+            'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { crm: CrmStatusType; status: WorkbenchStatusType }[]',
+            'AsEnum<typeof CrmStatus> | AsEnum<typeof Role> | { status: WorkbenchStatusType; crm: CrmStatusType }[]',
+        ],
+        'tolki off' => [
+            false,
+            ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['RoleType', 'StatusType as WorkbenchStatusType']],
+            [],
+            'WorkbenchStatusType | RoleType | { crm: CrmStatusType; status: WorkbenchStatusType }[]',
+            'CrmStatusType | RoleType | { status: WorkbenchStatusType; crm: CrmStatusType }[]',
+        ],
+    ]);
+
+    test('the publisher queues the wraps first, as the analysis does', function () {
+        $transformer = new ResourceTransformer(WrapsBesideAliasedRowsResource::class);
+
+        $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
+
+        expect($merged['subject'])->toBe([Status::class, Role::class, CrmStatus::class, Status::class])
+            ->and($merged['crm_subject'])->toBe([CrmStatus::class, Role::class, Status::class, CrmStatus::class]);
     });
 });
 

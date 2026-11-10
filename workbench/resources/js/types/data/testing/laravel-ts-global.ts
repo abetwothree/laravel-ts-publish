@@ -6195,6 +6195,11 @@ declare global {
             status_label?: string;
             appended_status_label?: string | number;
         }
+        /** Wraps a status or a role beside rows only the `@return` types with two enums named `Status` bare (GH-154). */
+        export interface WrapsBesideAliasedRowsResource {
+            subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType | { crm: workbench.crm.enums.StatusType; status: workbench.app.enums.StatusType }[];
+            crm_subject: workbench.crm.enums.StatusType | workbench.app.enums.RoleType | { status: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }[];
+        }
         /** Wraps a post's status or its author's role, else sends rows only the `@return` types with both enums bare (GH-154). */
         export interface WrapsBesideFilledRowsResource {
             subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType | { status: workbench.app.enums.StatusType; role: workbench.app.enums.RoleType }[];

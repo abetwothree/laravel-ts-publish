@@ -1370,8 +1370,10 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
+        // The top wraps lead, as MethodAnalysis::channelFqcns() queues them: their arms print first. The inline lists
+        // go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([
+            $this->multiEnumResourceProperties,
             $this->propertyModelFqcnsList,
             $this->propertyEnumFqcnsList,
             $this->propertyInlineEnumFqcns,

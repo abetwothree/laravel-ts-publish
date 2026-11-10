@@ -22577,6 +22577,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\WrapsBesideAliasedRowsResource": {
+            "name": "WrapsBesideAliasedRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { crm: CrmStatusType; status: WorkbenchStatusType }[]",
+                    "optional": false
+                },
+                {
+                    "name": "crm_subject",
+                    "type": "AsEnum<typeof CrmStatus> | AsEnum<typeof Role> | { status: WorkbenchStatusType; crm: CrmStatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\WrapsBesideFilledRowsResource": {
             "name": "WrapsBesideFilledRowsResource",
             "properties": [

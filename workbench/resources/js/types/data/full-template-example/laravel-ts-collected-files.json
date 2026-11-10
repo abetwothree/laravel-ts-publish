@@ -403,6 +403,7 @@
     "app\/Http\/Resources\/WarehouseReviewHasResource.php",
     "app\/Http\/Resources\/WarehouseSettingsResource.php",
     "app\/Http\/Resources\/WhenHasValueResource.php",
+    "app\/Http\/Resources\/WrapsBesideAliasedRowsResource.php",
     "app\/Http\/Resources\/WrapsBesideFilledRowsResource.php",
     "app\/Models\/Activity.php",
     "app\/Models\/Address.php",
