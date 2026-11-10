@@ -8,6 +8,10 @@ declare(strict_types=1);
 return [
     // Deliberate: the left arm is an undefined model attribute, as that fixture's own comment says.
     ['subject' => 'Workbench\\App\\Http\\Resources\\ClassConstantResource', 'line' => 43, 'expression' => '$this->totally_unmapped_field', 'site' => 'coalesce-left'],
+    // Deliberate (GH-154): each arm is a value with no type that the resource's `@return` docblock types.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredGapsResource', 'line' => 37, 'expression' => '$sheet->hint', 'site' => 'ternary-narrowed'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredGapsResource', 'line' => 41, 'expression' => '$sheet->hint', 'site' => 'ternary-narrowed'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredGapsResource', 'line' => 55, 'expression' => '$sheet->hint', 'site' => 'ternary-narrowed'],
     // Deliberate: each arm is the value the engine cannot type that the local's inline `@var` types instead, which is
     // the fixture's point. Where the arm leaves only `null`, its drop marks the assigned value's reading as vague.
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 33, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],

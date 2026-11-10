@@ -1511,13 +1511,17 @@ declare global {
         }
         /**
          * When a shift's window opens (a NOT NULL column) and closes (a nullable one), both through one serializing cast
-         * whose `get()` is nullable (GH-154).
+         * whose `get()` is nullable, and when its break starts (NOT NULL) and ends (nullable) through a Castable built on that
+         * cast, beside a plain string label (GH-154).
          */
         export interface ShiftWindow {
             // Columns
             id: number;
+            label: string;
             opens_at: string | null;
             closes_at: string | null;
+            break_starts_at: string | null;
+            break_ends_at: string | null;
             created_at: string | null;
             updated_at: string | null;
         }
@@ -2884,6 +2888,13 @@ declare global {
             owned_by: workbench.app.models.User;
         }
         /**
+         * Spreads a helper's keys and then an array that overrides one of them, where PHP keeps the later key (GH-154): the
+         * byline's `author` is the title string, not the helper's recipient.
+         */
+        export interface BylineResource {
+            byline: Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } };
+        }
+        /**
          * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
          * when() or whenLoaded() value that holds one is called first, so the key sends that call's return.
          */
@@ -3389,6 +3400,19 @@ declare global {
             author_name?: string;
         }
         /**
+         * Maps contacts where the body cannot type every arm or key the `toArray()` `@return` docblock declares (GH-154): a
+         * value with no type beside typed arms, a spread of an array with no element type, a branch that spreads one,
+         * out-of-order int keys, and a value with no type beside a member the docblock declares more loosely than the body.
+         */
+        export interface DeclaredGapsResource {
+            scores: { score: number | null }[];
+            contacts: ({ email: string | null } | null)[];
+            rows: { name: string | null }[];
+            branches: { name: string | null }[];
+            pairs: unknown[][];
+            summary: { label: string; count: null };
+        }
+        /**
          * An inline `@var` types a local only where the engine's reading of the assigned value is vague: a value it cannot
          * read, or a lone `null` left once an arm it cannot type dropped. Any other reading stands, a closure parameter
          * reassigned under a tag takes its new value, and a tag with a form the package cannot read binds nothing.
@@ -3437,6 +3461,16 @@ declare global {
             scalar: string;
             author: workbench.app.models.User;
             opaque_name?: string;
+        }
+        /**
+         * Reads a sheet whose members the body types less than the `toArray()` `@return` docblock does (GH-154): a docblock
+         * list with a `mixed` member, a map over an array with no element type, and array_filter() of a literal holding a
+         * value with no type.
+         */
+        export interface DeclaredReadingsResource {
+            entries: { label: unknown }[];
+            labels: { label: unknown }[];
+            flags: { note?: unknown; weight?: number };
         }
         /**
          * Reads helpers that add keys to the array they are passed through each call path: a container instance, a static
@@ -4250,6 +4284,13 @@ declare global {
             id: number;
             branch_active?: boolean;
             wrapped_history_or_scalar?: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+        }
+        /**
+         * A resource declared through `@mixin` to hold a reading sheet, whose docblock list has a `mixed` member the
+         * `toArray()` `@return` docblock types (GH-154).
+         */
+        export interface MixinReadingsResource {
+            entries: { label: unknown }[];
         }
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
@@ -5311,6 +5352,13 @@ declare global {
             handover_note: string | null;
             next_bell: string;
             checked_at: string | null;
+        }
+        /**
+         * Reads a plain string column through `getAttribute()` under a `toArray()` `@return` docblock that names the values it
+         * holds (GH-154).
+         */
+        export interface ShiftWindowResource {
+            label: string;
         }
         /**
          * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a

@@ -8500,11 +8500,23 @@
                     "type": "number"
                 },
                 {
+                    "name": "label",
+                    "type": "string"
+                },
+                {
                     "name": "opens_at",
                     "type": "string | null"
                 },
                 {
                     "name": "closes_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "break_starts_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "break_ends_at",
                     "type": "string | null"
                 },
                 {
@@ -11663,6 +11675,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BylineResource": {
+            "name": "BylineResource",
+            "properties": [
+                {
+                    "name": "byline",
+                    "type": "Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CallableValueResource": {
             "name": "CallableValueResource",
             "properties": [
@@ -13297,6 +13319,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DeclaredGapsResource": {
+            "name": "DeclaredGapsResource",
+            "properties": [
+                {
+                    "name": "scores",
+                    "type": "{ score: number | null }[]",
+                    "optional": false
+                },
+                {
+                    "name": "contacts",
+                    "type": "({ email: string | null } | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "rows",
+                    "type": "{ name: string | null }[]",
+                    "optional": false
+                },
+                {
+                    "name": "branches",
+                    "type": "{ name: string | null }[]",
+                    "optional": false
+                },
+                {
+                    "name": "pairs",
+                    "type": "unknown[][]",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ label: string; count: null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource": {
             "name": "DeclaredPrecedenceResource",
             "properties": [
@@ -13484,6 +13541,26 @@
                     "name": "opaque_name",
                     "type": "string",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DeclaredReadingsResource": {
+            "name": "DeclaredReadingsResource",
+            "properties": [
+                {
+                    "name": "entries",
+                    "type": "{ label: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "labels",
+                    "type": "{ label: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "flags",
+                    "type": "{ note?: unknown; weight?: number }",
+                    "optional": false
                 }
             ]
         },
@@ -16322,6 +16399,16 @@
                     "name": "wrapped_history_or_scalar",
                     "type": "AsEnum<typeof Status>[] | StatusType",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MixinReadingsResource": {
+            "name": "MixinReadingsResource",
+            "properties": [
+                {
+                    "name": "entries",
+                    "type": "{ label: unknown }[]",
+                    "optional": false
                 }
             ]
         },
@@ -19671,6 +19758,16 @@
                 {
                     "name": "checked_at",
                     "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ShiftWindowResource": {
+            "name": "ShiftWindowResource",
+            "properties": [
+                {
+                    "name": "label",
+                    "type": "string",
                     "optional": false
                 }
             ]
