@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Support\Arr;
+use LogicException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -1037,7 +1038,11 @@ trait ReadsReturnedVariables
         $unset = $this->keysLeftUnset($value, $write);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
-        // A literal's fold writes each named key once; each signature entry is one more runtime key.
+        // A literal's fold writes each named key once, so the rows below never meet a key the write repeats.
+        if (count($write->writtenProperties()) !== count($write->properties)) {
+            throw new LogicException('A whole write holds each named key once; a signature entry is one more runtime key.');
+        }
+
         foreach ($write->properties as $prop) {
             // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
             $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);

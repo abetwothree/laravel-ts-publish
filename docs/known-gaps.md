@@ -191,8 +191,9 @@ may not land joins the earlier value, a `when()` value replaces it, and a `merge
 writes stay outside that reading:
 
 - A `merge()` or `mergeWhen()` inside a helper's or a local's array lifts within that array, while Laravel lifts it
-  where the array is spread: `['k' => 1, ...$this->withMerge()]` publishes the helper's merged `k` beside `1`, though
-  only `1` is sent.
+  where the array is spread. `['k' => 1, ...$this->withMerge()]` publishes the helper's merged `k` beside `1`, though
+  only `1` is sent; `[...$this->withMerge(), 'k' => 1]` publishes `k: number`, though Laravel sends the merged value
+  wherever the merge runs.
 - An empty or list `merge()` renames the string keys after it to numbers, which publish under their names.
 - A value spread the walk cannot read leaves the key before it as it was, as a local written and spread inside one
   block, or a map local given a named key: `['k' => 1, ...$map]` after `$map['k'] = 'x'` publishes `k: number`.

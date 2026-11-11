@@ -31,6 +31,7 @@ use ReflectionClass;
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
@@ -485,6 +486,11 @@ final class ValueResult
 
         $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
+        $presence = self::armsKeyPresence($results);
+
+        if ($presence !== []) {
+            $union['keyPresence'] = $presence;
+        }
 
         // A `null` kept beside an arm no rule types left out says nothing of that arm, which a declared type may fill.
         if (count($branchResults) < count($results) && TsTypeString::hasNullArm($union['type'])) {
@@ -705,6 +711,28 @@ final class ValueResult
     public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
+    }
+
+    /**
+     * Each arm's record of why its object's optional keys may be missing, keyed by the object's own text, so a spread
+     * of the union reads every arm as that arm was written; a text two arms record apart keeps both facts.
+     *
+     * @param  list<ValueExpressionResult>  $arms
+     * @return array<string, array<string, PresenceFacts>>
+     */
+    private static function armsKeyPresence(array $arms): array
+    {
+        $presence = [];
+
+        foreach ($arms as $arm) {
+            foreach ($arm['keyPresence'] ?? [] as $object => $keys) {
+                foreach ($keys as $name => $facts) {
+                    $presence[$object][$name] = [...$presence[$object][$name] ?? [], ...$facts];
+                }
+            }
+        }
+
+        return $presence;
     }
 
     /**

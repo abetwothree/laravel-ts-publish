@@ -19,13 +19,11 @@ final readonly class FoldedKey
     public bool $optional;
 
     /**
-     * @param  int  $position  the item index of the key's first write, which orders it among the literal's keys
      * @param  list<int>  $sources  each recorded source whose value the key can send, in source order
      * @param  bool  $absent  whether some path writes no value to the key
      * @param  bool  $removed  whether some path sends the key a value Laravel or Inertia removes
      */
     public function __construct(
-        public int $position,
         public array $sources,
         public bool $absent,
         public bool $removed,

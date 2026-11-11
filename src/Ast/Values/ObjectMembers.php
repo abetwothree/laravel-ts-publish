@@ -236,26 +236,27 @@ final class ObjectMembers
     }
 
     /**
-     * A value whose object's optional members are each one its writer may leave unset, never a removed value: the
-     * keys `resolve()` returns, which hold no MissingValue.
+     * A value whose objects' optional members are each one its writer may leave unset, never a removed value: the keys
+     * `resolve()` returns, which hold no MissingValue, and a shape a `@return` declares, whose `?` says only that.
      *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult
      */
     public static function withOptionalKeysAbsent(array $value): array
     {
-        $object = TsTypeString::withoutNullArm($value['type']);
-        $facts = [];
+        $presence = $value['keyPresence'] ?? [];
 
-        foreach (TsTypeShape::members($object) ?? [] as [$key]) {
-            $name = PrintedKey::decode($key);
+        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($value['type'])) as $object) {
+            foreach (TsTypeShape::members($object) ?? [] as [$key]) {
+                $name = PrintedKey::decode($key);
 
-            if ($name !== null && str_ends_with($key, '?')) {
-                $facts[$name] = ['absent' => true];
+                if ($name !== null && str_ends_with($key, '?')) {
+                    $presence[$object][$name] = ['absent' => true];
+                }
             }
         }
 
-        return $facts === [] ? $value : [...$value, 'keyPresence' => [...$value['keyPresence'] ?? [], $object => $facts]];
+        return $presence === [] ? $value : [...$value, 'keyPresence' => $presence];
     }
 
     /**

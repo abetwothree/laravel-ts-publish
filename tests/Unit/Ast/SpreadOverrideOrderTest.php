@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\SpreadFoldDeclaredEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SpreadFoldPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldCertainResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldDeclaredResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMaybeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMergeOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMergeWhenResource;
@@ -39,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueTopRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueUntypedHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueUntypedMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FoldBox;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -613,14 +616,17 @@ it('publishes the named keys of a value that also holds unnamed ones as that val
 
 // D15: a value that is one of two closed arrays writes per key the arms' union, required where every arm holds it.
 it('publishes each key a union of closed values writes as the union of its arms\' values', function () {
-    expect(foldSent(SpreadFoldUnionValueResource::class))
-        ->toBe('{"ternary":{"by":1},"ternary_partial":{"by":2},"array_merge":{"by":"hi"}}')
-        ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1']))
-        ->toBe('{"ternary":{"by":"hi"},"ternary_partial":{"by":"hi","x":1},"array_merge":{"by":"hi"}}')
+    expect(foldSent(SpreadFoldUnionValueResource::class))->toBe('{"ternary":{"by":1},"ternary_partial":{"by":2},'
+        .'"array_merge":{"by":"hi"},"ternary_removable":{"id":0,"by":"q"}}')
+        ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1']))->toBe('{"ternary":{"by":"hi"},'
+            .'"ternary_partial":{"by":"hi","x":1},"array_merge":{"by":"hi"},"ternary_removable":{"id":0}}')
+        ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1', 'flagged' => '1']))
+        ->toContain('"ternary_removable":{"id":0,"by":1}')
         ->and(resourceProps(SpreadFoldUnionValueResource::class))->toBe([
             'ternary' => '{ by: string | number }',
             'ternary_partial' => '{ by: string | number; x?: number }',
             'array_merge' => '{ by: string }',
+            'ternary_removable' => '{ id: number; by?: number | string }',
         ]);
 });
 
@@ -649,4 +655,35 @@ it('joins a key with a resolved resource\'s key that resource may drop, which le
     expect(spreadValueSent(SpreadFoldResolvedArmResource::class, ['picked' => '1']))->toBe('{"title":"hi"}')
         ->and(spreadValueSent(SpreadFoldResolvedArmResource::class))->toBe('{"title":9}')
         ->and(publishedResourceKeyTypes(SpreadFoldResolvedArmResource::class, Post::class))->toBe(['title' => 'number | string']);
+});
+
+// A `?` a method's `@return` declares says its key may be missing, never a removed value, so the value before it stays.
+it('joins a key with a declared shape\'s optional key, which the earlier value fills where the shape leaves it out', function () {
+    expect(foldSent(SpreadFoldDeclaredResource::class))->toBe('{"by":"hi","n":"x","row":{"by":"hi","n":"x"},'
+        .'"static":{"n":"x","by":"hi"},"local":{"n":"x","by":"hi"}}')
+        ->and(foldSent(SpreadFoldDeclaredResource::class, ['picked' => '1']))->toBe('{"by":"hi","n":1,'
+            .'"row":{"by":"hi","n":1},"static":{"n":1,"by":"hi"},"local":{"n":1,"by":"hi"}}')
+        ->and(resourceProps(SpreadFoldDeclaredResource::class))->toBe([
+            'by' => 'string',
+            'n' => 'string | number',
+            'row' => '{ by: string; n: string | number }',
+            'static' => '{ n: string | number; by: string }',
+            'local' => '{ n: string | number; by: string }',
+        ]);
+});
+
+it('joins a broadcast key and a page prop with a declared shape\'s optional key', function () {
+    $payload = new BroadcastEventTransformer(SpreadFoldDeclaredEvent::class)->properties;
+    $sent = static fn (string $pick): string => inertiaPropsJson(
+        new SpreadFoldPropsController()->declared(Request::create('/', 'GET', ['pick' => $pick])),
+    );
+
+    expect(json_encode(new SpreadFoldDeclaredEvent(foldBox())->broadcastWith()))->toBe('{"n":"x","by":"hi"}')
+        ->and(json_encode(new SpreadFoldDeclaredEvent(foldBox(), picked: true)->broadcastWith()))->toBe('{"n":1,"by":"hi"}')
+        ->and(array_map(static fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'], $payload))
+        ->toBe(['n' => 'string | number', 'by' => 'string'])
+        ->and($sent('s'))->toBe('{"probe":5}')
+        ->and($sent('x'))->toBe('{"probe":"x"}')
+        ->and(pageData(SpreadFoldPropsController::class.'@declared')['pageType'])
+        ->toBe('Inertia.SharedData & { probe: number | string }');
 });

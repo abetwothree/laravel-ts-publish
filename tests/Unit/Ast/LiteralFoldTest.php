@@ -239,12 +239,9 @@ it('folds a spread literal\'s key into the literal holding it as PHP sends the t
 });
 
 it('D1: sends the later of two writes that set the key on every path, where the first stood', function () {
-    $fold = LiteralFold::fold([keyWrite('k', 0), keyWrite('j', 1), keyWrite('k', 2)], true);
-
     expect(folded([keyWrite('k', 0), keyWrite('k', 1)]))->toBe(['k' => [[1], '']])
-        ->and(folded([keyWrite('k', 0), keyWrite('j', 1), keyWrite('k', 2)]))->toBe(['k' => [[2], ''], 'j' => [[1], '']])
-        ->and($fold['k']->position)->toBe(0)
-        ->and($fold['j']->position)->toBe(1);
+        ->and(array_keys(LiteralFold::fold([keyWrite('k', 0), keyWrite('j', 1), keyWrite('k', 2)], true)))->toBe(['k', 'j'])
+        ->and(folded([keyWrite('k', 0), keyWrite('j', 1), keyWrite('k', 2)]))->toBe(['k' => [[2], ''], 'j' => [[1], '']]);
 });
 
 it('D2: joins a key with a later write that may leave it unset, required where the first write is certain', function () {

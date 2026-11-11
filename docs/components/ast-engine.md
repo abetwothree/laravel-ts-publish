@@ -855,8 +855,9 @@ missing on some path and a value held before it survives there (a write that may
 may be `[]`, a branch lacking the key), and `removed`, its value may be removed (a `when()` MissingValue, an Inertia
 `optional()` prop) and no held value survives. A `?` a cast or a docblock puts on a row sets neither. A `?` read back
 from a printed type cannot tell them apart: `InlineObjectResult::of()` records each optional key's facts in the value's
-`keyPresence`, a spread reads them back (`ObjectMembers::writtenMembers()`), and a `?` with no record is read as
-either. A seed's `?` keeps reading as `removed` (`ObjectMembers::members()`), for the walk's `??=`.
+`keyPresence`, a declared `@return` shape and `resolve()`'s keys record each `?` as `absent`, a union keeps every arm's
+record, a spread reads them back (`ObjectMembers::writtenMembers()`), and a `?` with no record is read as either. A
+seed's `?` keeps reading as `removed` (`ObjectMembers::members()`), for the walk's `??=`.
 
 `merge()` takes only keys the analysis does not hold, a signature entry aside, and throws otherwise: a literal's fold
 writes each key once ([ResourceAstAnalyzer § One fold per literal](resource-ast-analyzer.md#one-fold-per-literal)), and

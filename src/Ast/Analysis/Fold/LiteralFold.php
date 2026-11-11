@@ -49,7 +49,7 @@ final class LiteralFold
             $merges = array_values(array_filter($keyWrites, static fn (KeyWrite $write): bool => $write->fromMerge));
             $outcomes = self::liftedOutcomes(self::slotOutcomes($literal), $merges);
 
-            $folded[(string) $name] = self::foldedKey(min(array_map(static fn (KeyWrite $write): int => $write->position, $keyWrites)), $outcomes);
+            $folded[(string) $name] = self::foldedKey($outcomes);
         }
 
         return $folded;
@@ -139,7 +139,7 @@ final class LiteralFold
      *
      * @param  list<Outcome>  $outcomes
      */
-    private static function foldedKey(int $position, array $outcomes): FoldedKey
+    private static function foldedKey(array $outcomes): FoldedKey
     {
         $sources = [];
         $absent = false;
@@ -158,7 +158,7 @@ final class LiteralFold
         $sources = array_keys($sources);
         sort($sources);
 
-        return new FoldedKey($position, $sources, $absent, $removed);
+        return new FoldedKey($sources, $absent, $removed);
     }
 
     /**

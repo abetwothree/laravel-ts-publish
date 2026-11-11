@@ -276,8 +276,13 @@ it('reads a `?` member as InlineObjectResult::of() recorded it, else as either, 
         ->and($facts(ObjectMembers::members($bare)))->toBe(['unset:o', 'removed:o', 'open:o']);
 });
 
-it('marks every `?` member of the keys resolve() returns as one it may leave unset', function () {
+it('marks every `?` member of the keys resolve() returns, or a declared shape holds, as one it may leave unset', function () {
     $value = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a: string; b?: number } | null', 'optional' => false]);
+    $union = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a?: string } | { b?: number } | never[]', 'optional' => false]);
 
-    expect($value['keyPresence'] ?? null)->toBe(['{ a: string; b?: number }' => ['b' => ['absent' => true]]]);
+    expect($value['keyPresence'] ?? null)->toBe(['{ a: string; b?: number }' => ['b' => ['absent' => true]]])
+        ->and($union['keyPresence'] ?? null)->toBe([
+            '{ a?: string }' => ['a' => ['absent' => true]],
+            '{ b?: number }' => ['b' => ['absent' => true]],
+        ]);
 });
