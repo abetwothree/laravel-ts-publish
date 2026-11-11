@@ -645,6 +645,9 @@ kinds:
   each key before it. Only where a later arm follows does such a spread stay an arm, and a held key that a later
   resource, model or collection arm writes is that arm's, as [one fold per literal](#one-fold-per-literal) decides.
 
+`InlineArrayHandler::planArms()` classifies each spread once, before the item loop, and decides which stay arms; the
+loop records them in the literal's fold, which hands the print its arm list (`MethodAnalysis::spreadArms()`).
+
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
 a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member. An object
@@ -688,8 +691,9 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 writes a value Laravel may remove (`removed`), and whether a merge call wrote it. At the end of the literal, before the
 reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
 and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
-the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept. A merged literal is read
-through the same loop. A key's slot sits where its first write landed on each path, so a first write that may not
+the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept, beside the arms its
+print keeps, a map's after another item only where every key fits the map's value. A merged literal is read through
+the same loop. A key's slot sits where its first write landed on each path, so a first write that may not
 land lets a merge before the next one win there; the fold test replays what the real `resolve()` sent for 7380
 sequences (`tests/Unit/Ast/Fixtures/fold-oracle.php`).
 

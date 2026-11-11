@@ -97,23 +97,28 @@ final class InlineArrayHandlerReturnArrayStubEngine implements ExpressionEngine
 
 it('resolves an inline array with a nested key and a model spread arm to an Omit<> intersection', function () {
     // Mirrors NestedResourceSpreadResource::$members_model_spread's shape — a sibling key plus
-    // ...$member->toArray() — proving the moved analyzeInlineArray()/collectInlineArraySpreadArms()
-    // pair still Omit<>'s the explicit key against the model arm without engine recursion.
+    // ...$member->toArray() — proving planArms() classifies the model arm without engine recursion, and the
+    // print Omit<>'s the explicit key against the arm the literal's fold hands it.
     $array = new Array_([
         new ArrayItem(new Variable('placeholder'), new String_('note')),
         new ArrayItem(new MethodCall(new Variable('member'), 'toArray'), null, unpack: true),
     ]);
 
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $scope->varModelBindings['member'] = User::class;
+
+    $plan = (new InlineArrayHandler)->planArms($array->items, $scope, inlineArrayHandlerThrowingEngine());
+
     $analysis = new ResourceAnalysis(properties: [
         ['name' => 'note', 'type' => 'string', 'optional' => false, 'description' => ''],
     ]);
-
-    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
-    $scope->varModelBindings['member'] = User::class;
+    $analysis->setSpreadArms(array_column($plan->printed, 'arm'));
 
     $engine = new InlineArrayHandlerReturnArrayStubEngine($array, $analysis);
 
     $result = (new InlineArrayHandler)->resolve($array, $scope, $engine);
+
+    expect($plan->printed)->toBe([1 => ['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'mapValue' => null]]);
 
     // The spread's keys are no string or int the literal writes, so the result marks them unnamed for array_keys().
     expect($result)->toBe([
@@ -123,6 +128,59 @@ it('resolves an inline array with a nested key and a model spread arm to an Omit
         'unnamedKeys' => true,
     ]);
 });
+
+/**
+ * An engine that types `$arm` as a resource, `$obj` and any literal as `{ a: number }`, and `$map` as a string map.
+ */
+function inlineArrayHandlerArmEngine(): ExpressionEngine
+{
+    return new class implements ExpressionEngine
+    {
+        public function resolve(Expr $expr): array
+        {
+            return match (true) {
+                $expr instanceof Variable && $expr->name === 'arm' => ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class],
+                $expr instanceof Variable && $expr->name === 'map' => ['type' => 'Record<string, string>', 'optional' => false],
+                default => ['type' => '{ a: number }', 'optional' => false],
+            };
+        }
+
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
+        {
+            throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
+        {
+            return Reading::Encoded;
+        }
+
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+        {
+            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+        }
+    };
+}
+
+// A print places every arm before the keys, so a spread a later arm follows stays an arm, though written in place.
+it('plans the spreads a nested literal prints as arms, by item, with each map\'s value after another item', function (string $php, int $items, array $printed) {
+    $array = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    assert($array instanceof Array_);
+    $plan = (new InlineArrayHandler)->planArms($array->items, new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class)), inlineArrayHandlerArmEngine());
+
+    expect($plan->items)->toHaveCount($items)
+        ->and(array_map(static fn (array $arm): string => ($arm['arm']['type'] ?? $arm['arm']['fqcn']).($arm['mapValue'] === null ? '' : ' fits '.$arm['mapValue']), $plan->printed))
+        ->toBe($printed);
+})->with([
+    'a value an arm follows' => ['[...$obj, ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
+    'a value after the arm, written in place' => ['[...$arm, ...$obj]', 2, [0 => UserResource::class]],
+    'a literal an arm follows' => ['[...["a" => 1], ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
+    'a literal no arm follows, inlined' => ['[...["a" => 1], "b" => 2]', 2, []],
+    'a map after a key' => ['["b" => 2, ...$map]', 2, [1 => 'Record<string, string> fits string']],
+    'a map first' => ['[...$map, "b" => 2]', 2, [0 => 'Record<string, string>']],
+    'a helper the item loop flattens' => ['[...$this->helper(), ...$arm]', 2, [1 => UserResource::class]],
+]);
 
 it('declines a non-array expression', function () {
     $expr = new Variable('foo');

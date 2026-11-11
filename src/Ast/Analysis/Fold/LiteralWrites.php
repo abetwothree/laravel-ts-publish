@@ -9,12 +9,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use LogicException;
 
 /**
  * The key writes of one array literal, held apart from the analysis they become: the item loop records each item's
  * keys here in item order, and applyTo() folds them (LiteralFold) and writes each key once, with the classes and
- * casts of every value it can send.
+ * casts of every value it can send, beside the spreads a nested literal's print keeps as arms.
  *
  * A source is what one write's value comes from: a keyed item's value, a spread member's, or the analysis a helper,
  * a parent, a filter, an arm or a merge call reads as. A signature entry is one more runtime key, never folded, and
@@ -23,6 +25,7 @@ use LogicException;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type KeyedValues from ObjectMembers
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
+ * @phpstan-import-type PrintedArm from LiteralArms
  *
  * @phpstan-type Source = array{analysis: MethodAnalysis}|array{value: ValueExpressionResult}
  * @phpstan-type OrderEntry = array{key: string}|array{signature: int, name: string}
@@ -39,6 +42,9 @@ final class LiteralWrites
 
     /** @var array<int, true> the sources a printed arm writes: a key only they send is the arm's to print */
     private array $armSources = [];
+
+    /** @var list<PrintedArm> the spreads the literal's print keeps as arms, in item order */
+    private array $arms = [];
 
     /** @var list<OrderEntry> each key's first write and each signature entry, in item order */
     private array $order = [];
@@ -158,6 +164,17 @@ final class LiteralWrites
     }
 
     /**
+     * Record a spread the literal's print keeps as an arm, in item order: a map's after another item only where each
+     * key the fold writes fits its value.
+     *
+     * @param  PrintedArm  $arm
+     */
+    public function recordArm(array $arm): void
+    {
+        $this->arms[] = $arm;
+    }
+
+    /**
      * Mark that the literal holds a key no name names, as an unread spread or an unnamed key leaves it.
      */
     public function holdUnnamedKeys(): void
@@ -177,7 +194,8 @@ final class LiteralWrites
 
     /**
      * Fold the recorded writes and write each key once into an empty analysis, in the order the keys were first
-     * written: its value joined from every source the fold says it can send, its presence the fold's.
+     * written: its value joined from every source the fold says it can send, its presence the fold's. The arms its
+     * print keeps go beside them (MethodAnalysis::spreadArms()).
      *
      * $liftsMerges is Reading::filtersBodyOf() for the body the literal is in, read at the call site.
      */
@@ -205,6 +223,13 @@ final class LiteralWrites
         }
 
         $target->merge($this->wide);
+        $target->setSpreadArms(array_values(array_map(
+            static fn (array $arm): array => $arm['arm'],
+            array_filter(
+                $this->arms,
+                static fn (array $arm): bool => $arm['mapValue'] === null || self::keysFitMapValue($target, $arm['mapValue']),
+            ),
+        )));
     }
 
     /**
@@ -240,6 +265,36 @@ final class LiteralWrites
         $absent = $result['absent'] ?? false;
 
         return [$absent, ! $absent || ($result['removed'] ?? false)];
+    }
+
+    /**
+     * Whether every named key an analysis publishes fits a map's value, a literal fitting its primitive: no `Omit<>`
+     * can drop a key from the map's signature, so a key it does not fit would read as the map's value.
+     */
+    private static function keysFitMapValue(MethodAnalysis $analysis, string $mapValue): bool
+    {
+        $fits = TsTypeString::splitTopLevelUnion($mapValue);
+
+        if (in_array('unknown', $fits, true)) {
+            return true;
+        }
+
+        foreach (array_column($analysis->properties, 'type', 'name') as $name => $type) {
+            foreach (JsEmitter::isIndexSignatureKey((string) $name) ? [] : TsTypeString::splitTopLevelUnion($type) as $arm) {
+                $primitive = match (true) {
+                    $arm === 'true' || $arm === 'false' => 'boolean',
+                    is_numeric($arm) => 'number',
+                    TsTypeShape::isScalar($arm) && ! in_array($arm, ['number', 'string', 'boolean'], true) => 'string',
+                    default => $arm,
+                };
+
+                if (! in_array($arm, $fits, true) && ! in_array($primitive, $fits, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -17,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -127,8 +126,8 @@ final class InlineArrayHandler implements ExpressionHandler
 
     /**
      * Whether the item loops read a spread by the value it holds: not a `$this->`, `self::`, `static::` or `parent::`
-     * call nor a call of the class's own method they flatten themselves, a model's or collection's toArray() the arm
-     * collector names, nor the keys a returned variable's walk holds already. A PHP function's value is read.
+     * call nor a call of the class's own method they flatten themselves, a model's or collection's toArray() whose arm
+     * the print names, nor the keys a returned variable's walk holds already. A PHP function's value is read.
      */
     public static function readsSpreadByValue(Expr $value, AnalysisScope $scope): bool
     {
@@ -151,7 +150,7 @@ final class InlineArrayHandler implements ExpressionHandler
      * An open value's named keys are written too, the object it lands in left open for the rest. A union writes per
      * key its arms' union, one some arm lacks a key it may leave unset; a `?` member reads as writtenMembers() has it.
      *
-     * The item loop writes these keys over the keys before the spread, so the arm collector and armFollows() skip it.
+     * The item loop writes these keys over the keys before the spread, so planArms() keeps no arm for it.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      * @return KeyedValues|null
@@ -260,30 +259,49 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a later item spreads what stays an arm, a class's or a value read neither in place nor as a map: a print
-     * places every arm before the keys, so a spread before it stays an arm too, and still loses to it.
+     * Plan which spreads of a nested literal its print keeps as arms, each spread classified once: one whose keys the
+     * item loop writes in place, or a literal one, stays an arm only where a later arm follows, as the print places
+     * every arm before the keys and a later arm wins.
      *
-     * @param  list<ArrayItem>  $items  the literal's items, before or after its literal spreads are inlined
+     * @param  array<ArrayItem>  $items  the literal's items
      */
-    public function armFollows(array $items, int $index, AnalysisScope $scope, ExpressionEngine $engine): bool
+    public function planArms(array $items, AnalysisScope $scope, ExpressionEngine $engine): LiteralArms
     {
-        foreach (array_slice($items, $index + 1) as $later) {
-            // A literal naming every key is inlined, or stays a spread only where a later arm follows it too.
-            if ($later->key !== null || ! $later->unpack || $this->isKnownArraySpreadShape($later->value)
-                || ($later->value instanceof Array_ && self::namesEveryKey($later->value))) {
-                continue;
-            }
+        $read = [];
 
-            $arm = self::classifySpreadArm($later->value, $scope, $engine);
-
-            if ($arm !== null && (! isset($arm['result'])
-                || (self::spreadKeys($later->value, $arm['result'], $scope) === null
-                    && self::spreadSignature($later->value, $arm['result'], $scope) === null))) {
-                return true;
+        // A literal naming every key is inlined, or stays a spread only where a later arm follows it too.
+        foreach ($items as $item) {
+            if ($this->mayPrintAsArm($item) && ! ($item->value instanceof Array_ && self::namesEveryKey($item->value))) {
+                $read[spl_object_id($item)] = self::readArm($item, $scope, $engine);
             }
         }
 
-        return false;
+        $staysArm = array_map(static fn (array $spread): bool => $spread['arm'] !== null
+            && (! isset($spread['arm']['result']) || (! $spread['inPlace'] && $spread['mapValue'] === null)), $read);
+        $followsOriginal = self::armsFollow(array_values($items), $staysArm);
+        $inlined = self::withNamedLiteralSpreadsInlined($items, static fn (int $index): bool => $followsOriginal[$index]);
+        $follows = self::armsFollow($inlined, $staysArm);
+        $arms = [];
+        $printed = [];
+
+        foreach ($inlined as $index => $item) {
+            if (! $this->mayPrintAsArm($item)) {
+                continue;
+            }
+
+            $spread = $read[spl_object_id($item)] ?? self::readArm($item, $scope, $engine);
+            $arms[$index] = $spread['arm'];
+
+            if ($spread['arm'] === null || ($spread['inPlace'] && ! $follows[$index])) {
+                continue;
+            }
+
+            // A map's arm after another item is left out where a key the fold writes does not fit its value: the item
+            // loop joined the keys before it with that value, which the arm's signature would narrow back.
+            $printed[$index] = ['arm' => $spread['arm'], 'mapValue' => $index > 0 ? $spread['mapValue'] : null];
+        }
+
+        return new LiteralArms($inlined, $follows, $arms, $printed);
     }
 
     /**
@@ -448,8 +466,43 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * How the item loop reads a spread a print may keep as an arm, read once: the arm it classifies as, whether its
+     * keys are written in place, and else the value a map it holds may write under any key.
+     *
+     * @return array{arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, mapValue: string|null}
+     */
+    private static function readArm(ArrayItem $item, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        $arm = self::classifySpreadArm($item->value, $scope, $engine);
+        $inPlace = isset($arm['result']) && self::spreadKeys($item->value, $arm['result'], $scope) !== null;
+        $map = isset($arm['result']) && ! $inPlace ? self::spreadSignature($item->value, $arm['result'], $scope) : null;
+
+        return ['arm' => $arm, 'inPlace' => $inPlace, 'mapValue' => $map === null ? null : $map['type']];
+    }
+
+    /**
+     * Per item, whether a later one stays an arm, as $staysArm says by the item's object id.
+     *
+     * @param  list<ArrayItem>  $items
+     * @param  array<int, bool>  $staysArm
+     * @return list<bool>
+     */
+    private static function armsFollow(array $items, array $staysArm): array
+    {
+        $follows = [];
+        $later = false;
+
+        foreach (array_reverse($items) as $item) {
+            $follows[] = $later;
+            $later = $later || ($staysArm[spl_object_id($item)] ?? false);
+        }
+
+        return array_reverse($follows);
+    }
+
+    /**
      * Whether the item loops read a spread's whole value: one readsSpreadByValue() takes, and no resource's, whose arm
-     * the collector names.
+     * the print names.
      *
      * @param  ValueExpressionResult  $result
      */
@@ -491,36 +544,6 @@ final class InlineArrayHandler implements ExpressionHandler
         $arms = $value === null ? [] : array_diff(TsTypeString::splitTopLevelUnion($value), ['undefined']);
 
         return $arms === [] ? null : TsTypeString::hoistNull(array_values($arms));
-    }
-
-    /**
-     * Whether every named key an analysis publishes fits a map's value, a literal fitting its primitive: no `Omit<>`
-     * can drop a key from the map's signature, so a key it does not fit would read as the map's value.
-     */
-    private static function keysFitMapValue(MethodAnalysis $analysis, string $mapValue): bool
-    {
-        $fits = TsTypeString::splitTopLevelUnion($mapValue);
-
-        if (in_array('unknown', $fits, true)) {
-            return true;
-        }
-
-        foreach (array_column($analysis->properties, 'type', 'name') as $name => $type) {
-            foreach (JsEmitter::isIndexSignatureKey((string) $name) ? [] : TsTypeString::splitTopLevelUnion($type) as $arm) {
-                $primitive = match (true) {
-                    $arm === 'true' || $arm === 'false' => 'boolean',
-                    is_numeric($arm) => 'number',
-                    TsTypeShape::isScalar($arm) && ! in_array($arm, ['number', 'string', 'boolean'], true) => 'string',
-                    default => $arm,
-                };
-
-                if (! in_array($arm, $fits, true) && ! in_array($primitive, $fits, true)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -620,10 +643,7 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         $analysis = $engine->returnArrayAnalysis($array);
-
-        // A spread whose value resolves to a bare named resource (not an array/collection of one), to a
-        // bound model's toArray(), or to a bound collection's toArray(), intersects with the literal's keys.
-        $result = new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine, $analysis));
+        $result = new InlineObjectResult()->of($analysis, $analysis->spreadArms());
 
         // The object names only the keys written as a string or an int, so array_keys() may find others in it.
         return array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ($item->key instanceof String_ || $item->key instanceof Int_))
@@ -645,46 +665,11 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Collect every spread in an inline array that classifySpreadArm() takes, in source order — the
-     * arms an intersection type is built from — but one whose keys the item loop wrote where it stands.
-     *
-     * A map's arm after another item is left out where a key of $analysis does not fit its value: the item loop joined
-     * the keys before it with that value, which the arm's signature would narrow back.
-     *
-     * @return list<InlineSpreadArm|ObjectSpreadArm>
+     * Whether an item is a spread a print may keep as an arm: none the item loop flattens itself.
      */
-    private function collectInlineArraySpreadArms(
-        Array_ $array,
-        AnalysisScope $scope,
-        ExpressionEngine $engine,
-        MethodAnalysis $analysis,
-    ): array {
-        /** @var list<InlineSpreadArm|ObjectSpreadArm> $spreadArms */
-        $spreadArms = [];
-        $items = self::withNamedLiteralSpreadsInlined(
-            $array->items,
-            fn (int $index): bool => $this->armFollows(array_values($array->items), $index, $scope, $engine),
-        );
-
-        foreach ($items as $index => $item) {
-            if ($item->key !== null || ! $item->unpack || $this->isKnownArraySpreadShape($item->value)) {
-                continue;
-            }
-
-            $arm = self::classifySpreadArm($item->value, $scope, $engine);
-            $map = isset($arm['result']) && $index > 0 ? self::spreadSignature($item->value, $arm['result'], $scope) : null;
-
-            if ($arm === null
-                || (isset($arm['result']) && self::spreadKeys($item->value, $arm['result'], $scope) !== null
-                    && ! $this->armFollows($items, $index, $scope, $engine))
-                || ($map !== null && ! self::keysFitMapValue($analysis, $map['type']))) {
-                continue;
-            }
-
-            $spreadArms[] = $arm;
-        }
-
-        return $spreadArms;
+    private function mayPrintAsArm(ArrayItem $item): bool
+    {
+        return $item->key === null && $item->unpack && ! $this->isKnownArraySpreadShape($item->value);
     }
 
     /**

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -27,6 +28,8 @@ use LogicException;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type InlineSpreadArm from InlineObjectResult
+ * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -130,6 +133,14 @@ class MethodAnalysis
      * @var array<array-key, list<string>>
      */
     public array $openReadings = [];
+
+    /**
+     * The spreads a nested literal's print intersects with its keys, in item order, as its fold left them. They print
+     * beside that literal's own keys alone, so no merge, join or slice carries them.
+     *
+     * @var list<InlineSpreadArm|ObjectSpreadArm>
+     */
+    private array $spreadArms = [];
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -559,6 +570,26 @@ class MethodAnalysis
         }
 
         return array_values($written);
+    }
+
+    /**
+     * The spreads a nested literal's print intersects with its keys, in item order.
+     *
+     * @return list<InlineSpreadArm|ObjectSpreadArm>
+     */
+    public function spreadArms(): array
+    {
+        return $this->spreadArms;
+    }
+
+    /**
+     * Keep the spreads a nested literal's print intersects with its keys, as LiteralWrites::applyTo() hands them on.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $arms
+     */
+    public function setSpreadArms(array $arms): void
+    {
+        $this->spreadArms = $arms;
     }
 
     /**

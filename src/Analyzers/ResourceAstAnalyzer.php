@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
@@ -1483,22 +1484,28 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Analyze the items of an array literal analyzeReturnArray() reads. With $readsAttributeNames, a keyless string
      * reads the model attribute it names, `$this->resource->{name}`, and `...parent::toAttributes()` what it returns.
-     * With $printsArms, a spread a later arm follows stays an arm, which InlineArrayHandler prints before these keys.
      *
      * Each item records its writes; one fold (LiteralWrites) then decides each key a literal writes twice, as PHP
-     * builds the literal and Laravel's `filter()` lifts its merge calls over the keys after them.
+     * builds the literal and Laravel's `filter()` lifts its merge calls over the keys after them. With $printsArms,
+     * the fold also keeps the spreads InlineArrayHandler::planArms() leaves to the print as arms, before these keys.
      */
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
         $writes = new LiteralWrites;
         $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
-            ? new InlineArrayHandler
+            ? new InlineArrayHandler()->planArms($array->items, $this->scope, $this)
             : null;
         // A spread of a literal writes its keys where it stands, overriding an earlier key as a later one overrides it.
-        $items = InlineArrayHandler::withNamedLiteralSpreadsInlined($array->items, $arms === null ? null
-            : fn (int $index): bool => $arms->armFollows(array_values($array->items), $index, $this->scope, $this));
+        $items = $arms === null ? InlineArrayHandler::withNamedLiteralSpreadsInlined($array->items) : $arms->items;
 
         foreach ($items as $index => $item) {
+            // The print keeps an arm whichever row below reads the spread's keys.
+            $printed = $arms?->printed[$index] ?? null;
+
+            if ($printed !== null) {
+                $writes->recordArm($printed);
+            }
+
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
                 $writes->recordKey($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)), $index);
 
@@ -1619,12 +1626,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 // A printed arm stands before every key, so a spread a later arm follows stays an arm, over the keys
                 // before it.
                 if ($arms !== null && InlineArrayHandler::spreadKeys($item->value, $spread, $this->scope) !== null
-                    && $arms->armFollows($items, $index, $this->scope, $this)) {
+                    && $arms->follows[$index]) {
                     InlineArrayHandler::recordSpread($writes, $item->value, $spread, $this->scope, $index, printedArm: true);
                 } elseif (InlineArrayHandler::recordSpread($writes, $item->value, $spread, $this->scope, $index)) {
                     continue;
                 } elseif ($arms !== null) {
-                    $this->yieldToNamedArm($writes, $item->value, $index);
+                    $this->yieldToNamedArm($writes, $item->value, $index, $arms);
                 }
             }
 
@@ -1683,9 +1690,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * over the keys before it: a resource writes its required keys always and its optional ones maybe, a model any
      * attribute its toArray() serializes, and a collection none, as it renumbers its own.
      */
-    private function yieldToNamedArm(LiteralWrites $writes, Expr $value, int $index): void
+    private function yieldToNamedArm(LiteralWrites $writes, Expr $value, int $index, LiteralArms $arms): void
     {
-        $arm = $writes->names() === [] ? null : InlineArrayHandler::classifySpreadArm($value, $this->scope, $this);
+        $arm = match (true) {
+            $writes->names() === [] => null,
+            $arms->classified($index) => $arms->arms[$index],
+            default => InlineArrayHandler::classifySpreadArm($value, $this->scope, $this),
+        };
         $named = $arm !== null && ! ($arm['isCollection'] ?? false)
             && (! isset($arm['type']) || isset($arm['result']['resolvedFqcn']));
         $armWrites = $named ? $this->spreadArmAnalysis($arm) : null;

@@ -143,6 +143,21 @@ it('joins each key written before a map spread with the map\'s value, and no lat
     expect(foldedKeys(foldedInto($writes)))->toBe(['a' => 'number | boolean', 'b' => 'number']);
 });
 
+// TypeScript cannot drop a key from a map's signature, so a map's arm whose value a key does not fit is left out.
+it('hands the print each arm it keeps, in item order, a map\'s only where every key the fold writes fits its value', function () {
+    $resource = ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false];
+    $strings = ['type' => 'Record<string, string>', 'result' => ['type' => 'Record<string, string>', 'optional' => false]];
+    $numbers = ['type' => 'Record<string, number>', 'result' => ['type' => 'Record<string, number>', 'optional' => false]];
+    $writes = new LiteralWrites;
+    $writes->recordArm(['arm' => $strings, 'mapValue' => null]);
+    $writes->recordKey('a', ['type' => '1 | 2', 'optional' => false], 1);
+    $writes->recordArm(['arm' => $resource, 'mapValue' => null]);
+    $writes->recordArm(['arm' => $strings, 'mapValue' => 'string']);
+    $writes->recordArm(['arm' => $numbers, 'mapValue' => 'number']);
+
+    expect(foldedInto($writes)->spreadArms())->toBe([$strings, $resource, $numbers]);
+});
+
 // Outside filter() PHP appends a merge call under an int key, so it sets no named key.
 it('writes no key a merge call sets where nothing lifts it', function () {
     $writes = new LiteralWrites;
