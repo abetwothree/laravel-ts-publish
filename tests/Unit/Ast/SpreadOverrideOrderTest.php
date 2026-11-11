@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLiteralBesideArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMergeJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadNamedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideMappedResource;
@@ -383,4 +385,33 @@ it('keeps a key optional where a merge call that may not run writes it twice', f
         ->and(spreadValueSent(SpreadMergeJoinResource::class))->toBe('{"id":9,"name":{"name":"Ada"},"row":{"id":9}}')
         ->and(spreadValueSent(SpreadMergeJoinResource::class, ['merged' => '1']))->toContain('"maybe":{"name":"Ada"}')
         ->and(spreadValueSent(SpreadMergeJoinResource::class, ['merged' => '1', 'titled' => '1']))->toContain('"maybe":"hi"');
+});
+
+// A write that may not land leaves the held value where it does not; a merge call's value beats a later key.
+it('joins a held key with a helper, when() or later write that may not land, as PHP sends either', function () {
+    expect(publishedResourceKeyTypes(SpreadMaybeOverHeldResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'by' => 'User | string',
+        'key' => 'User | string',
+        'when?' => 'User | string',
+        'merged' => 'string | User',
+    ])->and(spreadValueSent(SpreadMaybeOverHeldResource::class, ['picked' => '1']))
+        ->toBe('{"id":9,"by":"hi","key":"hi","when":"hi","merged":"hi"}')
+        ->and(spreadValueSent(SpreadMaybeOverHeldResource::class))
+        ->toBe('{"id":9,"by":{"name":"Ada"},"key":{"name":"Ada"},"merged":{"name":"Ada"}}');
+});
+
+it('keeps each such joined key optional where another return leaves it out', function () {
+    expect(publishedResourceKeyTypes(SpreadMaybeOverHeldReturnsResource::class, Post::class))->toBe([
+        'n?' => 'number',
+        'id?' => 'number',
+        'by?' => 'User | string',
+        'key?' => 'User | string',
+        'when?' => 'User | string',
+        'merged?' => 'string | User',
+    ])->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class, ['titled' => '1', 'picked' => '1']))
+        ->toBe('{"id":9,"by":"hi","key":"hi","when":"hi","merged":"hi"}')
+        ->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class, ['titled' => '1']))
+        ->toBe('{"id":9,"by":{"name":"Ada"},"key":{"name":"Ada"},"merged":{"name":"Ada"}}')
+        ->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class))->toBe('{"n":1}');
 });

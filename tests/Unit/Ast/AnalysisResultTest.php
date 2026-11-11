@@ -196,7 +196,7 @@ describe('AstEngine::analyze()', function () {
             ->and($result->typeImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 
-    test('collapses a property name two branches both set into one member', function () {
+    test('holds a key a later key writes over the parent\'s spread once, raw and published', function () {
         $engine = resolve(AstEngine::class);
         $names = array_column(
             $engine->analyze(ApiPostResource::class, 'toArray', null, 'workbench/app/http/resources')->properties,

@@ -296,6 +296,29 @@ class MethodAnalysis
     }
 
     /**
+     * Write a key a merge call before it already wrote: Laravel sends the merged value wherever the merge ran, so the
+     * key holds either value, and is left out only where both may be.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function writeUnderMerged(string $name, array $result): void
+    {
+        $held = array_column($this->writtenProperties(), null, 'name')[$name] ?? null;
+
+        if ($held === null) {
+            $this->overwriteProperty($name, $result);
+
+            return;
+        }
+
+        $optional = $held['optional'] && $result['optional'];
+
+        if (! $this->joinHeldKey($held, $result, $optional)) {
+            $this->setOptional($name, $optional);
+        }
+    }
+
+    /**
      * Mark that keys these hold reach the return unread, so the read behind them is not complete either.
      */
     public function holdUnreadKeys(): void
@@ -319,14 +342,18 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings`
-     * replace-merge, the source winning, a key it sets with none losing its own; the inline maps append undeduped, as
-     * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     * `properties` appends, but a key this analysis holds is written once, where it stood: a value the source always
+     * sets replaces it, one it may leave out joins it, as joinHeldKey() does.
      *
-     * A key this analysis already holds takes the source's inline enum queue alone, as the source's value replaces it.
+     * The class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings` replace-merge, the source
+     * winning, a key it sets with none losing its own; the inline maps append undeduped, as read by position.
+     * `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     *
+     * A held key takes the source's inline enum queue alone where the source's value replaces it.
      */
     public function merge(self $source): void
     {
+        [$source, $joined] = $this->joiningMaybeWrites($source);
         $held = array_flip(array_column($this->properties, 'name'));
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
@@ -352,9 +379,9 @@ class MethodAnalysis
 
             unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
 
-            // The source's value replaces the key, so the old value's enums would lead its tokens' queue; a join's
-            // accumulator holds no key, so each branch's queue stays.
-            if (isset($held[$property['name']])) {
+            // A replaced value's enums would lead the new tokens' queue; a joined value leads with the held one's,
+            // and a join's accumulator holds no key, so each branch's queue stays.
+            if (isset($held[$property['name']]) && ! isset($joined[$property['name']])) {
                 unset($this->inlineEnumFqcns[$property['name']]);
             }
         }
@@ -386,6 +413,12 @@ class MethodAnalysis
             $this->inlineEnumResourceFqcns[$propName] = [
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
+        }
+
+        foreach (array_column($source->properties, 'name') as $name) {
+            if (isset($held[$name]) && ! JsEmitter::isIndexSignatureKey($name)) {
+                $this->keepLastWriteOf($name);
+            }
         }
     }
 
@@ -1089,27 +1122,21 @@ class MethodAnalysis
 
     /**
      * Write a key a spread may leave out as the value it held or the spread's, each keeping the classes behind its
-     * tokens, and say whether its type changed. Where both name classes, which one key's channels cannot queue apart,
-     * the held value stays, as before; an untyped held value stays too, while an untyped written one drops out.
+     * tokens, and say whether its type changed; joinedType() says where the held value stays. The key is optional as
+     * the held one is, or as $optional says.
      *
      * @param  AnalyzedProperty  $held
      * @param  ValueExpressionResult  $written
      */
-    private function joinHeldKey(array $held, array $written): bool
+    private function joinHeldKey(array $held, array $written, ?bool $optional = null): bool
     {
-        // PHP may still send the untyped value held, which a typed one beside it would hide.
-        if ($held['type'] === 'unknown') {
-            return false;
-        }
-
         $name = $held['name'];
         $holdsClass = $this->hasFqcnChannel($name);
         $writes = new self;
         $writes->addProperty($name, $written);
-        $writesClass = $writes->hasFqcnChannel($name);
-        $type = BranchJoin::branchUnion([$held['type'], $written['type']], dropsUntypedBranches: true, keepsLoneNull: false);
+        $type = $this->joinedType($held, $written['type'], $writes->hasFqcnChannel($name));
 
-        if (($holdsClass && $writesClass) || $type === $held['type']) {
+        if ($type === null) {
             return false;
         }
 
@@ -1122,12 +1149,97 @@ class MethodAnalysis
         $this->addProperty($name, [
             ...$written,
             'type' => $type,
-            'optional' => $held['optional'],
+            'optional' => $optional ?? $held['optional'],
             ...($openReadings === [] ? [] : ['openReadings' => $openReadings]),
         ]);
         $this->keepLastWriteOf($name);
 
         return true;
+    }
+
+    /**
+     * The type a held key takes beside a value that may not land, or null where the held value stays: an untyped one,
+     * which PHP may still send and a typed one would hide, one beside a value also naming classes, which one key's
+     * channels cannot queue apart, or one the union adds nothing to.
+     *
+     * @param  AnalyzedProperty  $held
+     */
+    private function joinedType(array $held, string $written, bool $writesClass): ?string
+    {
+        if ($held['type'] === 'unknown' || ($writesClass && $this->hasFqcnChannel($held['name']))) {
+            return null;
+        }
+
+        $type = BranchJoin::branchUnion([$held['type'], $written], dropsUntypedBranches: true, keepsLoneNull: false);
+
+        return $type === $held['type'] ? null : $type;
+    }
+
+    /**
+     * The source of a merge with each value it may leave out of a key this holds joined with the held one, or left out
+     * where the held one stays; and each key it joins. A value left out by itself, as a when() value is, is a
+     * MissingValue PHP filters out with the key, so the key may be left out too.
+     *
+     * @return array{self, array<array-key, true>}
+     */
+    private function joiningMaybeWrites(self $source): array
+    {
+        $held = array_column($this->writtenProperties(), null, 'name');
+        $kept = clone $source;
+        $joined = [];
+
+        foreach ($source->writtenProperties() as $written) {
+            $name = $written['name'];
+            $holds = $held[$name] ?? null;
+
+            if ($holds === null || ! $written['optional'] || JsEmitter::isIndexSignatureKey($name)) {
+                continue;
+            }
+
+            $type = $this->joinedType($holds, $written['type'], $source->hasFqcnChannel($name));
+            $optional = $holds['optional'] || isset($source->leftOutValues[$name]);
+            $kept->properties = array_values(array_filter($kept->properties, static fn (array $property): bool => $property['name'] !== $name));
+
+            if ($type === null) {
+                $kept->forgetChannels($name);
+                unset($kept->closedToDottedKeys[$name], $kept->openReadings[$name]);
+                $this->setOptional($name, $optional);
+
+                continue;
+            }
+
+            $joined[$name] = true;
+            $kept->properties[] = [
+                'name' => $name,
+                'type' => $type,
+                'optional' => $optional,
+                'description' => $written['description'],
+                ...(($written['keepsKeys'] ?? false) && ($holds['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ];
+            $readings = [...$this->openReadings[$name] ?? [], ...$source->openReadings[$name] ?? []];
+
+            if ($readings !== []) {
+                $kept->openReadings[$name] = $readings;
+            }
+
+            if (! isset($this->closedToDottedKeys[$name])) {
+                unset($kept->closedToDottedKeys[$name]);
+            }
+        }
+
+        return [$kept, $joined];
+    }
+
+    /**
+     * Mark every entry of a key optional or required.
+     */
+    private function setOptional(string $name, bool $optional): void
+    {
+        foreach ($this->properties as $index => $property) {
+            if ($property['name'] === $name) {
+                $this->properties[$index]['optional'] = $optional;
+            }
+        }
     }
 
     /**

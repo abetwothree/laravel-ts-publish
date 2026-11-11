@@ -1620,6 +1620,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
+        /** @var array<array-key, true> $merged each key a merge call wrote: Laravel sends its value over a later one */
+        $merged = [];
         $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
             ? new InlineArrayHandler
             : null;
@@ -1763,6 +1765,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
                 $mergeResult->dropKeysHeldBy($analysis);
                 $analysis->merge($mergeResult);
+                $merged += array_fill_keys(array_column($mergeResult->properties, 'name'), true);
 
                 continue;
             }
@@ -1792,7 +1795,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $analysis->overwriteProperty($keyName, $result);
+            if (isset($merged[$keyName])) {
+                $analysis->writeUnderMerged($keyName, $result);
+            } else {
+                $analysis->overwriteProperty($keyName, $result);
+            }
         }
 
         return $analysis;

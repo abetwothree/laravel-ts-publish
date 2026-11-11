@@ -12,19 +12,70 @@ it('is the base class ResourceAnalysis now extends, as an empty subclass', funct
         ->and(new ReflectionClass(ResourceAnalysis::class)->getParentClass()->getName())->toBe(MethodAnalysis::class);
 });
 
-it('appends properties from the source, never replacing a same-name earlier entry', function () {
+it('appends the keys the source adds, and writes one it always sets over the held one where that stood', function () {
     $target = new MethodAnalysis(properties: [
         ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => 'at', 'type' => 'string', 'optional' => false, 'description' => ''],
     ]);
     $source = new MethodAnalysis(properties: [
-        ['name' => 'id', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'id', 'type' => 'string', 'optional' => false, 'description' => ''],
     ]);
 
     $target->merge($source);
 
     expect($target->properties)->toBe([
+        ['name' => 'id', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => 'at', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
+    ]);
+});
+
+// PHP still sends the held value where the source leaves its key out, so the key holds either.
+it('joins a key the source may leave out with the held one, which stays where both name classes or it is untyped', function () {
+    $target = new MethodAnalysis;
+    $target->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+    $target->addProperty('at', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+    $target->addProperty('raw', ['type' => 'unknown', 'optional' => false]);
+    $target->addProperty('n', ['type' => 'number', 'optional' => false]);
+    // Keys a helper sets on some paths only: optional, though no value of theirs is left out by itself.
+    $source = new MethodAnalysis(properties: [
+        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'at', 'type' => 'User', 'optional' => true, 'description' => ''],
+        ['name' => 'raw', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'n', 'type' => 'string', 'optional' => true, 'description' => ''],
+    ], modelFqcns: ['at' => 'Workbench\App\Models\User']);
+
+    $target->merge($source);
+
+    expect(array_map(static fn (array $property): string => $property['name'].($property['optional'] ? '?' : '').': '.$property['type'], $target->properties))
+        ->toBe(['by: User | string', 'at: Post', 'raw: unknown', 'n: number | string'])
+        ->and($target->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User', 'at' => 'Workbench\App\Models\Post']);
+});
+
+// A when() value the source writes is a MissingValue PHP filters out, taking the key with it.
+it('joins a key the source writes as a value it may leave out, which may leave the key out too', function () {
+    $target = new MethodAnalysis;
+    $target->addProperty('by', ['type' => 'number', 'optional' => false]);
+    $source = new MethodAnalysis;
+    $source->addProperty('by', ['type' => 'string', 'optional' => true]);
+
+    $target->merge($source);
+
+    expect($target->properties)->toBe([['name' => 'by', 'type' => 'number | string', 'optional' => true, 'description' => '']]);
+});
+
+it('keeps a key a merge call wrote where a later key writes it, which wins only where the merge did not run', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+
+    $analysis->writeUnderMerged('by', ['type' => 'number', 'optional' => false]);
+    $analysis->writeUnderMerged('id', ['type' => 'number', 'optional' => true]);
+
+    expect($analysis->properties)->toBe([
+        ['name' => 'by', 'type' => 'string | number', 'optional' => false, 'description' => ''],
         ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-        ['name' => 'id', 'type' => 'string', 'optional' => true, 'description' => ''],
     ]);
 });
 
