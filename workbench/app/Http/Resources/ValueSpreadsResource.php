@@ -50,6 +50,7 @@ class ValueSpreadsResource extends JsonResource
             'key_then_removable' => ['id' => 1, 'by' => $this->resource->author, ...$removable],
             'merge_when_then_value' => ['id' => 1, $this->mergeWhen($this->resource->flag, ['by' => $this->resource->author]), ...$afterKey],
             'key_then_open' => ['by' => $this->resource->author, ...$open],
+            'map_then_map' => [...$this->resource->labels, ...$this->resource->counts],
             'by' => $this->resource->author,
             ...$untyped,
         ];

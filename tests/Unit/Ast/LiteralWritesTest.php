@@ -35,6 +35,23 @@ function foldedKeys(MethodAnalysis $analysis): array
 }
 
 /**
+ * A map's printed arm: `Record<string, $value>`, the spread's $wide data on its result, and $value as the map's value.
+ *
+ * @param  array<string, mixed>  $extra  more of the value's result
+ * @param  array<string, mixed>  $wide  the spread's custom imports and carried classes
+ * @return array{arm: array{type: string, result: array<string, mixed>}, map: array<string, mixed>}
+ */
+function literalMapArm(string $value, bool $checksKeys, array $extra = [], array $wide = []): array
+{
+    $type = 'Record<string, '.$value.'>';
+
+    return [
+        'arm' => ['type' => $type, 'result' => ['type' => $type, 'optional' => false, ...$extra, ...$wide]],
+        'map' => ['value' => ['type' => $value, 'optional' => false, ...$extra], 'checksKeys' => $checksKeys],
+    ];
+}
+
+/**
  * A helper's analysis holding one key.
  *
  * @param  array<string, mixed>  $value
@@ -144,18 +161,73 @@ it('joins each key written before a map spread with the map\'s value, and no lat
 });
 
 // TypeScript cannot drop a key from a map's signature, so a map's arm whose value a key does not fit is left out.
-it('hands the print each arm it keeps, in item order, a map\'s only where every key the fold writes fits its value', function () {
+it('hands the print each arm it keeps, in item order, a map\'s after another item only where every key fits its value', function (string $value, bool $kept) {
     $resource = ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false];
-    $strings = ['type' => 'Record<string, string>', 'result' => ['type' => 'Record<string, string>', 'optional' => false]];
-    $numbers = ['type' => 'Record<string, number>', 'result' => ['type' => 'Record<string, number>', 'optional' => false]];
-    $writes = new LiteralWrites;
-    $writes->recordArm(['arm' => $strings, 'mapValue' => null]);
-    $writes->recordKey('a', ['type' => '1 | 2', 'optional' => false], 1);
-    $writes->recordArm(['arm' => $resource, 'mapValue' => null]);
-    $writes->recordArm(['arm' => $strings, 'mapValue' => 'string']);
-    $writes->recordArm(['arm' => $numbers, 'mapValue' => 'number']);
+    $first = new LiteralWrites;
+    $first->recordArm(literalMapArm('string', checksKeys: false));
+    $first->recordKey('a', ['type' => '1 | 2', 'optional' => false], 1);
+    $after = new LiteralWrites;
+    $after->recordKey('a', ['type' => '1 | 2', 'optional' => false], 0);
+    $after->recordArm(['arm' => $resource, 'map' => null]);
+    $after->recordArm(literalMapArm($value, checksKeys: true));
 
-    expect(foldedInto($writes)->spreadArms())->toBe([$strings, $resource, $numbers]);
+    expect(foldedInto($first)->spreadArms())->toBe([literalMapArm('string', checksKeys: false)['arm']])
+        ->and(foldedInto($after)->spreadArms())->toBe($kept ? [$resource, literalMapArm($value, checksKeys: true)['arm']] : [$resource]);
+})->with([
+    'a value the key fits' => ['number', true],
+    'a value the key does not fit' => ['string', false],
+]);
+
+// `keyof` a map is every key, so the print would keep the later map alone, though PHP keeps the earlier map's keys.
+it('joins a map\'s arm with each earlier map\'s, in its place, one value per class', function () {
+    $resource = ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false];
+    $writes = new LiteralWrites;
+    $writes->recordArm(literalMapArm('string', checksKeys: false));
+    $writes->recordArm(['arm' => $resource, 'map' => null]);
+    $writes->recordArm(literalMapArm('number', checksKeys: true));
+    $writes->recordArm(literalMapArm('User', checksKeys: true, extra: ['modelFqcn' => User::class]));
+    $writes->recordArm(literalMapArm('User | null', checksKeys: true, extra: ['modelFqcn' => User::class]));
+
+    expect(foldedInto($writes)->spreadArms())->toBe([$resource, [
+        'type' => 'Record<string, string | number | User | null>',
+        'result' => ['type' => 'Record<string, string | number | User | null>', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+    ]]);
+});
+
+it('leaves out a joined map\'s arm where a key does not fit the joined value, as for one map', function () {
+    $writes = new LiteralWrites;
+    $writes->recordArm(literalMapArm('string', checksKeys: false));
+    $writes->recordKey('a', ['type' => 'boolean', 'optional' => false], 1);
+    $writes->recordArm(literalMapArm('number', checksKeys: true));
+
+    expect(foldedInto($writes)->spreadArms())->toBe([]);
+});
+
+it('joins a map whose value is unknown into an unknown map, keeping each spread\'s open readings', function () {
+    $writes = new LiteralWrites;
+    $writes->recordArm(literalMapArm('unknown', checksKeys: false));
+    $writes->recordArm(literalMapArm('{ a: string }', checksKeys: true, wide: ['openReadings' => ["{}\0{ a: string }"]]));
+
+    expect(foldedInto($writes)->spreadArms())->toBe([[
+        'type' => 'Record<string, unknown>',
+        'result' => ['type' => 'Record<string, unknown>', 'optional' => false, 'openReadings' => ["{}\0{ a: string }"]],
+    ]]);
+});
+
+it('carries each joined map\'s custom imports and carried classes on the joined arm', function () {
+    $writes = new LiteralWrites;
+    $writes->recordArm(literalMapArm('Money', checksKeys: false, wide: ['customImports' => ['@/money' => ['Money']]]));
+    $writes->recordArm(literalMapArm('Rate', checksKeys: true, wide: ['carriedFqcns' => ['models' => [User::class]]]));
+
+    expect(foldedInto($writes)->spreadArms())->toBe([[
+        'type' => 'Record<string, Money | Rate>',
+        'result' => [
+            'type' => 'Record<string, Money | Rate>',
+            'optional' => false,
+            'customImports' => ['@/money' => ['Money']],
+            'carriedFqcns' => ['models' => [User::class]],
+        ],
+    ]]);
 });
 
 // Outside filter() PHP appends a merge call under an int key, so it sets no named key.

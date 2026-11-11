@@ -16,5 +16,6 @@ export interface ValueSpreadsResource
     key_then_removable: { id: number; by?: string };
     merge_when_then_value: { id: number; by: { name: string | null; email: string | null } | string };
     key_then_open: { by: string };
+    map_then_map: Record<string, string | number>;
     by: unknown;
 }

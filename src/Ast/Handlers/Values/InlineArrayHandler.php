@@ -48,7 +48,9 @@ use PhpParser\Node\Scalar\String_;
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  * @phpstan-import-type KeyedValues from ObjectMembers
  *
- * @phpstan-type ReadArm = array{arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, mapValue: string|null}
+ * @phpstan-type ReadArm = array{
+ *     arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, map: ValueExpressionResult|null,
+ * }
  *
  * @internal
  */
@@ -279,7 +281,7 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         $staysArm = array_map(static fn (array $spread): bool => $spread['arm'] !== null
-            && (! isset($spread['arm']['result']) || (! $spread['inPlace'] && $spread['mapValue'] === null)), $read);
+            && (! isset($spread['arm']['result']) || (! $spread['inPlace'] && $spread['map'] === null)), $read);
         $followsOriginal = self::armsFollow(array_values($items), $staysArm);
         $inlined = self::withNamedLiteralSpreadsInlined($items, static fn (int $index): bool => $followsOriginal[$index]);
         $follows = self::armsFollow($inlined, $staysArm);
@@ -298,8 +300,11 @@ final class InlineArrayHandler implements ExpressionHandler
                 continue;
             }
 
-            // A map's arm after another item carries its value: the fold leaves it out where a key does not fit it.
-            $printed[$index] = ['arm' => $spread['arm'], 'mapValue' => $index > 0 ? $spread['mapValue'] : null];
+            // After another item, the fold leaves a map's arm out where a key does not fit its value.
+            $printed[$index] = [
+                'arm' => $spread['arm'],
+                'map' => $spread['map'] === null ? null : ['value' => $spread['map'], 'checksKeys' => $index > 0],
+            ];
         }
 
         return new LiteralArms($inlined, $follows, $arms, $printed);
@@ -478,7 +483,7 @@ final class InlineArrayHandler implements ExpressionHandler
         $inPlace = isset($arm['result']) && self::spreadKeys($item->value, $arm['result'], $scope) !== null;
         $map = isset($arm['result']) && ! $inPlace ? self::spreadSignature($item->value, $arm['result'], $scope) : null;
 
-        return ['arm' => $arm, 'inPlace' => $inPlace, 'mapValue' => $map === null ? null : $map['type']];
+        return ['arm' => $arm, 'inPlace' => $inPlace, 'map' => $map];
     }
 
     /**

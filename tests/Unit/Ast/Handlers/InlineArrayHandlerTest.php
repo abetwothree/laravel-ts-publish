@@ -118,7 +118,7 @@ it('resolves an inline array with a nested key and a model spread arm to an Omit
 
     $result = (new InlineArrayHandler)->resolve($array, $scope, $engine);
 
-    expect($plan->printed)->toBe([1 => ['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'mapValue' => null]]);
+    expect($plan->printed)->toBe([1 => ['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null]]);
 
     // The spread's keys are no string or int the literal writes, so the result marks them unnamed for array_keys().
     expect($result)->toBe([
@@ -164,13 +164,14 @@ function inlineArrayHandlerArmEngine(): ExpressionEngine
 }
 
 // A print places every arm before the keys, so a spread a later arm follows stays an arm, though written in place.
-it('plans the spreads a nested literal prints as arms, by item, with each map\'s value after another item', function (string $php, int $items, array $printed) {
+it('plans the spreads a nested literal prints as arms, by item, with each map\'s value, checked after another item', function (string $php, int $items, array $printed) {
     $array = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
     assert($array instanceof Array_);
     $plan = (new InlineArrayHandler)->planArms($array->items, new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class)), inlineArrayHandlerArmEngine());
 
     expect($plan->items)->toHaveCount($items)
-        ->and(array_map(static fn (array $arm): string => ($arm['arm']['type'] ?? $arm['arm']['fqcn']).($arm['mapValue'] === null ? '' : ' fits '.$arm['mapValue']), $plan->printed))
+        ->and(array_map(static fn (array $arm): string => ($arm['arm']['type'] ?? $arm['arm']['fqcn'])
+            .($arm['map'] === null ? '' : ($arm['map']['checksKeys'] ? ' fits ' : ' holds ').$arm['map']['value']['type']), $plan->printed))
         ->toBe($printed);
 })->with([
     'a value an arm follows' => ['[...$obj, ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
@@ -178,7 +179,8 @@ it('plans the spreads a nested literal prints as arms, by item, with each map\'s
     'a literal an arm follows' => ['[...["a" => 1], ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
     'a literal no arm follows, inlined' => ['[...["a" => 1], "b" => 2]', 2, []],
     'a map after a key' => ['["b" => 2, ...$map]', 2, [1 => 'Record<string, string> fits string']],
-    'a map first' => ['[...$map, "b" => 2]', 2, [0 => 'Record<string, string>']],
+    'a map first' => ['[...$map, "b" => 2]', 2, [0 => 'Record<string, string> holds string']],
+    'a map after a map' => ['[...$map, ...$map]', 2, [0 => 'Record<string, string> holds string', 1 => 'Record<string, string> fits string']],
     'a helper the item loop flattens' => ['[...$this->helper(), ...$arm]', 2, [1 => UserResource::class]],
 ]);
 

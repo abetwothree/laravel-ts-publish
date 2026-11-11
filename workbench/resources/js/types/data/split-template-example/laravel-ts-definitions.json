@@ -22241,6 +22241,11 @@
                     "optional": false
                 },
                 {
+                    "name": "map_then_map",
+                    "type": "Record<string, string | number>",
+                    "optional": false
+                },
+                {
                     "name": "by",
                     "type": "unknown",
                     "optional": false

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\SpreadFoldDeclaredEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SpreadFoldPropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadClassMapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldCertainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldDeclaredResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMaybeResource;
@@ -22,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldResolve
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldUnionValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLiteralBesideArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMapThenMapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMergeJoinResource;
@@ -203,6 +205,34 @@ it('joins each key before a spread of a map with the map\'s value', function () 
         'tones' => "Omit<Record<string, string>, 'tone'> & { tone: string }",
     ])->and(spreadValueSent(SpreadValueMapResource::class, ['labels' => ['by' => 'x', 'tone' => 'warm']]))->toBe('{'
         .'"id":9,"by":"x","tone":"warm","row":{"id":9,"by":"x","tone":"warm"},"tones":{"tone":"warm","by":"x"}}');
+});
+
+// A later map may write any key, so each key an earlier map wrote holds either map's value.
+it('publishes two map spreads in a row as one map of both values', function () {
+    expect(publishedResourceKeyTypes(SpreadMapThenMapResource::class, Post::class))->toBe([
+        'by' => 'string | number',
+        'row' => 'Record<string, string | number>',
+        'deep' => '{ in: Record<string, string | number> }',
+        'keyed' => "Omit<Record<string, string | number>, 'by'> & { by: string | number }",
+        'armed' => 'Omit<Record<string, string | number>, keyof UserResource> & UserResource',
+        'three' => 'Record<string, string | number | boolean>',
+    ])->and(analyzedImportNames(SpreadMapThenMapResource::class))->toBe(['UserResource'])
+        ->and(spreadValueSent(SpreadMapThenMapResource::class, [
+            'labels' => ['k' => 'v', 'by' => 's'],
+            'counts' => ['c' => 1, 'by' => 2],
+            'flags' => ['f' => true],
+        ]))->toBe('{"by":2,"k":"v","c":1,'
+            .'"row":{"k":"v","by":2,"c":1},"deep":{"in":{"k":"v","by":2,"c":1}},"keyed":{"by":2,"k":"v","c":1},'
+            .'"armed":{"k":"v","by":2,"c":1,"id":null,"name":"Ada","email":null,"role":null},'
+            .'"three":{"k":"v","by":2,"c":1,"f":true}}');
+});
+
+it('publishes two map spreads of classes in a row as one map, importing each class once', function () {
+    expect(publishedResourceKeyTypes(SpreadClassMapsResource::class, Post::class))->toBe([
+        'row' => 'Record<string, WorkbenchUser | Comment>',
+        'twice' => 'Record<string, WorkbenchUser>',
+        'alike' => 'Record<string, WorkbenchUser | CrmUser>',
+    ])->and(analyzedImportNames(SpreadClassMapsResource::class))->toBe(['Comment', 'User as CrmUser', 'User as WorkbenchUser']);
 });
 
 it('merges a merge() array whose spread of a local overrides the key before it', function () {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use PhpParser\Node\Expr\ArrayItem;
 
@@ -14,8 +15,13 @@ use PhpParser\Node\Expr\ArrayItem;
  *
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type PrintedArm = array{arm: InlineSpreadArm|ObjectSpreadArm, mapValue: string|null}
+ * @phpstan-type MapArm = array{value: ValueExpressionResult, checksKeys: bool}
+ * @phpstan-type PrintedArm = array{arm: InlineSpreadArm|ObjectSpreadArm, map: MapArm|null}
+ *
+ * A MapArm is a map's: the value it may write under any key, and whether each key the fold writes must fit that value,
+ * as for a map after another item.
  *
  * @internal
  */
@@ -27,8 +33,7 @@ final readonly class LiteralArms
      * @param  list<ArrayItem>  $items  the literal's items, each spread of a literal no later arm follows inlined
      * @param  list<bool>  $follows  per item, whether a later one stays an arm
      * @param  array<int, InlineSpreadArm|ObjectSpreadArm|null>  $arms  per spread a print may keep, the arm it is
-     * @param  array<int, PrintedArm>  $printed  per spread the print keeps, its arm, and for a map's after another
-     *                                           item, the value each key the fold writes must fit
+     * @param  array<int, PrintedArm>  $printed  per spread the print keeps, its arm and, for a map's, its MapArm
      */
     public function __construct(
         public array $items,

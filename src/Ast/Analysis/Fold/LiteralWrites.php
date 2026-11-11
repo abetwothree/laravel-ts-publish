@@ -7,7 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -26,9 +28,13 @@ use LogicException;
  * @phpstan-import-type KeyedValues from ObjectMembers
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type PrintedArm from LiteralArms
+ * @phpstan-import-type MapArm from LiteralArms
+ * @phpstan-import-type InlineSpreadArm from InlineObjectResult
+ * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  *
  * @phpstan-type Source = array{analysis: MethodAnalysis}|array{value: ValueExpressionResult}
  * @phpstan-type OrderEntry = array{key: string}|array{signature: int, name: string}
+ * @phpstan-type PrintedMapArm = array{arm: InlineSpreadArm|ObjectSpreadArm, map: MapArm}
  *
  * @internal
  */
@@ -165,7 +171,7 @@ final class LiteralWrites
 
     /**
      * Record a spread the literal's print keeps as an arm, in item order: a map's after another item only where each
-     * key the fold writes fits its value.
+     * key the fold writes fits its value, and every map's joined into the last map's.
      *
      * @param  PrintedArm  $arm
      */
@@ -227,8 +233,9 @@ final class LiteralWrites
         $target->setSpreadArms(array_values(array_map(
             static fn (array $arm): array => $arm['arm'],
             array_filter(
-                $this->arms,
-                static fn (array $arm): bool => $arm['mapValue'] === null || self::keysFitMapValue($target, $arm['mapValue']),
+                $this->joinedArms(),
+                static fn (array $arm): bool => $arm['map'] === null || ! $arm['map']['checksKeys']
+                    || self::keysFitMapValue($target, $arm['map']['value']['type']),
             ),
         )));
     }
@@ -266,6 +273,55 @@ final class LiteralWrites
         $absent = $result['absent'] ?? false;
 
         return [$absent, ! $absent || ($result['removed'] ?? false)];
+    }
+
+    /**
+     * One map's arm for several map spreads: their values joined in one union, so a class two of them hold is one
+     * member, and an `unknown` one leaves the value unknown. Each spread's open readings already stand under its `{}`.
+     *
+     * @param  non-empty-list<PrintedMapArm>  $maps
+     * @return PrintedArm
+     */
+    private static function joinedMaps(array $maps): array
+    {
+        $values = array_map(self::mapValue(...), $maps);
+        $value = array_any($values, static fn (array $value): bool => $value['type'] === 'unknown')
+            ? ValueResult::unknown()
+            : ValueResult::unionResults($values, countMembers: true);
+        $type = 'Record<string, '.$value['type'].'>';
+        $result = [...$value, 'type' => $type];
+        $readings = array_values(array_unique(array_merge([], ...array_map(
+            static fn (array $map): array => $map['arm']['result']['openReadings'] ?? [],
+            $maps,
+        ))));
+        unset($result['openReadings']);
+
+        return [
+            'arm' => ['type' => $type, 'result' => $readings === [] ? $result : [...$result, 'openReadings' => $readings]],
+            'map' => ['value' => $value, 'checksKeys' => array_any($maps, static fn (array $map): bool => $map['map']['checksKeys'])],
+        ];
+    }
+
+    /**
+     * A map arm's value, with the custom imports and carried classes its spread carries, which the arm's text needs.
+     *
+     * @param  PrintedMapArm  $arm
+     * @return ValueExpressionResult
+     */
+    private static function mapValue(array $arm): array
+    {
+        $value = $arm['map']['value'];
+        $spread = $arm['arm']['result'] ?? null;
+
+        if (isset($spread['customImports'])) {
+            $value['customImports'] = $spread['customImports'];
+        }
+
+        if (isset($spread['carriedFqcns'])) {
+            $value['carriedFqcns'] = $spread['carriedFqcns'];
+        }
+
+        return $value;
     }
 
     /**
@@ -309,6 +365,33 @@ final class LiteralWrites
         unset($result['customImports'], $result['carriedFqcns']);
 
         return $result;
+    }
+
+    /**
+     * The recorded arms with every map's taken into the last map's, in its place: `keyof` a map is every key, so the
+     * print would keep the last map alone, though a key an earlier map wrote holds either map's value.
+     *
+     * @return array<int, PrintedArm>
+     */
+    private function joinedArms(): array
+    {
+        $maps = [];
+
+        foreach ($this->arms as $index => $arm) {
+            if ($arm['map'] !== null) {
+                $maps[$index] = $arm;
+            }
+        }
+
+        if (count($maps) < 2) {
+            return $this->arms;
+        }
+
+        $arms = array_diff_key($this->arms, $maps);
+        $arms[(int) array_key_last($maps)] = self::joinedMaps(array_values($maps));
+        ksort($arms);
+
+        return $arms;
     }
 
     /**
